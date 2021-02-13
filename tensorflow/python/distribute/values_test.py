@@ -596,12 +596,13 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
                                  aggregation):
     if len(distribution.extended.parameter_devices) != 2:
       self.skipTest("n/a: needs exactly two parameter devices")
+    if (synchronization == variables_lib.VariableSynchronization.ON_WRITE and
+        aggregation != variables_lib.VariableAggregation.NONE):
+      self.skipTest("n/a: doesn't apply to ON_WRITE variable with aggregation")
     with distribution.scope():
       v = variables_lib.Variable(
           0., synchronization=synchronization, aggregation=aggregation)
-    # Note that this is actually real usage. We're doing this in optimizer to
-    # workaround the current restriction in strategy.extended.update().
-    value = values_lib.Mirrored([1., 2.])
+    value = values_lib.PerReplica([1., 2.])
 
     assign_fn = lambda var, value: var.assign(value)
     self.evaluate(distribution.extended.update(v, assign_fn, args=(value,)))

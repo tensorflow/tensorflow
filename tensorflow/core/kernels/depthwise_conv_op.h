@@ -193,26 +193,18 @@ struct DepthwiseInputCopyOp {
                   const int64 padded_filter_inner_dim_size, const int64 out_r,
                   const int64 out_c, const T* input, T* input_buffer) {
     typedef typename Eigen::internal::packet_traits<T>::type Packet;
-    static const int64 kPacketSize = (sizeof(Packet) / sizeof(T));
+    static const int64 kPacketSize = Eigen::internal::packet_traits<T>::size;
 
+    const int64 kDepth = args.depth_multiplier;
     // Calculate vectorized and scalar (residual) lengths for 'in_depth'.
     const int64 input_vectorized_size =
         (args.in_depth / kPacketSize) * kPacketSize;
-    const int64 input_scalar_size = args.in_depth % kPacketSize;
-
-    // Calculate vectorized and scalar (residual) lengths for
-    // 'depth_multiplier'. This is used to efficiently replicate data for
-    // when 'depth_multiplier' > kPacketSize.
-    const int64 dm_vectorized_size =
-        (args.depth_multiplier / kPacketSize) * kPacketSize;
-    const int64 dm_scalar_size = args.depth_multiplier % kPacketSize;
+    const int64 input_scalar_size = args.in_depth - input_vectorized_size;
 
     // Calculate output padding length.
     const int64 output_scalar_size = args.out_depth % kPacketSize;
     const int64 output_pad_size =
         output_scalar_size > 0 ? kPacketSize - output_scalar_size : 0;
-
-    const int64 replicated_packet_size = kPacketSize * args.depth_multiplier;
 
     // Iterate through all rows x cols reading 'in_depth' from 'input' and
     // replicating by 'depth_multiplier' into 'input_buffer' (otherwise
@@ -221,60 +213,126 @@ struct DepthwiseInputCopyOp {
     const int64 in_r_start = out_r * args.stride - args.pad_rows;
     const int64 in_c_start = out_c * args.stride - args.pad_cols;
 
-    for (int64 f_r = 0; f_r < args.filter_rows; ++f_r) {
-      const int64 in_r = in_r_start + f_r;
+    // TODO: add a ploaddup variant for depth == 2 if needed.
+    if (kDepth > 1 && kDepth <= kPacketSize) {
+      for (int64 f_r = 0; f_r < args.filter_rows; ++f_r) {
+        const int64 in_r = in_r_start + f_r;
 
-      for (int64 f_c = 0; f_c < args.filter_cols; ++f_c) {
-        const int64 in_c = in_c_start + f_c;
+        for (int64 f_c = 0; f_c < args.filter_cols; ++f_c) {
+          const int64 in_c = in_c_start + f_c;
 
-        if (in_r >= 0 && in_r < args.in_rows && in_c >= 0 &&
-            in_c < args.in_cols) {
-          auto* in = input + (in_r * args.in_cols + in_c) * args.in_depth;
-          // Copy vectorized portion of inner dimension.
-          for (int64 d = 0; d < input_vectorized_size; d += kPacketSize) {
-            auto v = Eigen::internal::ploadu<Packet>(in + d);
-            for (int dm = 0; dm < args.depth_multiplier; ++dm) {
-              Eigen::internal::pscatter<T, Packet>(in_buf + dm, v,
-                                                   args.depth_multiplier);
+          if (in_r >= 0 && in_r < args.in_rows && in_c >= 0 &&
+              in_c < args.in_cols) {
+            const auto* in =
+                input + (in_r * args.in_cols + in_c) * args.in_depth;
+            int64 limit = args.in_depth;
+            // This will overwrite up to kPacketSize next elements,
+            // this is ok on all iterations except the last one, since
+            // we will write correct values on a next iteration.
+            if (f_c == args.filter_cols - 1) {
+              limit -= (kPacketSize - kDepth) / kDepth + 1;
+              if (limit < 0) {
+                limit = 0;
+              }
             }
-            in_buf += replicated_packet_size;
-          }
+            // Copy vectorized portion of inner dimension.
+            for (int64 d = 0; d < limit; d++) {
+              const auto p = Eigen::internal::pset1<Packet>(in[d]);
+              Eigen::internal::pstoreu<T>(in_buf, p);
+              in_buf += kDepth;
+            }
 
-          // Copy scalar portion of inner dimension.
-          for (int64 d = 0; d < input_scalar_size; ++d) {
-            T v = in[input_vectorized_size + d];
-            const int64 base = d * args.depth_multiplier;
-            if (dm_vectorized_size > 0) {
-              // Copy vectorized portion of replicated output.
-              // This branch is only taken if 'args.depth_multiplier' is
-              // vectorizable (i.e. args.depth_multiplier >= register width).
-              auto p = Eigen::internal::pset1<Packet>(v);
+            // Copy the scalar portion.
+            for (int64 d = limit; d < args.in_depth; d++) {
+              const auto value = in[d];
+              for (int64 dm = 0; dm < kDepth; dm++) {
+                in_buf[dm] = value;
+              }
+              in_buf += kDepth;
+            }
+
+            // Pad the remainder of the output to vector register boundary.
+            for (int64 d = 0; d < output_pad_size; ++d) {
+              in_buf[d] = static_cast<T>(0);
+            }
+            in_buf += output_pad_size;
+          } else {
+            // Zero pad.
+            memset(in_buf, 0, sizeof(T) * padded_filter_inner_dim_size);
+            in_buf += padded_filter_inner_dim_size;
+          }
+        }
+      }
+    } else if (kDepth > kPacketSize) {
+      // Calculate vectorized and scalar (residual) lengths for
+      // 'depth_multiplier'. This is used to efficiently replicate data for
+      // when 'depth_multiplier' > kPacketSize.
+      const int64 dm_vectorized_size = (kDepth / kPacketSize) * kPacketSize;
+
+      for (int64 f_r = 0; f_r < args.filter_rows; ++f_r) {
+        const int64 in_r = in_r_start + f_r;
+
+        for (int64 f_c = 0; f_c < args.filter_cols; ++f_c) {
+          const int64 in_c = in_c_start + f_c;
+
+          if (in_r >= 0 && in_r < args.in_rows && in_c >= 0 &&
+              in_c < args.in_cols) {
+            const auto* in =
+                input + (in_r * args.in_cols + in_c) * args.in_depth;
+            // Copy vectorized portion of inner dimension.
+            for (int64 d = 0; d < args.in_depth; d++) {
+              const auto p = Eigen::internal::pset1<Packet>(in[d]);
               for (int64 dm = 0; dm < dm_vectorized_size; dm += kPacketSize) {
-                Eigen::internal::pstoreu<T>(in_buf + base + dm, p);
+                Eigen::internal::pstoreu<T>(in_buf + dm, p);
               }
-              // Copy scalar portion of replicated output.
-              for (int64 dm = 0; dm < dm_scalar_size; ++dm) {
-                in_buf[base + dm_vectorized_size + dm] = v;
-              }
-            } else {
-              // Depth multiplier is less than one packet: scalar copy.
-              for (int dm = 0; dm < args.depth_multiplier; ++dm) {
-                in_buf[base + dm] = v;
-              }
+              // Overlapping store for the remainder.
+              Eigen::internal::pstoreu<T>(in_buf + kDepth - kPacketSize, p);
+              in_buf += kDepth;
             }
+            // Pad the remainder of the output to vector register boundary.
+            for (int64 d = 0; d < output_pad_size; ++d) {
+              in_buf[d] = static_cast<T>(0);
+            }
+            in_buf += output_pad_size;
+          } else {
+            // Zero pad.
+            memset(in_buf, 0, sizeof(T) * padded_filter_inner_dim_size);
+            in_buf += padded_filter_inner_dim_size;
           }
-          in_buf += input_scalar_size * args.depth_multiplier;
+        }
+      }
+    } else if (kDepth == 1) {
+      for (int64 f_r = 0; f_r < args.filter_rows; ++f_r) {
+        const int64 in_r = in_r_start + f_r;
 
-          // Pad the remainder of the output to vector register boundary.
-          for (int64 d = 0; d < output_pad_size; ++d) {
-            in_buf[d] = static_cast<T>(0);
+        for (int64 f_c = 0; f_c < args.filter_cols; ++f_c) {
+          const int64 in_c = in_c_start + f_c;
+
+          if (in_r >= 0 && in_r < args.in_rows && in_c >= 0 &&
+              in_c < args.in_cols) {
+            const auto* in =
+                input + (in_r * args.in_cols + in_c) * args.in_depth;
+            for (int64 d = 0; d < input_vectorized_size; d += kPacketSize) {
+              const auto p = Eigen::internal::ploadu<Packet>(in + d);
+              Eigen::internal::pstoreu<T>(in_buf, p);
+              in_buf += kPacketSize;
+            }
+            for (int64 d = 0; d < input_scalar_size; ++d) {
+              T v = in[input_vectorized_size + d];
+              in_buf[d] = v;
+            }
+            in_buf += input_scalar_size;
+
+            // Pad the remainder of the output to vector register boundary.
+            for (int64 d = 0; d < output_pad_size; ++d) {
+              in_buf[d] = static_cast<T>(0);
+            }
+            in_buf += output_pad_size;
+          } else {
+            // Zero pad.
+            memset(in_buf, 0, sizeof(T) * padded_filter_inner_dim_size);
+            in_buf += padded_filter_inner_dim_size;
           }
-          in_buf += output_pad_size;
-
-        } else {
-          // Zero pad.
-          memset(in_buf, 0, sizeof(T) * padded_filter_inner_dim_size);
-          in_buf += padded_filter_inner_dim_size;
         }
       }
     }

@@ -29,8 +29,8 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AsmState.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
@@ -321,7 +321,7 @@ struct PropagateShapeKnowledgeToKernels
     knowledge.build(getFunction());
 
     getFunction().walk([&](gpu::LaunchFuncOp launch) {
-      auto module = launch.getParentOfType<ModuleOp>();
+      auto module = launch->getParentOfType<ModuleOp>();
       auto kernel = module.lookupSymbol<LLVM::LLVMFuncOp>(launch.kernel());
 
       if (!kernel || kernel.isExternal()) return;

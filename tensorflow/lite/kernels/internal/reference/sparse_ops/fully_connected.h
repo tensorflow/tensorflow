@@ -35,7 +35,7 @@ inline void FullyConnectedSparseWeight(
   tflite::optimize::sparsity::FormatConverter<float> converter(
       weights_shape_vector, sparsity);
   converter.SparseToDense(weights_data);
-  const std::vector<float> dense_weights_data = converter.GetData();
+  const std::vector<float>& dense_weights_data = converter.GetData();
   FullyConnected(params, input_shape, input_data, weights_shape,
                  dense_weights_data.data(), bias_shape, bias_data, output_shape,
                  output_data);

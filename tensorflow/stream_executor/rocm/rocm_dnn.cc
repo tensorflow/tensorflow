@@ -3584,8 +3584,6 @@ bool MIOpenSupport::DoBatchNormalizationForwardImpl(
 
   auto status = miopenStatusInvalidValue;
   if (is_training) {
-    stream->ThenMemZero(batch_mean, batch_mean->size());
-    stream->ThenMemZero(batch_var, batch_var->size());
     status = wrap::miopenBatchNormalizationForwardTraining(
         miopen.handle(), mode, &one, &zero, x_descriptor.handle(), x.opaque(),
         x_descriptor.handle(), y->opaque(), scale_offset_descriptor.handle(),

@@ -40,25 +40,11 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include "tensorflow/lite/c/c_api_types.h"  // IWYU pragma: export
+
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
-
-typedef enum TfLiteStatus {
-  kTfLiteOk = 0,
-
-  // Generally referring to an error in the runtime (i.e. interpreter)
-  kTfLiteError = 1,
-
-  // Generally referring to an error from a TfLiteDelegate itself.
-  kTfLiteDelegateError = 2,
-
-  // Generally referring to an error in applying a delegate due to
-  // incompatibility between runtime and delegate, e.g., this error is returned
-  // when trying to apply a TfLite delegate onto a model graph that's already
-  // immutable.
-  kTfLiteApplicationError = 3
-} TfLiteStatus;
 
 // The list of external context types known to TF Lite. This list exists solely
 // to avoid conflicts and to ensure ops can share the external contexts they
@@ -254,22 +240,6 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
     }                                      \
   } while (0)
 
-// Define TFL_CAPI_EXPORT macro to export a function properly with a shared
-// library.
-#ifdef SWIG
-#define TFL_CAPI_EXPORT
-#else
-#if defined(_WIN32)
-#ifdef TFL_COMPILE_LIBRARY
-#define TFL_CAPI_EXPORT __declspec(dllexport)
-#else
-#define TFL_CAPI_EXPORT __declspec(dllimport)
-#endif  // TFL_COMPILE_LIBRARY
-#else
-#define TFL_CAPI_EXPORT __attribute__((visibility("default")))
-#endif  // _WIN32
-#endif  // SWIG
-
 // Single-precision complex data type compatible with the C99 definition.
 typedef struct TfLiteComplex64 {
   float re, im;  // real and imaginary parts, respectively.
@@ -284,24 +254,6 @@ typedef struct TfLiteComplex128 {
 typedef struct TfLiteFloat16 {
   uint16_t data;
 } TfLiteFloat16;
-
-// Types supported by tensor
-typedef enum {
-  kTfLiteNoType = 0,
-  kTfLiteFloat32 = 1,
-  kTfLiteInt32 = 2,
-  kTfLiteUInt8 = 3,
-  kTfLiteInt64 = 4,
-  kTfLiteString = 5,
-  kTfLiteBool = 6,
-  kTfLiteInt16 = 7,
-  kTfLiteComplex64 = 8,
-  kTfLiteInt8 = 9,
-  kTfLiteFloat16 = 10,
-  kTfLiteFloat64 = 11,
-  kTfLiteComplex128 = 12,
-  kTfLiteUInt64 = 13,
-} TfLiteType;
 
 // Return the name of a given type, for error reporting purposes.
 const char* TfLiteTypeGetName(TfLiteType type);
@@ -319,21 +271,11 @@ typedef enum TfLiteQuantizationType {
 typedef struct TfLiteQuantization {
   // The type of quantization held by params.
   TfLiteQuantizationType type;
-  // Holds a reference to one of the quantization param structures specified
-  // below.
+  // Holds an optional reference to a quantization param structure. The actual
+  // type depends on the value of the `type` field (see the comment there for
+  // the values and corresponding types).
   void* params;
 } TfLiteQuantization;
-
-// Legacy. Will be deprecated in favor of TfLiteAffineQuantization.
-// If per-layer quantization is specified this field will still be populated in
-// addition to TfLiteAffineQuantization.
-// Parameters for asymmetric quantization. Quantized values can be converted
-// back to float using:
-//     real_value = scale * (quantized_value - zero_point)
-typedef struct TfLiteQuantizationParams {
-  float scale;
-  int32_t zero_point;
-} TfLiteQuantizationParams;
 
 // Parameters for asymmetric quantization across a dimension (i.e per output
 // channel quantization).
@@ -536,7 +478,7 @@ typedef struct TfLiteNode {
   // WARNING: This is an experimental interface that is subject to change.
   struct TfLiteDelegate* delegate;
 } TfLiteNode;
-#else  // defined(TF_LITE_STATIC_MEMORY)?
+#else   // defined(TF_LITE_STATIC_MEMORY)?
 // NOTE: This flag is opt-in only at compile time.
 //
 // Specific reduced TfLiteTensor struct for TF Micro runtime. This struct

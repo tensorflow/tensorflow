@@ -16,6 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_COLLECTIVE_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_COLLECTIVE_THUNK_H_
 
+#include "absl/synchronization/mutex.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
+#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -27,6 +32,8 @@ using ncclComm_t = ncclComm*;
 
 namespace xla {
 namespace gpu {
+
+struct NcclClique;
 
 struct NcclCollectiveConfig {
   NcclCollectiveConfig();
@@ -41,21 +48,48 @@ struct NcclCollectiveConfig {
   std::vector<ReplicaGroup> replica_groups;
   RendezvousKey::CollectiveOpKind collective_op_kind;
   int64 op_id;
-  // Extra data stored in NcclCollectiveConfig whose types we don't want exposed
-  // in the header file.  (This is mainly because the implementation of
-  // NcclCollectiveConfig is different depending on whether CUDA is enabled in
-  // the build, and we don't want to expose *that* mess in the header.)
-  struct AuxData;
-  std::unique_ptr<AuxData> aux_data;
 };
 
 NcclCollectiveConfig GetNcclCollectiveConfig(const HloInstruction* hlo,
                                              int64 replica_count);
 
+template <typename OpT>
+NcclCollectiveConfig GetNcclCollectiveConfigForMlir(OpT op,
+                                                    int64 replica_count) {
+  NcclCollectiveConfig config;
+  config.operand_count = op.operands().size();
+  config.operand_element_type.reserve(config.operand_count);
+  for (int i = 0; i < config.operand_count; i++) {
+    const Shape shape = TypeToShape(op.operands()[i].getType());
+    config.operand_element_type.push_back(shape.element_type());
+  }
+  config.replica_count = replica_count;
+  config.replica_groups =
+      ConvertReplicaGroups(op.replica_groups()).ValueOrDie();
+
+  if (!op.IsCrossReplica()) {
+    config.collective_op_kind = RendezvousKey::kCrossModule;
+    config.op_id = op.channel_id()->handle().getUInt();
+  } else {
+    config.collective_op_kind = RendezvousKey::kCrossReplica;
+    mlir::ModuleOp parent = op->template getParentOfType<mlir::ModuleOp>();
+    mlir::IntegerAttr unique_id =
+        parent->getAttrOfType<mlir::IntegerAttr>("hlo.unique_id");
+    config.op_id = static_cast<int64>(unique_id.getInt());
+  }
+  return config;
+}
+
 // Thunk base class for NCCL collective operations.
 class NcclCollectiveThunk : public Thunk {
  public:
   using Thunk::Thunk;
+
+  struct Buffer {
+    int64 element_count;
+    BufferAllocation::Slice source_buffer;
+    BufferAllocation::Slice destination_buffer;
+  };
 
   // Returns whether NCCL operations appear possible to perform; e.g. if we
   // haven't done a build with the CUDA compiler enabled, we can't compile the

@@ -215,25 +215,29 @@ func (t *Tensor) DataType() DataType { return DataType(C.TF_TensorType(t.c)) }
 func (t *Tensor) Shape() []int64 { return t.shape }
 
 // Reshape  updates tensor's shape in place if this is possible or returns an error otherwise.
-func (t *Tensor) Reshape(new_shape []int64) error {
-	old_shape_size := numElements(t.shape)
-	new_shape_size := numElements(new_shape)
+func (t *Tensor) Reshape(newShape []int64) error {
+	oldShapeSize := numElements(t.shape)
+	newShapeSize := numElements(newShape)
 
-	if old_shape_size != new_shape_size {
-		return fmt.Errorf("unable to convert shape %v (num_elements: %d) into shape %v (num_elements: %d)", t.shape, old_shape_size, new_shape, new_shape_size)
+	if oldShapeSize != newShapeSize {
+		return fmt.Errorf("unable to convert shape %v (num_elements: %d) into shape %v (num_elements: %d)", t.shape, oldShapeSize, newShape, newShapeSize)
 	}
 
-	if len(new_shape) == 0 {
+	if len(newShape) == 0 {
 		return nil
 	}
 
 	var shapePtr *C.int64_t
-	shapePtr = (*C.int64_t)(unsafe.Pointer(&new_shape[0]))
+	shapePtr = (*C.int64_t)(unsafe.Pointer(&newShape[0]))
 
 	status := newStatus()
-	C.TF_TensorBitcastFrom(t.c, C.TF_TensorType(t.c), t.c, shapePtr, C.int(len(new_shape)), status.c)
+	C.TF_TensorBitcastFrom(t.c, C.TF_TensorType(t.c), t.c, shapePtr, C.int(len(newShape)), status.c)
 
-	return status.Err()
+	if err := status.Err(); err != nil {
+		return err
+	}
+	t.shape = newShape
+	return nil
 }
 
 // Value converts the Tensor to a Go value. For now, not all Tensor types are

@@ -19,11 +19,11 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
@@ -134,12 +134,12 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
                                  bool passthru_extra_args) {
     FunctionType type;
     if (passthru_extra_args) {
-      type = FunctionType::get(types, types, &getContext());
+      type = FunctionType::get(&getContext(), types, types);
     } else {
       SmallVector<Type, 4> result_types;
       auto operands = region.front().getTerminator()->getOperandTypes();
       result_types.append(operands.begin(), operands.end());
-      type = FunctionType::get(types, result_types, &getContext());
+      type = FunctionType::get(&getContext(), types, result_types);
     }
 
     auto outlined_func = builder.create<FuncOp>(while_op.getLoc(), name, type);

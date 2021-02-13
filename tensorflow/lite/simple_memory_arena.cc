@@ -15,10 +15,17 @@ limitations under the License.
 
 #include "tensorflow/lite/simple_memory_arena.h"
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <algorithm>
 #include <cstring>
+#include <iterator>
 #include <limits>
+#include <memory>
 #include <vector>
+
+#include "tensorflow/lite/c/common.h"
 
 namespace {
 

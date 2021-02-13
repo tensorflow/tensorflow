@@ -1468,6 +1468,27 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     self.assertFalse(updated_st.row_partitions)
     self.assertIsNone(updated_st.nrows())
 
+  def test_from_pyval_deep_row_partitions(self):
+    """See b/179195750."""
+    st = structured_tensor.StructuredTensor.from_pyval([{
+        "foo": [{
+            "bar": [{
+                "baz": [b"FW"]
+            }]
+        }]
+    }])
+    st2 = st.field_value(("foo", "bar"))
+    self.assertLen(st2.row_partitions, st2.rank - 1)
+
+  def test_from_fields_deep_row_partitions(self):
+    """Test a field with its own row_partition. See b/179195750."""
+    st = structured_tensor.StructuredTensor.from_pyval([[[{"baz": [b"FW"]}]]])
+    self.assertLen(st.row_partitions, st.rank - 1)
+    st2 = structured_tensor.StructuredTensor.from_fields(
+        fields={"bar": st}, shape=(None, None), validate=False)
+    st3 = st2.field_value("bar")
+    self.assertLen(st3.row_partitions, st3.rank - 1)
+
 
 if __name__ == "__main__":
   googletest.main()

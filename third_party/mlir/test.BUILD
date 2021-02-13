@@ -17,6 +17,21 @@ cc_library(
     includes = ["."],
 )
 
+cc_library(
+    name = "TestAnalysis",
+    srcs = glob(["lib/Analysis/*.cpp"]),
+    defines = ["MLIR_CUDA_CONVERSIONS_ENABLED"],
+    includes = ["lib/Dialect/Test"],
+    deps = [
+        ":TestDialect",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
 filegroup(
     name = "TestOpTdFiles",
     srcs = [
@@ -308,9 +323,10 @@ cc_library(
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SPIRVConversion",
         "@llvm-project//mlir:SPIRVDialect",
-        "@llvm-project//mlir:SPIRVLinking",
-        "@llvm-project//mlir:SPIRVLowering",
+        "@llvm-project//mlir:SPIRVModuleCombiner",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 

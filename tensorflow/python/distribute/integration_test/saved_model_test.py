@@ -611,6 +611,26 @@ class PSStrategySaveAndLoadTest(test.TestCase):
     # ShardedVariable loading only works in v1.
     self.assertAllEqual(self.load_and_run_v1(model_dir, {"x": 1}), [6, 6, 6, 6])
 
+    with self.assertRaisesWithLiteralMatch(
+        ValueError, "Loading `ShardedVariable` is not supported"):
+      with strategy.scope():
+        tf.saved_model.load(model_dir)
+
+    with self.assertRaisesWithLiteralMatch(
+        ValueError, "Loading `ShardedVariable` is not supported"):
+      tf.saved_model.load(model_dir)
+
+  def test_load_with_partitioner_raises_error(self):
+    model = self.Model()
+    model_dir = self.get_temp_dir()
+    tf.saved_model.save(model, model_dir)
+
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver, tf1.fixed_size_partitioner(2))
+    with self.assertRaisesRegex(ValueError, "`variable_partitioner`"):
+      with strategy.scope():
+        tf.saved_model.load(model_dir)
+
 
 if __name__ == "__main__":
   # TODO(b/172304955): enable logical devices.

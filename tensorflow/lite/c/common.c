@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/c/c_api_types.h"
+
 #ifndef TF_LITE_STATIC_MEMORY
 #include <stdlib.h>
 #include <string.h>
@@ -217,6 +219,10 @@ const char* TfLiteTypeGetName(TfLiteType type) {
       return "FLOAT16";
     case kTfLiteFloat64:
       return "FLOAT64";
+    case kTfLiteResource:
+      return "RESOURCE";
+    case kTfLiteVariant:
+      return "VARIANT";
   }
   return "Unknown type";
 }

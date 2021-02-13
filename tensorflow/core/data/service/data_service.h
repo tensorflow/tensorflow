@@ -16,8 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_DATA_SERVICE_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_DATA_SERVICE_H_
 
+#include "grpcpp/impl/codegen/client_context.h"
+#include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
+#include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -80,6 +84,7 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // tasks it should delete. This is stored into `new_tasks` and
   // `tasks_to_delete`.
   Status WorkerHeartbeat(const std::string& worker_address,
+                         const std::string& transfer_address,
                          const std::vector<int64>& current_tasks,
                          std::vector<TaskDef>& new_tasks,
                          std::vector<int64>& tasks_to_delete);
@@ -100,22 +105,22 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // dataset id in `dataset_id`.
   Status RegisterDataset(GraphDef dataset, int64& dataset_id);
 
-  // Gets the job id for the job represented by the tuple
-  // (job_name, job_name_index), and stores the id in `job_client_id`. If the
-  // job doesn't exist yet, it will be created.
+  // If `job_key` is set, looks up a job matching `job_key`. If `job_key` is
+  // absent or no matching job is found, creates a new job. The resulting job
+  // id is stored in `job_client_id`.
   Status GetOrCreateJob(int64 dataset_id, ProcessingMode processing_mode,
                         const absl::optional<JobKey>& job_key,
+                        absl::optional<int64> num_consumers,
                         int64& job_client_id);
 
   // Releases a job client id, indicating that the id will no longer be used to
   // read from the job.
   Status ReleaseJobClient(int64 job_client_id);
 
-  // Queries the dispatcher for the tasks associated with the specified job.
-  // The tasks will be stored in `tasks`, and whether the job is finished will
-  // be stored in `job_finished`.
-  Status GetTasks(int64 job_client_id, std::vector<TaskInfo>& tasks,
-                  bool& job_finished);
+  // Heartbeats to the dispatcher, getting back the tasks that should be
+  // running, and whether the job is finished.
+  Status ClientHeartbeat(ClientHeartbeatRequest& req,
+                         ClientHeartbeatResponse& resp);
 
   // Queries the dispatcher for its registered workers. The worker info will be
   // stored in `workers`.
@@ -135,23 +140,27 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
 class DataServiceWorkerClient : public DataServiceClientBase {
  public:
   DataServiceWorkerClient(const std::string& address,
-                          const std::string& protocol)
-      : DataServiceClientBase(address, protocol) {}
+                          const std::string& protocol,
+                          const std::string& transfer_protocol)
+      : DataServiceClientBase(address, protocol),
+        transfer_protocol_(transfer_protocol) {}
 
-  // Fetches the next element for the specified task_id. The element's
-  // compressed tensors will be stored in `element`. If no element is available,
-  // `end_of_sequence` will be `true`, and `element` will be left unchanged.
-  Status GetElement(int64 task_id, CompressedElement& element,
-                    bool& end_of_sequence);
+  // Fetches an element from the worker.
+  Status GetElement(const GetElementRequest& req, GetElementResponse& resp);
+
+  // Makes a best effort to cancel all outstanding calls in progress for the
+  // client, and causes further calls to return Cancelled status.
+  void TryCancel();
 
  protected:
   Status EnsureInitialized() override;
 
  private:
+  const std::string transfer_protocol_;
   mutex mu_;
   // Initialization is guarded by `mu_`, but using the stub does not require
   // holding `mu_`
-  std::unique_ptr<WorkerService::Stub> stub_;
+  std::unique_ptr<DataTransferClient> client_;
 };
 
 // Creates and initializes a new tf.data service dispatcher client.
@@ -162,6 +171,7 @@ Status CreateDataServiceDispatcherClient(
 // Creates and initializes a new tf.data service worker client.
 Status CreateDataServiceWorkerClient(
     const std::string& address, const std::string& protocol,
+    const std::string& transfer_protocol,
     std::unique_ptr<DataServiceWorkerClient>& out);
 
 }  // namespace data

@@ -27,7 +27,9 @@ from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -39,6 +41,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import util as trackable_util
 from tensorflow.python.util import nest
@@ -431,8 +434,7 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     model_2._run_eagerly = testing_utils.should_run_eagerly()
     output_dense = model_2.predict(dense_data, steps=1)
 
-    output_ragged = ragged_tensor.convert_to_tensor_or_ragged_tensor(
-        output_ragged, name='tensor')
+    output_ragged = convert_ragged_tensor_value(output_ragged)
     self.assertAllEqual(output_ragged.to_tensor(), output_dense)
 
   @keras_parameterized.run_all_keras_modes
@@ -460,8 +462,7 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     dense_data = ragged_data.to_tensor()
     output_dense = model_2.predict(dense_data, steps=1)
 
-    output_ragged = ragged_tensor.convert_to_tensor_or_ragged_tensor(
-        output_ragged, name='tensor')
+    output_ragged = convert_ragged_tensor_value(output_ragged)
     self.assertAllEqual(output_ragged.to_tensor(), output_dense)
 
   def test_TimeDistributed_set_static_shape(self):
@@ -629,33 +630,39 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
   def test_bidirectional_statefulness(self):
     # Bidirectional and stateful
-    rnn = keras.layers.SimpleRNN
-    samples = 2
-    dim = 2
-    timesteps = 2
-    output_dim = 2
-    mode = 'sum'
+    def run_test():
+      rnn = keras.layers.SimpleRNN
+      samples = 2
+      dim = 2
+      timesteps = 2
+      output_dim = 2
+      mode = 'sum'
 
-    with self.cached_session():
-      x = np.random.random((samples, timesteps, dim))
-      target_dim = 2 * output_dim if mode == 'concat' else output_dim
-      y = np.random.random((samples, target_dim))
+      with self.cached_session():
+        x = np.random.random((samples, timesteps, dim))
+        target_dim = 2 * output_dim if mode == 'concat' else output_dim
+        y = np.random.random((samples, target_dim))
 
-      inputs = keras.layers.Input(batch_shape=(1, timesteps, dim))
-      bidi_rnn = keras.layers.Bidirectional(
-          rnn(output_dim, stateful=True), merge_mode=mode)
-      self.assertTrue(bidi_rnn.stateful)
-      output = bidi_rnn(inputs)
-      model = keras.models.Model(inputs, output)
+        inputs = keras.layers.Input(batch_shape=(1, timesteps, dim))
+        bidi_rnn = keras.layers.Bidirectional(
+            rnn(output_dim, stateful=True), merge_mode=mode)
+        self.assertTrue(bidi_rnn.stateful)
+        output = bidi_rnn(inputs)
+        model = keras.models.Model(inputs, output)
 
-      y_1 = model.predict(x, batch_size=1)
-      model.reset_states()
-      y_2 = model.predict(x, batch_size=1)
+        y_1 = model.predict(x, batch_size=1)
+        model.reset_states()
+        y_2 = model.predict(x, batch_size=1)
 
-      self.assertAllClose(y_1, y_2)
+        self.assertAllClose(y_1, y_2)
 
-      model.compile(loss='mse', optimizer='sgd')
-      model.fit(x, y, epochs=1, batch_size=1)
+        model.compile(loss='mse', optimizer='sgd')
+        model.fit(x, y, epochs=1, batch_size=1)
+
+    if context.executing_eagerly():
+      run_test()
+    else:
+      tf_test_util.enable_output_all_intermediates(run_test)()
 
   @parameterized.parameters(['sum', 'mul', 'ave', 'concat', None])
   def test_Bidirectional_merged_value(self, merge_mode):
@@ -1309,10 +1316,10 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
       y_merged = f_merged(x)
       y_expected = merge_func(
-          ragged_tensor.convert_to_tensor_or_ragged_tensor(f_forward(x)),
-          ragged_tensor.convert_to_tensor_or_ragged_tensor(f_backward(x)))
+          convert_ragged_tensor_value(f_forward(x)),
+          convert_ragged_tensor_value(f_backward(x)))
 
-      y_merged = ragged_tensor.convert_to_tensor_or_ragged_tensor(y_merged)
+      y_merged = convert_ragged_tensor_value(y_merged)
       self.assertAllClose(y_merged.flat_values, y_expected.flat_values)
 
   def test_full_input_spec(self):
@@ -1363,6 +1370,16 @@ def _to_list(ls):
     return ls
   else:
     return [ls]
+
+
+def convert_ragged_tensor_value(inputs):
+  if isinstance(inputs, ragged_tensor_value.RaggedTensorValue):
+    flat_values = ops.convert_to_tensor_v2_with_dispatch(
+        value=inputs.flat_values,
+        name='flat_values')
+    return ragged_tensor.RaggedTensor.from_nested_row_splits(
+        flat_values, inputs.nested_row_splits, validate=False)
+  return inputs
 
 
 if __name__ == '__main__':

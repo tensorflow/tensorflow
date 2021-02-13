@@ -26,7 +26,7 @@ namespace op = ::xla::testing::opcode_matchers;
 
 using ConvertOperandFoldingTest = HloTestBase;
 
-TEST_F(ConvertOperandFoldingTest, UpcastConvertFolded) {
+TEST_F(ConvertOperandFoldingTest, IntegralUpcastConvertFolded) {
   absl::string_view module_string = R"(
   HloModule module
 
@@ -46,6 +46,54 @@ TEST_F(ConvertOperandFoldingTest, UpcastConvertFolded) {
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               AllOf(op::Dot(op::Parameter(0), op::Parameter(1)),
                     op::Shape("s16[2,2]{1,0}")));
+}
+
+TEST_F(ConvertOperandFoldingTest, FloatingUpcastConvertFolded) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = f16[2,3]{1,0} parameter(0)
+    p1 = bf16[3,2]{0,1} parameter(1)
+    c0 = f32[2,3]{1,0} convert(p0)
+    c1 = f32[3,2]{0,1} convert(p1)
+    ROOT dot = f32[2,2]{1,0} dot(c0, c1), lhs_contracting_dims={1},
+                                          rhs_contracting_dims={0}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool folded,
+                          ConvertOperandFolding().Run(module.get()));
+  EXPECT_TRUE(folded);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              AllOf(op::Dot(op::Parameter(0), op::Parameter(1)),
+                    op::Shape("f32[2,2]{1,0}")));
+}
+
+TEST_F(ConvertOperandFoldingTest, IntegralToFloatingConvertNotFolded) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = s8[2,3]{1,0} parameter(0)
+    p1 = s16[3,2]{0,1} parameter(1)
+    c0 = f16[2,3]{1,0} convert(p0)
+    c1 = f32[3,2]{0,1} convert(p1)
+    ROOT dot = f32[2,2]{1,0} dot(c0, c1), lhs_contracting_dims={1},
+                                          rhs_contracting_dims={0}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool folded,
+                          ConvertOperandFolding().Run(module.get()));
+  EXPECT_FALSE(folded);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      AllOf(
+          op::Dot(
+              AllOf(op::Convert(op::Parameter(0)), op::Shape("f16[2,3]{1,0}")),
+              AllOf(op::Convert(op::Parameter(1)), op::Shape("f32[3,2]{0,1}"))),
+          op::Shape("f32[2,2]{1,0}")));
 }
 
 TEST_F(ConvertOperandFoldingTest, DowncastConvertNotFolded) {
@@ -71,32 +119,6 @@ TEST_F(ConvertOperandFoldingTest, DowncastConvertNotFolded) {
           op::Dot(
               AllOf(op::Convert(op::Parameter(0)), op::Shape("s16[2,3]{1,0}")),
               AllOf(op::Convert(op::Parameter(1)), op::Shape("s8[3,2]{0,1}"))),
-          op::Shape("s16[2,2]{1,0}")));
-}
-
-TEST_F(ConvertOperandFoldingTest, LayoutChangingConvertNotFolded) {
-  absl::string_view module_string = R"(
-  HloModule module
-
-  ENTRY main {
-    p0 = s8[2,3]{1,0} parameter(0)
-    p1 = s16[3,2]{0,1} parameter(1)
-    c0 = s16[2,3]{0,1} convert(p0)
-    c1 = s16[3,2]{1,0} convert(p1)
-    ROOT dot = s16[2,2]{1,0} dot(c0, c1), lhs_contracting_dims={1},
-                                          rhs_contracting_dims={0}
-  })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool folded,
-                          ConvertOperandFolding().Run(module.get()));
-  EXPECT_FALSE(folded);
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      AllOf(
-          op::Dot(
-              AllOf(op::Convert(op::Parameter(0)), op::Shape("s16[2,3]{0,1}")),
-              AllOf(op::Convert(op::Parameter(1)), op::Shape("s16[3,2]{1,0}"))),
           op::Shape("s16[2,2]{1,0}")));
 }
 

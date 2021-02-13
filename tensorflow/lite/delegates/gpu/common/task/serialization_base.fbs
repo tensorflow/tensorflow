@@ -68,8 +68,17 @@ table HalfValue {
 
 enum DataType : byte {
   UNKNOWN = 0,
-  FLOAT32 = 1,
-  FLOAT16 = 2,
+  FLOAT16 = 1,
+  FLOAT32 = 2,
+  FLOAT64 = 3,
+  UINT8 = 4,
+  INT8 = 5,
+  UINT16 = 6,
+  INT16 = 7,
+  UINT32 = 8,
+  INT32 = 9,
+  UINT64 = 10,
+  INT64 = 11,
 }
 
 enum MemoryType : byte {

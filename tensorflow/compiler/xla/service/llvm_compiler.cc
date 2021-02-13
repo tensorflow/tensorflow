@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
+
 #include "tensorflow/core/platform/denormal.h"
 
 #ifdef __FAST_MATH__
@@ -24,7 +25,7 @@ namespace xla {
 StatusOr<std::vector<std::unique_ptr<Executable>>> LLVMCompiler::Compile(
     std::unique_ptr<HloModuleGroup> module_group,
     std::vector<std::vector<se::StreamExecutor*>> stream_execs,
-    se::DeviceMemoryAllocator* device_allocator) {
+    const CompileOptions& options) {
   // Tensorflow tries to enable the following behaviors in all its threads:
   //
   //  - Denormals are zero (DAZ): roughly, operations treat denormal floats as
@@ -41,17 +42,12 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> LLVMCompiler::Compile(
   std::vector<std::unique_ptr<HloModule>> modules =
       module_group->ConsumeModules();
   for (size_t i = 0; i < modules.size(); i++) {
-    if (stream_execs[i].size() != 1) {
-      return Unimplemented(
-          "Model partitioning not implemented for the CPU/GPU compilers!");
-    }
-
     TF_ASSIGN_OR_RETURN(modules[i],
                         RunHloPasses(std::move(modules[i]), stream_execs[i][0],
-                                     device_allocator));
+                                     options.device_allocator));
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                         RunBackend(std::move(modules[i]), stream_execs[i][0],
-                                   device_allocator));
+                                   options.device_allocator));
     result.push_back(std::move(executable));
   }
 

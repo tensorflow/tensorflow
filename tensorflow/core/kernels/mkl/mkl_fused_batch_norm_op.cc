@@ -178,8 +178,8 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
           dst_mem(nullptr),
           mean_mem(nullptr),
           variance_mem(nullptr),
-          bn_fwd(nullptr),
-          ws_mem(nullptr) {}
+          ws_mem(nullptr),
+          bn_fwd(nullptr) {}
   };
 
   void Setup(const MklBatchNormFwdParams& fwdParams) {

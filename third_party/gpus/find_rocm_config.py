@@ -251,6 +251,28 @@ def _find_hipsparse_config(rocm_install_path):
   return hipsparse_config
 
 
+def _find_rocsolver_config(rocm_install_path):
+
+  def rocsolver_version_numbers(path):
+    version_file = os.path.join(path, "rocsolver/include/rocsolver-version.h")
+    if not os.path.exists(version_file):
+      raise ConfigError(
+          'rocsolver version file "{}" not found'.format(version_file))
+    major = _get_header_version(version_file, "ROCSOLVER_VERSION_MAJOR")
+    minor = _get_header_version(version_file, "ROCSOLVER_VERSION_MINOR")
+    patch = _get_header_version(version_file, "ROCSOLVER_VERSION_PATCH")
+    return major, minor, patch
+
+  major, minor, patch = rocsolver_version_numbers(rocm_install_path)
+
+  rocsolver_config = {
+      "rocsolver_version_number":
+          _get_composite_version_number(major, minor, patch)
+  }
+
+  return rocsolver_config
+
+
 def find_rocm_config():
   """Returns a dictionary of ROCm components config info."""
   rocm_install_path = _get_rocm_install_path()
@@ -269,6 +291,7 @@ def find_rocm_config():
   result.update(_find_rocfft_config(rocm_install_path))
   result.update(_find_roctracer_config(rocm_install_path))
   result.update(_find_hipsparse_config(rocm_install_path))
+  result.update(_find_rocsolver_config(rocm_install_path))
 
   return result
 

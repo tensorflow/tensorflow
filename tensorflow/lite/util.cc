@@ -14,8 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/util.h"
 
+#include <stddef.h>
+#include <stdint.h>
+
+#include <algorithm>
 #include <complex>
 #include <cstring>
+#include <initializer_list>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common.h"
@@ -124,8 +132,9 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
       if (context) {
         context->ReportError(
             context,
-            "Type %d is unsupported. Only float32, int8, int16, int32, int64, "
-            "uint8, bool, complex64 supported currently.",
+            "Type %d is unsupported. Only float16, float32, float64, int8, "
+            "int16, int32, int64, uint8, uint64, bool, complex64 and "
+            "complex128 supported currently.",
             type);
       }
       return kTfLiteError;

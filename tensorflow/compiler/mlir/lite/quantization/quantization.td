@@ -34,7 +34,7 @@ class QuantizedType<string n, list<int> params, bit signed>
     "Q" # !if (signed, "I", "UI") # !head(params) # " type"> {
   string name = n;
   string asTraitArgsStr =
-    StrJoinInt<params>.result # !if(signed, ", true", ", false");
+    !interleave(params, ", ") # !if(signed, ", true", ", false");
 }
 
 // Uniform quantized types. Two integers "smantissa" and "sexp" are used to
@@ -134,7 +134,7 @@ class FixedResultScale<QuantizedType qt> : NativeOpTrait<!strconcat(
 // needs a scale based on the scales of op1 and op2.
 class AccumulatorUniformScale<int bias, int op1, int op2> : NativeOpTrait<
   !strconcat("quant::AccumulatorUniformScale<",
-             StrJoinInt<[bias, op1, op2]>.result,
+             !interleave([bias, op1, op2], ", "),
              ">::Impl")>;
 
 // Specify the operand index of the coefficient operand for an affine op
@@ -142,7 +142,7 @@ class AccumulatorUniformScale<int bias, int op1, int op2> : NativeOpTrait<
 // If the quantization dimension is -1, per-axis quantization isn't supported.
 class AffineOpCoefficient<int dim, int index> : NativeOpTrait<
   !strconcat("quant::AffineOpCoefficient<",
-             StrJoinInt<[dim, index]>.result,
+             !interleave([dim, index], ", "),
              ">::Impl")>;
 
 // Specify this trait if the op doesn't have quantizable output. We shouldn't

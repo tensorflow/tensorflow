@@ -124,7 +124,7 @@ void LayoutAssignmentPass::runOnFunction() {
 
   // Get runtime devices information from the closest parent module.
   RuntimeDevices devices;
-  if (failed(::tensorflow::GetDevicesFromOp(func.getParentOfType<ModuleOp>(),
+  if (failed(::tensorflow::GetDevicesFromOp(func->getParentOfType<ModuleOp>(),
                                             &devices)))
     return signalPassFailure();
 

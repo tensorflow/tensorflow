@@ -207,7 +207,7 @@ struct RewriteKernelSignaturePass
     : RewriteKernelSignaturePassBase<RewriteKernelSignaturePass> {
   void runOnFunction() override {
     mlir::FuncOp func = getFunction();
-    mlir::ModuleOp module = func.getParentOfType<mlir::ModuleOp>();
+    mlir::ModuleOp module = func->getParentOfType<mlir::ModuleOp>();
     getFunction().walk([&](mlir::gpu::LaunchFuncOp launchOp) {
       mlir::gpu::GPUFuncOp kernel =
           module.lookupSymbol<mlir::gpu::GPUFuncOp>(launchOp.kernel());
@@ -250,15 +250,15 @@ struct RewriteKernelSignaturePass
       // Create a new kernel function with modified signature. It will have the
       // parameters and result types of the original funcion as its parameter
       // type and otherwise will be void.
-      auto gpu_module = kernel.getParentOfType<mlir::gpu::GPUModuleOp>();
+      auto gpu_module = kernel->getParentOfType<mlir::gpu::GPUModuleOp>();
       mlir::OpBuilder kernel_builder(gpu_module.body());
       auto operand_types = llvm::to_vector<4>(llvm::concat<const mlir::Type>(
           func.getType().getInputs(), func.getType().getResults()));
       auto new_kernel = kernel_builder.create<mlir::gpu::GPUFuncOp>(
           kernel.getLoc(), kernel.getName(),
           kernel_builder.getFunctionType(operand_types, {}));
-      new_kernel.setAttr(mlir::gpu::GPUDialect::getKernelFuncAttrName(),
-                         kernel_builder.getUnitAttr());
+      new_kernel->setAttr(mlir::gpu::GPUDialect::getKernelFuncAttrName(),
+                          kernel_builder.getUnitAttr());
 
       // Create a map from old kernel argument to new one.
       mlir::BlockAndValueMapping old_kernel_to_new;

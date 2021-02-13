@@ -3,6 +3,7 @@ package(licenses = ["notice"])
 py_library(
     name = "pywrap_tfd",
     srcs = ["pywrap_tfd.py"],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/compiler/mlir/python/mlir_wrapper",
     ],
@@ -11,6 +12,7 @@ py_library(
 py_library(
     name = "mlir_gen",
     srcs = ["mlir_gen.py"],
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":pywrap_tfd",

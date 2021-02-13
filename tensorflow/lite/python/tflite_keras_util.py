@@ -17,7 +17,7 @@
 
 The functions defined in this library have been copied over from Keras in order
 to remove the dependency from TensorFlow Lite to Keras. The functions which
-could not be copied over are accessed using the dependecy inversion principle.
+could not be copied over are accessed using the dependency inversion principle.
 (for details, refer to tensorflow/python/util/keras_deps.py).
 """
 
@@ -115,7 +115,7 @@ def _create_pseudo_names(tensors, prefix):
   `[x, y]` becomes:
   `['output_1', 'output_2']`
 
-  Arguments:
+  Args:
     tensors: `Model`'s outputs or inputs.
     prefix: 'output_' for outputs, 'input_' for inputs.
 

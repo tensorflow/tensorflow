@@ -263,7 +263,6 @@ class MklQuantizeV2Op : public OpKernel {
                     "MIN_FIRST mode for now."));
 
     auto cpu_engine = engine(engine::kind::cpu, 0);
-    const Tensor& input = ctx->input(0);
     const unsigned int src_idx = 0;
     const Tensor& src_tensor = MklGetInput(ctx, src_idx);
 
@@ -407,12 +406,12 @@ class MklQuantizeV2Op : public OpKernel {
     TensorShape output_tf_shape;
     if (src_mkl_shape.IsMklTensor()) {
       output_mkl_shape.SetMklTensor(true);
-      output_mkl_shape.SetMklLayout(&DST_MD);
+      output_mkl_shape.SetMklLayout(&dst_md);
       output_mkl_shape.SetElemType(MklDnnType<T>());
       output_mkl_shape.SetTfLayout(src_mkl_shape.GetDimension(),
                                    src_mkl_shape.GetSizesAsMklDnnDims(),
                                    src_mkl_shape.GetTfDataFormat());
-      output_tf_shape.AddDim(DST_MD.get_size() / sizeof(T));
+      output_tf_shape.AddDim(dst_md.get_size() / sizeof(T));
     } else {
       output_mkl_shape.SetMklTensor(false);
       output_tf_shape = MklDnnDimsToTFShape(output_dims);

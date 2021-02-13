@@ -37,8 +37,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.activations import sigmoid
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import keras_tensor
@@ -293,15 +293,13 @@ class Metric(base_layer.Layer):
                  initializer=None,
                  dtype=None):
     """Adds state variable. Only for use by subclasses."""
-    from tensorflow.python.keras.distribute import distributed_training_utils  # pylint:disable=g-import-not-at-top
-
     if distribute_ctx.has_strategy():
       strategy = distribute_ctx.get_strategy()
     else:
       strategy = None
 
     # TODO(b/120571621): Make `ON_READ` work with Keras metrics on TPU.
-    if distributed_training_utils.is_tpu_strategy(strategy):
+    if K.is_tpu_strategy(strategy):
       synchronization = tf_variables.VariableSynchronization.ON_WRITE
 
     with ops.init_scope():
@@ -2025,8 +2023,8 @@ class AUC(Metric):
               label_weights,
               message='All values of `label_weights` must be non-negative.')
       ]
-      self.label_weights = control_flow_ops.with_dependencies(
-          checks, label_weights)
+      with ops.control_dependencies(checks):
+        self.label_weights = label_weights
 
     else:
       self.label_weights = None
@@ -2134,7 +2132,7 @@ class AUC(Metric):
     label_weights = None if self.multi_label else self.label_weights
 
     if self._from_logits:
-      y_pred = sigmoid(y_pred)
+      y_pred = activations.sigmoid(y_pred)
 
     with ops.control_dependencies(deps):
       return metrics_utils.update_confusion_matrix_variables(
@@ -3498,7 +3496,7 @@ def clone_metrics(metrics):
 def serialize(metric):
   """Serializes metric function or `Metric` instance.
 
-  Arguments:
+  Args:
     metric: A Keras `Metric` instance or a metric function.
 
   Returns:
@@ -3511,7 +3509,7 @@ def serialize(metric):
 def deserialize(config, custom_objects=None):
   """Deserializes a serialized metric class/function instance.
 
-  Arguments:
+  Args:
     config: Metric configuration.
     custom_objects: Optional dictionary mapping names (strings) to custom
       objects (classes and functions) to be considered during deserialization.
@@ -3549,7 +3547,7 @@ def get(identifier):
   >>> type(metric)
   <class '...tensorflow.python.keras.metrics.CategoricalCrossentropy'>
 
-  Arguments:
+  Args:
     identifier: A metric identifier. One of None or string name of a metric
       function/class or metric configuration dictionary or a metric function or
       a metric class instance

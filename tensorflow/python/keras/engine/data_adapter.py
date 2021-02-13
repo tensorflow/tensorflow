@@ -1079,7 +1079,30 @@ class DataHandler(object):
                workers=1,
                use_multiprocessing=False,
                model=None,
-               steps_per_execution=None):
+               steps_per_execution=None,
+               distribute=True):
+    """Initializes a `DataHandler`.
+
+    Arguments:
+      x: See `Model.fit`.
+      y: See `Model.fit`.
+      sample_weight: See `Model.fit`.
+      batch_size: See `Model.fit`.
+      steps_per_epoch: See `Model.fit`.
+      initial_epoch: See `Model.fit`.
+      epochs: See `Model.fit`.
+      shuffle: See `Model.fit`.
+      class_weight: See `Model.fit`.
+      max_queue_size: See `Model.fit`.
+      workers: See `Model.fit`.
+      use_multiprocessing: See `Model.fit`.
+      model: The `Model` instance. Needed in order to correctly `build` the
+        `Model` using generator-like inputs (see `GeneratorDataAdapter`).
+      steps_per_execution: See `Model.compile`.
+      distribute: Whether to distribute the `tf.dataset`.
+        `PreprocessingLayer.adapt` does not support distributed datasets,
+        `Model` should always set this to `True`.
+    """
 
     self._initial_epoch = initial_epoch
     self._epochs = epochs
@@ -1117,7 +1140,9 @@ class DataHandler(object):
       dataset = dataset.map(_make_class_weight_map_fn(class_weight))
     self._inferred_steps = self._infer_steps(steps_per_epoch, dataset)
 
-    if not _is_distributed_dataset(dataset):
+    # `PreprocessingLayer.adapt` does not currently support distributed
+    # datasets, so we pass `distribute=False` there.
+    if distribute and not _is_distributed_dataset(dataset):
       dataset = strategy.experimental_distribute_dataset(dataset)
     self._dataset = dataset
 
@@ -1267,7 +1292,7 @@ def _make_class_weight_map_fn(class_weight):
   The `Dataset` is assumed to be in format `(x, y)` or `(x, y, sw)`, where
   `y` must be a single `Tensor`.
 
-  Arguments:
+  Args:
     class_weight: A map where the keys are integer class ids and values are
       the class weights, e.g. `{0: 0.2, 1: 0.6, 2: 0.3}`
 
@@ -1335,7 +1360,7 @@ def train_validation_split(arrays, validation_split):
 
   The last part of data will become validation data.
 
-  Arguments:
+  Args:
     arrays: Tensors to split. Allowed inputs are arbitrarily nested structures
       of Tensors and NumPy arrays.
     validation_split: Float between 0 and 1. The proportion of the dataset to
@@ -1433,7 +1458,7 @@ def unpack_x_y_sample_weight(data):
       return {m.name: m.result() for m in self.metrics}
   ```
 
-  Arguments:
+  Args:
     data: A tuple of the form `(x,)`, `(x, y)`, or `(x, y, sample_weight)`.
 
   Returns:
@@ -1473,7 +1498,7 @@ def pack_x_y_sample_weight(x, y=None, sample_weight=None):
   True
   >>> x, y = data
 
-  Arguments:
+  Args:
     x: Features to pass to `Model`.
     y: Ground-truth targets to pass to `Model`.
     sample_weight: Sample weight for each element.

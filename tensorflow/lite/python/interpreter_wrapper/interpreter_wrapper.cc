@@ -619,7 +619,8 @@ PyObject* InterpreterWrapper::GetTensor(int i) const {
 
   std::vector<npy_intp> dims(tensor->dims->data,
                              tensor->dims->data + tensor->dims->size);
-  if (tensor->type != kTfLiteString) {
+  if (tensor->type != kTfLiteString && tensor->type != kTfLiteResource &&
+      tensor->type != kTfLiteVariant) {
     // Make a buffer copy but we must tell Numpy It owns that data or else
     // it will leak.
     void* data = malloc(tensor->bytes);

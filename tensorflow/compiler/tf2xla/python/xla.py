@@ -342,6 +342,8 @@ recv = gen_xla_ops.xla_recv
 reduce = gen_xla_ops.xla_reduce
 variadic_reduce = gen_xla_ops.xla_variadic_reduce
 
+ops.no_gradient("XlaVariadicReduce")
+
 
 def reduce_window(operand,
                   init,
@@ -442,10 +444,11 @@ sharding = gen_xla_ops.xla_sharding
 
 @ops.RegisterGradient("XlaSharding")
 def _sharding_grad(op, grad):
-  grad_sharding = gen_xla_ops.xla_sharding(grad)
+  sharding_attr = op.get_attr("sharding")
+  grad_sharding = gen_xla_ops.xla_sharding(grad, sharding=sharding_attr)
   # pylint: disable=protected-access
-  grad_sharding.op._set_attr(
-      "_XlaSharding", attr_value_pb2.AttrValue(s=op.get_attr("_XlaSharding")))
+  grad_sharding.op._set_attr("_XlaSharding",
+                             attr_value_pb2.AttrValue(s=sharding_attr))
   return [grad_sharding]
 
 
@@ -471,6 +474,7 @@ def _spmd_shard_to_full_shape_grad(op, grad):
 
 sort = gen_xla_ops.xla_sort
 key_value_sort = gen_xla_ops.xla_key_value_sort
+variadic_sort = gen_xla_ops.xla_variadic_sort
 while_loop = gen_xla_ops.xla_while
 dequantize = gen_xla_ops.xla_dequantize
 

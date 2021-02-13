@@ -51,6 +51,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "is_adapted"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "losses"
     mtype: "<type \'property\'>"
   }
@@ -95,6 +99,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "streaming"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "submodules"
     mtype: "<type \'property\'>"
   }
@@ -132,7 +140,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'max_tokens\', \'num_oov_indices\', \'mask_token\', \'oov_token\', \'vocabulary\', \'encoding\', \'invert\', \'output_mode\', \'sparse\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'1\', \'\', \'[UNK]\', \'None\', \'None\', \'False\', \'int\', \'False\'], "
+    argspec: "args=[\'self\', \'max_tokens\', \'num_oov_indices\', \'mask_token\', \'oov_token\', \'vocabulary\', \'encoding\', \'invert\', \'output_mode\', \'sparse\', \'pad_to_max_tokens\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'1\', \'\', \'[UNK]\', \'None\', \'None\', \'False\', \'int\', \'False\', \'False\'], "
   }
   member_method {
     name: "adapt"
@@ -171,6 +179,10 @@ tf_class {
     argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "compile"
+    argspec: "args=[\'self\', \'run_eagerly\', \'steps_per_execution\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
     name: "compute_mask"
     argspec: "args=[\'self\', \'inputs\', \'mask\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -184,6 +196,10 @@ tf_class {
   }
   member_method {
     name: "count_params"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "finalize_state"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
@@ -235,12 +251,28 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "make_adapt_function"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "merge_state"
+    argspec: "args=[\'self\', \'layers\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "reset_state"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "set_vocabulary"
-    argspec: "args=[\'self\', \'vocab\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'vocab\', \'idf_weights\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "set_weights"
     argspec: "args=[\'self\', \'weights\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "update_state"
+    argspec: "args=[\'self\', \'data\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "vocab_size"

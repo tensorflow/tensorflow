@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_FLEX_ALLOWLISTED_FLEX_OPS_H_
 #define TENSORFLOW_LITE_DELEGATES_FLEX_ALLOWLISTED_FLEX_OPS_H_
 
+#include <set>
 #include <string>
 
 namespace tflite {
@@ -28,6 +29,15 @@ namespace flex {
 // static allowlist to ensure compatibility when deploying to a mobile device.
 // TODO(b/118389105): Automate generation of the allowlisted flex ops.
 bool IsAllowlistedFlexOp(const std::string& tensorflow_op_name);
+
+// Return the list of allowlisted flex ops.
+const std::set<std::string>& GetFlexAllowlist();
+
+// Return the list of TF.Text flex ops.
+const std::set<std::string>& GetTFTextFlexAllowlist();
+
+// Return the list of SentencePiece flex ops.
+const std::set<std::string>& GetSentencePieceFlexAllowlist();
 
 }  // namespace flex
 }  // namespace tflite

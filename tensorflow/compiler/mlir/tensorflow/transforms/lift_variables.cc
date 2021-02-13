@@ -162,7 +162,7 @@ LogicalResult LiftVariables(ModuleOp module, Session* session) {
 
       StringRef resource_name = resource_arg.getValue();
       auto flat_symbol_ref_attr =
-          FlatSymbolRefAttr::get(resource_name, context);
+          FlatSymbolRefAttr::get(context, resource_name);
 
       // Add the corresponding `tf_saved_model.bound_input` attribute.
       func.setArgAttr(i, kSavedModelArgAttr, flat_symbol_ref_attr);
@@ -213,9 +213,9 @@ LogicalResult LiftVariables(ModuleOp module, Session* session) {
     }
 
     // Update the function type.
-    func.setType(mlir::FunctionType::get(func.getArgumentTypes(),
-                                         func.getType().getResults(),
-                                         module.getContext()));
+    func.setType(mlir::FunctionType::get(module.getContext(),
+                                         func.getArgumentTypes(),
+                                         func.getType().getResults()));
   }
   return success();
 }

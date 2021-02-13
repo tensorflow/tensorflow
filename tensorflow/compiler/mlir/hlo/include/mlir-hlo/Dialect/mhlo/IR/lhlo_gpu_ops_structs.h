@@ -19,8 +19,8 @@
 #define THIRD_PARTY_TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_LHLO_GPU_OPS_STRUCTS_H_
 
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Identifier.h"
-#include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/Types.h"
 
 // Order matters, this .inc header is not self-contained, and relies on the

@@ -21,13 +21,13 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
@@ -80,6 +80,9 @@ class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
 LogicalResult deriveShapeFromFirstOperand(
     OpBuilder *builder, Operation *op,
     SmallVectorImpl<Value> *reifiedReturnShapes);
+
+// Type derivation function that returns a tensor type with a new element type.
+TensorType getSameShapeTensorType(TensorType tensor_type, Type element_type);
 
 }  // end namespace mhlo
 }  // end namespace mlir

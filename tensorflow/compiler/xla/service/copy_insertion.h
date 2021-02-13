@@ -83,6 +83,10 @@ class CopyInsertion : public HloModulePass {
   virtual Status AddSpecialCaseCopies(const CallGraph& call_graph,
                                       HloModule* module);
 
+  // Add copies for conditional instructions.
+  virtual Status AddCopiesForConditional(const HloAliasAnalysis& alias_analysis,
+                                         HloInstruction* conditional);
+
   // Backend specific function that decides whether an instruction can share
   // buffer with its operand.
   HloDataflowAnalysis::CanShareBuffer can_share_buffer_;

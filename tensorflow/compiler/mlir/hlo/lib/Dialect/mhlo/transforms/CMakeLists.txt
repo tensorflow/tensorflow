@@ -112,6 +112,7 @@ add_mlir_library(MhloToStandard
   LINK_LIBS PUBLIC
   MLIRIR
   MLIRPass
+  MLIRTensor
 )
 
 add_mlir_library(MhloLhloToLinalg
@@ -126,6 +127,7 @@ add_mlir_library(MhloLhloToLinalg
 
   LINK_LIBS PUBLIC
   MhloDialect
+  MLIRComplex
   MLIRIR
   MLIRPass
 )

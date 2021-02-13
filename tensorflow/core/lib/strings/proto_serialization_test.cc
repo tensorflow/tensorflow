@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 
 #include <string>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -40,54 +41,55 @@ GraphDef MakeGraphDef(int num_nodes) {
 }
 }  // namespace
 
-static void BM_ProtoSerializationToString(int iters, int num_nodes) {
-  testing::StopTiming();
+static void BM_ProtoSerializationToString(::testing::benchmark::State& state) {
+  int num_nodes = state.range(0);
+
   GraphDef graph_def = MakeGraphDef(num_nodes);
-  testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+
+  for (auto i : state) {
     string serialized;
     testing::DoNotOptimize(
         SerializeToStringDeterministic(graph_def, &serialized));
   }
-  testing::StopTiming();
 }
+
 BENCHMARK(BM_ProtoSerializationToString)->Range(1, 10000);
 
-static void BM_ProtoSerializationToBuffer(int iters, int num_nodes) {
-  testing::StopTiming();
+static void BM_ProtoSerializationToBuffer(::testing::benchmark::State& state) {
+  int num_nodes = state.range(0);
+
   GraphDef graph_def = MakeGraphDef(num_nodes);
-  testing::StartTiming();
+
   const size_t size = graph_def.ByteSizeLong();
-  for (int i = 0; i < iters; ++i) {
+  for (auto i : state) {
     gtl::InlinedVector<char, 1024> buf(size);
     testing::DoNotOptimize(
         SerializeToBufferDeterministic(graph_def, buf.data(), size));
   }
-  testing::StopTiming();
 }
 BENCHMARK(BM_ProtoSerializationToBuffer)->Range(1, 10000);
 
-static void BM_DeterministicProtoHash64(int iters, int num_nodes) {
-  testing::StopTiming();
+static void BM_DeterministicProtoHash64(::testing::benchmark::State& state) {
+  int num_nodes = state.range(0);
+
   GraphDef graph_def = MakeGraphDef(num_nodes);
-  testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+
+  for (auto i : state) {
     testing::DoNotOptimize(DeterministicProtoHash64(graph_def));
   }
-  testing::StopTiming();
 }
 BENCHMARK(BM_DeterministicProtoHash64)->Range(1, 10000);
 
-static void BM_AreSerializedProtosEqual(int iters, int num_nodes) {
-  testing::StopTiming();
+static void BM_AreSerializedProtosEqual(::testing::benchmark::State& state) {
+  int num_nodes = state.range(0);
+
   GraphDef graph_def_a = MakeGraphDef(num_nodes);
   GraphDef graph_def_b = MakeGraphDef(num_nodes);
   graph_def_b.mutable_node(0)->mutable_name()[0] = 'l';
-  testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+
+  for (auto i : state) {
     testing::DoNotOptimize(AreSerializedProtosEqual(graph_def_a, graph_def_a));
   }
-  testing::StopTiming();
 }
 BENCHMARK(BM_AreSerializedProtosEqual)->Range(1, 10000);
 

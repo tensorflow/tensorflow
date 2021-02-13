@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 
 namespace Eigen {
 struct ThreadPoolDevice;
@@ -701,6 +702,8 @@ class OpKernelContext {
     std::function<void()> inc_num_deferred_ops_function;
     std::function<void()> dec_num_deferred_ops_function;
 
+    absl::optional<ManagedStackTrace> stack_trace = {};
+
     // For implementing `OpKernelContext::output_required()`. If null, all
     // outputs are required.
     bool* outputs_required_array = nullptr;
@@ -716,6 +719,11 @@ class OpKernelContext {
   int64 step_id() const { return params_->step_id; }
 
   const OpKernel& op_kernel() const { return *params_->op_kernel; }
+
+  // Stack trace of where the op was defined (if defined in eager mode).
+  const absl::optional<ManagedStackTrace>& stack_trace() const {
+    return params_->stack_trace;
+  }
 
   // Input/output signature.
 

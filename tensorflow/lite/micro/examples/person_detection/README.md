@@ -470,13 +470,13 @@ The following command will download the required dependencies and then compile a
 binary for the SparkFun Edge:
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile TARGET=sparkfun_edge person_detection_bin
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=sparkfun_edge person_detection_int8_bin
 ```
 
 The binary will be created in the following location:
 
 ```
-tensorflow/lite/micro/tools/make/gen/sparkfun_edge_cortex-m4/bin/person_detection.bin
+tensorflow/lite/micro/tools/make/gen/sparkfun_edge_cortex-m4/bin/person_detection_int8.bin
 ```
 
 ### Sign the binary
@@ -498,7 +498,7 @@ Next, run the following command to create a signed binary:
 
 ```
 python3 tensorflow/lite/micro/tools/make/downloads/AmbiqSuite-Rel2.0.0/tools/apollo3_scripts/create_cust_image_blob.py \
---bin tensorflow/lite/micro/tools/make/gen/sparkfun_edge_cortex-m4/bin/person_detection.bin \
+--bin tensorflow/lite/micro/tools/make/gen/sparkfun_edge_cortex-m4/bin/person_detection_int8.bin \
 --load-address 0xC000 \
 --magic-num 0xCB \
 -o main_nonsecure_ota \

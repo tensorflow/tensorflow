@@ -1,0 +1,12 @@
+// RUN: hlo_to_llvm_ir %s | FileCheck %s
+// This test that we cap grid launch code when few_waves is enabled.
+
+// CHECK:       !2 = !{i32 0, i32 1280}
+// CHECK:       !3 = !{i32 0, i32 128}
+
+HloModule Test
+
+ENTRY main {
+  a = f32[10000, 10000]{1,0} parameter(0)
+  ROOT b = f32[10000, 10000]{1,0} tanh(a)
+}

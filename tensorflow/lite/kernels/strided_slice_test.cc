@@ -745,5 +745,17 @@ TEST(StridedSliceOpTest, In5D_String_IdentityShrinkAxis1) {
   EXPECT_THAT(m.GetStringOutput(), ElementsAreArray({"1", "2", "3", "4"}));
 }
 
+TYPED_TEST(StridedSliceOpTest, In2D_ShrinkAxis_Endmask_AtSameAxis) {
+  StridedSliceOpModel<TypeParam> m({2, 2}, {2}, {2}, {2}, 1, 1, 0, 0, 1);
+  m.SetInput({0, 1, 2, 3});
+  m.SetBegin({0, -1});
+  m.SetEnd({0, 0});
+  m.SetStrides({1, -1});
+
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1}));
+}
+
 }  // namespace
 }  // namespace tflite

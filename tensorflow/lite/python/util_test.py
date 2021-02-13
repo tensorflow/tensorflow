@@ -232,16 +232,14 @@ class TensorFunctionsTest(test_util.TensorFlowTestCase):
 
 def _generate_integer_tflite_model(quantization_type=dtypes.int8):
   """Define an integer post-training quantized tflite model."""
-  # Load MNIST dataset
+  # Define a pseudo MNIST dataset (as downloading the dataset on-the-fly causes
+  # network connection failures)
   n = 10  # Number of samples
-  (train_images, train_labels), (test_images, test_labels) = \
-      tf.keras.datasets.mnist.load_data()
-  train_images, train_labels, test_images, test_labels = \
-      train_images[:n], train_labels[:n], test_images[:n], test_labels[:n]
+  images = np.random.randint(low=0, high=255, size=[n, 28, 28], dtype=np.uint8)
+  labels = np.random.randint(low=0, high=9, size=(n,), dtype=np.uint8)
 
   # Normalize the input image so that each pixel value is between 0 to 1.
-  train_images = train_images / 255.0
-  test_images = test_images / 255.0
+  images = images / 255.0
 
   # Define TF model
   model = tf.keras.Sequential([
@@ -260,8 +258,8 @@ def _generate_integer_tflite_model(quantization_type=dtypes.int8):
       metrics=["accuracy"])
 
   model.fit(
-      train_images,
-      train_labels,
+      images,
+      labels,
       epochs=1,
       validation_split=0.1,
   )
@@ -371,11 +369,18 @@ class UtilModifyIntegerQuantizedModelIOTypeTest(
       model = None
     # Run model inference with float input output type
     output_data = _run_tflite_inference(model, tf.float32, tf.float32)
-    # Run model inference with modified integer input output type
+    # Modify the model io types to the target input/output types.
     model_io = util.modify_model_io_type(model, in_tftype, out_tftype)
+    # Run model inference with modified integer input output type
     output_io_data = _run_tflite_inference(model_io, in_tftype, out_tftype)
+    # Validate that both the outputs are the same
+    self.assertAllClose(output_data, output_io_data, atol=1.0)
 
-     # Validate that both the outputs are the same
+    # Modify the model with the target input/output types should be a no op.
+    model_io = util.modify_model_io_type(model_io, in_tftype, out_tftype)
+    # Run model inference with modified integer input output type
+    output_io_data = _run_tflite_inference(model_io, in_tftype, out_tftype)
+    # Validate that both the outputs are the same
     self.assertAllClose(output_data, output_io_data, atol=1.0)
 
 

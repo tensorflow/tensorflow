@@ -422,7 +422,9 @@ class FunctionTest(test.TestCase):
       with ops.control_dependencies([z]):
         return x * 2
 
-    with ops.Graph().as_default(), self.cached_session():
+    # @function.Defun creates a non-partitioned function.  If we place this on
+    # the GPU then the inner `Print` op cannot be run.
+    with ops.Graph().as_default(), self.cached_session(use_gpu=False):
       z = Foo(constant_op.constant(3.0))
       self.assertAllEqual(z, 6.0)
 
@@ -1168,6 +1170,12 @@ class FunctionTest(test.TestCase):
 
 class FunctionsFromProtos(test.TestCase):
 
+  def stripInternalFunctionDefAnnotations(self, f_def):
+    result = function_pb2.FunctionDef()
+    result.CopyFrom(f_def)
+    result.attr.pop("_construction_context", None)
+    return result
+
   def expectFunctionsEqual(self, func, grad_func=None, new_func=None):
     if new_func is None:
       # Make a copy of func.definition to avoid any bugs masked by using the
@@ -1177,7 +1185,9 @@ class FunctionsFromProtos(test.TestCase):
       fdef = function_pb2.FunctionDef.FromString(serialized_fdef)
       new_func = function._from_definition(fdef, grad_func=grad_func)
     self.assertEqual(func.name, new_func.name)
-    self.assertEqual(func.definition, new_func.definition)
+    self.assertEqual(
+        self.stripInternalFunctionDefAnnotations(func.definition),
+        self.stripInternalFunctionDefAnnotations(new_func.definition))
     self.assertEqual(func.grad_func_name, new_func.grad_func_name)
     self.assertEqual(func.declared_input_types, new_func.declared_input_types)
     self.assertEqual(func.captured_inputs, new_func.captured_inputs)
@@ -1213,7 +1223,9 @@ class FunctionsFromProtos(test.TestCase):
     new_func = function._from_definition(Foo.definition)
 
     self.assertEqual(Foo.name, new_func.name)
-    self.assertEqual(Foo.definition, new_func.definition)
+    self.assertEqual(
+        self.stripInternalFunctionDefAnnotations(Foo.definition),
+        self.stripInternalFunctionDefAnnotations(new_func.definition))
     self.assertEqual(Foo.grad_func_name, new_func.grad_func_name)
 
     # Captured inputs are added as regular inputs to the function definition

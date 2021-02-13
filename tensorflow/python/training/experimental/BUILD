@@ -9,13 +9,12 @@ package(
 py_library(
     name = "loss_scale",
     srcs = ["loss_scale.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
@@ -23,6 +22,7 @@ py_library(
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
 )
@@ -30,16 +30,16 @@ py_library(
 py_library(
     name = "loss_scale_optimizer",
     srcs = ["loss_scale_optimizer.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":loss_scale",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:smart_cond",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/training:optimizer",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -86,13 +86,13 @@ py_test(
 py_library(
     name = "mixed_precision_global_state",
     srcs = ["mixed_precision_global_state.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
 )
 
 py_library(
     name = "mixed_precision",
     srcs = ["mixed_precision.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":loss_scale",
         ":loss_scale_optimizer",
@@ -117,7 +117,7 @@ cuda_py_test(
 py_library(
     name = "loss_scaling_gradient_tape",
     srcs = ["loss_scaling_gradient_tape.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":loss_scale",
         "//tensorflow/python:array_ops",

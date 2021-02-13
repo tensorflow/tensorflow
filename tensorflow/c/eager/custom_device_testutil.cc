@@ -133,6 +133,7 @@ void LoggingDeviceExecute(const TFE_Op* original_op, int* num_outputs,
   TFE_DeleteOp(op);
   if (TF_GetCode(s) != TF_OK) return;
   std::vector<TFE_TensorHandle*> unwrapped_outputs;
+  unwrapped_outputs.reserve(op_outputs.size());
   for (auto* handle : op_outputs) {
     unwrapped_outputs.push_back(handle);
   }

@@ -18,7 +18,6 @@ limitations under the License.
 
 #import <Metal/Metal.h>
 
-#include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
@@ -31,10 +30,16 @@ namespace metal {
 
 class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
  public:
-  MetalSpatialTensor() : memory_(nullptr), memory_owner_(true) {}
-  MetalSpatialTensor(id<MTLBuffer> buffer, bool memory_owner, const BHWC& shape,
-                     const TensorDescriptor& descriptor);
-  MetalSpatialTensor(id<MTLBuffer> buffer, bool memory_owner,
+  MetalSpatialTensor()
+      : memory_(nullptr),
+        texture_mem_(nullptr),
+        memory_owner_(true),
+        texture_mem_owner_(true) {}
+  MetalSpatialTensor(id<MTLBuffer> buffer, id<MTLTexture> texture,
+                     bool memory_owner, bool texture_mem_owner,
+                     const BHWC& shape, const TensorDescriptor& descriptor);
+  MetalSpatialTensor(id<MTLBuffer> buffer, id<MTLTexture> texture,
+                     bool memory_owner, bool texture_mem_owner,
                      const BHWDC& shape, const TensorDescriptor& descriptor);
 
   // Move only
@@ -62,31 +67,38 @@ class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
   // for profiling and memory statistics
   uint64_t GetMemorySizeInBytes() const;
 
-  absl::Status WriteData(const TensorFloat32& src);
+  absl::Status WriteData(id<MTLDevice> device, const TensorFloat32& src);
   absl::Status WriteData(
+      id<MTLDevice> device,
       const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src);
   absl::Status WriteData(
+      id<MTLDevice> device,
       const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src);
-  absl::Status WriteData(const Tensor5DFloat32& src);
-  absl::Status ReadData(TensorFloat32* dst) const;
-  absl::Status ReadData(Tensor5DFloat32* dst) const;
+  absl::Status WriteData(id<MTLDevice> device, const Tensor5DFloat32& src);
+  absl::Status ReadData(id<MTLDevice> device, TensorFloat32* dst) const;
+  absl::Status ReadData(id<MTLDevice> device, Tensor5DFloat32* dst) const;
 
   absl::Status CreateFromDescriptor(const TensorDescriptor& desc,
                                     id<MTLDevice> device);
+
+  absl::Status SetBufferHandle(id<MTLBuffer> buffer);
+  id<MTLBuffer> GetBufferHandle() const;
 
  private:
   absl::Status IsValid(const BHWC& shape) const;
   absl::Status IsValid(const BHWDC& shape) const;
 
-  absl::Status WriteDataBHWDC(absl::Span<const float> in);
-  absl::Status ReadDataBHWDC(absl::Span<float> out) const;
+  absl::Status WriteDataBHWDC(id<MTLDevice> device, const float* in);
+  absl::Status ReadDataBHWDC(id<MTLDevice> device, float* out) const;
 
   int GetAlignedChannels() const;
   int3 GetFullTensorRegion() const;
   void Release();
 
   id<MTLBuffer> memory_;
+  id<MTLTexture> texture_mem_;
   bool memory_owner_;
+  bool texture_mem_owner_;
   BHWDC shape_;
   TensorDescriptor descriptor_;
 };
@@ -98,6 +110,14 @@ absl::Status CreateTensor(id<MTLDevice> device, const BHWC& shape,
 absl::Status CreateTensor(id<MTLDevice> device, const BHWDC& shape,
                           const TensorDescriptor& descriptor,
                           MetalSpatialTensor* result);
+
+absl::Status CreateSharedBufferTensor(id<MTLBuffer> buffer, const BHWC& shape,
+                                      const TensorDescriptor& descriptor,
+                                      MetalSpatialTensor* result);
+
+absl::Status CreateSharedBufferTensor(id<MTLBuffer> buffer, const BHWDC& shape,
+                                      const TensorDescriptor& descriptor,
+                                      MetalSpatialTensor* result);
 
 }  // namespace metal
 }  // namespace gpu

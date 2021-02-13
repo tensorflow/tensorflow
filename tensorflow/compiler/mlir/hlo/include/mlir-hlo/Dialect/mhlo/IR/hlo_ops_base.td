@@ -99,6 +99,17 @@ def HLO_IntFpOrComplexTensor : TensorOf<[HLO_Int, AnyFloat, HLO_Complex]>;
 // Any pred, int or floating-point tensor types
 def HLO_PredIntOrFpTensor : TensorOf<[HLO_Pred, HLO_Int, AnyFloat]>;
 
+// A layout attribute (1D tensor of index type)
+def HLO_LayoutAttr : Attr<
+  And<[IndexElementsAttr.predicate,
+       CPred<[{$_self.cast<::mlir::DenseIntElementsAttr>().getType().getRank()
+               == 1}]>]>,
+  "A 1D tensor of index type (layout)"> {
+  let storageType = IndexElementsAttr.storageType;
+  let returnType = IndexElementsAttr.returnType;
+  let convertFromStorage = IndexElementsAttr.convertFromStorage;
+}
+
 //===----------------------------------------------------------------------===//
 // MHLO nullary op definitions.
 //===----------------------------------------------------------------------===//
@@ -637,6 +648,23 @@ class BASE_HLO_ReplicaIdOp {
   }];
 }
 
+class BASE_HLO_PartitionIdOp {
+  string summary = "PartitionId operator";
+
+  string description = [{
+    Returns the unique ID (int32 scalar) of the partition.
+  }];
+}
+
+class BASE_HLO_AllGatherOp {
+  string summary = "AllGather operator";
+
+  string description = [{
+    Performs concatenation across replicas.
+
+    See https://www.tensorflow.org/xla/operation_semantics#allgather
+  }];
+}
 
 class BASE_HLO_AllReduceOp {
   string summary = "AllReduce operator";
@@ -958,6 +986,17 @@ def HLO_PrecisionConfigAttr:
     OptionalAttr<
           TypedArrayAttrBase<HLO_PrecisionAttr, "Precision Config attribute">>;
 
+def BoolElementsAttr :
+    ElementsAttrBase<
+      And<[CPred<"$_self.isa<::mlir::DenseIntOrFPElementsAttr>()">,
+           CPred<"$_self.cast<::mlir::DenseIntOrFPElementsAttr>().getType().getElementType().isInteger(1)">]>,
+      "constant boolean vector/tensor attribute"> {
+  let storageType = [{ ::mlir::DenseElementsAttr }];
+  let returnType = [{ ::mlir::DenseElementsAttr }];
+
+  let convertFromStorage = "$_self";
+}
+
 def ConvolutionAttributes {
   dag attributes = (ins
     // Default value: one for each of the spatial dimension.
@@ -968,6 +1007,8 @@ def ConvolutionAttributes {
     OptionalAttr<I64ElementsAttr>:$lhs_dilation,
     // Default value: one for each of the spatial dimension.
     OptionalAttr<I64ElementsAttr>:$rhs_dilation,
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<BoolElementsAttr>:$window_reversal,
     ConvDimensionNumbers:$dimension_numbers,
     I64Attr:$feature_group_count,
     I64Attr:$batch_group_count,
@@ -982,6 +1023,14 @@ class BASE_HLO_ConvOp {
     Computes a convolution of the kind used in neural networks.
 
     See https://www.tensorflow.org/xla/operation_semantics#conv_convolution.
+  }];
+
+  code extraClassDeclaration = [{
+    bool hasWindowReversal() {
+      auto reversal = window_reversalAttr();
+      return reversal && llvm::any_of(reversal.getBoolValues(),
+                                      [](bool v) { return v; });
+    }
   }];
 }
 

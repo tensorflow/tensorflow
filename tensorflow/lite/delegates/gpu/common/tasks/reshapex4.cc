@@ -26,18 +26,17 @@ namespace {
 
 std::string GetReshapeCode(const OperationDef& op_def) {
   std::string c;
-  c += "__kernel void main_function(\n";
-  c += "$0) {\n";
+  c += "MAIN_FUNCTION($0) {\n";
   if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
-    c += "  int linear_id = get_global_id(0);\n";
+    c += "  int linear_id = GLOBAL_ID_0;\n";
     c += "  int X = linear_id / args.dst_tensor.Batch();\n";
     c += "  int B = linear_id % args.dst_tensor.Batch();\n";
     c += "  args.dst_tensor.SetBatchRef(B);\n";
   } else {
-    c += "  int X = get_global_id(0);\n";
+    c += "  int X = GLOBAL_ID_0;\n";
   }
-  c += "  int Y = get_global_id(1);\n";
-  c += "  int Z = get_global_id(2);\n";
+  c += "  int Y = GLOBAL_ID_1;\n";
+  c += "  int Z = GLOBAL_ID_2;\n";
   c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || "
        "Z >= args.dst_tensor.Slices()) { \n";
   c += "    return; \n";
