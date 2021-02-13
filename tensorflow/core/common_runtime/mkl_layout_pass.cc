@@ -451,9 +451,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         {csinfo_.depthwise_conv2d_grad_filter,
          mkl_op_registry::GetMklOpName(csinfo_.depthwise_conv2d_grad_filter),
          CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
-    rinfo_.push_back({csinfo_.dequantize,
-                      mkl_op_registry::GetMklOpName(csinfo_.dequantize),
-                      CopyAttrsAll, DequantizeRewrite, GetRewriteCause()});
+    rinfo_.push_back(
+        {csinfo_.dequantize, mkl_op_registry::GetMklOpName(csinfo_.dequantize),
+         CopyAttrsAll, DequantizeRewrite, kRewriteForOpNameChange});
     rinfo_.push_back({csinfo_.fused_batch_norm,
                       mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm),
                       CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
@@ -548,116 +548,119 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       GetRewriteCause()});
     rinfo_.push_back({csinfo_.quantized_avg_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.quantized_avg_pool),
-                      CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
+                      CopyAttrsAll, AlwaysRewrite, kRewriteForOpNameChange});
     rinfo_.push_back({csinfo_.quantized_concatv2,
                       mkl_op_registry::GetMklOpName(csinfo_.quantized_concatv2),
-                      CopyAttrsAll, ConcatV2Rewrite, GetRewriteCause()});
+                      CopyAttrsAll, ConcatV2Rewrite, kRewriteForOpNameChange});
     rinfo_.push_back({csinfo_.quantized_conv2d,
                       mkl_op_registry::GetMklOpName(csinfo_.quantized_conv2d),
                       CopyAttrsQuantizedConv2D, AlwaysRewrite,
-                      GetRewriteCause()});
+                      kRewriteForOpNameChange});
     rinfo_.push_back(
         {csinfo_.quantized_conv2d_per_channel,
          mkl_op_registry::GetMklOpName(csinfo_.quantized_conv2d_per_channel),
-         CopyAttrsQuantizedConv2D, AlwaysRewrite, GetRewriteCause()});
+         CopyAttrsQuantizedConv2D, AlwaysRewrite, kRewriteForOpNameChange});
     rinfo_.push_back({csinfo_.quantized_conv2d_with_requantize,
                       mkl_op_registry::GetMklOpName(
                           csinfo_.quantized_conv2d_with_requantize),
                       CopyAttrsQuantizedConv2D, AlwaysRewrite,
-                      GetRewriteCause()});
+                      kRewriteForOpNameChange});
     rinfo_.push_back(
         {csinfo_.quantized_conv2d_with_bias,
          mkl_op_registry::GetMklOpName(csinfo_.quantized_conv2d_with_bias),
-         CopyAttrsQuantizedConv2D, AlwaysRewrite, GetRewriteCause()});
+         CopyAttrsQuantizedConv2D, AlwaysRewrite, kRewriteForOpNameChange});
     rinfo_.push_back({csinfo_.quantized_conv2d_with_bias_and_requantize,
                       mkl_op_registry::GetMklOpName(
                           csinfo_.quantized_conv2d_with_bias_and_requantize),
                       CopyAttrsQuantizedConv2D, AlwaysRewrite,
-                      GetRewriteCause()});
+                      kRewriteForOpNameChange});
     rinfo_.push_back(
         {csinfo_.quantized_conv2d_and_relu,
          mkl_op_registry::GetMklOpName(csinfo_.quantized_conv2d_and_relu),
-         CopyAttrsQuantizedConv2D, AlwaysRewrite, GetRewriteCause()});
+         CopyAttrsQuantizedConv2D, AlwaysRewrite, kRewriteForOpNameChange});
     rinfo_.push_back({csinfo_.quantized_conv2d_and_relu_and_requantize,
                       mkl_op_registry::GetMklOpName(
                           csinfo_.quantized_conv2d_and_relu_and_requantize),
                       CopyAttrsQuantizedConv2D, AlwaysRewrite,
-                      GetRewriteCause()});
+                      kRewriteForOpNameChange});
     rinfo_.push_back({csinfo_.quantized_conv2d_with_bias_and_relu,
                       mkl_op_registry::GetMklOpName(
                           csinfo_.quantized_conv2d_with_bias_and_relu),
                       CopyAttrsQuantizedConv2D, AlwaysRewrite,
-                      GetRewriteCause()});
+                      kRewriteForOpNameChange});
     rinfo_.push_back(
         {csinfo_.quantized_conv2d_with_bias_and_relu_and_requantize,
          mkl_op_registry::GetMklOpName(
              csinfo_.quantized_conv2d_with_bias_and_relu_and_requantize),
-         CopyAttrsQuantizedConv2D, AlwaysRewrite, GetRewriteCause()});
+         CopyAttrsQuantizedConv2D, AlwaysRewrite, kRewriteForOpNameChange});
     rinfo_.push_back({csinfo_.quantized_max_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.quantized_max_pool),
-                      CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
+                      CopyAttrsAll, AlwaysRewrite, kRewriteForOpNameChange});
     rinfo_.push_back({csinfo_.quantized_conv2d_with_bias_sum_and_relu,
                       mkl_op_registry::GetMklOpName(
                           csinfo_.quantized_conv2d_with_bias_sum_and_relu),
                       CopyAttrsQuantizedConv2D, AlwaysRewrite,
-                      GetRewriteCause()});
+                      kRewriteForOpNameChange});
     rinfo_.push_back(
         {csinfo_.quantized_conv2d_with_bias_sum_and_relu_and_requantize,
          mkl_op_registry::GetMklOpName(
              csinfo_.quantized_conv2d_with_bias_sum_and_relu_and_requantize),
-         CopyAttrsQuantizedConv2D, AlwaysRewrite, GetRewriteCause()});
+         CopyAttrsQuantizedConv2D, AlwaysRewrite, kRewriteForOpNameChange});
     rinfo_.push_back(
         {csinfo_.quant_conv2d_with_bias_signed_sum_and_relu_and_requantize,
          mkl_op_registry::GetMklOpName(
              csinfo_.quant_conv2d_with_bias_signed_sum_and_relu_and_requantize),
-         CopyAttrsQuantizedConv2D, AlwaysRewrite, GetRewriteCause()});
+         CopyAttrsQuantizedConv2D, AlwaysRewrite, kRewriteForOpNameChange});
     rinfo_.push_back(
         {csinfo_.quantized_matmul_with_bias,
          mkl_op_registry::GetMklOpName(csinfo_.quantized_matmul_with_bias),
-         CopyAttrsQuantizedMatMulWithBias, AlwaysRewrite, GetRewriteCause()});
+         CopyAttrsQuantizedMatMulWithBias, AlwaysRewrite,
+         kRewriteForOpNameChange});
     rinfo_.push_back({csinfo_.quantized_matmul_with_bias_and_relu,
                       mkl_op_registry::GetMklOpName(
                           csinfo_.quantized_matmul_with_bias_and_relu),
                       CopyAttrsQuantizedMatMulWithBias, AlwaysRewrite,
-                      GetRewriteCause()});
+                      kRewriteForOpNameChange});
     rinfo_.push_back(
         {csinfo_.quantized_matmul_with_bias_and_relu_and_requantize,
          mkl_op_registry::GetMklOpName(
              csinfo_.quantized_matmul_with_bias_and_relu_and_requantize),
-         CopyAttrsQuantizedMatMulWithBias, AlwaysRewrite, GetRewriteCause()});
+         CopyAttrsQuantizedMatMulWithBias, AlwaysRewrite,
+         kRewriteForOpNameChange});
     rinfo_.push_back({csinfo_.quantized_matmul_with_bias_and_requantize,
                       mkl_op_registry::GetMklOpName(
                           csinfo_.quantized_matmul_with_bias_and_requantize),
                       CopyAttrsQuantizedMatMulWithBias, AlwaysRewrite,
-                      GetRewriteCause()});
+                      kRewriteForOpNameChange});
     rinfo_.push_back({csinfo_.quantized_matmul_with_bias_and_dequantize,
                       mkl_op_registry::GetMklOpName(
                           csinfo_.quantized_matmul_with_bias_and_dequantize),
                       CopyAttrsQuantizedMatMulWithBiasAndDequantize,
-                      AlwaysRewrite, GetRewriteCause()});
+                      AlwaysRewrite, kRewriteForOpNameChange});
     rinfo_.push_back(
         {csinfo_.quantized_depthwise_conv2d,
          mkl_op_registry::GetMklOpName(csinfo_.quantized_depthwise_conv2d),
-         CopyAttrsQuantizedConv2D, AlwaysRewrite, GetRewriteCause()});
+         CopyAttrsQuantizedConv2D, AlwaysRewrite, kRewriteForOpNameChange});
     rinfo_.push_back({csinfo_.quantized_depthwise_conv2d_with_bias,
                       mkl_op_registry::GetMklOpName(
                           csinfo_.quantized_depthwise_conv2d_with_bias),
                       CopyAttrsQuantizedConv2D, AlwaysRewrite,
-                      GetRewriteCause()});
+                      kRewriteForOpNameChange});
     rinfo_.push_back(
         {csinfo_.quantized_depthwise_conv2d_with_bias_and_relu,
          mkl_op_registry::GetMklOpName(
              csinfo_.quantized_depthwise_conv2d_with_bias_and_relu),
-         CopyAttrsQuantizedConv2D, AlwaysRewrite, GetRewriteCause()});
+         CopyAttrsQuantizedConv2D, AlwaysRewrite, kRewriteForOpNameChange});
     rinfo_.push_back(
         {csinfo_.quantized_depthwise_conv2d_with_bias_and_relu_and_requantize,
          mkl_op_registry::GetMklOpName(
              csinfo_
                  .quantized_depthwise_conv2d_with_bias_and_relu_and_requantize),
-         CopyAttrsQuantizedConv2D, AlwaysRewrite, GetRewriteCause()});
+         CopyAttrsQuantizedConv2D, AlwaysRewrite, kRewriteForOpNameChange});
     rinfo_.push_back({csinfo_.quantize_v2,
                       mkl_op_registry::GetMklOpName(csinfo_.quantize_v2),
-                      CopyAttrsAll, QuantizeOpRewrite, GetRewriteCause()});
+                      CopyAttrsAll, QuantizeOpRewrite,
+                      kRewriteForOpNameChange});
     rinfo_.push_back({csinfo_.relu, mkl_op_registry::GetMklOpName(csinfo_.relu),
                       CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
     rinfo_.push_back({csinfo_.relu_grad,
@@ -2774,9 +2777,6 @@ void MklLayoutRewritePass::CopyAttrsQuantizedConv2D(const Node* orig_node,
   nb->Attr("is_filter_const", filter_node->IsConstant());
   nb->Attr("strides", strides);
   nb->Attr("dilations", dilations);
-  if (!NativeFormatEnabled()) {
-    nb->Attr("T", out_type);  // Added "T" for facilitating MklToTf conversion.
-  }
   nb->Attr("data_format", data_format);
   if (has_padding_list) {
     nb->Attr("padding_list", padding_list);
@@ -2801,9 +2801,6 @@ void MklLayoutRewritePass::CopyAttrsQuantizedMatMulWithBiasAndDequantize(
   nb->Attr("T1", T1);
   nb->Attr("T2", T2);
   nb->Attr("Toutput", Toutput);
-  if (!NativeFormatEnabled()) {
-    nb->Attr("T", T1);  // Added "T" for facilitating MklToTf conversion.
-  }
 
   // Requantization attr Tbias
   DataType Tbias;
@@ -2828,9 +2825,6 @@ void MklLayoutRewritePass::CopyAttrsQuantizedMatMulWithBias(
   nb->Attr("T2", T2);
   nb->Attr("Toutput", Toutput);
   nb->Attr("is_weight_const", weight_node->IsConstant());
-  if (!NativeFormatEnabled()) {
-    nb->Attr("T", Toutput);  // Added "T" for facilitating MklToTf conversion.
-  }
 
   // Requantization attr Tbias
   DataType Tbias;
@@ -3613,13 +3607,11 @@ Status MklLayoutRewritePass::RewriteNodeForJustOpNameChange(
     ri->copy_attrs(const_cast<const Node*>(orig_node), &nb, false);
   }
 
-  if (mkl_op_registry::IsMklPrefixNeeded(orig_node->type_string())) {
-    if (DataTypeIsQuantized(orig_node->input_type(0)) ||
-        DataTypeIsQuantized(orig_node->output_type(0))) {
-      nb.Attr("_kernel", mkl_op_registry::kMklQuantizedOpLabel);
-    } else {
-      nb.Attr("_kernel", mkl_op_registry::kMklNameChangeOpLabel);
-    }
+  if (DataTypeIsQuantized(orig_node->input_type(0)) ||
+      DataTypeIsQuantized(orig_node->output_type(0))) {
+    nb.Attr("_kernel", mkl_op_registry::kMklQuantizedOpLabel);
+  } else {
+    nb.Attr("_kernel", mkl_op_registry::kMklNameChangeOpLabel);
   }
 
   // Finalize graph and get new node.

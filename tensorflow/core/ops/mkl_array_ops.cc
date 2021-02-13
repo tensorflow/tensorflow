@@ -63,16 +63,9 @@ REGISTER_OP("_MklQuantizedConcatV2")
     .Input("axis: Tidx")
     .Input("input_mins:  N * float32")
     .Input("input_maxes: N * float32")
-    .Input("mkl_values: N * uint8")
-    .Input("mkl_axis: uint8")
-    .Input("mkl_input_mins:  N * uint8")
-    .Input("mkl_input_maxes: N * uint8")
     .Output("output: T")
     .Output("output_min: float")
     .Output("output_max: float")
-    .Output("mkl_output: uint8")
-    .Output("mkl_output_min: uint8")
-    .Output("mkl_output_max: uint8")
     .Attr("N: int >= 2")
     .Attr("T: type")
     .Attr("Tidx: {int32, int64} = DT_INT32")
@@ -92,15 +85,9 @@ REGISTER_OP("_MklQuantizeV2")
     .Input("input: float")
     .Input("min_range: float")
     .Input("max_range: float")
-    .Input("mkl_input: uint8")
-    .Input("mkl_min_range: uint8")
-    .Input("mkl_max_range: uint8")
     .Output("output: T")
     .Output("output_min: float")
     .Output("output_max: float")
-    .Output("mkl_output: uint8")
-    .Output("mkl_output_min: uint8")
-    .Output("mkl_output_max: uint8")
     .Attr("T: quantizedtype")
     .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST', 'SCALED'} = 'SCALED'")
     .Attr(
@@ -115,46 +102,19 @@ REGISTER_OP("_MklDequantize")
     .Input("input: T")
     .Input("min_range: float")
     .Input("max_range: float")
-    .Input("mkl_input: uint8")
-    .Input("mkl_min_range: uint8")
-    .Input("mkl_max_range: uint8")
-    .Output("output: float")
-    .Output("mkl_output: uint8")
-    .Attr("T: quantizedtype")
-    .Attr("narrow_range: bool = false")
-    .Attr("axis: int = -1")
-    .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST', 'SCALED'} = 'SCALED'")
-    .Attr("dtype: {bfloat16, float} = DT_FLOAT")
-    .SetShapeFn(shape_inference::MklDequantizeShape);
-
-REGISTER_OP("_MklNativeQuantizeV2")
-    .Input("input: float")
-    .Input("min_range: float")
-    .Input("max_range: float")
-    .Output("output: T")
-    .Output("output_min: float")
-    .Output("output_max: float")
-    .Attr("T: quantizedtype")
-    .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST', 'SCALED'} = 'SCALED'")
-    .Attr(
-        "round_mode: {'HALF_AWAY_FROM_ZERO', 'HALF_TO_EVEN'} = "
-        "'HALF_AWAY_FROM_ZERO'")
-    .Attr("narrow_range: bool = false")
-    .Attr("axis: int = -1")
-    .Attr("ensure_minimum_range: float = 0.01")
-    .SetShapeFn(shape_inference::QuantizeV2Shape);
-
-REGISTER_OP("_MklNativeDequantize")
-    .Input("input: T")
-    .Input("min_range: float")
-    .Input("max_range: float")
     .Output("output: float")
     .Attr("T: quantizedtype")
     .Attr("narrow_range: bool = false")
     .Attr("axis: int = -1")
     .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST', 'SCALED'} = 'SCALED'")
     .Attr("dtype: {bfloat16, float} = DT_FLOAT")
-    .SetShapeFn(shape_inference::MklDequantizeShape);
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      return Status::OK();
+    });
 
 }  // namespace tensorflow
 

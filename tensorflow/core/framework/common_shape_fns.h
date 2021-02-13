@@ -279,9 +279,6 @@ Status QuantizedAvgPoolShape(InferenceContext* c);
 // Shape function for QuantizeV2 op
 Status QuantizeV2Shape(InferenceContext* c);
 
-// Shape function for Dequantize op
-Status MklDequantizeShape(InferenceContext* c);
-
 }  // namespace shape_inference
 
 }  // namespace tensorflow
