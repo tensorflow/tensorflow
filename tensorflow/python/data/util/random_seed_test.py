@@ -32,40 +32,46 @@ from tensorflow.python.platform import test
 
 class RandomSeedTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testRandomSeed(self):
-    zero_t = constant_op.constant(0, dtype=dtypes.int64, name='zero')
-    one_t = constant_op.constant(1, dtype=dtypes.int64, name='one')
-    intmax_t = constant_op.constant(
-        2**31 - 1, dtype=dtypes.int64, name='intmax')
-    test_cases = [
-        # Each test case is a tuple with input to get_seed:
-        # (input_graph_seed, input_op_seed)
-        # and output from get_seed:
-        # (output_graph_seed, output_op_seed)
-        ((None, None), (0, 0)),
-        ((None, 1), (random_seed.DEFAULT_GRAPH_SEED, 1)),
-        ((1, 1), (1, 1)),
-        ((0, 0), (0, 2**31 - 1)),  # Avoid nondeterministic (0, 0) output
-        ((2**31 - 1, 0), (0, 2**31 - 1)),  # Don't wrap to (0, 0) either
-        ((0, 2**31 - 1), (0, 2**31 - 1)),  # Wrapping for the other argument
-        # Once more, with tensor-valued arguments
-        ((None, one_t), (random_seed.DEFAULT_GRAPH_SEED, 1)),
-        ((1, one_t), (1, 1)),
-        ((0, zero_t), (0, 2**31 - 1)),  # Avoid nondeterministic (0, 0) output
-        ((2**31 - 1, zero_t), (0, 2**31 - 1)),  # Don't wrap to (0, 0) either
-        ((0, intmax_t), (0, 2**31 - 1)),  # Wrapping for the other argument
-    ]
-    for tc in test_cases:
-      tinput, toutput = tc[0], tc[1]
-      random_seed.set_random_seed(tinput[0])
-      g_seed, op_seed = data_random_seed.get_seed(tinput[1])
-      g_seed = self.evaluate(g_seed)
-      op_seed = self.evaluate(op_seed)
-      msg = 'test_case = {0}, got {1}, want {2}'.format(
-          tinput, (g_seed, op_seed), toutput)
-      self.assertEqual((g_seed, op_seed), toutput, msg=msg)
-      random_seed.set_random_seed(None)
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(test_case=[
+              # Each test case is a tuple with input to get_seed:
+              # (input_graph_seed, input_op_seed)
+              # and output from get_seed:
+              # (output_graph_seed, output_op_seed)
+              ((None, None), (0, 0)),
+              ((None, 1), (random_seed.DEFAULT_GRAPH_SEED, 1)),
+              ((1, 1), (1, 1)),
+              ((0, 0), (0, 2**31 - 1)),  # Avoid nondeterministic (0, 0) output
+              ((2**31 - 1, 0), (0, 2**31 - 1)),  # Don't wrap to (0, 0) either
+              ((0, 2**31 - 1), (0, 2**31 - 1)),  # Wrapping for the other argument
+              # Once more, with tensor-valued arguments
+              ((None, constant_op.constant(1, dtype=dtypes.int64, name='one')),
+               (random_seed.DEFAULT_GRAPH_SEED, 1)),
+              ((1, constant_op.constant(1, dtype=dtypes.int64, name='one')),
+               (1, 1)),
+              ((0, constant_op.constant(0, dtype=dtypes.int64, name='zero')),
+               (0, 2**31 - 1)),  # Avoid nondeterministic (0, 0) output
+              ((2**31 - 1, constant_op.constant(
+                  0, dtype=dtypes.int64, name='zero')),
+               (0, 2**31 - 1)),  # Don't wrap to (0, 0) either
+              ((0, constant_op.constant(
+                  2**31 - 1, dtype=dtypes.int64, name='intmax')),
+               (0, 2**31 - 1)),  # Wrapping for the other argument
+          ])
+      )
+  )
+  def testRandomSeed(self, test_case):
+    tinput, toutput = test_case[0], test_case[1]
+    random_seed.set_random_seed(tinput[0])
+    g_seed, op_seed = data_random_seed.get_seed(tinput[1])
+    g_seed = self.evaluate(g_seed)
+    op_seed = self.evaluate(op_seed)
+    msg = 'test_case = {0}, got {1}, want {2}'.format(
+        tinput, (g_seed, op_seed), toutput)
+    self.assertEqual((g_seed, op_seed), toutput, msg=msg)
+    random_seed.set_random_seed(None)
 
     if not context.executing_eagerly():
       random_seed.set_random_seed(1)
