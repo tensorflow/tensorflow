@@ -26,11 +26,11 @@ limitations under the License.
 #include <vector>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
@@ -354,6 +354,7 @@ class BaseGPUDeviceFactory : public DeviceFactory {
   Status CreateGPUDevice(const SessionOptions& options,
                          const std::string& name_prefix, TfGpuId tf_gpu_id,
                          int64 memory_limit, const DeviceLocality& dev_locality,
+                         size_t num_tf_gpus,
                          std::vector<std::unique_ptr<Device>>* devices);
 
   virtual std::unique_ptr<BaseGPUDevice> CreateGPUDevice(

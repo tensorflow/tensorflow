@@ -27,7 +27,7 @@ exports_files(glob([
 py_library(
     name = "init_py",
     srcs = ["__init__.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":tf_trt_integration_test_base",
         ":trt_convert_py",
@@ -36,8 +36,11 @@ py_library(
 
 py_library(
     name = "trt_convert_py",
-    srcs = ["trt_convert.py"],
-    srcs_version = "PY2AND3",
+    srcs = [
+        "trt_convert.py",
+        "utils.py",
+    ],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
         "//tensorflow/compiler/tf2tensorrt:trt_engine_instance_proto_py",
@@ -61,7 +64,7 @@ py_library(
 py_library(
     name = "trt_convert_windows",
     srcs = ["trt_convert_windows.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
     ],
@@ -70,6 +73,7 @@ py_library(
 py_library(
     name = "tf_trt_integration_test_base",
     srcs = ["test/tf_trt_integration_test_base.py"],
+    srcs_version = "PY3",
     deps = [
         ":trt_convert_py",
         "//tensorflow/python:client_testlib",
@@ -97,7 +101,6 @@ cuda_py_test(
     tags = [
         "no_cuda_on_cpu_tap",
         "no_pip",
-        "no_rocm",
         "no_windows",
         "nomac",
     ],

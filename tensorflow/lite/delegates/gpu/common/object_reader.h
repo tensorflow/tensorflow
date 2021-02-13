@@ -71,6 +71,9 @@ class ObjectReader {
     }
 
     const TfLiteTensor* tflite_tensor = context_->tensors + tensor_idx;
+    if (tflite_tensor->sparsity != nullptr) {
+      return absl::InvalidArgumentError("Sparsity is not supported on GPU.");
+    }
     t->data.resize(NumElements(tflite_tensor));
     RETURN_IF_ERROR(CreateVectorCopyData(*tflite_tensor, &t->data[0]));
 

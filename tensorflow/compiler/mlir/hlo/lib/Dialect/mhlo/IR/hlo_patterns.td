@@ -31,3 +31,15 @@ def DynamicBroadcastToOwnShape_2 : Pat<
 def ShapeOfDynamicReshape : Pat<
   (Shape_ShapeOfOp (HLO_DynamicReshapeOp $x, $shape)),
   (replaceWithValue $shape)>;
+
+def HasSameType : Constraint<CPred<"$0.getType() == $1.getType()">>;
+
+def IdentityBroadcastReshape : Pat<
+  (HLO_ReshapeOp:$op (HLO_BroadcastOp $input, $dims)),
+  (replaceWithValue $input),
+  [(HasSameType $input, $op)]>;
+
+def IdentityBroadcastInDimReshape : Pat<
+  (HLO_ReshapeOp:$op (HLO_BroadcastInDimOp $input, $dims)),
+  (replaceWithValue $input),
+  [(HasSameType $input, $op)]>;

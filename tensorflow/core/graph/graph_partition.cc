@@ -371,13 +371,6 @@ NodeDef* AddControlTrigger(const PartitionOptions& opts, GraphDef* gdef,
 void OptimizeControlFlowColocation(Graph* graph) {
   auto visit = [](Node* node) {
     if (IsSwitch(node)) {
-      // Pivot Switch nodes (which are also of type Switch) are already placed
-      // on the CPU and colocated with its inputs that are also already on the
-      // CPU (or might be placed on GPU but in host memory).
-      if (HasNodeAttr(node->def(), "_PivotSwitch")) {
-        DCHECK(node->requested_device().find("CPU") != string::npos);
-        return;
-      }
       for (const Edge* in_edge : node->in_edges()) {
         if (in_edge->dst_input() == 0) {
           // Colocate with the data input.

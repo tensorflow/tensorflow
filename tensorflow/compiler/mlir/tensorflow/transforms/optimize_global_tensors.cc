@@ -22,10 +22,9 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
@@ -69,7 +68,7 @@ class ResourceAnalyzer {
  public:
   explicit ResourceAnalyzer(ModuleOp module) {
     for (auto func : module.getOps<FuncOp>()) {
-      AnalyzeFunc(func);
+      (void)AnalyzeFunc(func);
     }
   }
 
@@ -151,7 +150,7 @@ class ResourceAnalyzer {
   // written resources.
   void PropagatePotentiallyWrittenUpFromCallee(
       FuncOp func, Operation::operand_range propagate_to) {
-    AnalyzeFunc(func);
+    (void)AnalyzeFunc(func);
     for (auto t : llvm::zip(func.getArguments(), propagate_to)) {
       if (!IsResource(std::get<0>(t))) {
         continue;
@@ -213,6 +212,9 @@ GlobalTensorUsesMap CreateGlobalTensorUsesMap(ModuleOp module) {
       }
       auto global_tensor = symbol_table.lookup<GlobalTensorOp>(
           sym.cast<FlatSymbolRefAttr>().getValue());
+      if (!global_tensor) {
+        continue;
+      }
       global_tensor_uses[global_tensor].push_back({func, i});
     }
   }

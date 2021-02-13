@@ -299,3 +299,131 @@ func @view_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: index)
 //       PLOOP:        absf
 //       PLOOP:  memref_reshape
 
+
+
+// -----
+
+// Confirm that tiling information is passed through RegionBranchOpInterfaces.
+// This test also uses memref_reshape, just to have a value to return through
+// the if statement.
+func @branching_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: index)
+    -> memref<*xf32> {
+  %c1 = constant 1 : index
+  %c0 = constant 0 : index
+  %1 = alloc(%arg2) : memref<?xf32>
+  linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>,
+                                   affine_map<(d0) -> (d0)>],
+                  iterator_types = ["parallel"]}
+      ins(%arg0 : memref<?xf32>) outs(%1 : memref<?xf32>) {
+  ^bb0(%arg3: f32, %arg4: f32):  // no predecessors
+    %13 = absf %arg3 : f32
+    linalg.yield %13 : f32
+  }
+  %true = constant 1 : i1
+  %3 = scf.if %true -> memref<*xf32> {
+    %2 = memref_reshape %1(%arg1)
+        : (memref<?xf32>, memref<?xindex>) -> memref<*xf32>
+    scf.yield %2 : memref<*xf32>
+  } else {
+    %2 = memref_reshape %1(%arg1)
+        : (memref<?xf32>, memref<?xindex>) -> memref<*xf32>
+    scf.yield %2 : memref<*xf32>
+  }
+  return %3 : memref<*xf32>
+}
+
+// CHECK-LABEL: func @branching_result
+//       CHECK:  %[[C1:.*]] = constant 1
+//   CHECK-NOT:  linalg.generic
+//       CHECK:  scf.for {{.*}} step %[[C1]]
+//   CHECK-NOT:  scf.for
+//       CHECK:      linalg.generic
+//       CHECK:        absf
+//       CHECK:  scf.if
+//       CHECK:    memref_reshape
+//       CHECK:    scf.yield
+//       CHECK:  else
+//       CHECK:    memref_reshape
+//       CHECK:    scf.yield
+
+// TILED-LABEL: func @branching_result
+//   TILED-DAG:  %[[C2:.*]] = constant 2
+//   TILED-NOT:  linalg.generic
+//       TILED:  scf.for {{.*}} step %[[C2]]
+//   TILED-NOT:  scf.for
+//       TILED:      linalg.generic
+//       TILED:        absf
+//       TILED:  scf.if
+//       TILED:    memref_reshape
+//       TILED:    scf.yield
+//       TILED:  else
+//       TILED:    memref_reshape
+//       TILED:    scf.yield
+
+// PLOOP-LABEL: func @branching_result
+//   PLOOP-NOT:  linalg.generic
+//       PLOOP:  scf.parallel
+//   PLOOP-NOT:  scf.parallel
+//       PLOOP:      linalg.generic
+//       PLOOP:        absf
+//       PLOOP:  scf.if
+//       PLOOP:    memref_reshape
+//       PLOOP:    scf.yield
+//       PLOOP:  else
+//       PLOOP:    memref_reshape
+//       PLOOP:    scf.yield
+
+// -----
+
+// Confirm that tiling information is passed through tensor_load, tensor.cast
+// and memref_to_tensor  operations.
+func @tensor_ops(%arg0: memref<32xf32>, %arg1: memref<32xindex>)
+    -> memref<?xf32> {
+  %c1 = constant 1 : index
+  %1 = alloc() : memref<32xf32>
+  linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>,
+                                   affine_map<(d0) -> (d0)>],
+                  iterator_types = ["parallel"]}
+      ins(%arg0 : memref<32xf32>) outs(%1 : memref<32xf32>) {
+  ^bb0(%arg3: f32, %arg4: f32):  // no predecessors
+    %13 = absf %arg3 : f32
+    linalg.yield %13 : f32
+  }
+  %2 = tensor_load %1 : memref<32xf32>
+  %3 = tensor.cast %2 : tensor<32xf32> to tensor<?xf32>
+  %4 = tensor_to_memref %3 : memref<?xf32>
+  return %4 : memref<?xf32>
+}
+
+// CHECK-LABEL: func @tensor_ops
+//       CHECK:  %[[C1:.*]] = constant 1
+//   CHECK-NOT:  linalg.generic
+//       CHECK:  scf.for {{.*}} step %[[C1]]
+//   CHECK-NOT:  scf.for
+//       CHECK:      linalg.generic
+//       CHECK:        absf
+//       CHECK:  tensor_load
+//       CHECK:  tensor.cast
+//       CHECK:  tensor_to_memref
+
+// TILED-LABEL: func @tensor_ops
+//   TILED-DAG:  %[[C2:.*]] = constant 2
+//   TILED-NOT:  linalg.generic
+//       TILED:  scf.for {{.*}} step %[[C2]]
+//   TILED-NOT:  scf.for
+//       TILED:      linalg.generic
+//       TILED:        absf
+//       TILED:  tensor_load
+//       TILED:  tensor.cast
+//       TILED:  tensor_to_memref
+
+
+// PLOOP-LABEL: func @tensor_ops
+//   PLOOP-NOT:  linalg.generic
+//       PLOOP:  scf.parallel
+//   PLOOP-NOT:  scf.parallel
+//       PLOOP:      linalg.generic
+//       PLOOP:        absf
+//       PLOOP:  tensor_load
+//       PLOOP:  tensor.cast
+//       PLOOP:  tensor_to_memref

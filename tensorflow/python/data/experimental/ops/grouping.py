@@ -142,6 +142,31 @@ def bucket_by_sequence_length(element_length_func,
   Grouping together elements that have similar lengths reduces the total
   fraction of padding in a batch which increases training step efficiency.
 
+  Below is an example to bucketize the input data to the 3 buckets
+  "[0, 3), [3, 5), [5, inf)" based on sequence length, with batch size 2.
+
+  >>> elements = [
+  ...   [0], [1, 2, 3, 4], [5, 6, 7],
+  ...   [7, 8, 9, 10, 11], [13, 14, 15, 16, 19, 20], [21, 22]]
+
+  >>> dataset = tf.data.Dataset.from_generator(
+  ...     lambda: elements, tf.int64, output_shapes=[None])
+
+  >>> dataset = dataset.apply(
+  ...     tf.data.experimental.bucket_by_sequence_length(
+  ...         element_length_func=lambda elem: tf.shape(elem)[0],
+  ...         bucket_boundaries=[3, 5],
+  ...         bucket_batch_sizes=[2, 2, 2]))
+
+  >>> for elem in dataset.as_numpy_iterator():
+  ...   print(elem)
+  [[1 2 3 4]
+   [5 6 7 0]]
+  [[ 7  8  9 10 11  0]
+   [13 14 15 16 19 20]]
+  [[ 0  0]
+   [21 22]]
+
   Args:
     element_length_func: function from element in `Dataset` to `tf.int32`,
       determines the length of the element, which will determine the bucket it

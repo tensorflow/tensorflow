@@ -113,6 +113,8 @@ bool IsBiasAdd(const NodeDef& node) {
   return node.op() == "BiasAdd" || node.op() == "BiasAddV1";
 }
 
+bool IsBiasAddV2(const NodeDef& node) { return node.op() == "BiasAdd"; }
+
 bool IsBiasAddGrad(const NodeDef& node) { return node.op() == "BiasAddGrad"; }
 
 bool IsBitcast(const NodeDef& node) { return node.op() == "Bitcast"; }
@@ -248,6 +250,12 @@ bool IsElementWiseMonotonic(const NodeDef& node, bool* is_non_decreasing) {
 bool IsElu(const NodeDef& node) { return node.op() == "Elu"; }
 
 bool IsEluGrad(const NodeDef& node) { return node.op() == "EluGrad"; }
+
+bool IsQuantizationEmulation(const NodeDef& node) {
+  const auto& op = node.op();
+  return absl::StartsWith(op, "QuantizeAndDequantize") ||
+         absl::StartsWith(op, "FakeQuantWithMinMax");
+}
 
 bool IsEnter(const NodeDef& node) {
   const auto& op = node.op();

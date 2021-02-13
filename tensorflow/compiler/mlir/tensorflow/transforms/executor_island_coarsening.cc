@@ -66,7 +66,7 @@ struct ExecutorIslandCoarsening
 // that is closest to the island in the graph. If no candidate can be found or
 // the op found is not an island, an empty optional is returned.
 llvm::Optional<IslandOp> GetOperandCandidateToMergeWith(IslandOp island) {
-  Operation* graph_op = island.getParentOp();
+  Operation* graph_op = island->getParentOp();
   Operation* candidate = nullptr;
 
   // Check island control operands.
@@ -95,7 +95,7 @@ llvm::Optional<IslandOp> GetOperandCandidateToMergeWith(IslandOp island) {
 // an op, that is closest to the island in the graph. If no candidate can be
 // found or the op found is not an island, an empty optional is returned.
 llvm::Optional<IslandOp> GetResultCandidateToMergeWith(IslandOp island) {
-  Operation* graph_op = island.getParentOp();
+  Operation* graph_op = island->getParentOp();
   Operation* candidate = nullptr;
 
   // Check island control results.

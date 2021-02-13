@@ -94,14 +94,16 @@ class ScopedStepContainer {
   // prefix: optional string prefix to disambiguate step containers.
   ScopedStepContainer(const int64 step_id,
                       std::function<void(const string&)> cleanup)
-      : container_(strings::StrCat("__per_step_", step_id)),
+      : step_id_(step_id),
+        container_(strings::StrCat("__per_step_", step_id)),
         cleanup_(cleanup),
         dirty_(false) {}
 
   ScopedStepContainer(const int64 step_id,
                       std::function<void(const string&)> cleanup,
                       const std::string& prefix)
-      : container_(strings::StrCat("__", prefix, "_per_step_", step_id)),
+      : step_id_(step_id),
+        container_(strings::StrCat("__", prefix, "_per_step_", step_id)),
         cleanup_(cleanup),
         dirty_(false) {}
 
@@ -141,8 +143,10 @@ class ScopedStepContainer {
   template <typename T>
   Status LookupOrCreate(ResourceMgr* rm, const std::string& name, T** resource,
                         std::function<Status(T**)> creator) TF_MUST_USE_RESULT;
+  int64 StepId() const { return step_id_; }
 
  private:
+  const int64 step_id_;
   const std::string container_;
   const std::function<void(const string&)> cleanup_;
   mutex mu_;
@@ -292,28 +296,33 @@ class ResourceMgr {
 ResourceHandle MakeResourceHandle(
     const std::string& container, const std::string& name,
     const DeviceBase& device, const TypeIndex& type_index,
-    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {})
+    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
+    const absl::optional<ManagedStackTrace>& definition_stack_trace = {})
     TF_MUST_USE_RESULT;
 
 template <typename T>
 ResourceHandle MakeResourceHandle(
     OpKernelContext* ctx, const std::string& container, const std::string& name,
-    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {}) {
-  return MakeResourceHandle(
-      container.empty() ? ctx->resource_manager()->default_container()
-                        : container,
-      name, *ctx->device(), TypeIndex::Make<T>(), dtypes_and_shapes);
+    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
+    const absl::optional<ManagedStackTrace>& definition_stack_trace = {}) {
+  return MakeResourceHandle(container.empty()
+                                ? ctx->resource_manager()->default_container()
+                                : container,
+                            name, *ctx->device(), TypeIndex::Make<T>(),
+                            dtypes_and_shapes, definition_stack_trace);
 }
 
 template <typename T>
 ResourceHandle MakeResourceHandle(
     OpKernelConstruction* ctx, const std::string& container,
     const std::string& name,
-    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {}) {
-  return MakeResourceHandle(
-      container.empty() ? ctx->resource_manager()->default_container()
-                        : container,
-      name, *ctx->device(), TypeIndex::Make<T>(), dtypes_and_shapes);
+    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
+    const absl::optional<ManagedStackTrace>& definition_stack_trace = {}) {
+  return MakeResourceHandle(container.empty()
+                                ? ctx->resource_manager()->default_container()
+                                : container,
+                            name, *ctx->device(), TypeIndex::Make<T>(),
+                            dtypes_and_shapes, definition_stack_trace);
 }
 
 Status MakeResourceHandleToOutput(OpKernelContext* context, int output_index,

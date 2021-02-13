@@ -19,25 +19,21 @@ from __future__ import print_function
 
 import hashlib
 import itertools
-import time
 
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import batching
+from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.platform import test
 
 _NUMPY_RANDOM_SEED = 42
 
 
-class MapAndBatchBenchmark(test.Benchmark):
+class MapAndBatchBenchmark(benchmark_base.DatasetBenchmarkBase):
   """Benchmarks for `tf.data.experimental.map_and_batch()`."""
 
   def benchmark_map_and_batch(self):
@@ -45,53 +41,23 @@ class MapAndBatchBenchmark(test.Benchmark):
     shapes = [(), (10,), (10, 10), (10, 10, 10), (224, 224, 3)]
     batch_size_values = [1, 32, 64, 128, 1024]
 
-    shape_placeholder = array_ops.placeholder(dtypes.int64, shape=[None])
-    batch_size_placeholder = array_ops.placeholder(dtypes.int64, shape=[])
-
-    dataset = dataset_ops.Dataset.range(1000000000)
-
-    dense_value = random_ops.random_normal(shape=shape_placeholder)
-
-    dataset = dataset.apply(batching.map_and_batch(
-        lambda _: dense_value, batch_size_placeholder))
-    options = dataset_ops.Options()
-    options.experimental_optimization.apply_default_optimizations = False
-    dataset = dataset.with_options(options)
-    iterator = dataset_ops.make_initializable_iterator(dataset)
-    next_element = iterator.get_next()
-
     for shape in shapes:
       for batch_size in batch_size_values:
 
-        with session.Session() as sess:
-          sess.run(iterator.initializer, feed_dict={
-              shape_placeholder: shape, batch_size_placeholder: batch_size})
+        dataset = dataset_ops.Dataset.range(1000000000)
+        dense_value = random_ops.random_normal(shape=shape)
 
-          # Use a C++ callable to minimize the Python overhead in the benchmark.
-          callable_opts = config_pb2.CallableOptions()
-          callable_opts.target.append(next_element.op.name)
-          op_callable = sess._make_callable_from_options(callable_opts)  # pylint: disable=protected-access
+        dataset = dataset.apply(
+            batching.map_and_batch(lambda _: dense_value, batch_size))
+        options = dataset_ops.Options()
+        options.experimental_optimization.apply_default_optimizations = False
+        dataset = dataset.with_options(options)
 
-          # Run five steps to warm up the session caches before taking the
-          # first measurement.
-          for _ in range(5):
-            op_callable()
-          deltas = []
-          overall_start = time.time()
-          # Run at least five repetitions and for at least five seconds.
-          while len(deltas) < 5 or time.time() - overall_start < 5.0:
-            start = time.time()
-            for _ in range(100):
-              op_callable()
-            end = time.time()
-            deltas.append(end - start)
-          del op_callable
-
-        median_wall_time = np.median(deltas) / 100.0
-        iters = len(deltas) * 100
-
-        self.report_benchmark(
-            iters=iters, wall_time=median_wall_time,
+        self.run_and_report_benchmark(
+            dataset=dataset,
+            num_elements=batch_size,
+            iters=100,
+            warmup=True,
             name="num_elements_%d_batch_size_%d" % (np.prod(shape), batch_size))
 
   def benchmark_map_and_batch_chaining_versus_fusing(self):
@@ -143,24 +109,15 @@ class MapAndBatchBenchmark(test.Benchmark):
             (element_size * batch_size) // min(num_calls, inter_op))
         # By default the chained map().batch() calls will not be fused.
         chained_dataset = make_dataset(element_size, num_calls, batch_size)
-        chained_iterator = dataset_ops.make_one_shot_iterator(chained_dataset)
-        chained_get_next = chained_iterator.get_next()
-        chained_deltas = []
-        with session.Session(
-            config=config_pb2.ConfigProto(
-                inter_op_parallelism_threads=inter_op,
-                use_per_session_threads=True)) as sess:
-          for _ in range(5):
-            sess.run(chained_get_next.op)
-          for _ in range(num_iters):
-            start = time.time()
-            sess.run(chained_get_next.op)
-            end = time.time()
-            chained_deltas.append(end - start)
+        session_config = config_pb2.ConfigProto(
+            inter_op_parallelism_threads=inter_op, use_per_session_threads=True)
 
-        self.report_benchmark(
+        self.run_and_report_benchmark(
+            dataset=chained_dataset,
             iters=num_iters,
-            wall_time=np.median(chained_deltas),
+            num_elements=batch_size,
+            warmup=True,
+            session_config=session_config,
             name=name("chained", label, num_calls, inter_op, element_size,
                       batch_size))
 
@@ -168,29 +125,15 @@ class MapAndBatchBenchmark(test.Benchmark):
         options = dataset_ops.Options()
         options.experimental_optimization.map_and_batch_fusion = True
         fused_dataset = chained_dataset.with_options(options)
-        fused_iterator = dataset_ops.make_one_shot_iterator(fused_dataset)
-        fused_get_next = fused_iterator.get_next()
-        fused_deltas = []
-        with session.Session(
-            config=config_pb2.ConfigProto(
-                inter_op_parallelism_threads=inter_op,
-                use_per_session_threads=True)) as sess:
 
-          for _ in range(5):
-            sess.run(fused_get_next.op)
-          for _ in range(num_iters):
-            start = time.time()
-            sess.run(fused_get_next.op)
-            end = time.time()
-            fused_deltas.append(end - start)
-
-        self.report_benchmark(
+        self.run_and_report_benchmark(
+            dataset=fused_dataset,
             iters=num_iters,
-            wall_time=np.median(fused_deltas),
+            num_elements=batch_size,
+            warmup=True,
+            session_config=session_config,
             name=name("fused", label, num_calls, inter_op, element_size,
                       batch_size))
-
-      print()
 
     np.random.seed(_NUMPY_RANDOM_SEED)
     benchmark("Sequential element size evaluation", seq_elem_size_series)
@@ -202,4 +145,4 @@ class MapAndBatchBenchmark(test.Benchmark):
 
 
 if __name__ == "__main__":
-  test.main()
+  benchmark_base.test.main()

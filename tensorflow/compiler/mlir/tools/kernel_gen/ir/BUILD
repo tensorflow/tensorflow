@@ -20,7 +20,7 @@ gentbl(
     td_srcs = [
         "tf_status.td",
         "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
+        "@llvm-project//mlir:SideEffectTdFiles",
     ],
 )
 

@@ -60,13 +60,17 @@ Status ConvertInputInfo(
     GraphImportConfig* specs) {
   std::vector<std::string> array_names;
   std::vector<std::string> data_types;
-  std::vector<std::vector<int>> shapes;
+  std::vector<llvm::Optional<std::vector<int>>> shapes;
   for (const tf2xla::Feed& feed : config.feed()) {
     std::string place_holder_name =
         feed_name_remap.at(TensorIdToString(feed.id()));
     array_names.push_back(place_holder_name);
     data_types.push_back(
         feed.type() == DT_INVALID ? "" : DataType_Name(feed.type()));
+    if (feed.shape().unknown_rank()) {
+      shapes.push_back(llvm::None);
+      continue;
+    }
     std::vector<int> dims;
     dims.reserve(feed.shape().dim_size());
     absl::c_for_each(feed.shape().dim(), [&](const TensorShapeProto::Dim d) {

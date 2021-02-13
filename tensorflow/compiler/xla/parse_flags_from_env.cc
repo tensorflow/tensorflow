@@ -166,6 +166,12 @@ static void SetArgvFromEnv(absl::string_view envvar, EnvArgv* a) {
         }
         fclose(fp);
         ParseArgvFromString(str, a);
+      } else {
+        LOG(QFATAL)
+            << "Could not open file \"" << env
+            << "\" to read flags for environment variable \"" << envvar
+            << "\".  (We assumed \"" << env
+            << "\" was a file name because it did not start with a \"--\".)";
       }
     }
     AppendToEnvArgv(nullptr, 0, nullptr, 0, a);  // add trailing nullptr to *a.

@@ -33,6 +33,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
@@ -42,6 +43,7 @@ from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_list_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
@@ -288,9 +290,8 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       dx = _TapeFromGraphMode(x)
       theoretical, numerical = gradient_checker_v2.compute_gradient(
           target_function, [x])
-      self.assertAllClose(numerical, theoretical, rtol=1e-3)
-      self.assertAllClose(array_ops.reshape(numerical, []),
-                          dx, rtol=1e-3)
+      self.assertAllClose(numerical, theoretical, rtol=3e-3)
+      self.assertAllClose(array_ops.reshape(numerical, []), dx, rtol=3e-3)
 
   def testDeviceLabelsInherited(self):
     def _LoopBody(i, y):
@@ -1313,6 +1314,50 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
         _, result = while_loop_v2(lambda i, _: i < 2, Body, [0, x])
       grad = tape.gradient(result, x)
+      return grad
+
+    Fn()
+
+  def testDoNotAccumulateForwardTensorsForTensorListReductionOps(self):
+
+    @def_function.function
+    def Fn():
+      with backprop.GradientTape() as tape:
+        e = constant_op.constant(2.)
+        x = list_ops.empty_tensor_list(
+            element_dtype=dtypes.float32, element_shape=e.shape)
+        x = list_ops.tensor_list_push_back(x, e)
+        tape.watch(x)
+
+        def Body(i, x):
+          forward_graph = ops.get_default_graph()
+
+          @custom_gradient.custom_gradient
+          def IdentityWithZeroGrad(x):
+
+            def Grad(unused_g, variables=None):  # pylint: disable=redefined-outer-name
+              del variables
+              gradient_graph = ops.get_default_graph()
+              shape = gen_list_ops.tensor_list_element_shape(
+                  x, shape_type=dtypes.int32)
+              assert shape.graph is forward_graph
+              size = gen_list_ops.tensor_list_length(x)
+              assert size.graph is forward_graph
+              zeros = gen_list_ops.tensor_list_reserve(shape, size,
+                                                       dtypes.float32)
+              assert zeros.graph is gradient_graph
+              return zeros
+
+            return x, Grad
+
+          return i + 1, IdentityWithZeroGrad(x)
+
+        _, result = while_loop_v2(lambda i, _: i < 2, Body, [0, x])
+      ones_like = list_ops.tensor_list_from_tensor(
+          array_ops.ones_like(
+              list_ops.tensor_list_stack(result, element_dtype=dtypes.float32)),
+          element_shape=tensor_shape.TensorShape([]))
+      grad = tape.gradient(result, x, output_gradients=[ones_like])
       return grad
 
     Fn()

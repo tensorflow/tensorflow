@@ -18,16 +18,17 @@ limitations under the License.
 
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 
 namespace mlir {
 namespace TFR {
 
-void populateSCFOpsCanonicalizationPatterns(OwningRewritePatternList &results,
-                                            MLIRContext *context);
+// Scans the func op and adds all the canonicalization patterns of the ops
+// except the tf ops, inside the function.
+void populateCanonicalizationPatterns(FuncOp func,
+                                      OwningRewritePatternList &patterns);
 
 // Decompose ops.
 std::unique_ptr<OperationPass<FuncOp>> CreateDecomposeTFOpsPass(

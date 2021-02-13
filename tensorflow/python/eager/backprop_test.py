@@ -1844,6 +1844,24 @@ class JacobianTest(test.TestCase):
     self.assertAllClose(compute_jacobian(use_pfor=True),
                         compute_jacobian(use_pfor=False))
 
+  def test_cond_func_grad_jacobian(self):
+
+    @def_function.function
+    def f(x):
+      y = control_flow_ops.cond(x > 0., lambda: x**3., lambda: x**2.)
+      return y
+
+    with backprop.GradientTape(persistent=True) as tape:
+      x = constant_op.constant(1.)
+      tape.watch(x)
+      y = f(x)
+      grad = tape.gradient(y, x)
+    self.assertAllClose(3., grad)
+    jacobian = tape.jacobian(grad, x, experimental_use_pfor=False)
+    self.assertAllClose(6., jacobian)
+    jacobian_pfor = tape.jacobian(grad, x, experimental_use_pfor=True)
+    self.assertAllClose(6., jacobian_pfor)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class BatchJacobianTest(test.TestCase, parameterized.TestCase):
@@ -1942,6 +1960,31 @@ class BatchJacobianTest(test.TestCase, parameterized.TestCase):
     if use_function:
       f = def_function.function(f)
     self.assertAllEqual([1, 0, 0], array_ops.shape(f(array_ops.zeros([1, 0]))))
+
+  @parameterized.parameters((True,), (False))
+  def test_zeros_type_correct(self, use_pfor):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      @def_function.function
+      def f(x):
+        del x
+        return constant_op.constant([[1.]], dtype=dtype)  # pylint: disable=cell-var-from-loop
+
+      with backprop.GradientTape(persistent=True) as tape:
+        x = constant_op.constant([[2.]], dtype=dtype)
+        tape.watch(x)
+        y = f(x)
+      jac = tape.batch_jacobian(y, x, experimental_use_pfor=use_pfor)
+      self.assertEqual(dtype, jac.dtype)
+      self.assertAllClose([[[0.]]], jac)
+
+      with backprop.GradientTape(persistent=True) as tape:
+        x = constant_op.constant([[2.]], dtype=dtype)
+        tape.watch(x)
+        y = f(x)
+      jac = tape.batch_jacobian(y, x, unconnected_gradients='zero',
+                                experimental_use_pfor=use_pfor)
+      self.assertEqual(dtype, jac.dtype)
+      self.assertAllClose([[[0.]]], jac)
 
 
 class AggregateIndexedSlicesGradientsTest(test_util.TensorFlowTestCase):

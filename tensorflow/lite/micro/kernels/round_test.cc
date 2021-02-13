@@ -44,7 +44,7 @@ void TestRound(const int* input_dims_data, const float* input_data,
 
   const TfLiteRegistration registration = tflite::ops::micro::Register_ROUND();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
-                             outputs_array, nullptr, micro_test::reporter);
+                             outputs_array, nullptr);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());

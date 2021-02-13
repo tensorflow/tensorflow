@@ -14,6 +14,7 @@ message TaskProgress {
 
 message WorkerHeartbeatRequest {
   string worker_address = 1;
+  string transfer_address = 3;
   repeated int64 current_tasks = 2;
 }
 
@@ -57,29 +58,28 @@ message GetOrRegisterDatasetResponse {
   int64 dataset_id = 1;
 }
 
-message CreateJobRequest {
-  // The id of the dataset to create a job for.
-  int64 dataset_id = 1;
-  // A mode controlling how the tf.data service produces data for the job.
-  ProcessingModeDef processing_mode = 2;
-}
-
-message CreateJobResponse {
-  // An id for the client that will read from the job. When the client is done
-  // with the job, they should call ReleaseJobClient with this id.
-  int64 job_client_id = 1;
+message JobKey {
+  // A name for the job.
+  string job_name = 1;
+  // An index for the job. Multiple jobs can be created for the same name, if
+  // they have different indices.
+  int64 job_name_index = 2;
 }
 
 message GetOrCreateJobRequest {
+  reserved 3, 4;
   // The id of the dataset to create a job for.
   int64 dataset_id = 1;
   // A mode controlling how the tf.data service produces data for the job.
   ProcessingModeDef processing_mode = 2;
-  // A name for the job.
-  string job_name = 3;
-  // An index for the job. Multiple jobs can be created for the same name, if
-  // they have different indices.
-  int64 job_name_index = 4;
+  // Optional job key identifying a shared job. If not set, the RPC will always
+  // create a new job.
+  JobKey job_key = 5;
+  // Optional number of consumers. If set, the job's tasks will provide their
+  // elements to consumers round-robin.
+  oneof optional_num_consumers {
+    int64 num_consumers = 7;
+  }
 }
 
 message GetOrCreateJobResponse {
@@ -94,17 +94,30 @@ message ReleaseJobClientRequest {
 
 message ReleaseJobClientResponse {}
 
-message GetTasksRequest {
-  // The job client id to look up tasks for.
+message ClientHeartbeatRequest {
+  // The job client id to heartbeat for.
   int64 job_client_id = 1;
+  // Reports which round the client is currently reading from when doing
+  // round-robin reads.
+  oneof optional_current_round {
+    int64 current_round = 2;
+  }
+  // Reports whether the client has successfully blocked the indicated round
+  // from starting. This enables the dispatcher to add a new task in the
+  // blocked round or later.
+  oneof optional_blocked_round {
+    int64 blocked_round = 4;
+  }
 }
 
-message GetTasksResponse {
-  // A list of all tasks for a job.
+message ClientHeartbeatResponse {
+  // A list of all tasks that the client should read from.
   repeated TaskInfo task_info = 1;
-  // Whether the job has finished. An empty `task_info` list could either mean
-  // that no tasks have been started yet, or that all tasks have finished. This
-  // field gives us a way to tell the difference.
+  // Tells the client not to start the given round if possible.
+  oneof optional_block_round {
+    int64 block_round = 3;
+  }
+  // Whether the job has finished.
   bool job_finished = 2;
 }
 
@@ -144,15 +157,14 @@ service DispatcherService {
   // Gets a job if it already exists, otherwise creates it.
   rpc GetOrCreateJob(GetOrCreateJobRequest) returns (GetOrCreateJobResponse);
 
-  // Creates a job for reading from the tf.data service.
-  rpc CreateJob(CreateJobRequest) returns (CreateJobResponse);
-
   // Releases a job client so that a job may eventually be cleaned up.
   rpc ReleaseJobClient(ReleaseJobClientRequest)
       returns (ReleaseJobClientResponse);
 
-  // Reports a list of all tasks for a job.
-  rpc GetTasks(GetTasksRequest) returns (GetTasksResponse);
+  // Heartbeats from the client. This lets the dispatcher know that the client
+  // is still active, and gives the dispatcher a chance to notify the client
+  // of new tasks.
+  rpc ClientHeartbeat(ClientHeartbeatRequest) returns (ClientHeartbeatResponse);
 
   // Reports a list of all workers registered with the dispatcher.
   rpc GetWorkers(GetWorkersRequest) returns (GetWorkersResponse);

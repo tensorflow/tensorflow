@@ -329,10 +329,20 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
           server_address_output);
     });
     size_t server_address_output_size;
+
+    TpuConfigurationApi_CompilationCacheServerAddrFromConfig_Params params;
+    params.struct_size =
+        TpuConfigurationApi_CompilationCacheServerAddrFromConfig_Params_SIZE;
+    params.priv = nullptr;
+    params.tpu_host_config_size = tpu_host_config.size();
+    params.tpu_host_config = tpu_host_config.data();
+    params.server_address_output_size = &server_address_output_size;
+    params.server_address_output = &server_address_output;
+    params.status = status;
+
     tpu::OpsApiFn()
         ->TpuConfigurationApi_CompilationCacheServerAddressFromConfigFn(
-            tpu_host_config.size(), tpu_host_config.data(),
-            &server_address_output_size, &server_address_output, status);
+            &params);
     OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
 
     std::string server_address(server_address_output,

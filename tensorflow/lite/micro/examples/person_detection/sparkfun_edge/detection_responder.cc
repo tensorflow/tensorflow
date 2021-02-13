@@ -26,7 +26,7 @@ limitations under the License.
 // This implementation will light up LEDs on the board in response to the
 // inference results.
 void RespondToDetection(tflite::ErrorReporter* error_reporter,
-                        uint8_t person_score, uint8_t no_person_score) {
+                        int8_t person_score, int8_t no_person_score) {
   static bool is_initialized = false;
   if (!is_initialized) {
     // Setup LED's as outputs.  Leave red LED alone since that's an error

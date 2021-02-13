@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_STATE_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_STATE_H_
 
+#include <queue>
+
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_service.h"
@@ -69,9 +71,12 @@ class DispatcherState {
 
   // A worker registered with the dispatcher.
   struct Worker {
-    explicit Worker(const std::string& address) : address(address) {}
+    explicit Worker(const std::string& address,
+                    const std::string& transfer_address)
+        : address(address), transfer_address(transfer_address) {}
 
     const std::string address;
+    const std::string transfer_address;
   };
 
   // A key for identifying a named job. The key contains a user-specified name,
@@ -100,14 +105,32 @@ class DispatcherState {
     int64 split_provider_index = 0;
   };
 
+  struct Task;
+
+  struct PendingTask {
+    explicit PendingTask(std::shared_ptr<Task> task, int64 target_round)
+        : task(std::move(task)), target_round(target_round) {}
+
+    std::shared_ptr<Task> task;
+    // The target round where we want to insert the task.
+    int64 target_round;
+    // Which consumers have responded that they have successfully blocked
+    // before the target round.
+    absl::flat_hash_set<int64> ready_consumers;
+    // How many times we have failed to add the task.
+    int64 failures = 0;
+  };
+
   // A job for processing a dataset.
   struct Job {
     explicit Job(int64 job_id, int64 dataset_id, ProcessingMode processing_mode,
-                 absl::optional<NamedJobKey> named_job_key)
+                 absl::optional<NamedJobKey> named_job_key,
+                 absl::optional<int64> num_consumers)
         : job_id(job_id),
           dataset_id(dataset_id),
           processing_mode(processing_mode),
-          named_job_key(named_job_key) {
+          named_job_key(named_job_key),
+          num_consumers(num_consumers) {
       if (processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
         distributed_epoch_state = DistributedEpochState();
       }
@@ -118,26 +141,27 @@ class DispatcherState {
     const ProcessingMode processing_mode;
     const absl::optional<NamedJobKey> named_job_key;
     absl::optional<DistributedEpochState> distributed_epoch_state;
+    absl::optional<int64> num_consumers;
+    std::queue<PendingTask> pending_tasks;
     int64 num_clients = 0;
     int64 last_client_released_micros = -1;
     bool finished = false;
   };
 
   struct Task {
-    explicit Task(int64 task_id, int64 job_id, int64 dataset_id,
-                  ProcessingMode processing_mode,
-                  const std::string& worker_address)
+    explicit Task(int64 task_id, const std::shared_ptr<Job>& job,
+                  const std::string& worker_address,
+                  const std::string& transfer_address)
         : task_id(task_id),
-          job_id(job_id),
-          dataset_id(dataset_id),
-          processing_mode(processing_mode),
-          worker_address(worker_address) {}
+          job(job),
+          worker_address(worker_address),
+          transfer_address(transfer_address) {}
 
     const int64 task_id;
-    const int64 job_id;
-    const int64 dataset_id;
-    const ProcessingMode processing_mode;
+    const std::shared_ptr<Job> job;
     const std::string worker_address;
+    const std::string transfer_address;
+    int64 starting_round = 0;
     bool finished = false;
   };
 
@@ -192,6 +216,8 @@ class DispatcherState {
   void ProduceSplit(const ProduceSplitUpdate& produce_split);
   void AcquireJobClient(const AcquireJobClientUpdate& acquire_job_client);
   void ReleaseJobClient(const ReleaseJobClientUpdate& release_job_client);
+  void CreatePendingTask(const CreatePendingTaskUpdate& create_pending_task);
+  void ClientHeartbeat(const ClientHeartbeatUpdate& client_heartbeat);
   void CreateTask(const CreateTaskUpdate& create_task);
   void FinishTask(const FinishTaskUpdate& finish_task);
 

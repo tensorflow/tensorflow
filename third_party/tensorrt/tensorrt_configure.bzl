@@ -20,6 +20,7 @@ load(
 )
 
 _TENSORRT_INSTALL_PATH = "TENSORRT_INSTALL_PATH"
+_TF_TENSORRT_STATIC_PATH = "TF_TENSORRT_STATIC_PATH"
 _TF_TENSORRT_CONFIG_REPO = "TF_TENSORRT_CONFIG_REPO"
 _TF_TENSORRT_VERSION = "TF_TENSORRT_VERSION"
 _TF_NEED_TENSORRT = "TF_NEED_TENSORRT"
@@ -91,6 +92,10 @@ def enable_tensorrt(repository_ctx):
     """Returns whether to build with TensorRT support."""
     return int(get_host_environ(repository_ctx, _TF_NEED_TENSORRT, False))
 
+def _get_tensorrt_static_path(repository_ctx):
+    """Returns the path for TensorRT static libraries."""
+    return get_host_environ(repository_ctx, _TF_TENSORRT_STATIC_PATH, None)
+
 def _create_local_tensorrt_repository(repository_ctx):
     # Resolve all labels before doing any real work. Resolving causes the
     # function to be restarted with all previous state being lost. This
@@ -110,6 +115,7 @@ def _create_local_tensorrt_repository(repository_ctx):
 
     # Copy the library and header files.
     libraries = [lib_name(lib, cpu_value, trt_version) for lib in _TF_TENSORRT_LIBS]
+
     library_dir = config["tensorrt_library_dir"] + "/"
     headers = _get_tensorrt_headers(trt_version)
     include_dir = config["tensorrt_include_dir"] + "/"
@@ -127,6 +133,19 @@ def _create_local_tensorrt_repository(repository_ctx):
             outs = ["tensorrt/include/" + header for header in headers],
         ),
     ]
+
+    tensorrt_static_path = _get_tensorrt_static_path(repository_ctx)
+    raw_static_library_names = _TF_TENSORRT_LIBS + ["nvrtc", "myelin_compiler", "myelin_executor", "myelin_pattern_library", "myelin_pattern_runtime"]
+    static_libraries = [lib_name(lib, cpu_value, trt_version, static = True) for lib in raw_static_library_names]
+    if tensorrt_static_path != None:
+        copy_rules = copy_rules + [
+            make_copy_files_rule(
+                repository_ctx,
+                name = "tensorrt_static_lib",
+                srcs = [tensorrt_static_path + library for library in static_libraries],
+                outs = ["tensorrt/lib/" + library for library in static_libraries],
+            ),
+        ]
 
     # Set up config file.
     repository_ctx.template(

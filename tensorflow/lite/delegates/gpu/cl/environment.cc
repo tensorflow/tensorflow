@@ -48,6 +48,39 @@ absl::Status CreateEnvironment(Environment* result, bool shared,
   return result->Init();
 }
 
+bool IsGpuSupportsStorageType(const GpuInfo& gpu_info,
+                              TensorStorageType storage_type) {
+  switch (storage_type) {
+    case TensorStorageType::TEXTURE_2D:
+      return !gpu_info.IsAMD();
+    case TensorStorageType::BUFFER:
+      return true;
+    case TensorStorageType::TEXTURE_ARRAY:
+      return !gpu_info.IsAMD() && gpu_info.SupportsTextureArray();
+    case TensorStorageType::IMAGE_BUFFER:
+      return (gpu_info.IsAdreno() || gpu_info.IsAMD() || gpu_info.IsNvidia()) &&
+             gpu_info.SupportsImageBuffer();
+    case TensorStorageType::TEXTURE_3D:
+      return !gpu_info.IsAMD() && gpu_info.SupportsImage3D();
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+      return false;
+    case TensorStorageType::UNKNOWN:
+      return false;
+  }
+  return false;
+}
+
+bool IsGpuSupportsPrecision(const GpuInfo& gpu_info,
+                            CalculationsPrecision precision) {
+  switch (precision) {
+    case CalculationsPrecision::F32_F16:
+    case CalculationsPrecision::F16:
+      return gpu_info.SupportsFP16();
+    case CalculationsPrecision::F32:
+      return true;
+  }
+}
+
 }  // namespace
 
 Environment::Environment(CLDevice&& device, CLContext&& context,
@@ -77,7 +110,8 @@ Environment& Environment::operator=(Environment&& environment) {
 }
 
 absl::Status Environment::Init() {
-  if (device().IsAdreno() && device().SupportsTextureArray()) {
+  if (device().GetInfo().IsAdreno() &&
+      device().GetInfo().SupportsTextureArray()) {
     const auto& adreno_info = device().info_.adreno_info;
     // Some Adreno < 600 have bug with one layer texture array. b/131099086
     // If we have one layer texture array and will write smt from kernel to this
@@ -117,13 +151,7 @@ std::vector<CalculationsPrecision> Environment::GetSupportedPrecisions() const {
 }
 
 bool Environment::IsSupported(CalculationsPrecision precision) const {
-  switch (precision) {
-    case CalculationsPrecision::F32_F16:
-    case CalculationsPrecision::F16:
-      return device_.SupportsFP16();
-    case CalculationsPrecision::F32:
-      return true;
-  }
+  return IsGpuSupportsPrecision(device_.GetInfo(), precision);
 }
 
 std::vector<TensorStorageType> Environment::GetSupportedStorages() const {
@@ -153,24 +181,7 @@ Environment::GetSupportedStoragesWithHWZeroClampSupport() const {
 }
 
 bool Environment::IsSupported(TensorStorageType storage_type) const {
-  switch (storage_type) {
-    case TensorStorageType::TEXTURE_2D:
-      return !device_.IsAMD();
-    case TensorStorageType::BUFFER:
-      return true;
-    case TensorStorageType::TEXTURE_ARRAY:
-      return !device_.IsAMD() && device_.SupportsTextureArray();
-    case TensorStorageType::IMAGE_BUFFER:
-      return (device_.IsAdreno() || device_.IsAMD() || device_.IsNvidia()) &&
-             device_.SupportsImageBuffer();
-    case TensorStorageType::TEXTURE_3D:
-      return !device_.IsAMD() && device_.SupportsImage3D();
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-      return false;
-    case TensorStorageType::UNKNOWN:
-      return false;
-  }
-  return false;
+  return IsGpuSupportsStorageType(device_.GetInfo(), storage_type);
 }
 
 TensorStorageType GetFastestStorageType(const GpuInfo& gpu_info) {

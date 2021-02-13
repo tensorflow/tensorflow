@@ -201,11 +201,9 @@ void TransferManager::TransferArrayFromDevice(
 
 Status TransferManager::ReadDynamicShapes(se::Stream* stream,
                                           ShapedBuffer* device_buffer,
-                                          Shape* host_shape,
                                           Shape* device_shape) {
   DCHECK(device_shape->is_dynamic());
   Shape original_device_shape = *device_shape;
-  Shape original_host_shape = *host_shape;
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   TF_ASSIGN_OR_RETURN(auto compiler,
@@ -217,8 +215,6 @@ Status TransferManager::ReadDynamicShapes(se::Stream* stream,
         if (buffer_shape.IsTuple()) {
           return Status::OK();
         }
-        Shape& host_sub_shape =
-            *ShapeUtil::GetMutableSubshape(host_shape, index);
         Shape& device_sub_shape =
             *ShapeUtil::GetMutableSubshape(device_shape, index);
         if (device_sub_shape.is_static()) {
@@ -245,18 +241,14 @@ Status TransferManager::ReadDynamicShapes(se::Stream* stream,
 
         // Update shape size from metadata.
         for (int64 i = 0; i < metadata.element_count(); ++i) {
-          host_sub_shape.mutable_dimensions()[i] = metadata.Get<int32>({i});
           device_sub_shape.mutable_dimensions()[i] = metadata.Get<int32>({i});
         }
         return Status::OK();
       }));
-  host_shape->clear_dynamic_dimensions();
   device_shape->clear_dynamic_dimensions();
 
   TF_RET_CHECK(ShapeUtil::DynamicShapeIsCompatible(*device_shape,
                                                    original_device_shape));
-  TF_RET_CHECK(
-      ShapeUtil::DynamicShapeIsCompatible(*host_shape, original_host_shape));
   return Status::OK();
 }
 

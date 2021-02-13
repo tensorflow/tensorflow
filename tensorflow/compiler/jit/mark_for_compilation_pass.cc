@@ -1199,12 +1199,22 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
     RecursiveCompilabilityChecker::OperationFilter filter =
         CreateOperationFilter(*registration);
     filter.require_always_compilable = true;
+    filter.allow_string_consts = false;
 
     RecursiveCompilabilityChecker checker(
         filter, DeviceType{registration->compilation_device_name});
 
     if (!checker.IsCompilableNode(*node, lib_runtime)) {
       continue;
+    }
+
+    if (node->type_string() == "Const") {
+      // Skip Const op with type DT_STRING, since XLA autoclustering doesn't
+      // support it.
+      const AttrValue* attr = node->attrs().Find("dtype");
+      if (attr != nullptr && attr->type() == DT_STRING) {
+        continue;
+      }
     }
 
     if (!allowlist.empty() && !allowlist.contains(node->def().op())) {
@@ -1990,6 +2000,8 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "StatelessCase",
                                      "StatelessIf",
                                      "StatelessMultinomial",
+                                     "StatelessRandomGetAlg",
+                                     "StatelessRandomGetKeyCounter",
                                      "StatelessRandomGetKeyCounterAlg",
                                      "StatelessRandomNormal",
                                      "StatelessRandomNormalV2",
@@ -2033,6 +2045,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "TensorScatterUpdate",
                                      "TridiagonalSolve",
                                      "TruncatedNormal",
+                                     "Unique",
                                      "UpperBound",
                                      "UnsortedSegmentMax",
                                      "UnsortedSegmentMin",
@@ -2069,6 +2082,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "XlaSpmdShardToFullShape",
                                      "XlaSvd",
                                      "XlaVariadicReduce",
+                                     "XlaVariadicSort",
                                      "XlaWhile",
                                      "Zeta",
                                      "_Arg",

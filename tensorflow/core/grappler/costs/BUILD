@@ -16,12 +16,9 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-filegroup(
+alias(
     name = "graph_properties_testdata",
-    srcs = glob([
-        "graph_properties_testdata/*.pbtxt",
-        "graph_properties_testdata/*.pbtxt.html",
-    ]),
+    actual = "//tensorflow/core/grappler/costs/graph_properties_testdata:graph_properties_testdata",
     visibility = ["//visibility:public"],
 )
 
@@ -111,6 +108,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/graph:mkl_graph_util",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:single_machine",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
@@ -337,6 +335,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler/clusters:utils",
     ] + tf_protos_grappler(),
@@ -392,3 +391,13 @@ tf_cc_test(
         "//tensorflow/core/grappler/clusters:virtual_cluster",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "op_performance_data_py_pb2",
+#     has_services = 0,
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":op_performance_data"],
+# )
+# copybara:uncomment_end

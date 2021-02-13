@@ -17,8 +17,14 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_PY_BUFFER_H_
 
 #include <memory>
+#include <stdexcept>
 #include <vector>
 
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/notification.h"
+#include "absl/types/optional.h"
+#include "pybind11/numpy.h"
+#include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -41,6 +47,9 @@ class DeviceArrayBase {
 // Python wrapper around PjRtBuffer. We use a wrapper class:
 // a) to keep the PjRtClient alive via a std::shared_ptr<>
 // b) to add Python-specific functionality.
+//
+// A `PyBuffer` can be used from Python without being wrapped in a Python
+// `DeviceArray` object, at the condition there is no associated LazyExpr.
 class PyBuffer : public DeviceArrayBase {
  public:
   PyBuffer(std::shared_ptr<PyClient> client, std::unique_ptr<PjRtBuffer> buffer,
@@ -51,18 +60,26 @@ class PyBuffer : public DeviceArrayBase {
   PjRtBuffer* buffer() const { return buffer_.get(); }
 
   ClientAndPtr<PjRtDevice> device() const;
-  const std::string& platform_name() const { return buffer_->platform_name(); }
+  absl::string_view platform_name() const {
+    return buffer_->client()->platform_name();
+  }
   bool is_deleted() const { return buffer_->IsDeleted(); }
 
   StatusOr<std::unique_ptr<PyBuffer>> CopyToDevice(
       const ClientAndPtr<PjRtDevice>& dst_device) const;
 
-  void Delete() { return buffer_->Delete(); }
+  int64 OnDeviceSizeInBytes() { return buffer_->OnDeviceSizeInBytes(); }
 
+  void Delete() {
+    buffer_->Delete();
+    host_value_ = nullptr;
+  }
+
+  // Returns xla::InvalidArgument if the buffer has been deleted.
   Status BlockHostUntilReady();
-  Status CopyToHostAsync() { return buffer_->CopyToHostAsync(); }
+  Status CopyToHostAsync();
 
-  const Shape& shape() { return buffer_->on_host_shape(); }
+  const Shape& shape() { return buffer_->on_device_shape(); }
 
   StatusOr<std::uintptr_t> UnsafeBufferPointer() const;
 
@@ -75,13 +92,40 @@ class PyBuffer : public DeviceArrayBase {
 
   Traceback* traceback() { return traceback_.get(); }
 
+  // Returns the size (i.e. number of elements) of the (host) numpy array.
+  int64 size() { return ShapeUtil::ElementsIn(buffer()->on_device_shape()); }
+
+  // Returns the number of dimensions of the (host) numpy array.
+  int ndim() const { return buffer()->on_device_shape().dimensions_size(); }
+
+  pybind11::tuple python_shape() const;
+  pybind11::dtype python_dtype() const;
+
+  void SetStickyDevice(pybind11::object sticky_device);
+  pybind11::object GetStickyDevice() const { return sticky_device_.value(); }
+
+  StatusOr<pybind11::object> AsNumPyArray(pybind11::handle this_obj);
+
+  void SetAval(pybind11::object aval);
+  pybind11::object GetAval() const { return aval_.value(); }
+
  private:
   friend class PyClient;
 
+  struct HostValue {
+    absl::Notification ready;
+    Status status;
+    std::shared_ptr<xla::Literal> value;
+  };
   std::shared_ptr<PyClient> client_;
   std::unique_ptr<PjRtBuffer> buffer_;
   std::shared_ptr<Traceback> traceback_;
+  std::shared_ptr<HostValue> host_value_;  // Protected by the GIL.
 
+  absl::optional<pybind11::object> sticky_device_ = absl::nullopt;
+  // TODO(jblespiau): It's currently there for convenience but maybe we can do
+  // without it (adding `weak_type` instead).
+  absl::optional<pybind11::object> aval_ = absl::nullopt;
   // Doubly-linked list of all buffers known to the client. Protected by the
   // GIL.
   PyBuffer* next_;

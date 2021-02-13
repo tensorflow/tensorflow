@@ -22,6 +22,81 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
+absl::Status ClExecutionEnvironment::Init() { return CreateEnvironment(&env_); }
+
+std::vector<CalculationsPrecision>
+ClExecutionEnvironment::GetSupportedPrecisions() const {
+  return env_.GetSupportedPrecisions();
+}
+
+std::vector<TensorStorageType> ClExecutionEnvironment::GetSupportedStorages()
+    const {
+  return env_.GetSupportedStorages();
+}
+
+std::vector<TensorStorageType>
+ClExecutionEnvironment::GetSupportedStoragesWithHWZeroClampSupport() const {
+  return env_.GetSupportedStoragesWithHWZeroClampSupport();
+}
+
+const GpuInfo& ClExecutionEnvironment::GetGpuInfo() const {
+  return env_.GetDevicePtr()->GetInfo();
+}
+
+absl::Status ClExecutionEnvironment::ExecuteGPUOperation(
+    const std::vector<TensorFloat32>& src_cpu,
+    std::unique_ptr<GPUOperation>&& operation,
+    const std::vector<BHWC>& dst_sizes,
+    const std::vector<TensorFloat32*>& dst_cpu) {
+  CreationContext creation_context;
+  creation_context.device = env_.GetDevicePtr();
+  creation_context.context = &env_.context();
+  creation_context.queue = env_.queue();
+  creation_context.cache = env_.program_cache();
+
+  const OperationDef& op_def = operation->GetDefinition();
+  std::vector<Tensor> src(src_cpu.size());
+  for (int i = 0; i < src_cpu.size(); ++i) {
+    auto src_shape = src_cpu[i].shape;
+    if (src_shape.b != 1 && !op_def.IsBatchSupported()) {
+      return absl::InvalidArgumentError(
+          "Layout doesn't have Batch dimension, but shape.b != 1");
+    }
+    RETURN_IF_ERROR(CreateTensor(*creation_context.context, src_shape,
+                                 op_def.src_tensors[i], &src[i]));
+    RETURN_IF_ERROR(src[i].WriteData(creation_context.queue, src_cpu[i]));
+    operation->SetSrc(&src[i], i);
+  }
+
+  std::vector<Tensor> dst(dst_cpu.size());
+  for (int i = 0; i < dst_cpu.size(); ++i) {
+    auto dst_shape = dst_sizes[i];
+    if (dst_shape.b != 1 && !op_def.IsBatchSupported()) {
+      return absl::InvalidArgumentError(
+          "Layout doesn't have Batch dimension, but shape.b != 1");
+    }
+    RETURN_IF_ERROR(CreateTensor(*creation_context.context, dst_shape,
+                                 op_def.dst_tensors[i], &dst[i]));
+
+    operation->SetDst(&dst[i], i);
+  }
+
+  ClOperation cl_op;
+  cl_op.Init(std::move(operation));
+  RETURN_IF_ERROR(cl_op.Compile(creation_context));
+  RETURN_IF_ERROR(cl_op.UpdateParams());
+  cl_op.GetGpuOperation().args_.ReleaseCPURepresentation();
+  RETURN_IF_ERROR(cl_op.AddToQueue(creation_context.queue));
+  RETURN_IF_ERROR(creation_context.queue->WaitForCompletion());
+
+  for (int i = 0; i < dst_cpu.size(); ++i) {
+    dst_cpu[i]->shape = dst_sizes[i];
+    dst_cpu[i]->data = std::vector<float>(dst_sizes[i].DimensionsProduct(), 0);
+    RETURN_IF_ERROR(dst[i].ReadData(creation_context.queue, dst_cpu[i]));
+  }
+  return absl::OkStatus();
+}
+
 absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
                                  const CreationContext& creation_context,
                                  std::unique_ptr<GPUOperation>&& operation,
@@ -36,7 +111,7 @@ absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
           "Layout doesn't have Batch dimension, but shape.b != 1");
     }
     RETURN_IF_ERROR(CreateTensor(*creation_context.context, src_shape,
-                                 op_def.src_tensors[0], &src[i]));
+                                 op_def.src_tensors[i], &src[i]));
     RETURN_IF_ERROR(src[i].WriteData(creation_context.queue, src_cpu[i]));
     operation->SetSrc(&src[i], i);
   }
@@ -49,7 +124,7 @@ absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
           "Layout doesn't have Batch dimension, but shape.b != 1");
     }
     RETURN_IF_ERROR(CreateTensor(*creation_context.context, dst_shape,
-                                 op_def.dst_tensors[0], &dst[i]));
+                                 op_def.dst_tensors[i], &dst[i]));
 
     operation->SetDst(&dst[i], i);
   }

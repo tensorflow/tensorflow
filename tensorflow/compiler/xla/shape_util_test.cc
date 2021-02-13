@@ -20,12 +20,14 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 namespace xla {
 namespace {
@@ -723,11 +725,8 @@ TEST(ShapeUtilTest, PermuteDimensionsLayout) {
       SCOPED_TRACE(
           absl::StrCat("permutation=", absl::StrJoin(permutation, ",")));
 
-      // TransposeIsBitcast takes the inverse of the permutation that
-      // PermuteDimensions takes.
       EXPECT_TRUE(ShapeUtil::TransposeIsBitcast(
-          s, ShapeUtil::PermuteDimensions(permutation, s),
-          InversePermutation(permutation)));
+          s, ShapeUtil::PermuteDimensions(permutation, s), permutation));
     } while (std::next_permutation(permutation.begin(), permutation.end()));
   } while (std::next_permutation(layout.begin(), layout.end()));
 }
@@ -754,9 +753,9 @@ TEST(ShapeUtilTest, PermuteDynamicDimensions) {
 
     auto permuted = ShapeUtil::PermuteDimensions(permutation, shape);
     for (int i = 0; i < shape.rank(); i++) {
-      EXPECT_EQ(permuted.dimensions(permutation[i]), shape.dimensions(i));
-      EXPECT_EQ(permuted.is_dynamic_dimension(permutation[i]),
-                shape.is_dynamic_dimension(i));
+      EXPECT_EQ(permuted.dimensions(i), shape.dimensions(permutation[i]));
+      EXPECT_EQ(permuted.is_dynamic_dimension(i),
+                shape.is_dynamic_dimension(permutation[i]));
     }
   } while (std::next_permutation(permutation.begin(), permutation.end()));
 }
@@ -826,6 +825,20 @@ TEST(AlignmentTest,
       input, ShapeUtil::MakeShape(xla::F32, {4, 3, 2, 5, 77}));
   EXPECT_FALSE(aligned_shape);
 }
+
+void BM_MakeShape(::testing::benchmark::State& state) {
+  for (auto s : state) {
+    ShapeUtil::MakeShape(F32, {2});
+  }
+}
+BENCHMARK(BM_MakeShape);
+
+void BM_MakeValidatedShape(::testing::benchmark::State& state) {
+  for (auto s : state) {
+    ShapeUtil::MakeValidatedShape(F32, {2}).ValueOrDie();
+  }
+}
+BENCHMARK(BM_MakeValidatedShape);
 
 }  // namespace
 }  // namespace xla

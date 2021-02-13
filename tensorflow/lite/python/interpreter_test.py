@@ -67,6 +67,12 @@ class InterpreterCustomOpsTest(test_util.TensorFlowTestCase):
               'testdata/permute_float.tflite'),
           custom_op_registerers=[bogus_name])
 
+  def testNoCustomOps(self):
+    interpreter = interpreter_wrapper.InterpreterWithCustomOps(
+        model_path=resource_loader.get_path_to_datafile(
+            'testdata/permute_float.tflite'))
+    self.assertTrue(interpreter._safe_to_run())
+
 
 class InterpreterTest(test_util.TensorFlowTestCase):
 

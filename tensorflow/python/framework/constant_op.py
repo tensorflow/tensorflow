@@ -169,9 +169,9 @@ def constant(value, dtype=None, shape=None, name="Const"):
 
   Note: All eager `tf.Tensor` values are immutable (in contrast to
   `tf.Variable`). There is nothing especially _constant_ about the value
-  returned from `tf.constant`. This function it is not fundamentally different
-  from `tf.convert_to_tensor`. The name `tf.constant` comes from the `value`
-  being embeded in a `Const` node in the `tf.Graph`. `tf.constant` is useful
+  returned from `tf.constant`. This function is not fundamentally different from
+  `tf.convert_to_tensor`. The name `tf.constant` comes from the `value` being
+  embedded in a `Const` node in the `tf.Graph`. `tf.constant` is useful
   for asserting that the value can be embedded that way.
 
   If the argument `dtype` is not specified, then the type is inferred from
@@ -188,7 +188,7 @@ def constant(value, dtype=None, shape=None, name="Const"):
     array([[1, 2, 3],
            [4, 5, 6]])>
 
-  If `dtype` is specified the resulting tensor values are cast to the requested
+  If `dtype` is specified, the resulting tensor values are cast to the requested
   `dtype`.
 
   >>> tf.constant([1, 2, 3, 4, 5, 6], dtype=tf.float64)

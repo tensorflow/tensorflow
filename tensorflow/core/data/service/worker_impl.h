@@ -16,13 +16,15 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_WORKER_IMPL_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
+#include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/protobuf/data/experimental/service_config.pb.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
@@ -39,7 +41,8 @@ class DataServiceWorkerImpl {
   // constructor because the worker may be binding to port `0`, in which case
   // the address isn't known until the worker has started and decided which port
   // to bind to.
-  Status Start(const std::string& worker_address);
+  Status Start(const std::string& worker_address,
+               const std::string& transfer_address);
 
   // See worker.proto for API documentation.
 
@@ -60,33 +63,33 @@ class DataServiceWorkerImpl {
     TaskDef task_def;
     mutex mu;
     bool initialized TF_GUARDED_BY(mu) = false;
-    bool finished = false;
-    // TODO(aaudibert): Have standalone::Iterator own a reference to
-    // standalone::Dataset so that we don't need to store the dataset here.
-    std::unique_ptr<standalone::Dataset> dataset;
-    std::unique_ptr<standalone::Iterator> iterator;
+    std::unique_ptr<TaskRunner> task_runner;
   };
 
   // Sends task status to the dispatcher and checks for dispatcher commands.
-  Status SendTaskUpdates() LOCKS_EXCLUDED(mu_);
+  Status SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_);
   // Creates an iterator to process a task.
-  Status ProcessTaskInternal(const TaskDef& task) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status ProcessTaskInternal(const TaskDef& task)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status EnsureTaskInitialized(Task& task);
   // A thread for notifying the dispatcher when tasks complete.
-  void TaskCompletionThread() LOCKS_EXCLUDED(mu_);
+  void TaskCompletionThread() TF_LOCKS_EXCLUDED(mu_);
   // A thread for doing periodic heartbeats to the dispatcher.
-  void HeartbeatThread() LOCKS_EXCLUDED(mu_);
+  void HeartbeatThread() TF_LOCKS_EXCLUDED(mu_);
   // Performs a heartbeat to the dispatcher.
-  Status Heartbeat() LOCKS_EXCLUDED(mu_);
+  Status Heartbeat() TF_LOCKS_EXCLUDED(mu_);
 
   const experimental::WorkerConfig config_;
   // The worker's own address.
   std::string worker_address_;
+  std::string transfer_address_;
   std::unique_ptr<DataServiceDispatcherClient> dispatcher_;
 
   mutex mu_;
   // Information about tasks, keyed by task ids.
   absl::flat_hash_map<int64, std::unique_ptr<Task>> tasks_ TF_GUARDED_BY(mu_);
+  // Ids of tasks that have finished.
+  absl::flat_hash_set<int64> finished_tasks_ TF_GUARDED_BY(mu_);
   // Completed tasks which haven't yet been communicated to the dispatcher.
   absl::flat_hash_set<int64> pending_completed_tasks_ TF_GUARDED_BY(mu_);
   bool cancelled_ TF_GUARDED_BY(mu_) = false;

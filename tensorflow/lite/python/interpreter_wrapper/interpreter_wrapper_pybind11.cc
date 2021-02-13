@@ -141,6 +141,24 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
            [](const InterpreterWrapper& self, int i) {
              return tensorflow::PyoOrThrow(self.GetTensor(i));
            })
+      .def("SetInputTensorFromSignatureDefName",
+           [](InterpreterWrapper& self, const char* input_name,
+              const char* method_name, py::handle& value) {
+             return tensorflow::PyoOrThrow(
+                 self.SetInputTensorFromSignatureDefName(
+                     input_name, method_name, value.ptr()));
+           })
+      .def("GetOutputTensorFromSignatureDefName",
+           [](const InterpreterWrapper& self, const char* output_name,
+              const char* method_name) {
+             return tensorflow::PyoOrThrow(
+                 self.GetOutputTensorFromSignatureDefName(output_name,
+                                                          method_name));
+           })
+      .def("GetSignatureDefs",
+           [](InterpreterWrapper& self) {
+             return tensorflow::PyoOrThrow(self.GetSignatureDefs());
+           })
       .def("ResetVariableTensors",
            [](InterpreterWrapper& self) {
              return tensorflow::PyoOrThrow(self.ResetVariableTensors());

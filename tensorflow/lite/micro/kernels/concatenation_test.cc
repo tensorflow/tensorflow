@@ -54,9 +54,9 @@ void TestConcatenateTwoInputs(const int* input1_dims_data,
 
   const TfLiteRegistration registration =
       tflite::ops::micro::Register_CONCATENATION();
-  micro::KernelRunner runner(
-      registration, tensors, tensors_size, inputs_array, outputs_array,
-      reinterpret_cast<void*>(&builtin_data), micro_test::reporter);
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array,
+                             reinterpret_cast<void*>(&builtin_data));
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
@@ -101,9 +101,9 @@ void TestConcatenateQuantizedTwoInputs(
 
   const TfLiteRegistration registration =
       tflite::ops::micro::Register_CONCATENATION();
-  micro::KernelRunner runner(
-      registration, tensors, tensors_size, inputs_array, outputs_array,
-      reinterpret_cast<void*>(&builtin_data), micro_test::reporter);
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array,
+                             reinterpret_cast<void*>(&builtin_data));
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());

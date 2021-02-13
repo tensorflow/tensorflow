@@ -16,66 +16,13 @@ include "tensorflow/lite/delegates/gpu/common/task/serialization_base.fbs";
 
 namespace tflite.gpu.cl.data;
 
-enum CalculationsPrecision : byte {
-  F32 = 0,
-  F32_F16 = 1,
-  F16 = 2,
-}
-
-enum TensorToGrid : byte {
-  CUSTOM = 0,
-  WB_TO_X_HD_TO_Y_S_TO_Z = 1,
-  WB_TO_X_HD_TO_Y_Z_IS_1 = 2,
-  WB_TO_X_H_TO_Y_D_TO_Z = 3,
-  B_TO_X_Y_IS_1_Z_IS_1 = 4,
-}
-
-enum CompilerOptions : byte {
-  ADRENO_FULL_SIMD_LINE = 0,
-  ADRENO_MORE_WAVES = 1,
-  POWERVR_FP16 = 2,
-  CL_OPT_DISABLE = 3,
-  CL_2_0 = 4,
-  CL_3_0 = 5,
-}
-
-table OperationDef {
-  precision:CalculationsPrecision;
-  src_tensors:[tflite.gpu.data.TensorDescriptor];
-  dst_tensors:[tflite.gpu.data.TensorDescriptor];
-}
-
-table CompilerOption {
-  option:CompilerOptions;
-}
-
-table GPUOperation {
-  arguments:tflite.gpu.data.Arguments;
-  code:string;
-  work_group_size:tflite.gpu.data.Int3;
-  compiler_options:[CompilerOption];
-  tensor_to_grid:TensorToGrid;
-  elementwise:bool;
-  linkable:bool;
-  check_src_channels_size:bool;
-  definition:OperationDef;
-  grid_dimension:int32;
-  work_group_launch_order:tflite.gpu.data.Int3;
-  grid_size:tflite.gpu.data.Int3;
-  src_tensors_names:[string];
-  dst_tensors_names:[string];
-  work_groups_count:tflite.gpu.data.Int3;
-  linkable_count:int32;
-  elementwise_code:string;
-}
-
 table TensorDescWithId {
   desc:tflite.gpu.data.TensorDescriptor;
   id:int32;
 }
 
 table CLNode {
-  gpu_op:GPUOperation;
+  gpu_op:tflite.gpu.data.GPUOperation;
   input_ids:[int32];
   output_ids:[int32];
   name:string;
@@ -91,10 +38,11 @@ table InferenceContext {
   flush_periodically:bool;
   flush_period:int32;
   need_manual_release:bool;
-  precision:CalculationsPrecision;
+  precision:tflite.gpu.data.CalculationsPrecision;
   storage_type:tflite.gpu.data.TensorStorageType;
   nodes:[CLNode];
   tensors:[TensorDescWithId];
+  const_tensors:[TensorDescWithId];
   input_ids:[int32];
   variable_ids_and_refs:[PairOfValueIds];
   output_ids:[int32];

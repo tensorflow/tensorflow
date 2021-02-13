@@ -263,7 +263,7 @@ uint32 Extend(uint32 crc, const char *buf, size_t size) {
   return l ^ 0xffffffffu;
 }
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
 uint32 Extend(uint32 crc, const absl::Cord &cord) {
   for (absl::string_view fragment : cord.Chunks()) {
     crc = Extend(crc, fragment.data(), fragment.size());

@@ -225,6 +225,43 @@ class GetKeyCounterAlgOp : public OpKernel {
   }
 };
 
+class GetKeyCounterOp : public OpKernel {
+ public:
+  explicit GetKeyCounterOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& seed_t = ctx->input(0);
+    OP_REQUIRES(ctx, seed_t.dims() == 1 && seed_t.dim_size(0) == 2,
+                errors::InvalidArgument("seed must have shape [2], not ",
+                                        seed_t.shape().DebugString()));
+    // Allocate outputs
+    Tensor* key_output;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_output(0, TensorShape({RNG_KEY_SIZE}), &key_output));
+    Tensor* counter_output;
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_output(1, TensorShape({RNG_MAX_COUNTER_SIZE}),
+                                        &counter_output));
+
+    random::PhiloxRandom::Key key;
+    random::PhiloxRandom::ResultType counter;
+    OP_REQUIRES_OK(ctx, GenerateKey(seed_t, &key, &counter));
+    WriteKeyToMem(key, key_output->flat<uint64>().data());
+    WriteCounterToMem(counter, counter_output->flat<uint64>().data());
+  }
+};
+
+class GetAlgOp : public OpKernel {
+ public:
+  explicit GetAlgOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    Tensor* alg_output;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &alg_output));
+    alg_output->flat<int>()(0) = RNG_ALG_PHILOX;
+  }
+};
+
 #define REGISTER(DEVICE, TYPE)                                              \
   REGISTER_KERNEL_BUILDER(                                                  \
       Name("StatelessRandomUniformV2")                                      \
@@ -289,14 +326,23 @@ TF_CALL_int64(REGISTER_INT_CPU);
 TF_CALL_uint32(REGISTER_FULL_INT_CPU);
 TF_CALL_uint64(REGISTER_FULL_INT_CPU);
 
-#define REGISTER_GET_KCA(DEVICE)                                  \
-  REGISTER_KERNEL_BUILDER(Name("StatelessRandomGetKeyCounterAlg") \
-                              .Device(DEVICE_##DEVICE)            \
-                              .HostMemory("seed")                 \
-                              .HostMemory("key")                  \
-                              .HostMemory("counter")              \
-                              .HostMemory("alg"),                 \
-                          GetKeyCounterAlgOp)
+#define REGISTER_GET_KCA(DEVICE)                                               \
+  REGISTER_KERNEL_BUILDER(Name("StatelessRandomGetKeyCounterAlg")              \
+                              .Device(DEVICE_##DEVICE)                         \
+                              .HostMemory("seed")                              \
+                              .HostMemory("key")                               \
+                              .HostMemory("counter")                           \
+                              .HostMemory("alg"),                              \
+                          GetKeyCounterAlgOp)                                  \
+  REGISTER_KERNEL_BUILDER(Name("StatelessRandomGetKeyCounter")                 \
+                              .Device(DEVICE_##DEVICE)                         \
+                              .HostMemory("seed")                              \
+                              .HostMemory("key")                               \
+                              .HostMemory("counter"),                          \
+                          GetKeyCounterOp)                                     \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("StatelessRandomGetAlg").Device(DEVICE_##DEVICE).HostMemory("alg"), \
+      GetAlgOp)
 
 REGISTER_GET_KCA(CPU);
 

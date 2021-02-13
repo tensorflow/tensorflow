@@ -22,7 +22,6 @@ cc_library(
         "//tensorflow/core/profiler/utils:tf_op_utils",
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_utils",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -166,7 +165,7 @@ cc_library(
     copts = tf_profiler_copts(),
     deps = [
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/compiler/xla/service/gpu:gpu_debug_info_manager",
+        "//tensorflow/compiler/xla/service:xla_debug_info_manager",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",

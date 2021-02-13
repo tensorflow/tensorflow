@@ -19,9 +19,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/utils/simple_delegate.h"
 #include "tensorflow/lite/testing/init_tensorflow.h"
 
-#ifdef __cplusplus
 extern "C" {
-#endif  // __cplusplus
 
 JNIEXPORT void JNICALL
 Java_org_tensorflow_lite_flex_FlexDelegate_nativeInitTensorFlow(JNIEnv* env,
@@ -42,6 +40,4 @@ Java_org_tensorflow_lite_flex_FlexDelegate_nativeDeleteDelegate(
       reinterpret_cast<struct TfLiteDelegate*>(delegate));
 }
 
-#ifdef __cplusplus
 }  // extern "C"
-#endif  // __cplusplus

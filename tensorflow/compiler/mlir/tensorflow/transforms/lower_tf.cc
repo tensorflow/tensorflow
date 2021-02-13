@@ -20,11 +20,11 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -69,8 +69,9 @@ static APFloat ConvertToAPFloat(double val, Type type) {
 }
 
 // Returns int, float, or complex DenseElementsAttr with scalar shape with the
-// given element type and the integer value.
-static DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
+// given element type and the value.
+template <typename T>
+static DenseElementsAttr GetScalarOfType(Type ty, T raw_value) {
   RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
   if (auto float_ty = ty.dyn_cast_or_null<FloatType>()) {
     FloatAttr attr = FloatAttr::get(float_ty, raw_value);
@@ -89,14 +90,6 @@ static DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
     }
   }
   llvm_unreachable("unsupported type");
-}
-
-// Returns float DenseElementsAttr with scalar shape with the specified value.
-static DenseElementsAttr GetScalarOfFloatType(Type ty, double raw_value) {
-  auto float_ty = ty.cast<FloatType>();
-  FloatAttr attr = FloatAttr::get(float_ty, raw_value);
-  RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
-  return DenseElementsAttr::get(scalar_ty, attr);
 }
 
 // Returns reduction indices to use while lowering tf.BiasAddGrad op to tf.Sum
@@ -332,12 +325,13 @@ class LowerDynamicStitchOp : public RewritePattern {
 class ConvertFakeQuantWithMinMaxVarsOp : public RewritePattern {
  public:
   explicit ConvertFakeQuantWithMinMaxVarsOp(MLIRContext *context)
-      : RewritePattern(FakeQuantWithMinMaxVarsOp::getOperationName(),
-                       {SubOp::getOperationName(), ConstOp::getOperationName(),
-                        MulOp::getOperationName(), FloorOp::getOperationName(),
-                        ClipByValueOp::getOperationName(),
-                        DivOp::getOperationName(), RoundOp::getOperationName()},
-                       1, context) {}
+      : RewritePattern(
+            FakeQuantWithMinMaxVarsOp::getOperationName(),
+            {AddV2Op::getOperationName(), SubOp::getOperationName(),
+             ConstOp::getOperationName(), MulOp::getOperationName(),
+             FloorOp::getOperationName(), ClipByValueOp::getOperationName(),
+             DivOp::getOperationName(), RoundOp::getOperationName()},
+            1, context) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -419,8 +413,8 @@ class ConvertFakeQuantWithMinMaxVarsOp : public RewritePattern {
         op.getLoc(),
         DenseElementsAttr::get(scalar_ty, ConvertToAPFloat(0.5, element_ty)));
 
-    quantized_input = rewriter.create<AddOp>(op.getLoc(), input_ty,
-                                             quantized_input, half_val);
+    quantized_input = rewriter.create<AddV2Op>(op.getLoc(), input_ty,
+                                               quantized_input, half_val);
 
     quantized_input = rewriter.create<FloorOp>(op.getLoc(), quantized_input);
 
@@ -428,8 +422,8 @@ class ConvertFakeQuantWithMinMaxVarsOp : public RewritePattern {
     Value output = rewriter.create<MulOp>(op.getLoc(), input_ty,
                                           quantized_input, quant_to_float);
 
-    output =
-        rewriter.create<AddOp>(op.getLoc(), input_ty, output, nudged_float_min);
+    output = rewriter.create<AddV2Op>(op.getLoc(), input_ty, output,
+                                      nudged_float_min);
 
     rewriter.replaceOp(op, {output});
     return success();
@@ -811,7 +805,7 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
                            CastOp::getOperationName(),
                            ConstOp::getOperationName(),
                            ConcatV2Op::getOperationName(),
-                           AddOp::getOperationName(),
+                           AddV2Op::getOperationName(),
                            PadOp::getOperationName(),
                            SplitOp::getOperationName(),
                            UnpackOp::getOperationName(),
@@ -837,6 +831,9 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
       return failure();
     }
     auto paddings_type = op.paddings().getType().cast<ShapedType>();
+    if (!paddings_type.hasRank()) {
+      return failure();
+    }
 
     int64_t input_rank = input_type.getRank();
     int64_t block_rank = block_shape_type.getNumElements();
@@ -907,8 +904,8 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
     auto paddings_split = rewriter.create<UnpackOp>(
         loc, TypeRange({paddings_sum_type, paddings_sum_type}), full_paddings,
         rewriter.getI64IntegerAttr(1));
-    auto paddings_sum = rewriter.create<AddOp>(loc, paddings_split.getResult(0),
-                                               paddings_split.getResult(1));
+    auto paddings_sum = rewriter.create<AddV2Op>(
+        loc, paddings_split.getResult(0), paddings_split.getResult(1));
 
     auto input_shape_tensor = rewriter.create<ConstOp>(
         loc,
@@ -918,7 +915,7 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
 
     // padded_shape_tensor is the shape of padded.
     auto padded_shape_tensor =
-        rewriter.create<AddOp>(loc, paddings_sum, input_shape_tensor);
+        rewriter.create<AddV2Op>(loc, paddings_sum, input_shape_tensor);
 
     auto zero_i32 = rewriter.create<ConstOp>(
         loc, GetScalarOfType(rewriter.getIntegerType(32), 0));
@@ -1408,9 +1405,9 @@ class LowerResizeNearestNeighbor : public RewritePattern {
         out_w_f32);
 
     Value zero_f32 = rewriter.create<ConstOp>(
-        loc, GetScalarOfFloatType(rewriter.getF32Type(), 0.0));
+        loc, GetScalarOfType(rewriter.getF32Type(), 0.0));
     Value one_f32 = rewriter.create<ConstOp>(
-        loc, GetScalarOfFloatType(rewriter.getF32Type(), 1.0));
+        loc, GetScalarOfType(rewriter.getF32Type(), 1.0));
 
     Value y_range = rewriter.create<RangeOp>(
         loc,
@@ -1520,6 +1517,58 @@ void PopulateLoweringTFPatterns(MLIRContext *context,
                    LowerResizeNearestNeighbor, LowerSparseMatMulOp,
                    Lower_UnaryOpsComposition>(context);
   populateWithGenerated(context, *patterns);
+}
+
+void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
+                                         OwningRewritePatternList *patterns) {
+  // clang-format off
+  patterns->insert<
+      ConvertFakeQuantWithMinMaxVarsOp,
+      LowerAddNOp,
+      LowerBatchToSpaceND,
+      LowerDynamicStitchOp<DynamicStitchOp>,
+      LowerDynamicStitchOp<ParallelDynamicStitchOp>,
+      LowerInvertPermutationOp,
+      LowerPackOp,
+      LowerResizeNearestNeighbor,
+      LowerSpaceToBatchNDOp,
+      LowerSparseMatMulOp,
+      Lower_UnaryOpsComposition>(context);
+  // clang-format on
+
+  // Populate the relevant generated patterns.
+  // clang-format off
+  patterns->insert<
+      LowerBiasAddGradOp,
+      LowerDivNoNanOp,
+      LowerEmptyOp,
+      LowerExpm1Op,
+      LowerFakeQuantWithMinMaxArgs,
+      LowerFillOp,
+      LowerIsNanOp,
+      LowerL2LossOp,
+      LowerMulNoNanOp,
+      LowerOnesLikeOp,
+      LowerPadOp,
+      LowerReciprocal,
+      LowerRintOp,
+      LowerRoundOpOnFloatTensor,
+      LowerRoundOpOnIntTensor,
+      LowerRsqrtGradOp,
+      LowerScatterNdOp,
+      LowerSizeOp,
+      LowerSoftmaxCrossEntropyWithLogitsOp,
+      LowerSparseSoftmaxCrossEntropyWithLogitsOp,
+      LowerSqrtGradOp,
+      LowerSquareOp,
+      LowerSquaredDifferenceOpOnRealTensors,
+      LowerSquaredDifferenceOpOneComplexTensors,
+      LowerTanhGradOp,
+      LowerXdivyOp,
+      LowerXlog1pyOp,
+      LowerXlogyOp,
+      LowerZerosLikeOp>(context);
+  // clang-format on
 }
 
 }  // namespace TF

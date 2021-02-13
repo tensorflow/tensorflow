@@ -56,7 +56,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/protobuf/data/experimental/snapshot.pb.h"
+#include "tensorflow/core/protobuf/snapshot.pb.h"
 #include "tensorflow/core/util/batch_util.h"
 #include "tensorflow/core/util/ptr_util.h"
 

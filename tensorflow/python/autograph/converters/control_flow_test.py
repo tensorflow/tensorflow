@@ -46,7 +46,7 @@ class ControlFlowTestBase(converter_testing.TestCase):
 
   def assertValuesEqual(self, actual, expected):
     values = nest.map_structure(
-        lambda x: self.evaluate(x) if tensor_util.is_tensor(x) else x,
+        lambda x: self.evaluate(x) if tensor_util.is_tf_type(x) else x,
         actual)
     self.assertAllEqual(values, expected)
 

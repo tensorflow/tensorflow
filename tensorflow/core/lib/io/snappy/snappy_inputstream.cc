@@ -68,7 +68,7 @@ Status SnappyInputStream::ReadNBytes(int64 bytes_to_read, tstring* result) {
   return Status::OK();
 }
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
 Status SnappyInputStream::ReadNBytes(int64 bytes_to_read, absl::Cord* result) {
   // TODO(frankchn): Optimize this instead of bouncing through the buffer.
   tstring buf;

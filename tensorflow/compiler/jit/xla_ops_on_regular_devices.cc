@@ -74,6 +74,9 @@ namespace tensorflow {
                           XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaKeyValueSort").Device(DEVICE),              \
                           XlaCompileOnDemandOp);                               \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("XlaVariadicSort").HostMemory("dimension").Device(DEVICE),          \
+      XlaCompileOnDemandOp);                                                   \
   REGISTER_KERNEL_BUILDER(Name("XlaWhile").Device(DEVICE),                     \
                           XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaDequantize").Device(DEVICE),                \

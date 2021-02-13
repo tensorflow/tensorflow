@@ -15,15 +15,30 @@ limitations under the License.
 
 #include "tensorflow/lite/core/subgraph.h"
 
+#include <stdarg.h>
+#include <stddef.h>
+
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <iterator>
+#include <memory>
+#include <utility>
+#include <vector>
 
+#include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/arena_planner.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
+#include "tensorflow/lite/core/macros.h"
+#include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/graph_info.h"
+#include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
@@ -162,9 +177,9 @@ class InterpreterInfo : public GraphInfo {
  public:
   explicit InterpreterInfo(Subgraph* subgraph) : subgraph_(subgraph) {}
 
-  size_t num_tensors() const override { return subgraph_->tensors().size(); }
+  size_t num_tensors() const override { return subgraph_->tensors_size(); }
   TfLiteTensor* tensor(size_t index) override {
-    return &subgraph_->tensors()[index];
+    return subgraph_->tensor(index);
   }
   size_t num_execution_nodes() const override {
     return subgraph_->execution_plan().size();
@@ -218,7 +233,7 @@ Subgraph::Subgraph(ErrorReporter* error_reporter,
 
   // Reserve some space for the tensors to avoid excessive resizing.
   tensors_.reserve(kTensorsReservedCapacity);
-  nodes_and_registration().reserve(kTensorsReservedCapacity);
+  nodes_and_registration_.reserve(kTensorsReservedCapacity);
   // Invalid to call these except from TfLiteDelegate
   SwitchToKernelContext();
 }
@@ -886,7 +901,10 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
     int first_execution_plan_index, const std::vector<int>& execution_plan,
     int* last_execution_plan_index_prepared) {
   if (first_execution_plan_index == 0) {
-    has_dynamic_tensors_ = false;
+    // Forwarding inputs without modification won't be not evaluated in the
+    // operators. So, it needs to look up the subgraph's output tensors at the
+    // beginning.
+    has_dynamic_tensors_ = HasDynamicTensorImpl(context_, outputs());
   }
   for (int execution_plan_index = first_execution_plan_index;
        execution_plan_index < execution_plan.size(); execution_plan_index++) {
@@ -961,12 +979,13 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
   // overhead should be minimal since the number of custom-allocated tensors
   // will typically be low.
   for (int i = 0; i < custom_allocations_.size(); ++i) {
-    auto idx_and_alloc = custom_allocations_[i];
-    auto& tensor = tensors()[idx_and_alloc.first];
-    const auto& alloc = idx_and_alloc.second;
-    TF_LITE_ENSURE(context(), tensor.allocation_type == kTfLiteCustom);
+    auto index_and_alloc = custom_allocations_[i];
+    TfLiteTensor* tensor_at_index = tensor(index_and_alloc.first);
+    const auto& alloc = index_and_alloc.second;
+    TF_LITE_ENSURE(context(),
+                   tensor_at_index->allocation_type == kTfLiteCustom);
     TF_LITE_ENSURE_STATUS(
-        ValidateCustomAllocationForTensor(context(), &tensor, alloc));
+        ValidateCustomAllocationForTensor(context(), tensor_at_index, alloc));
   }
 
   next_execution_plan_index_to_plan_allocation_ =
@@ -1191,7 +1210,8 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
   // ensure the buffer is large enough. However, we need to skip string tensors
   // and sparse tensors because their sizes change with the contents.
   // TODO(b/145615516): Extend BytesRequired to check sparse tensors.
-  if (type != kTfLiteString && sparsity == nullptr) {
+  if (type != kTfLiteString && type != kTfLiteResource &&
+      type != kTfLiteVariant && sparsity == nullptr) {
     size_t required_bytes;
     TF_LITE_ENSURE_OK(&context_,
                       BytesRequired(type, dims, rank, &required_bytes));
@@ -1243,7 +1263,8 @@ TfLiteStatus Subgraph::SetTensorParametersReadWrite(
   TF_LITE_ENSURE(&context_,
                  tensor_index < context_.tensors_size && tensor_index >= 0);
   size_t required_bytes = 0;
-  if (type != kTfLiteString) {
+  if (type != kTfLiteString && type != kTfLiteResource &&
+      type != kTfLiteVariant) {
     // These types will be allocated in our arena so we need to record how
     // many bytes we will need based on the dimensions. String tensors are
     // allocated dynamically and we can't know ahead of time how much space
@@ -1253,7 +1274,8 @@ TfLiteStatus Subgraph::SetTensorParametersReadWrite(
   }
 
   TfLiteAllocationType allocation_type = kTfLiteArenaRw;
-  if (type == kTfLiteString) {
+  if (type == kTfLiteString || type == kTfLiteResource ||
+      type == kTfLiteVariant) {
     if (is_variable) {
       // We don't have a real use case for string variable tensor.
       ReportError("String variable tensor isn't supported.");
@@ -1296,7 +1318,8 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
       tensor->allocation_type == kTfLiteCustom) {
     tensor_resized_since_op_invoke_ |=
         TfLiteIntArrayEqual(tensor->dims, new_size) == 0;
-    if (tensor->type != kTfLiteString) {
+    if (tensor->type != kTfLiteString && tensor->type != kTfLiteResource &&
+        tensor->type != kTfLiteVariant) {
       size_t bytesRequired;
       TfLiteStatus status = BytesRequired(tensor->type, new_size->data,
                                           new_size->size, &bytesRequired);
@@ -1486,6 +1509,11 @@ TfLiteStatus Subgraph::EnsureMemoryAllocations() {
 TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   TFLITE_SCOPED_TAGGED_DEFAULT_PROFILE(profiler_.get(),
                                        "ModifyGraphWithDelegate");
+
+  if (delegate == nullptr) {
+    ReportError("Null delegate.");
+    return kTfLiteDelegateError;
+  }
 
   // Restore delegation state if applicable.
   TF_LITE_ENSURE_STATUS(RedoAllDelegates());

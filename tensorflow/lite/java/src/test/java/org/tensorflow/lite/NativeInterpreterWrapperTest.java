@@ -104,7 +104,15 @@ public final class NativeInterpreterWrapperTest {
       NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(MODEL_WITH_CUSTOM_OP_PATH);
       fail();
     } catch (IllegalStateException e) {
-      assertThat(e).hasMessageThat().contains("Encountered unresolved custom op: Assign");
+      assertThat(e)
+          .hasMessageThat()
+          .contains("preparing tensor allocations: Encountered unresolved custom op: Assign");
+    } catch (IllegalArgumentException e) {
+      // As we could apply TfLite delegate by default, during which the prepration of this
+      // unresolved custom op could fail and this type of exception is thrown.
+      assertThat(e)
+          .hasMessageThat()
+          .containsMatch("Failed to apply .* delegate: Encountered unresolved custom op: Assign");
     }
   }
 
@@ -201,8 +209,20 @@ public final class NativeInterpreterWrapperTest {
       outputs.put(0, parsedOutputs);
       wrapper.run(inputs, outputs);
       long[] outputOneD = parsedOutputs[0][0][0];
-      long[] expected = {-892834092L, 923423L, 2123918239018L, -892834092L, 923423L, 2123918239018L,
-          -892834092L, 923423L, 2123918239018L, -892834092L, 923423L, 2123918239018L};
+      long[] expected = {
+        -892834092L,
+        923423L,
+        2123918239018L,
+        -892834092L,
+        923423L,
+        2123918239018L,
+        -892834092L,
+        923423L,
+        2123918239018L,
+        -892834092L,
+        923423L,
+        2123918239018L
+      };
       assertThat(outputOneD).isEqualTo(expected);
     }
   }
@@ -222,8 +242,20 @@ public final class NativeInterpreterWrapperTest {
       outputs.put(0, parsedOutputs);
       wrapper.run(inputs, outputs);
       byte[] outputOneD = parsedOutputs[0][0][0];
-      byte[] expected = {(byte) 0xe0, 0x4f, (byte) 0xd0, (byte) 0xe0, 0x4f, (byte) 0xd0,
-          (byte) 0xe0, 0x4f, (byte) 0xd0, (byte) 0xe0, 0x4f, (byte) 0xd0};
+      byte[] expected = {
+        (byte) 0xe0,
+        0x4f,
+        (byte) 0xd0,
+        (byte) 0xe0,
+        0x4f,
+        (byte) 0xd0,
+        (byte) 0xe0,
+        0x4f,
+        (byte) 0xd0,
+        (byte) 0xe0,
+        0x4f,
+        (byte) 0xd0
+      };
       assertThat(outputOneD).isEqualTo(expected);
     }
   }
@@ -242,7 +274,7 @@ public final class NativeInterpreterWrapperTest {
       wrapper.run(inputs, outputs);
       String[] outputOneD = parsedOutputs[0][0][0];
       String[] expected = {
-          "s1", "s22", "s333", "s1", "s22", "s333", "s1", "s22", "s333", "s1", "s22", "s333"
+        "s1", "s22", "s333", "s1", "s22", "s333", "s1", "s22", "s333", "s1", "s22", "s333"
       };
       assertThat(outputOneD).isEqualTo(expected);
     }
@@ -276,8 +308,8 @@ public final class NativeInterpreterWrapperTest {
       wrapper.run(inputs, outputs);
       String[] outputOneD = parsedOutputs[0][0][0];
       String[] expected = {
-          "\uD800\uDC01", "s22", "\ud841\udf0e", "\uD800\uDC01", "s22", "\ud841\udf0e",
-          "\uD800\uDC01", "s22", "\ud841\udf0e", "\uD800\uDC01", "s22", "\ud841\udf0e"
+        "\uD800\uDC01", "s22", "\ud841\udf0e", "\uD800\uDC01", "s22", "\ud841\udf0e",
+        "\uD800\uDC01", "s22", "\ud841\udf0e", "\uD800\uDC01", "s22", "\ud841\udf0e"
       };
       assertThat(outputOneD).isEqualTo(expected);
     }
@@ -332,8 +364,8 @@ public final class NativeInterpreterWrapperTest {
       wrapper.run(inputs, outputs);
       byte[] outputOneD = parsedOutputs[0][0][0];
       byte[] expected = {
-          (byte) 0xe0, 0x4f, (byte) 0xd0, (byte) 0xe0, 0x4f, (byte) 0xd0,
-          (byte) 0xe0, 0x4f, (byte) 0xd0, (byte) 0xe0, 0x4f, (byte) 0xd0
+        (byte) 0xe0, 0x4f, (byte) 0xd0, (byte) 0xe0, 0x4f, (byte) 0xd0,
+        (byte) 0xe0, 0x4f, (byte) 0xd0, (byte) 0xe0, 0x4f, (byte) 0xd0
       };
       assertThat(outputOneD).isEqualTo(expected);
     }

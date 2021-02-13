@@ -89,11 +89,18 @@ from tensorflow.python.framework.graph_util_impl import _bfs_for_reachable_nodes
 from tensorflow.python.framework.graph_util_impl import _extract_graph_summary
 from tensorflow.python.ops import array_ops as _array_ops
 from tensorflow.python.util import compat as _compat
+from tensorflow.python.util import deprecation as _deprecation
 from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
 @_tf_export(v1=["lite.OpHint"])
+@_deprecation.deprecated(
+    None,
+    "Please follow instructions under "
+    "https://www.tensorflow.org/lite/convert/operation_fusion for operation"
+    "fusion in tflite."
+)
 class OpHint(object):
   """A class that helps build tflite function invocations.
 
@@ -1302,6 +1309,12 @@ def is_ophint_converted(graph_def):
 
 
 @_tf_export(v1=["lite.experimental.convert_op_hints_to_stubs"])
+@_deprecation.deprecated(
+    None,
+    "Please follow instructions under "
+    "https://www.tensorflow.org/lite/convert/operation_fusion for operation"
+    "fusion in tflite."
+)
 def convert_op_hints_to_stubs(session=None,
                               graph_def=None,
                               write_callback=lambda graph_def, comments: None):

@@ -3,8 +3,8 @@
 load(
     "//tensorflow:tensorflow.bzl",
     "py_test",
+    "tf_cc_binary",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
     default_visibility = ["//tensorflow/tools/api:__subpackages__"],
@@ -27,7 +27,7 @@ py_test(
         "//third_party/py/numpy/tf_numpy_api:api_golden",
     ],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_pip",
         "no_rocm",
@@ -49,7 +49,7 @@ py_test(
     name = "module_test",
     srcs = ["module_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_windows",  # Failing due to missing API symbols.
     ],

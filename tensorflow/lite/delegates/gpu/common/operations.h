@@ -39,7 +39,7 @@ enum class OperationType {
   BATCH_NORMALIZATION,
   BATCHED_MATMUL,
   CONCAT,
-  CONST,
+  CONSTANT,
   CONVOLUTION_2D,
   CONVOLUTION_TRANSPOSED,
   COPY,
@@ -504,6 +504,9 @@ BHWC CalculateOutputShape(const BHWC& input,
 
 // @return shape of a tensor after Mean operation is applied to the given input.
 BHWC CalculateOutputShape(const BHWC& input, const MeanAttributes& attr);
+
+// @return shape of a tensor after Mean operation is applied to the given input.
+BHWDC CalculateOutputShape(const BHWDC& input, const MeanAttributes& attr);
 
 struct ElementwiseAttributes {
   TensorOrScalar param;

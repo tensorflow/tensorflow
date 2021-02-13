@@ -436,6 +436,10 @@ class TFETensorTest(test_util.TensorFlowTestCase):
 
 class TFETensorUtilTest(test_util.TensorFlowTestCase):
 
+  def setUp(self):
+    super(TFETensorUtilTest, self).setUp()
+    context.ensure_initialized()
+
   def testListOfThree(self):
     t1 = _create_tensor([[1, 2], [3, 4], [5, 6]], dtype=dtypes.int32)
     t2 = _create_tensor([[1, 2, 5], [3, 4, 5]], dtype=dtypes.int32)

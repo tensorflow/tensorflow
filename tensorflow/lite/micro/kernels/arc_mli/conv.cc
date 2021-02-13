@@ -1,4 +1,4 @@
-/* Copyright 2019-2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -240,7 +240,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       data->cfg->relu.type = MLI_RELU_GEN;
     } else if (params->activation == kTfLiteActRelu6) {
       data->cfg->relu.type = MLI_RELU_6;
-    } else if (params->activation == kTfLiteActRelu1) {
+    } else if (params->activation == kTfLiteActReluN1To1) {
       data->cfg->relu.type = MLI_RELU_1;
     } else {
       data->cfg->relu.type = MLI_RELU_NONE;

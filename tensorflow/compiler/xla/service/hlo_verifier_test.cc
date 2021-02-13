@@ -394,6 +394,21 @@ TEST_F(HloVerifierTest, PadNegativeInteriorDilationNotAllowed) {
               HasSubstr("Interior padding cannot be negative"));
 }
 
+TEST_F(HloVerifierTest, DotMixedPrecisionAllowed) {
+  static const char* const kDotHloString = R"(
+HloModule module
+ENTRY entry_computation {
+  a = f32[2,10] parameter(0)
+  b = bf16[10,2] parameter(1)
+  ROOT dot = f32[2,2] dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kDotHloString));
+
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_TRUE(status.ok()) << status;
+}
+
 // Simple module containing a convolution as the root.
 static const char* const kConvHloString = R"(
 HloModule module
@@ -1218,6 +1233,102 @@ TEST_F(HloVerifierTest, CollectivePermuteDoneNoCollectivePermuteStart) {
   EXPECT_THAT(status.error_message(),
               HasSubstr("The operand of a collective-permute-done instruction "
                         "needs to be collective-permute-start, found tuple"));
+}
+
+TEST_F(HloVerifierTest, ComparisonTypeFloat) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY RngOperandElementTypesNotMatch {
+   p0 = f32[] parameter(0)
+   ROOT cmp = pred[] compare(f32[] p0, f32[] p0), direction=LT, type=UNSIGNED
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Expected comparison type FLOAT or TOTALORDER"));
+}
+
+TEST_F(HloVerifierTest, ComparisonTypeSigned) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY RngOperandElementTypesNotMatch {
+   p0 = s32[] parameter(0)
+   ROOT cmp = pred[] compare(s32[] p0, s32[] p0), direction=LT, type=UNSIGNED
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Expected comparison type SIGNED"));
+}
+
+TEST_F(HloVerifierTest, ComparisonTypeUnsigned) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY RngOperandElementTypesNotMatch {
+   p0 = u32[] parameter(0)
+   ROOT cmp = pred[] compare(u32[] p0, u32[] p0), direction=LT, type=SIGNED
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Expected comparison type UNSIGNED"));
+}
+
+TEST_F(HloVerifierTest, ComparisonTypePred) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY RngOperandElementTypesNotMatch {
+   p0 = pred[] parameter(0)
+   ROOT cmp = pred[] compare(pred[] p0, pred[] p0), direction=LT, type=SIGNED
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Expected comparison type UNSIGNED"));
+}
+
+TEST_F(HloVerifierTest, UseGlobalDeviceIdsEmptyReplicaGroup) {
+  const char* const hlo_string = R"(
+  HloModule Module
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY CRS {
+    input = f32[8]{0} parameter(0)
+    ROOT crs = f32[8]{0} all-reduce(input), replica_groups={},
+                         use_global_device_ids=true, to_apply=add
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Replica group must be specified when "
+                        "use_global_device_ids is true"));
 }
 
 }  // namespace

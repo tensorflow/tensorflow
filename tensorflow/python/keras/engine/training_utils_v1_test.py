@@ -30,6 +30,8 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
@@ -37,6 +39,8 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.engine import training_utils_v1
 from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 
@@ -48,10 +52,10 @@ class ModelInputsTest(test.TestCase):
     model_inputs = training_utils_v1.ModelInputs(a)
     self.assertEqual(['input_1'], model_inputs.get_input_names())
     vals = model_inputs.get_symbolic_inputs()
-    self.assertTrue(tensor_util.is_tensor(vals))
+    self.assertTrue(tensor_util.is_tf_type(vals))
     vals = model_inputs.get_symbolic_inputs(return_single_as_list=True)
     self.assertEqual(1, len(vals))
-    self.assertTrue(tensor_util.is_tensor(vals[0]))
+    self.assertTrue(tensor_util.is_tf_type(vals[0]))
     self.assertEqual(backend.floatx(), vals[0].dtype)
 
   def test_single_thing_eager(self):
@@ -83,8 +87,8 @@ class ModelInputsTest(test.TestCase):
     model_inputs = training_utils_v1.ModelInputs(a)
     self.assertEqual(['input_1', 'input_2'], model_inputs.get_input_names())
     vals = model_inputs.get_symbolic_inputs()
-    self.assertTrue(tensor_util.is_tensor(vals[0]))
-    self.assertTrue(tensor_util.is_tensor(vals[1]))
+    self.assertTrue(tensor_util.is_tf_type(vals[0]))
+    self.assertTrue(tensor_util.is_tf_type(vals[1]))
 
   def test_list_eager(self):
     if not context.executing_eagerly():
@@ -109,8 +113,8 @@ class ModelInputsTest(test.TestCase):
     model_inputs = training_utils_v1.ModelInputs(a)
     self.assertEqual(['a', 'b'], model_inputs.get_input_names())
     vals = model_inputs.get_symbolic_inputs()
-    self.assertTrue(tensor_util.is_tensor(vals['a']))
-    self.assertTrue(tensor_util.is_tensor(vals['b']))
+    self.assertTrue(tensor_util.is_tf_type(vals['a']))
+    self.assertTrue(tensor_util.is_tf_type(vals['b']))
 
   def test_dict_eager(self):
     if not context.executing_eagerly():
@@ -390,6 +394,75 @@ class AggregationTest(keras_parameterized.TestCase):
     training_utils_v1._COPY_POOL._func_wrapper = cause_error
     with self.assertRaisesRegex(TypeError, 'NoneType'):
       self._run_without_steps()
+
+
+class CompositeTensorTestUtils(keras_parameterized.TestCase):
+
+  def test_is_composite(self):
+    # Validate that all composite tensor and value types return true.
+    self.assertTrue(
+        training_utils_v1.is_composite_or_composite_value(
+            sparse_tensor.SparseTensor([[0, 0]], [1], [1, 1])))
+    self.assertTrue(
+        training_utils_v1.is_composite_or_composite_value(
+            sparse_tensor.SparseTensorValue([[0, 0]], [1], [1, 1])))
+    self.assertTrue(
+        training_utils_v1.is_composite_or_composite_value(
+            ragged_tensor.RaggedTensor.from_row_splits(
+                np.array([0, 1, 2]), np.array([0, 1, 3], dtype=np.int64))))
+    self.assertTrue(
+        training_utils_v1.is_composite_or_composite_value(
+            ragged_tensor_value.RaggedTensorValue(
+                np.array([0, 1, 2]), np.array([0, 1, 3], dtype=np.int64))))
+
+    # Test that numpy arrays and tensors return false.
+    self.assertFalse(
+        training_utils_v1.is_composite_or_composite_value(np.ndarray([0, 1])))
+    self.assertFalse(
+        training_utils_v1.is_composite_or_composite_value(
+            ops.convert_to_tensor_v2_with_dispatch([3, 1])))
+
+  def test_sparse_concatenation(self):
+    tensor_1 = sparse_tensor.SparseTensor([[0, 0]], [1], [1, 1])
+    tensor_2 = sparse_tensor.SparseTensor([[0, 0]], [2], [1, 1])
+    concatenated_tensor = training_utils_v1._append_composite_tensor(
+        tensor_1, tensor_2)
+    evaluated_tensor = self.evaluate(concatenated_tensor)
+    self.assertAllEqual(evaluated_tensor.indices, [[0, 0], [1, 0]])
+    self.assertAllEqual(evaluated_tensor.values, [1, 2])
+    self.assertAllEqual(evaluated_tensor.dense_shape, [2, 1])
+
+  def test_sparse_value_concatenation(self):
+    tensor_1 = sparse_tensor.SparseTensorValue([[0, 0]], [1], [1, 1])
+    tensor_2 = sparse_tensor.SparseTensorValue([[0, 0]], [2], [1, 1])
+    concatenated_tensor = training_utils_v1._append_composite_tensor(
+        tensor_1, tensor_2)
+    self.assertAllEqual(concatenated_tensor.indices, [[0, 0], [1, 0]])
+    self.assertAllEqual(concatenated_tensor.values, [1, 2])
+    self.assertAllEqual(concatenated_tensor.dense_shape, [2, 1])
+
+  def test_ragged_concatenation(self):
+    tensor_1 = ragged_tensor.RaggedTensor.from_row_splits(
+        np.array([0, 1, 2]), np.array([0, 1, 3], dtype=np.int64))
+    tensor_2 = ragged_tensor.RaggedTensor.from_row_splits(
+        np.array([3, 4, 5]), np.array([0, 2, 3], dtype=np.int64))
+    concatenated_tensor = training_utils_v1._append_composite_tensor(
+        tensor_1, tensor_2)
+    evaluated_tensor = self.evaluate(concatenated_tensor)
+
+    self.assertAllEqual(evaluated_tensor.values, [0, 1, 2, 3, 4, 5])
+    self.assertAllEqual(evaluated_tensor.row_splits, [0, 1, 3, 5, 6])
+
+  def test_ragged_value_concatenation(self):
+    tensor_1 = ragged_tensor_value.RaggedTensorValue(
+        np.array([0, 1, 2]), np.array([0, 1, 3], dtype=np.int64))
+    tensor_2 = ragged_tensor_value.RaggedTensorValue(
+        np.array([3, 4, 5]), np.array([0, 2, 3], dtype=np.int64))
+    concatenated_tensor = training_utils_v1._append_composite_tensor(
+        tensor_1, tensor_2)
+
+    self.assertAllEqual(concatenated_tensor.values, [0, 1, 2, 3, 4, 5])
+    self.assertAllEqual(concatenated_tensor.row_splits, [0, 1, 3, 5, 6])
 
 
 if __name__ == '__main__':

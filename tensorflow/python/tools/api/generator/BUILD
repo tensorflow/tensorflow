@@ -19,18 +19,19 @@ exports_files(
 py_library(
     name = "create_python_api",
     srcs = ["//tensorflow/python/tools/api/generator:create_python_api.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/tools/api/generator:doc_srcs",
+        "//tensorflow/python/util:fast_module_type",
     ],
 )
 
 py_library(
     name = "doc_srcs",
     srcs = ["doc_srcs.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:util",
@@ -44,7 +45,7 @@ py_test(
         "create_python_api_test.py",
     ],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":doc_srcs",
         "//tensorflow/python:client_testlib",
@@ -61,7 +62,7 @@ py_test(
     ] + KERAS_API_INIT_FILES + KERAS_API_INIT_FILES_V1 + TENSORFLOW_API_INIT_FILES + TENSORFLOW_API_INIT_FILES_V1,
     main = "doc_srcs_test.py",
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":doc_srcs",
         "//tensorflow/python:client_testlib",
@@ -77,7 +78,7 @@ py_test(
         "api_init_files_v1.bzl",
     ],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_pip",
     ],

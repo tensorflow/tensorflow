@@ -74,6 +74,7 @@ TEST(UtilTest, CommonFactors) {
     absl::InlinedVector<std::pair<int64, int64>, 8> expected;
   } test_cases[] = {
       {/*.a =*/{0}, /*.b =*/{0}, /*.expected =*/{{0, 0}, {1, 1}}},
+      {/*.a =*/{0, 1}, /*.b =*/{0, 1}, /*.expected =*/{{0, 0}, {1, 1}, {2, 2}}},
       {/*.a =*/{}, /*.b =*/{}, /*.expected =*/{{0, 0}}},
       {/*.a =*/{2, 5, 1, 3},
        /*.b =*/{1, 10, 3, 1},
@@ -124,6 +125,14 @@ TEST(UtilTest, RoundTripFpToString) {
             "nan");
   EXPECT_EQ(RoundTripFpToString(-std::numeric_limits<double>::quiet_NaN()),
             "-nan");
+}
+
+TEST(UtilTest, SplitF64ToF32) {
+  // Overflowing the F32 exponent in SplitF64ToF32 should result in a pair of
+  // [∞,0].
+  EXPECT_EQ(SplitF64ToF32(std::numeric_limits<double>::max()).first,
+            std::numeric_limits<float>::infinity());
+  EXPECT_EQ(SplitF64ToF32(std::numeric_limits<double>::max()).second, 0.0f);
 }
 
 }  // namespace

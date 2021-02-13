@@ -21,7 +21,7 @@ limitations under the License.
 #if TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR
 // Only enable metal delegate when using a real iPhone device.
 #define REAL_IPHONE_DEVICE
-#include "tensorflow/lite/experimental/delegates/coreml/coreml_delegate.h"
+#include "tensorflow/lite/delegates/coreml/coreml_delegate.h"
 #endif
 #endif
 

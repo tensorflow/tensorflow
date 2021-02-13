@@ -27,6 +27,7 @@ from tensorflow.python import pywrap_tfe
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 _MetricMethod = collections.namedtuple('MetricMethod', 'create delete get_cell')
 _counter_methods = [
@@ -329,6 +330,7 @@ class BoolGaugeCell(object):
     return pywrap_tfe.TFE_MonitoringBoolGaugeCellValue(self._cell)
 
 
+@tf_export("__internal__.monitoring.BoolGauge", v1=[])
 class BoolGauge(Metric):
   """A stateful class for updating a gauge-like bool metric.
 
@@ -484,7 +486,7 @@ class MonitoredTimer(object):
 def monitored_timer(cell):
   """A function decorator for adding MonitoredTimer support.
 
-  Arguments:
+  Args:
     cell: the cell associated with the time metric that will be inremented.
   Returns:
     A decorator that measure the function runtime and increment the specified

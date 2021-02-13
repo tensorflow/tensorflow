@@ -42,7 +42,7 @@ void OptimizeMhloPass::runOnFunction() {
   mlir::OwningRewritePatternList patterns;
   mlir::mhlo::PopulateOptimizeMHLOPatterns(&getContext(), &patterns);
 
-  applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
 }
 
 std::unique_ptr<mlir::FunctionPass> mlir::mhlo::createOptimizeMhloPass() {

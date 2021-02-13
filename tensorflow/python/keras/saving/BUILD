@@ -45,7 +45,7 @@ py_library(
         "saved_model_experimental.py",
         "saving_utils.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":load_context",
         "//tensorflow/python:lib",
@@ -75,7 +75,7 @@ py_library(
     srcs = [
         "saved_model/load_context.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [],
 )
 
@@ -111,9 +111,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "hdf5_format_test",
+    name = "save_weights_test",
     size = "medium",
-    srcs = ["hdf5_format_test.py"],
+    srcs = ["save_weights_test.py"],
     python_version = "PY3",
     shard_count = 4,
     tags = [
@@ -134,6 +134,7 @@ tf_py_test(
     size = "medium",
     srcs = ["save_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/feature_column:feature_column_v2",

@@ -81,7 +81,7 @@ void ParseGCSPath(const std::string& fname, bool object_empty_ok,
     return;
   }
 
-  size_t bucket_end = fname.find("/", scheme_end + 1);
+  size_t bucket_end = fname.find('/', scheme_end + 1);
   if (bucket_end == std::string::npos) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
                  "GCS path doesn't contain a bucket name.");

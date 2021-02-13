@@ -1290,7 +1290,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
                         ShapeInference::InferConvolveShape(
                             lhs_shape, rhs_shape, conv->feature_group_count(),
-                            conv->batch_group_count(), window, dnums));
+                            conv->batch_group_count(), window, dnums,
+                            /*preferred_element_type=*/absl::nullopt));
     CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
         << "return shape set to: " << ShapeUtil::HumanString(result_shape)
         << " but is inferred to be: "
@@ -1769,6 +1770,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<uint8>(map));
         break;
       }
+      case U16: {
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<uint16>(map));
+        break;
+      }
       case U32: {
         TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<uint32>(map));
         break;
@@ -1779,6 +1784,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       }
       case S8: {
         TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<int8>(map));
+        break;
+      }
+      case S16: {
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<int16>(map));
         break;
       }
       case S32: {

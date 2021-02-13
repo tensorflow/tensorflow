@@ -1,10 +1,4 @@
 # Library for generating feature vectors from audio data
-
-load(
-    "//tensorflow/lite/micro/testing:micro_test.bzl",
-    "tflite_micro_cc_test",
-)
-
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
@@ -123,7 +117,7 @@ cc_library(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "fft_test",
     srcs = ["fft_test.cc"],
     deps = [
@@ -132,7 +126,7 @@ tflite_micro_cc_test(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "filterbank_test",
     srcs = ["filterbank_test.cc"],
     # Setting copts for experimental code to [], but this code should be fixed
@@ -144,7 +138,7 @@ tflite_micro_cc_test(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "frontend_test",
     srcs = ["frontend_test.cc"],
     # Setting copts for experimental code to [], but this code should be fixed
@@ -156,7 +150,7 @@ tflite_micro_cc_test(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "log_scale_test",
     srcs = ["log_scale_test.cc"],
     # Setting copts for experimental code to [], but this code should be fixed
@@ -168,7 +162,7 @@ tflite_micro_cc_test(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "noise_reduction_test",
     srcs = ["noise_reduction_test.cc"],
     # Setting copts for experimental code to [], but this code should be fixed
@@ -180,7 +174,7 @@ tflite_micro_cc_test(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "pcan_gain_control_test",
     srcs = ["pcan_gain_control_test.cc"],
     # Setting copts for experimental code to [], but this code should be fixed
@@ -192,7 +186,7 @@ tflite_micro_cc_test(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "window_test",
     srcs = ["window_test.cc"],
     # Setting copts for experimental code to [], but this code should be fixed
