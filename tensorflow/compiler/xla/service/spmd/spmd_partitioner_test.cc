@@ -7030,6 +7030,87 @@ ENTRY %module {
   EXPECT_THAT(sort, sort_match);
 }
 
+TEST_F(SpmdPartitioningTest, SortTopKPropagateBaseShape) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+%compare-greater-than.42077 (p.0.lhs.42078: f32[],
+  p.0.rhs.42079: f32[], p.1.lhs.42080: s32[], p.1.rhs.42081: s32[]) -> pred[] {
+  %p.0.lhs.42078 = f32[] parameter(0)
+  %bitcast-convert.135 = s32[] bitcast-convert(f32[] %p.0.lhs.42078)
+  %constant.45054 = s32[] constant(0)
+  %compare.133 = pred[] compare(s32[] %bitcast-convert.135,
+    s32[] %constant.45054), direction=LT
+  %constant.45278 = u32[] constant(2147483647)
+  %bitcast-convert.136 = u32[] bitcast-convert(f32[] %p.0.lhs.42078)
+  %subtract.337 = u32[] subtract(u32[] %constant.45278,
+    u32[] %bitcast-convert.136)
+  %bitcast-convert.137 = s32[] bitcast-convert(u32[] %subtract.337)
+  %select.282 = s32[] select(pred[] %compare.133, s32[] %bitcast-convert.137,
+    s32[] %bitcast-convert.135)
+  %p.0.rhs.42079 = f32[] parameter(1)
+  %bitcast-convert.138 = s32[] bitcast-convert(f32[] %p.0.rhs.42079)
+  %compare.134 = pred[] compare(s32[] %bitcast-convert.138,
+    s32[] %constant.45054), direction=LT
+  %bitcast-convert.139 = u32[] bitcast-convert(f32[] %p.0.rhs.42079)
+  %subtract.338 = u32[] subtract(u32[] %constant.45278,
+    u32[] %bitcast-convert.139)
+  %bitcast-convert.140 = s32[] bitcast-convert(u32[] %subtract.338)
+  %select.283 = s32[] select(pred[] %compare.134, s32[] %bitcast-convert.140,
+    s32[] %bitcast-convert.138)
+  %compare.135 = pred[] compare(s32[] %select.282,
+    s32[] %select.283), direction=GT
+  %compare.428 = pred[] compare(s32[] %select.283,
+    s32[] %select.282), direction=GT
+  %compare.429 = pred[] compare(pred[] %compare.135,
+    pred[] %compare.428), direction=EQ
+  %p.1.lhs.42080 = s32[] parameter(2)
+  %p.1.rhs.42081 = s32[] parameter(3)
+  %compare.430 = pred[] compare(s32[] %p.1.lhs.42080,
+    s32[] %p.1.rhs.42081), direction=LT
+  ROOT %select.579 = pred[] select(pred[] %compare.429,
+    pred[] %compare.430, pred[] %compare.135)
+}
+
+ENTRY %module {
+  %parameter.0 = f32[2,64,32128]{2,1,0} parameter(0),
+     sharding={devices=[1,1,8]0,1,2,3,4,5,6,7}
+  %iota = s32[2,64,32128]{2,1,0} iota(), iota_dimension=2,
+    sharding={devices=[1,1,8]0,1,2,3,4,5,6,7}
+  %sort.18 = (f32[2,64,32128]{2,1,0}, s32[2,64,32128]{2,1,0}) sort(
+    f32[2,64,32128]{2,1,0} %parameter.0, s32[2,64,32128]{2,1,0} %iota),
+    dimensions={2}, is_stable=true, to_apply=%compare-greater-than.42077,
+    sharding={{devices=[1,1,8]0,1,2,3,4,5,6,7},
+    {devices=[1,1,8]0,1,2,3,4,5,6,7}}
+  output = f32[2,64,32128]{2,1,0} get-tuple-element(%sort.18), index=0,
+    sharding={devices=[1,1,8]0,1,2,3,4,5,6,7}
+  %slice.0 = f32[2,64,2]{2,1,0} slice(f32[2,64,32128]{2,1,0} output),
+    slice={[0:2], [0:64], [0:2]},
+    sharding={devices=[1,1,8]0,1,2,3,4,5,6,7}
+  output2 = s32[2,64,32128]{2,1,0} get-tuple-element(%sort.18), index=1,
+    sharding={replicated}
+  %slice.1 = s32[2,64,2]{2,1,0} slice(s32[2,64,32128]{2,1,0} output2),
+    slice={[0:2], [0:64], [0:2]},
+    sharding={devices=[1,1,8]0,1,2,3,4,5,6,7}
+  ROOT output.t = (f32[2,64,2]{2,1,0},
+    s32[2,64,2]{2,1,0}) tuple(slice.0, slice.1),
+    sharding={{replicated}, {replicated}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  auto all_reduce_val =
+      AllOf(op::Shape("f32[2,64,2]"),
+            op::Slice(op::AllReduce(op::DynamicUpdateSlice(_, _, _, _, _))));
+  auto all_reduce_idx =
+      AllOf(op::Shape("s32[2,64,2]"),
+            op::Slice(op::AllReduce(op::DynamicUpdateSlice(_, _, _, _, _))));
+  auto tuple = AllOf(op::Shape("(f32[2,64,2], s32[2,64,2])"),
+                     op::Tuple(all_reduce_val, all_reduce_idx));
+  EXPECT_THAT(root, tuple);
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla
