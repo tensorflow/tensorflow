@@ -87,6 +87,8 @@ class ConvolutionMetal : public GPUOperation {
       const OperationDef& definition, const BHWC& dst_shape,
       const Convolution2DAttributes& attr, const GpuInfo& gpu_info);
 
+  int2 padding_;
+  int2 dilation_;
   ConvParams params_;
 };
 

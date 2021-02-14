@@ -32,6 +32,7 @@ cc_library(
     name = "kernel_creator",
     srcs = ["kernel_creator.cc"],
     hdrs = ["kernel_creator.h"],
+    compatible_with = get_compatible_with_cloud(),
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
         "//tensorflow/compiler/mlir/hlo",

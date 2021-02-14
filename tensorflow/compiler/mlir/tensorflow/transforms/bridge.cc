@@ -59,7 +59,10 @@ tensorflow::Status RunTPUBridge(
     llvm::function_ref<void(OpPassManager &pm)> pipeline_builder) {
   PassManager bridge(module.getContext());
   ::tensorflow::applyTensorflowAndCLOptions(bridge);
-  if (enable_logging) EnableLogging(&bridge);
+  if (enable_logging || VLOG_IS_ON(1)) {
+    tensorflow::DumpMlirOpToFile("tpu_bridge_before", module);
+    if (VLOG_IS_ON(2)) EnableLogging(&bridge);
+  }
 
   // Populate a passmanager with the list of passes that implement the bridge.
   pipeline_builder(bridge);
@@ -72,6 +75,8 @@ tensorflow::Status RunTPUBridge(
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
   LogicalResult result = bridge.run(module);
   (void)result;
+  if (enable_logging || VLOG_IS_ON(1))
+    tensorflow::DumpMlirOpToFile("tpu_bridge_after", module);
   return diag_handler.ConsumeStatus();
 }
 }  // namespace
@@ -163,7 +168,10 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
                                                  bool enable_logging,
                                                  bool enable_inliner) {
   PassManager bridge(module.getContext());
-  if (enable_logging) EnableLogging(&bridge);
+  if (enable_logging || VLOG_IS_ON(1)) {
+    tensorflow::DumpMlirOpToFile("standard_pipeline_before", module);
+    if (VLOG_IS_ON(2)) EnableLogging(&bridge);
+  }
 
   StandardPipelineOptions pipeline_options;
   pipeline_options.enable_inliner.setValue(enable_inliner);
@@ -171,6 +179,8 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
   LogicalResult result = bridge.run(module);
   (void)result;
+  if (enable_logging || VLOG_IS_ON(1))
+    tensorflow::DumpMlirOpToFile("standard_pipeline_after", module);
   return diag_handler.ConsumeStatus();
 }
 

@@ -3195,6 +3195,30 @@ Status AlgebraicSimplifierVisitor::HandleCompare(HloInstruction* compare) {
     }
   }
 
+  if (Cast<HloCompareInstruction>(compare)->type() ==
+      Comparison::Type::kUnsigned) {
+    // X u<  0 -> false
+    if (compare->comparison_direction() == ComparisonDirection::kLt &&
+        IsAll(rhs, 0)) {
+      return ReplaceInstruction(compare, MakeScalarLike(compare, false));
+    }
+    // X u>= 0 -> true
+    if (compare->comparison_direction() == ComparisonDirection::kGe &&
+        IsAll(rhs, 0)) {
+      return ReplaceInstruction(compare, MakeScalarLike(compare, true));
+    }
+    // 0 u>  X -> false
+    if (compare->comparison_direction() == ComparisonDirection::kGt &&
+        IsAll(lhs, 0)) {
+      return ReplaceInstruction(compare, MakeScalarLike(compare, false));
+    }
+    // 0 u<= X -> true
+    if (compare->comparison_direction() == ComparisonDirection::kLe &&
+        IsAll(lhs, 0)) {
+      return ReplaceInstruction(compare, MakeScalarLike(compare, true));
+    }
+  }
+
   if (compare->comparison_direction() == ComparisonDirection::kLt &&
       lhs->opcode() == HloOpcode::kIota && IsAll(rhs, 0)) {
     return ReplaceInstruction(compare, MakeScalarLike(compare, false));

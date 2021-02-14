@@ -50,7 +50,7 @@ class ResizeNearestNeighborOpTestBase(test.TestCase):
       input_tensor = constant_op.constant(x, shape=in_shape)
       resize_out = image_ops.resize_nearest_neighbor(input_tensor,
                                                      out_shape[1:3])
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         self.assertEqual(out_shape, list(resize_out.get_shape()))
         resize_out = self.evaluate(resize_out)
       self.assertEqual(out_shape, list(resize_out.shape))
@@ -65,7 +65,7 @@ class ResizeNearestNeighborOpTestBase(test.TestCase):
       def resize_nn(t, shape=out_shape):
         return image_ops.resize_nearest_neighbor(t, shape[1:3])
 
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         input_tensor = constant_op.constant(x, shape=in_shape)
         err = gradient_checker_v2.max_error(
             *gradient_checker_v2.compute_gradient(
@@ -82,7 +82,7 @@ class ResizeNearestNeighborOpTestBase(test.TestCase):
       def resize_nn(t, shape=out_shape):
         return image_ops.resize_nearest_neighbor(t, shape[1:3])
 
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         input_tensor = constant_op.constant(x, shape=in_shape)
         err = gradient_checker_v2.max_error(
             *gradient_checker_v2.compute_gradient(
@@ -106,7 +106,7 @@ class ResizeNearestNeighborOpTestBase(test.TestCase):
           grad_cpu = gradient_checker_v2.compute_gradient(
               resize_nn, [input_tensor], delta=1 / 8)
 
-        with self.cached_session(use_gpu=True):
+        with self.cached_session():
           input_tensor = constant_op.constant(x, shape=in_shape)
           grad_gpu = gradient_checker_v2.compute_gradient(
               resize_nn, [input_tensor], delta=1 / 8)
@@ -444,7 +444,7 @@ class CropAndResizeOpTestBase(test.TestCase):
         constant_op.constant(boxes, shape=[num_boxes, 4]),
         constant_op.constant(box_ind, shape=[num_boxes]),
         constant_op.constant(crop_size, shape=[2]))
-    with self.session(use_gpu=True) as sess:
+    with self.session() as sess:
       self.assertEqual(crops_shape, list(crops.get_shape()))
       crops = self.evaluate(crops)
       self.assertEqual(crops_shape, list(crops.shape))
@@ -561,7 +561,7 @@ class RGBToHSVOpTestBase(test.TestCase):
       x = np.random.randint(0, high=255, size=[2, 20, 30, 3]).astype(nptype)
       rgb_input_tensor = constant_op.constant(x, shape=in_shape)
       hsv_out = gen_image_ops.rgb_to_hsv(rgb_input_tensor)
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         self.assertEqual(out_shape, list(hsv_out.get_shape()))
       hsv_out = self.evaluate(hsv_out)
       self.assertEqual(out_shape, list(hsv_out.shape))

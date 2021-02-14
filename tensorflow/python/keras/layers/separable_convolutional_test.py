@@ -35,7 +35,7 @@ class SeparableConv1DTest(keras_parameterized.TestCase):
     stack_size = 3
     length = 7
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.SeparableConv1D,
           kwargs=kwargs,
@@ -66,7 +66,7 @@ class SeparableConv1DTest(keras_parameterized.TestCase):
         'activity_regularizer': 'l2',
         'strides': 1
     }
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = keras.layers.SeparableConv1D(**kwargs)
       layer.build((None, 5, 2))
       self.assertEqual(len(layer.losses), 3)
@@ -87,7 +87,7 @@ class SeparableConv1DTest(keras_parameterized.TestCase):
         'bias_constraint': b_constraint,
         'strides': 1
     }
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = keras.layers.SeparableConv1D(**kwargs)
       layer.build((None, 5, 2))
       self.assertEqual(layer.depthwise_kernel.constraint, d_constraint)
@@ -104,7 +104,7 @@ class SeparableConv2DTest(keras_parameterized.TestCase):
     num_row = 7
     num_col = 6
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.SeparableConv2D,
           kwargs=kwargs,
@@ -138,7 +138,7 @@ class SeparableConv2DTest(keras_parameterized.TestCase):
         'activity_regularizer': 'l2',
         'strides': 1
     }
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = keras.layers.SeparableConv2D(**kwargs)
       layer.build((None, 5, 5, 2))
       self.assertEqual(len(layer.losses), 3)
@@ -159,7 +159,7 @@ class SeparableConv2DTest(keras_parameterized.TestCase):
         'bias_constraint': b_constraint,
         'strides': 1
     }
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = keras.layers.SeparableConv2D(**kwargs)
       layer.build((None, 5, 5, 2))
       self.assertEqual(layer.depthwise_kernel.constraint, d_constraint)

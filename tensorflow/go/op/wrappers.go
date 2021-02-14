@@ -32571,8 +32571,8 @@ func SparseReduceSumSparse(scope *Scope, input_indices tf.Output, input_values t
 //
 // See: https://en.wikipedia.org/wiki/Rectifier_(neural_networks)
 // Example usage:
-// >>> tf.nn.relu([-2., 0., -0., 3.]).numpy()
-// array([ 0.,  0., -0.,  3.], dtype=float32)
+// >>> tf.nn.relu([-2., 0., 3.]).numpy()
+// array([0., 0., 3.], dtype=float32)
 func Relu(scope *Scope, features tf.Output) (activations tf.Output) {
 	if scope.Err() != nil {
 		return

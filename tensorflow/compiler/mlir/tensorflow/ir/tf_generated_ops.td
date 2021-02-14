@@ -11823,6 +11823,44 @@ shape must be exactly the shape produced by the slice of `ref`.
   TF_DerivedOperandTypeAttr Index = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_RestoreOp : TF_Op<"Restore", []> {
+  let summary = "Restores a tensor from checkpoint files.";
+
+  let description = [{
+Reads a tensor stored in one or several files. If there are several files (for
+instance because a tensor was saved as slices), `file_pattern` may contain
+wildcard symbols (`*` and `?`) in the filename portion only, not in the
+directory portion.
+
+If a `file_pattern` matches several files, `preferred_shard` can be used to hint
+in which file the requested tensor is likely to be found. This op will first
+open the file at index `preferred_shard` in the list of matching files and try
+to restore tensors from that file.  Only if some tensors or tensor slices are
+not found in that first file, then the Op opens all the files. Setting
+`preferred_shard` to match the value passed as the `shard` input
+of a matching `Save` Op may speed up Restore.  This attribute only affects
+performance, not correctness.  The default value -1 means files are processed in
+order.
+
+See also `RestoreSlice`.
+  }];
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{Must have a single element. The pattern of the files from
+which we read the tensor.}]>:$file_pattern,
+    Arg<TF_StrTensor, [{Must have a single element. The name of the tensor to be
+restored.}]>:$tensor_name,
+
+    DefaultValuedAttr<I64Attr, "-1">:$preferred_shard
+  );
+
+  let results = (outs
+    Res<TF_Tensor, [{The restored tensor.}]>:$tensor
+  );
+
+  TF_DerivedResultTypeAttr dt = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_RestoreV2Op : TF_Op<"RestoreV2", []> {
   let summary = "Restores tensors from a V2 checkpoint.";
 
@@ -12714,6 +12752,28 @@ is the corresponding input gradient.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_SaveOp : TF_Op<"Save", []> {
+  let summary = "Saves the input tensors to disk.";
+
+  let description = [{
+The size of `tensor_names` must match the number of tensors in `data`. `data[i]`
+is written to `filename` with name `tensor_names[i]`.
+
+See also `SaveSlices`.
+  }];
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{Must have a single element. The name of the file to which we write
+the tensor.}]>:$filename,
+    Arg<TF_StrTensor, [{Shape `[N]`. The names of the tensors to be saved.}]>:$tensor_names,
+    Arg<Variadic<TF_Tensor>, [{`N` tensors to save.}]>:$data
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<2>;
 }
 
 def TF_SaveSlicesOp : TF_Op<"SaveSlices", []> {

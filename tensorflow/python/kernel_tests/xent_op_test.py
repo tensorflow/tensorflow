@@ -319,7 +319,7 @@ class XentTest(test.TestCase):
     features = np.zeros([0, 2, 4]).astype(np.float32)
     labels = np.zeros([0, 2, 4]).astype(np.float32)
     np_loss, _ = self._npXent(features, labels)
-    with self.session(use_gpu=True) as sess:
+    with self.session() as sess:
       loss = nn_ops.softmax_cross_entropy_with_logits(
           labels=labels, logits=features)
       tf_loss = self.evaluate(loss)
