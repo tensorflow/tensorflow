@@ -83,10 +83,23 @@ TfLiteStatus PrepareHashtable(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* resource_handle_tensor;
   TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, kResourceHandleTensor,
                                            &resource_handle_tensor));
-  TF_LITE_ENSURE_EQ(context, resource_handle_tensor->type, kTfLiteInt32);
+  TF_LITE_ENSURE(context, resource_handle_tensor->type == kTfLiteResource ||
+                              resource_handle_tensor->type == kTfLiteInt32);
+
+  // Resource tensor buffer as a hash table handler will have an 32-bit integer
+  // identity.
+  size_t bytesRequired = sizeof(int32_t);
+  resource_handle_tensor->bytes = bytesRequired;
+  // Realloc space for an integer handle value.
+  TfLiteTensorRealloc(bytesRequired, resource_handle_tensor);
+
+  // Make shape be [1] to store one integer value.
   TfLiteIntArray* outputSize = TfLiteIntArrayCreate(1);
   outputSize->data[0] = 1;
-  return context->ResizeTensor(context, resource_handle_tensor, outputSize);
+  if (resource_handle_tensor->dims)
+    TfLiteIntArrayFree(resource_handle_tensor->dims);
+  resource_handle_tensor->dims = outputSize;
+  return kTfLiteOk;
 }
 
 TfLiteStatus EvalHashtable(TfLiteContext* context, TfLiteNode* node) {
@@ -95,14 +108,12 @@ TfLiteStatus EvalHashtable(TfLiteContext* context, TfLiteNode* node) {
       reinterpret_cast<const TfLiteHashtableParams*>(node->user_data);
 
   // The resource id is generated based on the given table name.
-  const int resource_id = std::hash<std::string>{}(params->table_name);
+  const int32_t resource_id = std::hash<std::string>{}(params->table_name);
 
   TfLiteTensor* resource_handle_tensor;
   TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, kResourceHandleTensor,
                                            &resource_handle_tensor));
-  auto* resource_handle_data =
-      GetTensorData<std::int32_t>(resource_handle_tensor);
-  resource_handle_data[0] = resource_id;
+  *resource_handle_tensor->data.i32 = resource_id;
 
   Subgraph* subgraph = reinterpret_cast<Subgraph*>(context->impl_);
   auto& resources = subgraph->resources();

@@ -36,7 +36,8 @@ TfLiteStatus PrepareHashtableImport(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input_resource_id_tensor;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputResourceIdTensor,
                                           &input_resource_id_tensor));
-  TF_LITE_ENSURE_EQ(context, input_resource_id_tensor->type, kTfLiteInt32);
+  TF_LITE_ENSURE(context, input_resource_id_tensor->type == kTfLiteResource ||
+                              input_resource_id_tensor->type == kTfLiteInt32);
   TF_LITE_ENSURE_EQ(context, NumDimensions(input_resource_id_tensor), 1);
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(input_resource_id_tensor, 0), 1);
 

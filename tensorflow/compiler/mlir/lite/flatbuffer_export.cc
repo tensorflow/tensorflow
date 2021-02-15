@@ -182,11 +182,9 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
                  type.dyn_cast<mlir::quant::CalibratedQuantizedType>()) {
     return GetTFLiteType(q_calibrated_type.getExpressedType());
   } else if (type.isa<mlir::TF::ResourceType>()) {
-    // Treat tf.resource values as integer values in flatbuffer.
-    // TODO(b/146131919): Maybe need to have a detailed design for supporting
-    // other resource types beyonds hash table resources and resource
-    // variables.
-    return tflite::TensorType_INT32;
+    return tflite::TensorType_RESOURCE;
+  } else if (type.isa<mlir::TF::VariantType>()) {
+    return tflite::TensorType_VARIANT;
   }
   // TFLite export fills FLOAT32 for unknown data types. Returning an error
   // for now for safety and this could be revisited when required.
