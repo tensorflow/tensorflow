@@ -1593,7 +1593,8 @@ def log_cosh(y_true, y_pred):
 def categorical_crossentropy(y_true,
                              y_pred,
                              from_logits=False,
-                             label_smoothing=0):
+                             label_smoothing=0,
+                             axis=-1):
   """Computes the categorical crossentropy loss.
 
   Standalone usage:
@@ -1628,7 +1629,7 @@ def categorical_crossentropy(y_true,
 
   y_true = smart_cond.smart_cond(label_smoothing, _smooth_labels,
                                  lambda: y_true)
-  return K.categorical_crossentropy(y_true, y_pred, from_logits=from_logits)
+  return K.categorical_crossentropy(y_true, y_pred, from_logits=from_logits, axis=axis)
 
 
 @dispatch.dispatch_for_types(categorical_crossentropy,
@@ -1691,7 +1692,7 @@ def sparse_categorical_crossentropy(y_true, y_pred, from_logits=False, axis=-1):
 @keras_export('keras.metrics.binary_crossentropy',
               'keras.losses.binary_crossentropy')
 @dispatch.add_dispatch_support
-def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0):
+def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0, axis=-1):
   """Computes the binary crossentropy loss.
 
   Standalone usage:
@@ -1726,7 +1727,7 @@ def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0):
   y_true = smart_cond.smart_cond(label_smoothing, _smooth_labels,
                                  lambda: y_true)
   return K.mean(
-      K.binary_crossentropy(y_true, y_pred, from_logits=from_logits), axis=-1)
+      K.binary_crossentropy(y_true, y_pred, from_logits=from_logits), axis=axis)
 
 
 @keras_export('keras.metrics.kl_divergence',
