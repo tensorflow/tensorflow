@@ -195,7 +195,7 @@ class BinaryOpsTestBase : public OpsTestBase {
                                                                 BaselineT),
                               const test::OpsTestConfig& config) {
     // Prepare inputs.
-    TensorShape effective_scalar_shape{1, 1, 1, 1, 1, 1};
+    TensorShape effective_scalar_shape{1, 1, 1, 1, 1, 1, 1};
     CHECK(other_input.size() <= other_shape.num_elements() &&
           "expect other input shape to hold all input values");
     auto repeated_other_input =
