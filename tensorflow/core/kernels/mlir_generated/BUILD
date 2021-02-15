@@ -49,7 +49,6 @@ filegroup(
         "gpu_op_atan.cc",
         "gpu_op_atanh.cc",
         "gpu_op_ceil.cc",
-        "gpu_op_complex.cc",
         "gpu_op_complex_abs.cc",
         "gpu_op_conj.cc",
         "gpu_op_cos.cc",
@@ -96,6 +95,55 @@ filegroup(
         ":enabled_unary_gpu_kernel_srcs",
     ] + if_mlir_experimental_kernels_enabled(
         if_true = [":experimental_unary_gpu_kernel_srcs"],
+    ),
+    compatible_with = get_compatible_with_cloud(),
+)
+
+filegroup(
+    name = "enabled_binary_gpu_kernel_srcs",
+    srcs = [
+        "gpu_op_complex.cc",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+)
+
+filegroup(
+    name = "experimental_binary_gpu_kernel_srcs",
+    srcs = [
+        "gpu_op_add.cc",
+        "gpu_op_atan2.cc",
+        "gpu_op_bitwise_and.cc",
+        "gpu_op_bitwise_or.cc",
+        "gpu_op_bitwise_xor.cc",
+        "gpu_op_div.cc",
+        "gpu_op_equal.cc",
+        "gpu_op_floor_div.cc",
+        "gpu_op_greater.cc",
+        "gpu_op_greater_equal.cc",
+        "gpu_op_left_shift.cc",
+        "gpu_op_less.cc",
+        "gpu_op_less_equal.cc",
+        "gpu_op_logical_and.cc",
+        "gpu_op_logical_or.cc",
+        "gpu_op_maximum.cc",
+        "gpu_op_minimum.cc",
+        "gpu_op_mul.cc",
+        "gpu_op_not_equal.cc",
+        "gpu_op_pow.cc",
+        "gpu_op_right_shift.cc",
+        "gpu_op_squared_difference.cc",
+        "gpu_op_sub.cc",
+        "gpu_op_zeta.cc",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+)
+
+filegroup(
+    name = "binary_gpu_kernel_srcs",
+    srcs = [
+        ":enabled_binary_gpu_kernel_srcs",
+    ] + if_mlir_experimental_kernels_enabled(
+        if_true = [":experimental_binary_gpu_kernel_srcs"],
     ),
     compatible_with = get_compatible_with_cloud(),
 )
@@ -150,7 +198,6 @@ tf_kernel_library(
         ":gpu_atanh_kernels",
         ":gpu_ceil_kernels",
         ":gpu_complex_abs_kernels",
-        ":gpu_complex_kernels",
         ":gpu_conj_kernels",
         ":gpu_cos_kernels",
         ":gpu_cosh_kernels",
@@ -201,35 +248,15 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "gpu_cwise_binary_op",
-    srcs = [
-        "gpu_op_add.cc",
-        "gpu_op_atan2.cc",
-        "gpu_op_bitwise_and.cc",
-        "gpu_op_bitwise_or.cc",
-        "gpu_op_bitwise_xor.cc",
-        "gpu_op_div.cc",
-        "gpu_op_equal.cc",
-        "gpu_op_floor_div.cc",
-        "gpu_op_greater.cc",
-        "gpu_op_greater_equal.cc",
-        "gpu_op_left_shift.cc",
-        "gpu_op_less.cc",
-        "gpu_op_less_equal.cc",
-        "gpu_op_logical_and.cc",
-        "gpu_op_logical_or.cc",
-        "gpu_op_maximum.cc",
-        "gpu_op_minimum.cc",
-        "gpu_op_mul.cc",
-        "gpu_op_not_equal.cc",
-        "gpu_op_pow.cc",
-        "gpu_op_right_shift.cc",
-        "gpu_op_squared_difference.cc",
-        "gpu_op_sub.cc",
-        "gpu_op_zeta.cc",
-    ],
+    srcs = [":binary_gpu_kernel_srcs"],
     tags = [
         "manual",
     ],
+    # Technically we only need to depend on the kernel libraries for the
+    # kernels which are enabled by default. But this would make our BUILD
+    # target structure uglier. We already need to make sure that those
+    # targets can be built, so it should not hurt to link them in even if
+    # they are currently not needed yet.
     deps = [
         ":base_gpu_op",
         ":gpu_add_v2_kernels",
@@ -237,6 +264,7 @@ tf_kernel_library(
         ":gpu_bitwise_and_kernels",
         ":gpu_bitwise_or_kernels",
         ":gpu_bitwise_xor_kernels",
+        ":gpu_complex_kernels",
         ":gpu_div_kernels",
         ":gpu_equal_kernels",
         ":gpu_floor_div_kernels",
@@ -281,6 +309,7 @@ tf_kernel_library(
     # but we want to avoid building them if they are not needed.
     deps = if_cuda_or_rocm([
         ":gpu_cwise_unary_op",
+        ":gpu_cwise_binary_op",
     ]) + if_mlir_experimental_kernels_enabled([":experimental_cwise_op"]),
 )
 
@@ -288,9 +317,9 @@ tf_kernel_library(
     name = "experimental_cwise_op",
     srcs = [],
     deps = [
-        ":cpu_cwise_unary_op",
         ":cpu_cwise_binary_op",
-    ] + if_cuda_or_rocm([":gpu_cwise_binary_op"]),
+        ":cpu_cwise_unary_op",
+    ],
 )
 
 cc_library(
