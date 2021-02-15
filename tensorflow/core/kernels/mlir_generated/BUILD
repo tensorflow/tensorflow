@@ -530,7 +530,7 @@ gpu_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
+    # Cannot vectorize.
 )
 
 gpu_kernel_library(
