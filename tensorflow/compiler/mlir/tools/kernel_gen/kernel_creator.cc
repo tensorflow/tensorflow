@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR.h"  // from @llvm-project
 #include "mlir/Transforms/Bufferize.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
@@ -392,6 +393,7 @@ Status GenerateDeviceCode(mlir::ModuleOp module,
                           bool enable_ftz) {
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
+  mlir::registerLLVMDialectTranslation(*module->getContext());
 
   auto& kernel_pm = pm.nest<mlir::gpu::GPUModuleOp>();
   // Remove debug information to ensure we do not create debug PTX.
