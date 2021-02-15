@@ -2146,21 +2146,25 @@ inline void Add(const ArithmeticParams& params,
   auto input2_map = MapAsVector(input2_data, input2_shape);
   auto output_map = MapAsVector(output_data, output_shape);
   if (input1_shape == input2_shape) {
-    output_map.array() = input1_map.array() + input2_map.array();
+    output_map.array() = (input1_map.array() + input2_map.array())
+                             .cwiseMax(params.quantized_activation_min)
+                             .cwiseMin(params.quantized_activation_max);
   } else if (input2_shape.FlatSize() == 1) {
     auto scalar = input2_data[0];
-    output_map.array() = input1_map.array() + scalar;
+    output_map.array() = (input1_map.array() + scalar)
+                             .cwiseMax(params.quantized_activation_min)
+                             .cwiseMin(params.quantized_activation_max);
   } else if (input1_shape.FlatSize() == 1) {
     auto scalar = input1_data[0];
-    output_map.array() = scalar + input2_map.array();
+    output_map.array() = (scalar + input2_map.array())
+                             .cwiseMax(params.quantized_activation_min)
+                             .cwiseMin(params.quantized_activation_max);
   } else {
     reference_ops::BroadcastAdd4DSlow(params, input1_shape, input1_data,
                                       input2_shape, input2_data, output_shape,
                                       output_data);
     return;
   }
-  output_map = output_map.cwiseMax(params.quantized_activation_min)
-                   .cwiseMin(params.quantized_activation_max);
 }
 
 template <typename T>
