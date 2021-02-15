@@ -1085,6 +1085,7 @@ cc_library(
     srcs = ["translate/upgrade_graph.cc"],
     hdrs = ["translate/upgrade_graph.h"],
     deps = [
+        "//tensorflow/compiler/tf2xla:functionalize_control_flow",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime:device",
@@ -1133,7 +1134,6 @@ cc_library(
         "//tensorflow/compiler/jit:shape_inference_helpers",
         "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
-        "//tensorflow/compiler/tf2xla:functionalize_control_flow",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",

@@ -492,6 +492,16 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
       with self.assertRaises(ValueError):
         string_ops.substr(b"test", 3, 1, unit="UTF8")
 
+  def testInvalidPos(self):
+    # Test case for GitHub issue 46900.
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+      x = string_ops.substr(b"abc", len=1, pos=[1, -1])
+      self.evaluate(x)
+
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+      x = string_ops.substr(b"abc", len=1, pos=[1, 2])
+      self.evaluate(x)
+
 
 if __name__ == "__main__":
   test.main()

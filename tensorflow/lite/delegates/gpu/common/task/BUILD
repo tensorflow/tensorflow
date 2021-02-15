@@ -69,6 +69,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:compiler_options",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_tensor",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
+        "//tensorflow/lite/delegates/gpu/common/task:texture2d_desc",
         "//tensorflow/lite/delegates/gpu/common/task:tuning_type",
         "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
         "@com_google_absl//absl/strings",
@@ -78,6 +79,15 @@ cc_library(
 cc_library(
     name = "gpu_tensor",
     hdrs = ["gpu_tensor.h"],
+)
+
+cc_library(
+    name = "profiling_info",
+    srcs = ["profiling_info.cc"],
+    hdrs = ["profiling_info.h"],
+    deps = [
+        "@com_google_absl//absl/time",
+    ],
 )
 
 flatbuffer_cc_library(

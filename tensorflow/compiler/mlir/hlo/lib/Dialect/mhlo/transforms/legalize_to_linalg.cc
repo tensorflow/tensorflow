@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -329,7 +330,7 @@ struct ConvToLinalgConverter : public OpConversionPattern<lmhlo::ConvOp> {
       auto range = window_strides->getAttributeValues();
       strides.assign(range.begin(), range.end());
     }
-    auto strides_arg = ArrayAttr::get(strides, op.getContext());
+    auto strides_arg = ArrayAttr::get(op.getContext(), strides);
 
     llvm::SmallVector<Attribute, 2> dilation;
     if (auto rhs_dilation = op.rhs_dilation()) {
@@ -339,7 +340,7 @@ struct ConvToLinalgConverter : public OpConversionPattern<lmhlo::ConvOp> {
       // Default dilation of 1.
       dilation.resize(2, IntegerAttr::get(rewriter.getIntegerType(64), 1));
     }
-    auto dilation_arg = ArrayAttr::get(dilation, op.getContext());
+    auto dilation_arg = ArrayAttr::get(op.getContext(), dilation);
 
     // Set padding only if it is non-zero.
     DenseIntElementsAttr padding = op.paddingAttr();
@@ -1456,14 +1457,15 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
 struct LhloLegalizeToLinalgPass
     : public PassWrapper<LhloLegalizeToLinalgPass, FunctionPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<AffineDialect, linalg::LinalgDialect>();
+    registry.insert<AffineDialect, linalg::LinalgDialect, math::MathDialect>();
   }
 
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
     target.addLegalDialect<complex::ComplexDialect, linalg::LinalgDialect,
-                           StandardOpsDialect, AffineDialect>();
+                           math::MathDialect, StandardOpsDialect,
+                           AffineDialect>();
 
     auto func = getFunction();
     populateLHLOToLinalgConversionPattern(func.getContext(), &patterns);
@@ -1477,15 +1479,15 @@ struct HloLegalizeToLinalgPass
     : public PassWrapper<HloLegalizeToLinalgPass, FunctionPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<linalg::LinalgDialect, scf::SCFDialect,
-                    complex::ComplexDialect>();
+                    complex::ComplexDialect, math::MathDialect>();
   }
 
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
     target.addLegalDialect<complex::ComplexDialect, linalg::LinalgDialect,
-                           StandardOpsDialect, tensor::TensorDialect,
-                           scf::SCFDialect>();
+                           math::MathDialect, StandardOpsDialect,
+                           tensor::TensorDialect, scf::SCFDialect>();
 
     auto func = getFunction();
     mhlo::populateHLOToLinalgConversionPattern(func.getContext(), &patterns);

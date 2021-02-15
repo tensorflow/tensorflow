@@ -693,10 +693,10 @@ TEST_F(FusionCostAnalysis, LoopFusionTupleOutput) {
   EXPECT_EQ(fusion_analysis.flop_count(), 16);
   EXPECT_EQ(fusion_analysis.transcendental_count(), 4);
   EXPECT_EQ(fusion_analysis.bytes_accessed(*fusion),
-            sizeof(float) * (3 + 5) * 2 * 2 + kPointerSize * 2);
+            sizeof(float) * (5 + 5) * 2 * 2);
 
   EXPECT_EQ(fusion_analysis.operand_bytes_accessed(*fusion, 0),
-            kPointerSize * 2);
+            sizeof(float) * 2 * 2 * 2);
   EXPECT_EQ(fusion_analysis.operand_bytes_accessed(*fusion, 1),
             sizeof(float) * 2 * 2);
   EXPECT_EQ(fusion_analysis.operand_bytes_accessed(*fusion, 2),
@@ -756,6 +756,78 @@ TEST_F(FusionCostAnalysis, NoLayout) {
             sizeof(float) * 3);
   EXPECT_EQ(fusion_analysis.output_bytes_accessed(*fusion),
             sizeof(float) * 2 * 3 * 4 * 5);
+}
+
+TEST_F(FusionCostAnalysis, TupleBytesAccessed) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+fused_computation {
+  param = (f32[2,2]{1,0}, f32[2,2]{1,0}) parameter(0)
+  gte0 = f32[2,2]{1,0} get-tuple-element(param), index=0
+  gte1 = f32[2,2]{1,0} get-tuple-element(param), index=1
+  add = f32[2,2]{1,0} add(gte0, gte1)
+  mul = f32[2,2]{1,0} multiply(gte0, gte1)
+  ROOT root = (f32[2,2]{1,0}, f32[2,2]{1,0}) tuple(add, mul)
+}
+
+ENTRY entry {
+  param0 = f32[2,2]{1,0} parameter(0)
+  param1 = f32[2,2]{1,0} parameter(1)
+  tuple = (f32[2,2]{1,0}, f32[2,2]{1,0}) tuple(param0, param1)
+  ROOT fusion = (f32[2,2]{1,0}, f32[2,2]{1,0}) fusion(tuple), kind=kLoop, calls=fused_computation
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+
+  HloCostAnalysis fusion_analysis(ShapeSize);
+  ASSERT_IS_OK(fusion->Accept(&fusion_analysis));
+
+  EXPECT_EQ(fusion_analysis.bytes_accessed(*fusion), sizeof(float) * 2 * 2 * 4);
+  EXPECT_EQ(fusion_analysis.operand_bytes_accessed(*fusion, 0),
+            sizeof(float) * 2 * 2 * 2);
+  EXPECT_EQ(fusion_analysis.output_bytes_accessed(*fusion),
+            sizeof(float) * 2 * 2 * 2);
+}
+
+TEST_F(FusionCostAnalysis, InfeedOutfeed) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  after-all = token[] after-all()
+  infeed = ((f32[2,3]{1,0}), token[]) infeed(after-all)
+  gte0 = (f32[2,3]{1,0}) get-tuple-element(infeed), index=0
+  gte1 = f32[2,3]{1,0} get-tuple-element(gte0), index=0
+  add = f32[2,3]{1,0} add(gte1, gte1)
+  tuple = (f32[2,3]{1,0}) tuple(add)
+  tok = token[] get-tuple-element(infeed), index=1
+  ROOT outfeed = token[] outfeed(tuple, tok)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloInstruction* infeed =
+      module->entry_computation()->GetInstructionWithName("infeed");
+  HloInstruction* outfeed =
+      module->entry_computation()->GetInstructionWithName("outfeed");
+
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(infeed->Accept(&analysis));
+  ASSERT_IS_OK(outfeed->Accept(&analysis));
+
+  EXPECT_EQ(analysis.bytes_accessed(*infeed), sizeof(float) * 2 * 3);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*infeed, 0), 0);
+  EXPECT_EQ(analysis.output_bytes_accessed(*infeed), sizeof(float) * 2 * 3);
+
+  EXPECT_EQ(analysis.bytes_accessed(*outfeed), sizeof(float) * 2 * 3);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*outfeed, 0),
+            sizeof(float) * 2 * 3);
+  EXPECT_EQ(analysis.output_bytes_accessed(*outfeed), 0);
 }
 
 TEST_F(HloCostAnalysisTest, TupleCost) {

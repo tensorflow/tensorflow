@@ -1659,8 +1659,10 @@ Status DynamicDimensionInference::AnalyzeDynamicDimensions() {
 
 void DynamicDimensionInference::ReplaceAllDynamicDimensionUsesWith(
     HloInstruction* replace, HloInstruction* with) {
-  CHECK(Shape::Equal()(replace->shape(), ShapeUtil::MakeScalarShape(S32)));
-  CHECK(Shape::Equal()(with->shape(), ShapeUtil::MakeScalarShape(S32)));
+  CHECK(Shape::Equal().IgnoreLayout()(replace->shape(),
+                                      ShapeUtil::MakeScalarShape(S32)));
+  CHECK(Shape::Equal().IgnoreLayout()(with->shape(),
+                                      ShapeUtil::MakeScalarShape(S32)));
   for (auto& kv : dynamic_mapping_) {
     if (kv.second == replace) {
       kv.second = with;

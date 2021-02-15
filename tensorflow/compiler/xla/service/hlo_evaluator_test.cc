@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_element_type_converter.h"
@@ -508,7 +509,7 @@ TEST_F(HloEvaluatorTest, DoesReshape) {
 
   using NativeT = typename primitive_util::PrimitiveTypeToNative<F32>::type;
   result.EachCell<NativeT>([&](absl::Span<const int64> indices, NativeT value) {
-    std::vector<int64> rindexes = Permute(permutation, indices);
+    std::vector<int64> rindexes = PermuteInverse(indices, permutation);
     EXPECT_NEAR(value, literal_clone.Get<NativeT>(rindexes), 0.031250);
   });
 }

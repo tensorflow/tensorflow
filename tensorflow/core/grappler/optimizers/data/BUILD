@@ -16,6 +16,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":autotune_buffer_sizes",
+        ":batch_parallelization",
         ":disable_intra_op_parallelism",
         ":disable_prefetch_legacy_autotune",
         ":enable_gradient_descent",
@@ -87,6 +88,44 @@ tf_cc_test(
     srcs = ["autotune_buffer_sizes_test.cc"],
     deps = [
         ":autotune_buffer_sizes",
+        ":graph_test_utils",
+        ":graph_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
+cc_library(
+    name = "batch_parallelization",
+    srcs = ["batch_parallelization.cc"],
+    hdrs = [
+        "batch_parallelization.h",
+    ],
+    deps = [
+        ":function_utils",
+        ":graph_utils",
+        ":optimizer_base",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+    ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "batch_parallelization_test",
+    srcs = ["batch_parallelization_test.cc"],
+    deps = [
+        ":batch_parallelization",
         ":graph_test_utils",
         ":graph_utils",
         "//tensorflow/core:framework",

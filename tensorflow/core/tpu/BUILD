@@ -11,6 +11,7 @@ package(
         "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
         "//tensorflow/compiler/tf2xla/kernels:__subpackages__",
         "//tensorflow/compiler/xrt:__subpackages__",
+        "//tensorflow/core/profiler/internal/tpu:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/stream_executor/tpu:__subpackages__",
     ],
@@ -105,7 +106,11 @@ cc_library(
     name = "tpu_initializer_helper",
     srcs = ["tpu_initializer_helper.cc"],
     hdrs = ["tpu_initializer_helper.h"],
-    deps = ["@com_google_absl//absl/strings"],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+    ],
 )
 
 cc_library(

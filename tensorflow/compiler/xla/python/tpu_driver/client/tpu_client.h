@@ -345,6 +345,10 @@ class PyTpuExecutable {
   ExecuteOnLocalDevices(
       absl::Span<const std::vector<PyTpuBuffer*>> argument_handles);
 
+  StatusOr<std::vector<std::vector<std::unique_ptr<PyTpuBuffer>>>>
+  ExecuteShardedOnLocalDevices(
+      absl::Span<const std::vector<PyTpuBuffer*>> args);
+
   void Delete() { executables_.clear(); }
 
  private:

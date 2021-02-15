@@ -188,6 +188,7 @@ cc_library(
         "lib/CAPI/IR/BuiltinAttributes.cpp",
         "lib/CAPI/IR/BuiltinTypes.cpp",
         "lib/CAPI/IR/Diagnostics.cpp",
+        "lib/CAPI/IR/DialectHandle.cpp",
         "lib/CAPI/IR/IR.cpp",
         "lib/CAPI/IR/IntegerSet.cpp",
         "lib/CAPI/IR/Pass.cpp",
@@ -1199,6 +1200,7 @@ cc_library(
         ":LinalgToLLVM",
         ":LinalgToSPIRV",
         ":LinalgToStandard",
+        ":MathToLLVM",
         ":OpenMPToLLVM",
         ":PDLToPDLInterp",
         ":SCFToGPUPass",
@@ -1486,6 +1488,7 @@ cc_library(
         ":Support",
         ":TensorDialect",
         ":Transforms",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1973,6 +1976,7 @@ cc_library(
         ":GPUToNVVMGen",
         ":GPUTransforms",
         ":IR",
+        ":MathDialect",
         ":NVVMDialect",
         ":Pass",
         ":StandardToLLVM",
@@ -2053,6 +2057,7 @@ cc_library(
         ":GPUDialect",
         ":GPUToROCDLTGen",
         ":GPUTransforms",
+        ":MathDialect",
         ":Pass",
         ":ROCDLDialect",
         ":StandardToLLVM",
@@ -2781,6 +2786,7 @@ cc_library(
     deps = [
         ":ConversionPassIncGen",
         ":IR",
+        ":MathDialect",
         ":Pass",
         ":SPIRVConversion",
         ":SPIRVDialect",
@@ -2810,7 +2816,12 @@ cc_library(
 
 cc_library(
     name = "SPIRVSerialization",
-    srcs = ["lib/Target/SPIRV/Serialization/Serialization.cpp"],
+    srcs = [
+        "lib/Target/SPIRV/Serialization/Serialization.cpp",
+        "lib/Target/SPIRV/Serialization/SerializeOps.cpp",
+        "lib/Target/SPIRV/Serialization/Serializer.cpp",
+        "lib/Target/SPIRV/Serialization/Serializer.h",
+    ],
     hdrs = ["include/mlir/Target/SPIRV/Serialization.h"],
     includes = ["include"],
     deps = [
@@ -3327,6 +3338,7 @@ cc_library(
         ":ConversionPassIncGen",
         ":IR",
         ":LLVMDialect",
+        ":MathDialect",
         ":Parser",
         ":Pass",
         ":StandardOps",
@@ -3536,6 +3548,7 @@ cc_library(
         ":IR",
         ":LinalgOps",
         ":SCFDialect",
+        ":SideEffectInterfaces",
         ":StandardOps",
         ":Support",
         ":ViewLikeInterface",
@@ -3653,8 +3666,14 @@ cc_library(
 # TODO(zinenko): Update these so that we can simplify mapping to cmake.
 cc_library(
     name = "ExecutionEngine",
-    srcs = ["lib/ExecutionEngine/ExecutionEngine.cpp"],
-    hdrs = ["include/mlir/ExecutionEngine/ExecutionEngine.h"],
+    srcs = [
+        "include/mlir/ExecutionEngine/CRunnerUtils.h",
+        "lib/ExecutionEngine/ExecutionEngine.cpp",
+    ],
+    hdrs = [
+        "include/mlir/ExecutionEngine/ExecutionEngine.h",
+        "include/mlir/ExecutionEngine/MemRefUtils.h",
+    ],
     includes = ["include"],
     deps = [
         ":IR",
@@ -3795,6 +3814,9 @@ cc_library(
         ":LinalgToSPIRV",
         ":LinalgToStandard",
         ":LinalgTransforms",
+        ":MathDialect",
+        ":MathToLLVM",
+        ":MathTransforms",
         ":NVVMDialect",
         ":OpenACCDialect",
         ":OpenMPDialect",
@@ -3860,6 +3882,7 @@ cc_binary(
         "@llvm-project//llvm:AllTargetsCodeGens",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir/test:TestAffine",
+        "@llvm-project//mlir/test:TestAnalysis",
         "@llvm-project//mlir/test:TestDialect",
         "@llvm-project//mlir/test:TestIR",
         "@llvm-project//mlir/test:TestPass",
@@ -3876,7 +3899,9 @@ cc_binary(
 cc_library(
     name = "MlirJitRunner",
     srcs = ["lib/ExecutionEngine/JitRunner.cpp"],
-    hdrs = ["include/mlir/ExecutionEngine/JitRunner.h"],
+    hdrs = [
+        "include/mlir/ExecutionEngine/JitRunner.h",
+    ],
     includes = ["include"],
     deps = [
         ":AllPassesAndDialectsNoRegistration",
@@ -3933,9 +3958,11 @@ cc_binary(
     srcs = ["tools/mlir-cpu-runner/mlir-cpu-runner.cpp"],
     linkopts = ["-ldl"],
     deps = [
-        ":AllPassesAndDialectsNoRegistration",
         ":ExecutionEngineUtils",
+        ":IR",
+        ":LLVMDialect",
         ":MlirJitRunner",
+        ":OpenMPDialect",
         "@llvm-project//llvm:AsmParser",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:X86AsmParser",
@@ -4003,7 +4030,6 @@ cc_binary(
     name = "mlir-cuda-runner",
     srcs = ["tools/mlir-cuda-runner/mlir-cuda-runner.cpp"],
     deps = [
-        ":AllPassesAndDialectsNoRegistration",
         ":Async",
         ":AsyncToLLVM",
         ":AsyncTransforms",
@@ -4018,6 +4044,7 @@ cc_binary(
         ":MlirJitRunner",
         ":NVVMDialect",
         ":Pass",
+        ":StandardOps",
         ":StandardToLLVM",
         ":TargetNVVMIR",
         ":Transforms",
@@ -4033,15 +4060,17 @@ cc_binary(
     name = "mlir-vulkan-runner",
     srcs = ["tools/mlir-vulkan-runner/mlir-vulkan-runner.cpp"],
     deps = [
-        ":AllPassesAndDialectsNoRegistration",
         ":ExecutionEngineUtils",
+        ":GPUDialect",
         ":GPUToSPIRV",
         ":GPUToVulkanTransforms",
         ":GPUTransforms",
+        ":LLVMDialect",
         ":MlirJitRunner",
         ":Pass",
         ":SPIRVDialect",
         ":SPIRVTransforms",
+        ":StandardOps",
         ":StandardToLLVM",
         ":StandardToSPIRV",
         "@llvm-project//llvm:Support",
@@ -4052,7 +4081,6 @@ cc_binary(
     name = "mlir-spirv-cpu-runner",
     srcs = ["tools/mlir-spirv-cpu-runner/mlir-spirv-cpu-runner.cpp"],
     deps = [
-        ":AllPassesAndDialectsNoRegistration",
         ":ExecutionEngineUtils",
         ":GPUDialect",
         ":GPUToSPIRV",
@@ -4065,6 +4093,7 @@ cc_binary(
         ":SPIRVDialect",
         ":SPIRVToLLVM",
         ":SPIRVTransforms",
+        ":StandardOps",
         ":StandardToLLVM",
         ":TargetLLVMIR",
         "@llvm-project//llvm:Core",
@@ -4489,6 +4518,34 @@ gentbl(
     ],
 )
 
+filegroup(
+    name = "LinalgSparseOpsTdFiles",
+    srcs = [
+        "include/mlir/Dialect/Linalg/IR/LinalgBase.td",
+        "include/mlir/Dialect/Linalg/IR/LinalgSparseOps.td",
+        "include/mlir/Interfaces/ViewLikeInterface.td",
+        ":OpBaseTdFiles",
+    ],
+)
+
+gentbl(
+    name = "LinalgSparseOpsIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-decls",
+            "include/mlir/Dialect/Linalg/IR/LinalgSparseOps.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "include/mlir/Dialect/Linalg/IR/LinalgSparseOps.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/Linalg/IR/LinalgSparseOps.td",
+    td_srcs = [":LinalgSparseOpsTdFiles"],
+)
+
 gentbl(
     name = "LinalgInterfacesIncGen",
     strip_include_prefix = "include",
@@ -4634,6 +4691,7 @@ cc_library(
         ":LinalgInterfacesIncGen",
         ":LinalgNamedStructuredOpsIncGen",
         ":LinalgOpsIncGen",
+        ":LinalgSparseOpsIncGen",
         ":LinalgStructuredOpsIncGen",
         ":Parser",
         ":SideEffectInterfaces",
@@ -4691,7 +4749,9 @@ cc_library(
         ":LLVMDialect",
         ":LinalgOps",
         ":LinalgPassIncGen",
+        ":LinalgSparseOpsIncGen",
         ":LinalgStructuredOpsIncGen",
+        ":MathDialect",
         ":Pass",
         ":SCFDialect",
         ":SCFToStandard",
@@ -4942,6 +5002,7 @@ cc_library(
         ":ConversionPassIncGen",
         ":IR",
         ":LinalgOps",
+        ":MathDialect",
         ":Pass",
         ":StandardOps",
         ":TosaDialect",
@@ -5064,4 +5125,121 @@ exports_files(
         "include/mlir/Transforms/InliningUtils.h",
     ],
     visibility = [":friends"],
+)
+
+filegroup(
+    name = "MathOpsTdFiles",
+    srcs = [
+        "include/mlir/Dialect/Math/IR/MathBase.td",
+        "include/mlir/Dialect/Math/IR/MathOps.td",
+        ":OpBaseTdFiles",
+        ":SideEffectTdFiles",
+        ":VectorInterfacesTdFiles",
+    ],
+)
+
+gentbl(
+    name = "MathBaseIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-dialect-decls -dialect=math",
+            "include/mlir/Dialect/Math/IR/MathOpsDialect.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/Math/IR/MathBase.td",
+    td_srcs = [
+        ":MathOpsTdFiles",
+    ],
+)
+
+gentbl(
+    name = "MathOpsIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-decls",
+            "include/mlir/Dialect/Math/IR/MathOps.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "include/mlir/Dialect/Math/IR/MathOps.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/Math/IR/MathOps.td",
+    td_srcs = [
+        ":MathOpsTdFiles",
+    ],
+)
+
+cc_library(
+    name = "MathDialect",
+    srcs = glob(
+        [
+            "lib/Dialect/Math/IR/*.cpp",
+            "lib/Dialect/Math/IR/*.h",
+        ],
+    ),
+    hdrs = [
+        "include/mlir/Dialect/Math/EDSC/Intrinsics.h",
+        "include/mlir/Dialect/Math/IR/Math.h",
+        "include/mlir/Transforms/InliningUtils.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":EDSC",
+        ":IR",
+        ":MathBaseIncGen",
+        ":MathOpsIncGen",
+        ":SideEffectInterfaces",
+        ":Support",
+        ":VectorInterfaces",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "MathTransforms",
+    srcs = glob([
+        "lib/Dialect/Math/Transforms/*.cpp",
+        "lib/Dialect/Math/Transforms/*.h",
+    ]),
+    hdrs = glob(["include/mlir/Dialect/Math/Transforms/*.h"]),
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":MathDialect",
+        ":Pass",
+        ":SCFDialect",
+        ":StandardOps",
+        ":Support",
+        ":Transforms",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "MathToLLVM",
+    srcs = glob([
+        "lib/Conversion/MathToLLVM/*.cpp",
+        "lib/Conversion/MathToLLVM/*.h",
+    ]) + ["lib/Conversion/PassDetail.h"],
+    hdrs = glob([
+        "include/mlir/Conversion/MathToLLVM/*.h",
+    ]),
+    includes = ["include"],
+    deps = [
+        ":ConversionPassIncGen",
+        ":IR",
+        ":LLVMDialect",
+        ":MathDialect",
+        ":Pass",
+        ":StandardToLLVM",
+        ":Support",
+        ":Transforms",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+    ],
 )

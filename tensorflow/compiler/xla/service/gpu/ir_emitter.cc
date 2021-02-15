@@ -166,18 +166,6 @@ Status IrEmitter::HandleConstant(HloInstruction* constant) {
   return Status::OK();
 }
 
-Status IrEmitter::HandleBitcast(HloInstruction* bitcast) {
-  VLOG(2) << "HandleBitcast: " << bitcast->ToString();
-  const HloInstruction* operand = bitcast->operand(0);
-  // Bitcast is a no-op, but we still want to bind it to an llvm::Value
-  // sometimes, e.g., when it's operand is a constant or a bitcast of a
-  // constant.
-  if (bindings_.BoundToIrValue(*operand)) {
-    bindings_.BindHloToIrValue(*bitcast, GetBasePointer(*operand));
-  }
-  return Status::OK();
-}
-
 Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
   VLOG(2) << "HandleAddDependency: " << add_dependency->ToString();
   const HloInstruction* operand = add_dependency->operand(0);

@@ -1615,10 +1615,9 @@ void Model::AddNode(Node::Factory factory, const string& name,
   collect_resource_usage_ =
       collect_resource_usage_ || node->has_tunable_parameters();
   *out_node = std::move(node);
-  // Reset the optimization period when a node is added so that autotuning
-  // adapts to changes to the input pipeline faster.
-  optimization_period_ms_ = kOptimizationPeriodMinMs;
-  cond_var_.notify_all();
+  // TODO(jsimsa): Reset the optimization period when a node is added so that
+  // autotuning adapts to changes to the input pipeline faster. Initial attempt
+  // to enable this functionality caused a regression (see b/179812091).
 }
 
 void Model::FlushMetrics() {

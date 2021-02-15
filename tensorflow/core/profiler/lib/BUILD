@@ -227,6 +227,10 @@ cc_library(
     hdrs = ["profiler_lock.h"],
     copts = tf_profiler_copts(),
     visibility = ["//tensorflow/core/profiler:internal"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
 )
 
 filegroup(

@@ -564,6 +564,69 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
       combinations.combine(
           num_processes=[1, 2],
           required_gpus=[0, 1, 2],
+          implementation=[
+              CommunicationImplementation.AUTO,
+              CommunicationImplementation.RING,
+              CommunicationImplementation.NCCL,
+          ],
+          reduce_op=[ReduceOp.SUM, ReduceOp.MEAN],
+      ))
+  def testCollectiveAllReduce(self, num_processes, required_gpus,
+                              implementation, reduce_op):
+    if (required_gpus == 0 and
+        implementation == CommunicationImplementation.NCCL):
+      self.skipTest("Skip CPU + NCCL combination")
+    if (num_processes == 2 and
+        implementation == CommunicationImplementation.NCCL):
+      self.skipTest("Skip NCCL + 2 processes combination. NCCL requires "
+                    "physical GPUs for every process.")
+
+    def replica_fn():
+      collective, devices, _ = self.make_collective(num_processes,
+                                                    required_gpus)
+      options = collective_util.Options(implementation=implementation)
+      group_size = num_processes * (required_gpus or 1)
+
+      @def_function.function
+      def collective_all_reduce():
+        results = []
+        for replica_id, device in enumerate(devices):
+          with ops.device(device):
+            value = constant_op.constant(1.0)
+            results.append(
+                collective._all_reduce(reduce_op, value, replica_id, options))
+        return results
+
+      got = collective_all_reduce()
+      if reduce_op == ReduceOp.SUM:
+        expect = [1.0 * group_size] * len(devices)
+      elif reduce_op == ReduceOp.MEAN:
+        expect = [1.0] * len(devices)
+      self.assertAllClose(got, expect)
+
+      @def_function.function
+      def collective_batch_all_reduce():
+        results = []
+        for replica_id, device in enumerate(devices):
+          with ops.device(device):
+            value = (constant_op.constant(1.0), constant_op.constant(2.0))
+            results.append(
+                collective._all_reduce(reduce_op, value, replica_id, options))
+        return results
+
+      got = collective_batch_all_reduce()
+      if reduce_op == ReduceOp.SUM:
+        expect = [(1.0 * group_size, 2.0 * group_size)] * len(devices)
+      elif reduce_op == ReduceOp.MEAN:
+        expect = [(1.0, 2.0)] * len(devices)
+      self.assertAllClose(got, expect)
+
+    get_global_mpr(num_processes).run(replica_fn)
+
+  @combinations.generate(
+      combinations.combine(
+          num_processes=[1, 2],
+          required_gpus=[0, 1, 2],
           axis=[0, 1, 2],
           func_mode=["eager", "func_graph"],
           implementation=[

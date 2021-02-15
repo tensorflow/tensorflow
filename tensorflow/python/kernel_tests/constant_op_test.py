@@ -54,7 +54,7 @@ class ConstantTest(test.TestCase):
 
   def _testGpu(self, x):
     np_ans = np.array(x)
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       tf_ans = ops.convert_to_tensor(x).eval()
     dtype = dtypes_lib.as_dtype(np_ans.dtype)
     if dtype.is_floating or dtype.is_complex:

@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_hlo_to_lhlo_op.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -173,7 +174,7 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::Atan2Op>(Location loc,
                                                     ArrayRef<Type> result_types,
                                                     ArrayRef<Value> args,
                                                     OpBuilder* b) {
-  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::Atan2Op>{}(
+  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::math::Atan2Op>{}(
       loc, result_types, args, b);
 }
 
@@ -246,7 +247,7 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::ExpOp>(Location loc,
                                                   ArrayRef<Type> result_types,
                                                   ArrayRef<Value> args,
                                                   OpBuilder* b) {
-  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::ExpOp>{}(
+  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::math::ExpOp>{}(
       loc, result_types, args, b);
 }
 
@@ -322,6 +323,10 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::ConvertOp>(
     // No conversion is needed for the same width integers
     return args.front();
   }
+  if (targetType.isInteger(/*width=*/1)) {
+    auto zero = b->create<ConstantOp>(loc, b->getFloatAttr(sourceType, 0.0));
+    return b->create<mlir::CmpFOp>(loc, CmpFPredicate::UNE, args.front(), zero);
+  }
   if (mlir::FPToSIOp::areCastCompatible(sourceType, targetType)) {
     return b->create<mlir::FPToSIOp>(loc, result_types, args, mlir::None);
   }
@@ -358,7 +363,7 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::CosOp>(Location loc,
                                                   ArrayRef<Type> result_types,
                                                   ArrayRef<Value> args,
                                                   OpBuilder* b) {
-  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::CosOp>{}(
+  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::math::CosOp>{}(
       loc, result_types, args, b);
 }
 
@@ -367,7 +372,7 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::SinOp>(Location loc,
                                                   ArrayRef<Type> result_types,
                                                   ArrayRef<Value> args,
                                                   OpBuilder* b) {
-  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::SinOp>{}(
+  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::math::SinOp>{}(
       loc, result_types, args, b);
 }
 
@@ -434,7 +439,7 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::LogOp>(Location loc,
                                                   ArrayRef<Type> result_types,
                                                   ArrayRef<Value> args,
                                                   OpBuilder* b) {
-  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::LogOp>{}(
+  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::math::LogOp>{}(
       loc, result_types, args, b);
 }
 
@@ -463,7 +468,7 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::LogisticOp>(
   Value one = b->create<ConstantOp>(loc, b->getFloatAttr(ty, 1.0));
   Value x = args.front();
   Value neg_x = b->create<NegFOp>(loc, x);
-  Value exp_neg_x = b->create<::mlir::ExpOp>(loc, neg_x);
+  Value exp_neg_x = b->create<::mlir::math::ExpOp>(loc, neg_x);
   Value one_add_exp_neg_x = b->create<AddFOp>(loc, one, exp_neg_x);
   return b->create<DivFOp>(loc, one, one_add_exp_neg_x);
 }
@@ -473,7 +478,7 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::Log1pOp>(Location loc,
                                                     ArrayRef<Type> result_types,
                                                     ArrayRef<Value> args,
                                                     OpBuilder* b) {
-  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::Log1pOp>{}(
+  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::math::Log1pOp>{}(
       loc, result_types, args, b);
 }
 
@@ -579,7 +584,7 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::RsqrtOp>(Location loc,
                                                     ArrayRef<Type> result_types,
                                                     ArrayRef<Value> args,
                                                     OpBuilder* b) {
-  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::RsqrtOp>{}(
+  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::math::RsqrtOp>{}(
       loc, result_types, args, b);
 }
 
@@ -593,8 +598,8 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::PowOp>(Location loc,
   // Floating point can use std::powf
   auto result_type = result_types.front();
   if (result_type.isa<::mlir::FloatType>())
-    return MapLhloOpToStdScalarOpImpl<::mlir::PowFOp>{}(loc, result_types, args,
-                                                        b);
+    return MapLhloOpToStdScalarOpImpl<::mlir::math::PowFOp>{}(loc, result_types,
+                                                              args, b);
 
   assert(result_type.isa<::mlir::IntegerType>() &&
          "only float and integer `pow` is supported right now");
@@ -746,7 +751,7 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::SqrtOp>(Location loc,
                                                    ArrayRef<Type> result_types,
                                                    ArrayRef<Value> args,
                                                    OpBuilder* b) {
-  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::SqrtOp>{}(
+  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::math::SqrtOp>{}(
       loc, result_types, args, b);
 }
 
@@ -766,7 +771,7 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::TanhOp>(Location loc,
                                                    ArrayRef<Type> result_types,
                                                    ArrayRef<Value> args,
                                                    OpBuilder* b) {
-  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::TanhOp>{}(
+  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::math::TanhOp>{}(
       loc, result_types, args, b);
 }
 

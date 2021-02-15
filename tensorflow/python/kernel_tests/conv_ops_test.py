@@ -2787,7 +2787,7 @@ class SeparableConv2DTest(test.TestCase):
       expected: An array containing the expected operation outputs.
       data_format: string data format for input tensor.
     """
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       t1 = self._InitValues(tensor_in_sizes)
       f1 = self._InitValues(depthwise_filter_in_sizes)
       f1.set_shape(depthwise_filter_in_sizes)
@@ -2899,7 +2899,7 @@ class SeparableConv2DTest(test.TestCase):
     depthwise_filter_in_sizes = [2, 2, 2, 3]
     pointwise_filter_in_sizes = [1, 1, 6, 7]
     padding = [[0, 0], [1, 2], [3, 4], [0, 0]]
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       # Compute the 'expected' values by manually padding before calling
       # separable_conv2d
       t1 = self._InitValues(tensor_in_sizes)

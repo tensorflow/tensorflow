@@ -2123,11 +2123,12 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   Raises:
     ValueError: If `num` is unspecified and cannot be inferred.
   """
-  size_splits = ops.convert_to_tensor(num_or_size_splits)
   if isinstance(num_or_size_splits,
                 (numbers.Integral, tensor_shape.Dimension)):
     return gen_array_ops.split(
         axis=axis, num_split=num_or_size_splits, value=value, name=name)
+
+  size_splits = ops.convert_to_tensor(num_or_size_splits)
 
   if size_splits._rank() == 0:
     raise ValueError(

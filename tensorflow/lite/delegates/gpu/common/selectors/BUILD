@@ -99,6 +99,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:storage_type_util",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
+        "//tensorflow/lite/delegates/gpu/common/task:weights_conversion",
         "//tensorflow/lite/delegates/gpu/common/tasks:elementwise",
         "//tensorflow/lite/delegates/gpu/common/tasks:mean_stddev_normalization",
         "//tensorflow/lite/delegates/gpu/common/tasks:transpose",

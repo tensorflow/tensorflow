@@ -141,80 +141,6 @@ class NormalizationTest(keras_parameterized.TestCase,
     expected = np.array([[3., -3., -0.33333333], [9., 5., 1.]])
     self.assertAllClose(expected, output_data)
 
-  def test_combiner_api_compatibility(self):
-    data = np.array([[1], [2], [3], [4], [5]])
-    combiner = normalization._NormalizingCombiner(axis=-1)
-    expected = {
-        "count": np.array(5.0),
-        "variance": np.array([2.]),
-        "mean": np.array([3.])
-    }
-    expected_accumulator = combiner._create_accumulator(expected["count"],
-                                                        expected["mean"],
-                                                        expected["variance"])
-    self.validate_accumulator_serialize_and_deserialize(combiner, data,
-                                                        expected_accumulator)
-    self.validate_accumulator_uniqueness(combiner, data)
-    self.validate_accumulator_extract(combiner, data, expected)
-    self.validate_accumulator_extract_and_restore(combiner, data,
-                                                  expected)
-
-  @parameterized.named_parameters(
-      {
-          "data": np.array([[1], [2], [3], [4], [5]]),
-          "axis": -1,
-          "expected": {
-              "count": np.array(5.0),
-              "variance": np.array([2.]),
-              "mean": np.array([3.])
-          },
-          "testcase_name": "2d_single_element"
-      }, {
-          "data": np.array([[1, 2], [2, 3], [3, 4], [4, 5], [5, 6]]),
-          "axis": -1,
-          "expected": {
-              "count": np.array(5.0),
-              "mean": np.array([3., 4.]),
-              "variance": np.array([2., 2.])
-          },
-          "testcase_name": "2d_multi_element"
-      }, {
-          "data": np.array([[[1, 2]], [[2, 3]], [[3, 4]], [[4, 5]], [[5, 6]]]),
-          "axis": 2,
-          "expected": {
-              "count": np.array(5.0),
-              "mean": np.array([3., 4.]),
-              "variance": np.array([2., 2.])
-          },
-          "testcase_name": "3d_multi_element"
-      }, {
-          "data": np.array([[[1, 2]], [[2, 3]], [[3, 4]], [[4, 5]], [[5, 6]]]),
-          "axis": (1, 2),
-          "expected": {
-              "count": np.array(5.0),
-              "mean": np.array([[3., 4.]]),
-              "variance": np.array([[2., 2.]])
-          },
-          "testcase_name": "3d_multi_element_multi_axis"
-      }, {
-          "data":
-              np.array([[[1, 2], [2, 3]], [[3, 4], [4, 5]], [[1, 2], [2, 3]],
-                        [[3, 4], [4, 5]]]),
-          "axis":
-              1,
-          "expected": {
-              "count": np.array(8.0),
-              "mean": np.array([2.5, 3.5]),
-              "variance": np.array([1.25, 1.25])
-          },
-          "testcase_name":
-              "3d_multi_element_internal_axis"
-      })
-  def test_combiner_computation_multi_value_axis(self, data, axis, expected):
-    combiner = normalization._NormalizingCombiner(axis=axis)
-    expected_accumulator = combiner._create_accumulator(**expected)
-    self.validate_accumulator_computation(combiner, data, expected_accumulator)
-
   @parameterized.named_parameters(*_get_layer_computation_test_cases())
   def test_layer_computation(self, adapt_data, axis, test_data, use_dataset,
                              expected):
@@ -286,6 +212,18 @@ class NormalizationTest(keras_parameterized.TestCase,
     if context.executing_eagerly():
       self.assertAllClose(output.numpy(), [[-1], [1], [-1], [1]])
 
+  def test_0d_data(self):
+    if not context.executing_eagerly():
+      self.skipTest("Only supported in TF2.")
+
+    data = [0, 2, 0, 2]
+    cls = get_layer_class()
+    layer = cls(axis=-1)
+    layer.adapt(data)
+    output = layer(0.)
+    self.assertListEqual(output.shape.as_list(), [1, 1])
+    self.assertAllClose(output.numpy(), [[-1]])
+
   @parameterized.parameters(
       {"axis": 0},
       {"axis": (-1, 0)},
@@ -307,8 +245,7 @@ class NormalizationTest(keras_parameterized.TestCase,
   def test_bad_axis_fail_build(self, axis):
     cls = get_layer_class()
     layer = cls(axis=axis)
-    with self.assertRaisesRegex(ValueError,
-                                r"in the range \[1-ndim, ndim-1\]."):
+    with self.assertRaisesRegex(ValueError, r"in the range"):
       layer.build([None, 2, 3])
 
   @parameterized.parameters(
@@ -340,6 +277,33 @@ class NormalizationTest(keras_parameterized.TestCase,
          keras.layers.Dense(64, activation="relu"),
          keras.layers.Dense(1)])
     model.summary()
+
+  def test_merge_state(self):
+    if not context.executing_eagerly():
+      self.skipTest("`merge_state` only supported in TF2")
+
+    cls = get_layer_class()
+    data = np.random.rand(30, 10, 2)
+    ds = dataset_ops.Dataset.from_tensor_slices(data).batch(2)
+    norm = cls(axis=(1, 2))
+    norm.adapt(ds)
+
+    partial_ds_1 = ds.shard(3, 0)
+    partial_ds_2 = ds.shard(3, 1)
+    partial_ds_3 = ds.shard(3, 2)
+
+    norm_1 = cls(axis=(1, 2))
+    norm_2 = cls(axis=(1, 2))
+    norm_3 = cls(axis=(1, 2))
+
+    norm_1.adapt(partial_ds_1)
+    norm_2.adapt(partial_ds_2)
+    norm_3.adapt(partial_ds_3)
+
+    norm_1.merge_state([norm_2, norm_3])
+    merged_norm = norm_1
+
+    self.assertAllClose(norm(data), merged_norm(data))
 
 
 if __name__ == "__main__":

@@ -100,10 +100,10 @@ int main(int argc, char** argv) {
   }
 
   // Load the MLIR module.
-  mlir::MLIRContext context;
-  context.getDialectRegistry()
-      .insert<mlir::TF::TensorFlowDialect, mlir::TFL::TensorFlowLiteDialect,
-              mlir::StandardOpsDialect>();
+  mlir::DialectRegistry registry;
+  registry.insert<mlir::TF::TensorFlowDialect, mlir::TFL::TensorFlowLiteDialect,
+                  mlir::StandardOpsDialect>();
+  mlir::MLIRContext context(registry);
 
   llvm::SourceMgr source_mgr;
   source_mgr.AddNewSourceBuffer(std::move(*file_or_err), llvm::SMLoc());

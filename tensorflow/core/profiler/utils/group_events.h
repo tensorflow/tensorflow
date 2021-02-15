@@ -242,6 +242,9 @@ std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList();
 void GroupTfEvents(XSpace* space, EventForest* event_forest);
 void GroupTfEvents(XSpace* space);
 
+// Returns true if the given space has TF's loop ops.
+bool CheckLoopOp(const XSpace& space);
+
 }  // namespace profiler
 }  // namespace tensorflow
 

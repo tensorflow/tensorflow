@@ -205,7 +205,7 @@ class CuDNNGraphOnlyTest(keras_parameterized.TestCase):
     units = 2
     num_samples = 32
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(
           keras.layers.Embedding(

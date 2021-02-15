@@ -72,7 +72,6 @@ tensorflow/third_party/eigen3/Eigen/SVD
 tensorflow/third_party/eigen3/Eigen/SparseCholesky
 tensorflow/third_party/eigen3/Eigen/SparseCore
 tensorflow/third_party/eigen3/LICENSE
-tensorflow/third_party/eigen3/gpu_packet_math.patch
 tensorflow/third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint
 tensorflow/third_party/eigen3/unsupported/Eigen/CXX11/Tensor
 tensorflow/third_party/eigen3/unsupported/Eigen/CXX11/ThreadPool

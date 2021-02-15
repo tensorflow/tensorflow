@@ -29,7 +29,7 @@ limitations under the License.
 #endif
 
 TF_PROFILER_DISABLE_CXX17_WARNINGS
-#include "tensorflow/compiler/xla/service/gpu/gpu_debug_info_manager.h"
+#include "tensorflow/compiler/xla/service/xla_debug_info_manager.h"
 TF_PROFILER_ENABLE_CXX17_WARNINGS
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/core/platform/macros.h"
@@ -57,7 +57,7 @@ class MetadataCollector : public ProfilerInterface {
 
   Status Start() override {
     if (!trace_active_) {
-      xla::gpu::GpuDebugInfoManager::Get()->StartTracing();
+      xla::XlaDebugInfoManager::Get()->StartTracing();
       trace_active_ = true;
     }
     return Status::OK();
@@ -65,7 +65,7 @@ class MetadataCollector : public ProfilerInterface {
 
   Status Stop() override {
     if (trace_active_) {
-      xla::gpu::GpuDebugInfoManager::Get()->StopTracing(&debug_info_);
+      xla::XlaDebugInfoManager::Get()->StopTracing(&debug_info_);
       trace_active_ = false;
     }
     return Status::OK();
@@ -91,7 +91,7 @@ class MetadataCollector : public ProfilerInterface {
   }
 
  private:
-  std::vector<xla::gpu::GpuModuleDebugInfo> debug_info_;
+  std::vector<xla::XlaModuleDebugInfo> debug_info_;
   bool trace_active_ = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(MetadataCollector);

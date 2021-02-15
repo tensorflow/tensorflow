@@ -185,9 +185,9 @@ class CollectiveGatherOpKernel : public CollectiveOpV1Kernel {
               << c->op_kernel().name() << " device " << c->device()->name()
               << " group " << col_params->group.group_key << " instance "
               << col_params->instance.instance_key << " status " << s;
+      col_params->Unref();
       OP_REQUIRES_OK_ASYNC(c, s, done);
       done();
-      col_params->Unref();
     };
     VLOG(1) << "CollectiveGatherOpKernel ExecuteAsync start for collective "
             << col_params_->name << " device " << c->device()->name()
@@ -293,9 +293,9 @@ class CollectiveReduceOpKernel : public CollectiveOpV1Kernel {
               << c->op_kernel().name() << " device " << c->device()->name()
               << " group " << col_params->group.group_key << " instance "
               << col_params->instance.instance_key << " status " << s;
+      col_params->Unref();
       OP_REQUIRES_OK_ASYNC(c, s, done);
       done();
-      col_params->Unref();
     };
     VLOG(1) << "CollectiveReduceOpKernel ExecuteAsync start for collective "
             << col_params_->name << " device " << c->device()->name()
@@ -372,9 +372,9 @@ class CollectiveBcastSendOpKernel : public CollectiveOpV1Kernel {
               << c->op_kernel().name() << " device " << c->device()->name()
               << " group " << col_params->group.group_key << " instance "
               << col_params->instance.instance_key << " status " << s;
+      col_params->Unref();
       OP_REQUIRES_OK_ASYNC(c, s, done);
       done();
-      col_params->Unref();
     };
     VLOG(1) << "CollectiveBcastSendOpKernel ExecuteAsync start for collective "
             << col_params_->name << " device " << c->device()->name()
@@ -442,9 +442,9 @@ class CollectiveBcastRecvOpKernel : public CollectiveOpV1Kernel {
               << c->op_kernel().name() << " device " << c->device()->name()
               << " group " << col_params->group.group_key << " instance_key "
               << col_params->instance.instance_key << " status  " << s;
+      col_params->Unref();
       OP_REQUIRES_OK_ASYNC(c, s, done);
       done();
-      col_params->Unref();
     };
     VLOG(1) << "CollectiveBcastRecvOpKernel ExecuteAsync start for collective "
             << col_params_->name << " device " << c->device()->name()

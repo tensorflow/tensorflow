@@ -353,6 +353,8 @@ bool TfLiteDriver::DataExpectation::Check(bool verbose,
     case kTfLiteComplex128:
       return TypedCheck<std::complex<double>, std::complex<double>>(verbose,
                                                                     tensor);
+    case kTfLiteFloat64:
+      return TypedCheck<double, double>(verbose, tensor);
     default:
       fprintf(stderr, "Unsupported type %d in Check\n", tensor.type);
       return false;
@@ -528,6 +530,21 @@ void TfLiteDriver::SetInput(int id, const string& csv_values) {
 
       break;
     }
+    case kTfLiteComplex64: {
+      const auto& values = testing::Split<std::complex<float>>(csv_values, ",");
+      if (!CheckSizes<std::complex<float>>(tensor->bytes, values.size()))
+        return;
+      SetTensorData(values, tensor->data.raw);
+      break;
+    }
+    case kTfLiteComplex128: {
+      const auto& values =
+          testing::Split<std::complex<double>>(csv_values, ",");
+      if (!CheckSizes<std::complex<double>>(tensor->bytes, values.size()))
+        return;
+      SetTensorData(values, tensor->data.raw);
+      break;
+    }
     default:
       Invalidate(absl::StrCat("Unsupported tensor type ",
                               TfLiteTypeGetName(tensor->type),
@@ -589,6 +606,9 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
       break;
     case kTfLiteString:
       expected_output_[id]->SetData<string>(csv_values);
+      break;
+    case kTfLiteFloat64:
+      expected_output_[id]->SetData<double>(csv_values);
       break;
     case kTfLiteComplex64:
       expected_output_[id]->SetData<std::complex<float>>(csv_values);

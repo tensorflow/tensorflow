@@ -297,9 +297,14 @@ class TPUEmbedding(tracking.AutoTrackable):
     # Thus we must fix a common order to tables and ensure they have unique
     # names.
 
-    # Set table order here
-    self._table_config = list(
-        {feature.table for feature in nest.flatten(feature_config)})
+    # Set table order here to the order of the first occurence of the table in a
+    # feature provided by the user. The order of this struct must be fixed
+    # to provide the user with deterministic behavior over multiple
+    # instantiations.
+    self._table_config = []
+    for feature in nest.flatten(feature_config):
+      if feature.table not in self._table_config:
+        self._table_config.append(feature.table)
 
     # Ensure tables have unique names. Also error check the optimizer as we
     # specifically don't do that in the TableConfig class to allow high level
