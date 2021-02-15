@@ -23,9 +23,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
-namespace ops {
-namespace micro {
-namespace div {
 namespace {
 
 constexpr int kInputTensor1 = 0;
@@ -63,7 +60,7 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
   TF_LITE_ENSURE_TYPES_EQ(context, input1->type, input2->type);
   output->type = input2->type;
 
-  if (output->type == kTfLiteUInt8) {
+  if (output->type == kTfLiteInt8) {
     TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
         context, params->activation, output, &data->output_activation_min,
         &data->output_activation_max));
@@ -78,8 +75,6 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
 
   return kTfLiteOk;
 }
-
-}  // namespace
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
@@ -114,18 +109,10 @@ void EvalDiv(TfLiteContext* context, TfLiteNode* node, TfLiteDivParams* params,
       tflite::micro::GetTensorShape(input1),
       tflite::micro::GetTensorShape(input2), &op_params);
 
-  if (output->type == kTfLiteInt32) {
-    if (requires_broadcast) {
-      TF_LITE_DIV(reference_ops, BroadcastDivSlow, int32_t);
-    } else {
-      TF_LITE_DIV(reference_ops, Div, int32_t);
-    }
-  } else if (output->type == kTfLiteFloat32) {
-    if (requires_broadcast) {
-      TF_LITE_DIV(reference_ops, BroadcastDivSlow, float);
-    } else {
-      TF_LITE_DIV(reference_ops, Div, float);
-    }
+  if (requires_broadcast) {
+    TF_LITE_DIV(reference_ops, BroadcastDivSlow, float);
+  } else {
+    TF_LITE_DIV(reference_ops, Div, float);
   }
 #undef TF_LITE_DIV
 }
@@ -145,8 +132,8 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                tflite::micro::GetTensorShape(output),            \
                tflite::micro::GetTensorData<dtype>(output))
 
-  if (input1->type == kTfLiteUInt8 && input2->type == kTfLiteUInt8 &&
-      output->type == kTfLiteUInt8) {
+  if (input1->type == kTfLiteInt8 && input2->type == kTfLiteInt8 &&
+      output->type == kTfLiteInt8) {
     SetActivationParams(data->output_activation_min,
                         data->output_activation_max, &op_params);
     op_params.input1_offset = -data->input1_zero_point;
@@ -160,9 +147,9 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
         tflite::micro::GetTensorShape(input2), &op_params);
 
     if (requires_broadcast) {
-      TF_LITE_DIV(reference_ops, BroadcastDivSlow, uint8_t);
+      TF_LITE_DIV(reference_ops, BroadcastDivSlow, int8_t);
     } else {
-      TF_LITE_DIV(reference_ops, Div, uint8_t);
+      TF_LITE_DIV(reference_ops, Div, int8_t);
     }
 #undef TF_LITE_DIV
   } else {
@@ -187,14 +174,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteEvalTensor* output =
       tflite::micro::GetEvalOutput(context, node, kOutputTensor);
 
-  if (output->type == kTfLiteFloat32 || output->type == kTfLiteInt32) {
+  if (output->type == kTfLiteFloat32) {
     EvalDiv(context, node, params, data, input1, input2, output);
-  } else if (output->type == kTfLiteUInt8) {
+  } else if (output->type == kTfLiteInt8) {
     TF_LITE_ENSURE_OK(context, EvalQuantized(context, node, params, data,
                                              input1, input2, output));
   } else {
     TF_LITE_KERNEL_LOG(context,
-                       "DIV only supports FLOAT32, INT32 and quantized UINT8 "
+                       "DIV only supports FLOAT32, quantized INT8 "
                        "now, got type %s (%d).",
                        TfLiteTypeGetName(output->type), output->type);
     return kTfLiteError;
@@ -203,19 +190,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-}  // namespace div
+}  // namespace
 
 TfLiteRegistration Register_DIV() {
-  return {/*init=*/div::Init,
+  return {/*init=*/Init,
           /*free=*/nullptr,
-          /*prepare=*/div::Prepare,
-          /*invoke=*/div::Eval,
+          /*prepare=*/Prepare,
+          /*invoke=*/Eval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,
           /*custom_name=*/nullptr,
           /*version=*/0};
 }
 
-}  // namespace micro
-}  // namespace ops
 }  // namespace tflite
