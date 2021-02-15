@@ -4847,6 +4847,14 @@ gentbl(
             "include/mlir/Dialect/Vector/VectorOpsDialect.h.inc",
         ),
         (
+            "-gen-enum-decls",
+            "include/mlir/Dialect/Vector/VectorOpsEnums.h.inc",
+        ),
+        (
+            "-gen-enum-defs",
+            "include/mlir/Dialect/Vector/VectorOpsEnums.cpp.inc",
+        ),
+        (
             "-gen-op-doc",
             "g3doc/Dialects/Vector/VectorOps.md",
         ),
