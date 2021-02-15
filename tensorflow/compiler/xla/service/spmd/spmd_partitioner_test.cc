@@ -7111,6 +7111,40 @@ ENTRY %module {
   EXPECT_THAT(root, tuple);
 }
 
+TEST_F(SpmdPartitioningTest, GatherIndexOnlyCorrectReplacement) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY %module {
+  %parameter.0 = bf16[1,8,6,6]{3,2,1,0} parameter(0),
+    sharding={replicated}
+  %parameter.1 = s32[2,4]{1,0} parameter(1),
+     sharding={devices=[2,1,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  %gather.100 = bf16[2,1,8,1,6]{4,3,2,1,0} gather(
+    bf16[1,8,6,6]{3,2,1,0} %parameter.0, s32[2,4]{1,0} %parameter.1),
+    offset_dims={1,2,3,4}, collapsed_slice_dims={}, start_index_map={0,1,2,3},
+    index_vector_dim=1, slice_sizes={1,8,1,6},
+    sharding={devices=[2,1,4,1,1]0,1,2,3,4,5,6,7}
+  %constant.45590 = s32[] constant(0), sharding={replicated}
+  %broadcast.54515 = s32[2,64,1,1]{3,2,1,0} broadcast(s32[] %constant.45590),
+    dimensions={},
+    sharding={devices=[2,1,1,1,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  ROOT %reshape.4243 = bf16[2,8,6]{2,1,0} reshape(
+    bf16[2,1,8,1,6]{4,3,2,1,0} %gather.100),
+    sharding={devices=[2,4,1]0,1,2,3,4,5,6,7}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  auto param0 = AllOf(op::Shape("bf16[1,8,6,6]"), op::Parameter());
+  auto param1 = AllOf(op::Shape("s32[1,4]"), op::Parameter());
+  auto reshape = AllOf(
+      op::Shape("bf16[1,2,6]"),
+      op::Reshape(op::DynamicSlice(op::Gather(param0, param1), _, _, _, _, _)));
+  EXPECT_THAT(root, reshape);
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla
