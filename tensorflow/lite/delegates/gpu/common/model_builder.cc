@@ -1404,12 +1404,11 @@ class ReduceOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
 
     ReduceAttributes attr;
-    Tensor<Linear, DataType::INT32> axes;
-    RETURN_IF_ERROR(reader->ReadTensor(1, &axes));
     const TfLiteTensor* input = reader->GetInputTensor(0);
-    for (int i = 0; i < axes.data.size(); i++) {
+    const TfLiteTensor* axes = reader->GetInputTensor(1);
+    for (int i = 0; i < NumElements(axes->dims); i++) {
       Axis axis;
-      RETURN_IF_ERROR(ExtractAxisFromIndex(*input, axes.data[i], &axis));
+      RETURN_IF_ERROR(ExtractAxisFromIndex(*input, axes->data.i32[i], &axis));
       attr.dims.insert(axis);
     }
     node->operation.attributes = attr;
@@ -1952,6 +1951,20 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
     if (attr->ends.b < 0) {
       attr->ends.b = input_shape.b + attr->ends.b;
     }
+
+    if (attr->starts.h < 0) {
+      attr->starts.h = input_shape.h + attr->starts.h;
+    }
+    if (attr->starts.w < 0) {
+      attr->starts.w = input_shape.w + attr->starts.w;
+    }
+    if (attr->starts.c < 0) {
+      attr->starts.c = input_shape.c + attr->starts.c;
+    }
+    if (attr->starts.b < 0) {
+      attr->starts.b = input_shape.b + attr->starts.b;
+    }
+
     return absl::OkStatus();
   }
 
@@ -2240,12 +2253,11 @@ class MeanOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->AddOutputs(node));
 
     MeanAttributes attr;
-    Tensor<Linear, DataType::INT32> axes;
-    RETURN_IF_ERROR(reader->ReadTensor(1, &axes));
     const TfLiteTensor* input = reader->GetInputTensor(0);
-    for (int i = 0; i < axes.data.size(); i++) {
+    const TfLiteTensor* axes = reader->GetInputTensor(1);
+    for (int i = 0; i < NumElements(axes->dims); i++) {
       Axis axis;
-      RETURN_IF_ERROR(ExtractAxisFromIndex(*input, axes.data[i], &axis));
+      RETURN_IF_ERROR(ExtractAxisFromIndex(*input, axes->data.i32[i], &axis));
       attr.dims.insert(axis);
     }
     node->operation.attributes = attr;

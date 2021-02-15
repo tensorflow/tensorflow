@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt -chlo-legalize-to-hlo -cse -split-input-file -verify-diagnostics %s -o - | FileCheck %s
+// RUN: mlir-hlo-opt -chlo-legalize-to-hlo="broadcast-only=true" -cse -split-input-file -verify-diagnostics %s -o - | FileCheck %s
 
 // Check the non-broadcast case for each registered op, then just check a
 // representative op for detailed broadcast semantics.
@@ -236,4 +236,14 @@ func @xorWithoutBroadcast(%arg0: tensor<4xi1>, %arg1: tensor<4xi1>) -> tensor<4x
   // CHECK: mhlo.xor %arg0, %arg1
   %0 = chlo.broadcast_xor %arg0, %arg1 : (tensor<4xi1>, tensor<4xi1>) -> tensor<4xi1>
   return %0 : tensor<4xi1>
+}
+
+// -----
+// CHECK-LABEL: @ZetaWithoutBroadcast
+func @ZetaWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>)
+    -> tensor<4xf32> {
+  // CHECK: chlo.zeta %arg0, %arg1
+  %0 = chlo.broadcast_zeta %arg0, %arg1
+      : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
 }

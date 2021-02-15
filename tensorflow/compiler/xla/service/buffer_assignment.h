@@ -466,6 +466,7 @@ class BufferAssignment {
   const HloLiveRange& hlo_live_range() const { return *hlo_live_range_; }
 
   string ToString() const;
+  string BufferInfoString() const;
   BufferAssignmentProto ToProto() const;
 
   // Statistics for the assignment.  Values initialized to -1 are not always

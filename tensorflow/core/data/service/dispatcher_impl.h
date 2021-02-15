@@ -43,6 +43,75 @@ namespace data {
 //   ProcessingModeDef which determines what data it produces.
 // * Task: A job is broken into multiple tasks, which each represent
 //   iterating over all of or part of the dataset. Workers process tasks.
+// * Consumer: A process reading from the tf.data service.
+//
+// **Adding workers**
+//
+// tf.data service supports adding workers mid-job. When a new worker connects
+// to the dispatcher, the dispatcher creates a new task for the worker, one task
+// for each outstanding job. Consumers periodically heartbeat to the dispatcher
+// to learn about new tasks.
+//
+// For non-round-robin-reads, there is no coordination among consumers. Each
+// consumer will start reading from the new task as soon as it learns about the
+// task from its heartbeat. Round robin reads, on the other hand, require
+// consumers to read from the same task at each step. This requires coordination
+// to ensure that all consumers start reading from the new task in the same
+// round.
+//
+// The protocol for adding round robin tasks works as follows:
+//
+// - The dispatcher keeps track of which round each round-robin job is on. This
+//   information is reported by consumers in their heartbeats.
+// - When a new worker joins and there is an outstanding round-robin job, we
+//   create a new task for the job and assign it to the worker.
+//   However, we don't yet report the task in consumer heartbeats.
+//   We call the task a "pending task" and add it to its job's "pending tasks"
+//   queue.
+// - When we create a pending task, we choose a "target round" to try adding
+//   the task to. The target round is chosen by adding a "target round delta" to
+//   the latest reported round for the job.
+// - When a consumer heartbeats for a job and there is a pending task for that
+//   job, the dispatcher sends a heartbeat response telling the consumer to
+//   block before reading from the target round.
+// - When a consumer receives a heartbeat response telling it to block
+//   (before reading) a round, the consumer try to block the round. If the
+//   consumer has already started the round, it will too late to block the
+//   round.
+// - When consumers heartbeat, they tell the dispatcher their current round and
+//   whether they have blocked themselves from reading past a certain round. If
+//   a consumer reports a current round exceeding the target round, the target
+//   round has failed and needs to be increased. We choose a new target round by
+//   doubling the previous target round delta. If the consumer reports that it
+//   has blocked before the target round, we record that the consumer is ready
+//   to add the new task. Once all consumers are ready to add the new task, we
+//   remove the task from the pending tasks list and begin reporting the task to
+//   consumers. We set the "starting_round" field of the task to indicate the
+//   target round where all consumers should start reading from the task.
+// - If a new worker joins while there are already pending tasks, a pending
+//   task for the new worker is created and queued behind the existing tasks.
+//   The new task won't be considered until all previous pending tasks have been
+//   successfully added.
+//
+// An example of executing this protocol with two consumers could go as follows:
+// 1. Consumers read up to round 50 and heartbeat that they are on round 50.
+// 2. A new worker joins. Dispatcher chooses round 51 as the target round.
+// 3. Consumer 1 heartbeats that its current round is 50. Dispatcher tells it to
+//    block round 51.
+// 4. Consumer 2 heartbeats that its current round is 51. Dispatcher realizes
+//    that it is too late to block round 51 and chooses round 53 as the new
+//    target round. Dispatcher tells consumer 2 to block round 53.
+// 5. Consumer 1 heartbeats that its current round is 50 and that it has blocked
+//    round 51. Dispatcher tells it to block round 53 instead. Dispatcher
+//    records that consumer 1 is ready to add a task in round 53.
+// 6. Consumer 2 heartbeats that its current round is 52 and it has blocked
+//    round 53. Dispatcher realizes that all consumers are blocked on round 53
+//    or earlier and promotes the task from pending to regular. Dispatcher sends
+//    consumer 2 a task list containing the new task, and tells consumer 2 that
+//    it no longer needs to block.
+// 7. Consumer 1 heartbeats. Dispatcher sends consumer 1 the task list
+//    containing the new task, and tells it that it no longer needs to block.
+//
 class DataServiceDispatcherImpl {
  public:
   explicit DataServiceDispatcherImpl(
@@ -72,7 +141,8 @@ class DataServiceDispatcherImpl {
                         GetOrCreateJobResponse* response);
   Status ReleaseJobClient(const ReleaseJobClientRequest* request,
                           ReleaseJobClientResponse* response);
-  Status GetTasks(const GetTasksRequest* request, GetTasksResponse* response);
+  Status ClientHeartbeat(const ClientHeartbeatRequest* request,
+                         ClientHeartbeatResponse* response);
   Status GetWorkers(const GetWorkersRequest* request,
                     GetWorkersResponse* response);
 
@@ -119,6 +189,12 @@ class DataServiceDispatcherImpl {
       std::vector<std::shared_ptr<const DispatcherState::Task>>& tasks)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  // Creates a pending task for a round robin job. All consumers need to agree
+  // on which round to add the task in before the pending task can be promoted
+  // to a regular task.
+  Status CreatePendingTask(std::shared_ptr<const DispatcherState::Job> job,
+                           const std::string& worker_address)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Creates a new task for a job, storing the created task in `task`.
   Status CreateTask(std::shared_ptr<const DispatcherState::Job> job,
                     const std::string& worker_address,
@@ -178,6 +254,9 @@ class DataServiceDispatcherImpl {
   // DISTRIBUTED_EPOCH.
   absl::flat_hash_map<int64, std::unique_ptr<SplitProvider>> split_providers_
       TF_GUARDED_BY(mu_);
+  // Mapping from round robin job id to the round the job is currently on. This
+  // is based on the data provided by client heartbeats, and may be stale.
+  absl::flat_hash_map<int64, int64> round_robin_rounds_ TF_GUARDED_BY(mu_);
 
   absl::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);

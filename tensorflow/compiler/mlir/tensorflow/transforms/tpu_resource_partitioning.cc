@@ -73,8 +73,8 @@ Type GetResourceSubtype(Value resource) {
 // resource reads and writes per associated partitioned resource handle.
 void PartitionResourceReadsWrites(tf_device::ClusterFuncOp cluster_func) {
   bool use_spmd = false;
-  if (auto use_spmd_attr =
-          cluster_func.getAttrOfType<BoolAttr>("use_spmd_for_xla_partitioning"))
+  if (auto use_spmd_attr = cluster_func->getAttrOfType<BoolAttr>(
+          "use_spmd_for_xla_partitioning"))
     use_spmd = use_spmd_attr.getValue();
 
   if (!use_spmd) return;

@@ -2962,7 +2962,7 @@ void LegalizeTFL::runOnFunction() {
   DEF_PATTERN_INSERT(TFLQuantize);
   DEF_PATTERN_INSERT(TFLDequantize);
   DEF_PATTERN_INSERT(TFLQConst);
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 }  // namespace
 

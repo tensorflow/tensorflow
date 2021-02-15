@@ -289,6 +289,7 @@ For example:
     bool IsPackedBlockArgument(BlockArgument block_arg);
     unsigned GetReplicaOperandIndexForBlockArgument(BlockArgument block_arg, unsigned replica);
     Value GetReplicaOperandForBlockArgument(BlockArgument block_arg, unsigned replica);
+    MutableArrayRef<OpOperand> GetOperandsForBlockArgument(BlockArgument block_arg);
     bool WrapsSingleOp();
   }];
 

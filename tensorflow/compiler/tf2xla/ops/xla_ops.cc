@@ -611,7 +611,9 @@ REGISTER_OP("XlaVariadicReduce")
       return Status::OK();
     })
     .Doc(R"doc(
-Wraps the variadic XLA Reduce operator, documented at
+Wraps the variadic XLA Reduce operator.
+
+Semantics are documented at
  https://www.tensorflow.org/performance/xla/operation_semantics#variadic_reduce.
 
 input: the input tensor(s)
@@ -897,6 +899,7 @@ REGISTER_OP("XlaSharding")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: type")
+    .Attr("sharding: string = ''")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 An op which shards the input based on the given sharding attribute.

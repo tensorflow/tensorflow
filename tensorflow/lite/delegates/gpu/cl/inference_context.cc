@@ -135,22 +135,6 @@ bool IsGenericAdd(const Node& node, const std::vector<Value*>& inputs,
 
 }  // namespace
 
-CLNode::CLNode(CLNode&& node)
-    : cl_operation(std::move(node.cl_operation)),
-      inputs(std::move(node.inputs)),
-      outputs(std::move(node.outputs)),
-      name(std::move(node.name)) {}
-
-CLNode& CLNode::operator=(CLNode&& node) {
-  if (this != &node) {
-    cl_operation = std::move(node.cl_operation);
-    inputs = std::move(node.inputs);
-    outputs = std::move(node.outputs);
-    name = std::move(node.name);
-  }
-  return *this;
-}
-
 absl::Status InferenceContext::InitFromGraph(
     const CreateInferenceInfo& create_info, const GraphFloat32& graph,
     Environment* env, std::vector<uint8_t>* serialized_model) {

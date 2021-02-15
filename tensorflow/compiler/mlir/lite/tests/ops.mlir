@@ -1317,7 +1317,7 @@ func @unpack(%arg0: tensor<i32>) -> tensor<2xi32> {
 // -----
 
 func @unpack(%arg0: tensor<2x3xi32>) -> tensor<2xi32> {
-  // expected-error @+1 {{op inferred type incompatible with return type of operation}}
+  // expected-error @+1 {{op inferred type(s) 'tensor<2xi32>', 'tensor<2xi32>', 'tensor<2xi32>' are incompatible with return type(s) of operation 'tensor<2xi32>', 'tensor<2x1xi32>', 'tensor<2xi32>'}}
   %0:3 = "tfl.unpack"(%arg0) {axis = 1 : i32, num = 3 : i32} : (tensor<2x3xi32>) -> (tensor<2xi32>, tensor<2x1xi32>, tensor<2xi32>)
   return %0#0 : tensor<2xi32>
 }
@@ -1327,6 +1327,13 @@ func @unpack(%arg0: tensor<2x3xi32>) -> tensor<2xi32> {
 func @unpack(%arg0: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>) {
   %0:2 = "tfl.unpack"(%arg0) {axis = 1 : i32, num = 2 : i32} : (tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>)
   return %0#0, %0#1 : tensor<*xi32>, tensor<*xi32>
+}
+
+// -----
+
+func @unpack(%arg0: tensor<?x2x5x3xf32>) -> () {
+  %0:2 = "tfl.unpack"(%arg0) {axis = 1 : i32, num = 2 : i32} : (tensor<?x2x5x3xf32>) -> (tensor<5x5x3xf32>, tensor<5x5x3xf32>)
+  return
 }
 
 // -----
@@ -2512,4 +2519,111 @@ func @testBroadcastToWithI64ShapeTensor(tensor<?x?x?x?x?x?xf32>, tensor<8xi64>) 
 func @testFillWithQI8(%arg0: tensor<1x4xi32>, %arg1: tensor<? x !quant.uniform<i8:f32, 0.1>>) -> tensor<? x !quant.uniform<i8:f32, 0.1>> {
   %0 = "tfl.fill"(%arg0, %arg1): (tensor<1x4xi32>, tensor<? x !quant.uniform<i8:f32, 0.1>>) -> tensor<? x !quant.uniform<i8:f32, 0.1>>
   return %0 : tensor<? x !quant.uniform<i8:f32, 0.1>>
+}
+
+// -----
+
+// CHECK-LABEL: testConv3dWithFloatInput
+func @testConv3dWithFloatInput(%arg0: tensor<?x?x?x?x?xf32>,%arg1:  tensor<?x?x?x?x?xf32>,%arg2: tensor<?xf32>) -> tensor<?x?x?x?x?xf32> {
+  // CHECK: "tfl.conv_3d"(%arg0, %arg1, %arg2)
+  %0 = "tfl.conv_3d"(%arg0, %arg1, %arg2) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32, fused_activation_function = "NONE"}: (tensor<?x?x?x?x?xf32>, tensor<?x?x?x?x?xf32>, tensor<?xf32>) -> tensor<?x?x?x?x?xf32>
+  return %0 : tensor<?x?x?x?x?xf32>
+}
+
+// CHECK-LABEL: testConv3dNoBiasInput
+func @testConv3dNoBiasInput(%arg0: tensor<?x?x?x?x?xf32>,%arg1:  tensor<?x?x?x?x?xf32>,%arg2: none) -> tensor<?x?x?x?x?xf32> {
+  // CHECK: "tfl.conv_3d"(%arg0, %arg1, %arg2)
+  %0 = "tfl.conv_3d"(%arg0, %arg1, %arg2) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32, fused_activation_function = "NONE"}: (tensor<?x?x?x?x?xf32>, tensor<?x?x?x?x?xf32>, none) -> tensor<?x?x?x?x?xf32>
+  return %0 : tensor<?x?x?x?x?xf32>
+}
+
+// -----
+
+func @testConv3dInvalidFilterShape(%arg0: tensor<2x3x4x5x2xf32>,%arg1:  tensor<2x2x2x3x3xf32>,%arg2: tensor<?xf32>) -> tensor<?x?x?x?x?xf32> {
+  // expected-error @+1 {{failed to verify that dim 4 of operand 0 equals to dim 3 of operand 1}}
+  %0 = "tfl.conv_3d"(%arg0, %arg1, %arg2) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32, fused_activation_function = "NONE"}: (tensor<2x3x4x5x2xf32>, tensor<2x2x2x3x3xf32>, tensor<?xf32>) -> tensor<?x?x?x?x?xf32>
+  return %0 : tensor<?x?x?x?x?xf32>
+}
+
+// -----
+
+func @testConv3dInvalidBiasShape(%arg0: tensor<2x3x4x5x2xf32>,%arg1:  tensor<2x2x2x2x3xf32>,%arg2: tensor<4xf32>) -> tensor<?x?x?x?x?xf32> {
+  // expected-error @+1 {{failed to verify that bias must has num of elements equals to 4th dim of filter}}
+  %0 = "tfl.conv_3d"(%arg0, %arg1, %arg2) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32, fused_activation_function = "NONE"}: (tensor<2x3x4x5x2xf32>, tensor<2x2x2x2x3xf32>, tensor<4xf32>) -> tensor<?x?x?x?x?xf32>
+  return %0 : tensor<?x?x?x?x?xf32>
+}
+
+// -----
+
+func @testConv3dMisMatchInputType(%arg0: tensor<2x3x4x5x2xi32>,%arg1:  tensor<2x2x2x2x3xf32>,%arg2: tensor<3xf32>) -> tensor<?x?x?x?x?xf32> {
+  // expected-error @+1 {{op failed to verify that input and output must have same element type}}
+  %0 = "tfl.conv_3d"(%arg0, %arg1, %arg2) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32, fused_activation_function = "NONE"}: (tensor<2x3x4x5x2xi32>, tensor<2x2x2x2x3xf32>, tensor<3xf32>) -> tensor<?x?x?x?x?xf32>
+  return %0 : tensor<?x?x?x?x?xf32>
+}
+
+// -----
+
+func @testConv3dMisMatchBiasType(%arg0: tensor<2x3x4x5x2xf32>,%arg1:  tensor<2x2x2x2x3xf32>,%arg2: tensor<3xi32>) -> tensor<?x?x?x?x?xf32> {
+  // expected-error @+1 {{failed to verify that bias and output must have same element type}}
+  %0 = "tfl.conv_3d"(%arg0, %arg1, %arg2) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32, fused_activation_function = "NONE"}: (tensor<2x3x4x5x2xf32>, tensor<2x2x2x2x3xf32>, tensor<3xi32>) -> tensor<?x?x?x?x?xf32>
+  return %0 : tensor<?x?x?x?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: testComplexAbs
+func @testComplexAbs(%arg0: tensor<? x complex<f32>>) -> tensor<?xf32> {
+  // CHECK: "tfl.complex_abs"(%arg0)
+  %0 = "tfl.complex_abs"(%arg0): (tensor<? x complex<f32>>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// -----
+
+func @testComplexAbsUnsupportedType(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  // expected-error @+1 {{operand #0 must be tensor of complex type with 32-bit float elements or complex type with 64-bit float elements values}}
+  %0 = "tfl.complex_abs"(%arg0): (tensor<?xf32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// -----
+
+func @testComplexAbsWrongShape(%arg0: tensor<2 x complex<f32>>) -> tensor<3xf32> {
+  // expected-error @+1 {{requires the same shape for all operands and results}}
+  %0 = "tfl.complex_abs"(%arg0): (tensor<2 x complex<f32>>) -> tensor<3xf32>
+  return %0 : tensor<3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: testReal
+func @testReal(%arg0: tensor<? x complex<f64>>) -> tensor<?xf64> {
+  // CHECK: "tfl.real"(%arg0)
+  %0 = "tfl.real"(%arg0): (tensor<? x complex<f64>>) -> tensor<?xf64>
+  return %0 : tensor<?xf64>
+}
+
+// -----
+
+func @testRealWrongShape(%arg0: tensor<3 x complex<f64>>) -> tensor<4xf32> {
+  // expected-error @+1 {{requires the same shape for all operands and results}}
+  %0 = "tfl.real"(%arg0): (tensor<3 x complex<f64>>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: testImag
+func @testImag(%arg0: tensor<? x complex<f64>>) -> tensor<?xf64> {
+  // CHECK: "tfl.imag"(%arg0)
+  %0 = "tfl.imag"(%arg0): (tensor<? x complex<f64>>) -> tensor<?xf64>
+  return %0 : tensor<?xf64>
+}
+
+// -----
+
+func @testImagWrongType(%arg0: tensor<3 x complex<f64>>) -> tensor<4xi32> {
+  // expected-error @+1 {{requires the same shape for all operands and results}}
+  %0 = "tfl.imag"(%arg0): (tensor<3 x complex<f64>>) -> tensor<4xi32>
+  return %0 : tensor<4xi32>
 }

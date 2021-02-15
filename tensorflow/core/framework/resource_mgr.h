@@ -296,28 +296,33 @@ class ResourceMgr {
 ResourceHandle MakeResourceHandle(
     const std::string& container, const std::string& name,
     const DeviceBase& device, const TypeIndex& type_index,
-    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {})
+    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
+    const absl::optional<ManagedStackTrace>& definition_stack_trace = {})
     TF_MUST_USE_RESULT;
 
 template <typename T>
 ResourceHandle MakeResourceHandle(
     OpKernelContext* ctx, const std::string& container, const std::string& name,
-    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {}) {
-  return MakeResourceHandle(
-      container.empty() ? ctx->resource_manager()->default_container()
-                        : container,
-      name, *ctx->device(), TypeIndex::Make<T>(), dtypes_and_shapes);
+    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
+    const absl::optional<ManagedStackTrace>& definition_stack_trace = {}) {
+  return MakeResourceHandle(container.empty()
+                                ? ctx->resource_manager()->default_container()
+                                : container,
+                            name, *ctx->device(), TypeIndex::Make<T>(),
+                            dtypes_and_shapes, definition_stack_trace);
 }
 
 template <typename T>
 ResourceHandle MakeResourceHandle(
     OpKernelConstruction* ctx, const std::string& container,
     const std::string& name,
-    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {}) {
-  return MakeResourceHandle(
-      container.empty() ? ctx->resource_manager()->default_container()
-                        : container,
-      name, *ctx->device(), TypeIndex::Make<T>(), dtypes_and_shapes);
+    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
+    const absl::optional<ManagedStackTrace>& definition_stack_trace = {}) {
+  return MakeResourceHandle(container.empty()
+                                ? ctx->resource_manager()->default_container()
+                                : container,
+                            name, *ctx->device(), TypeIndex::Make<T>(),
+                            dtypes_and_shapes, definition_stack_trace);
 }
 
 Status MakeResourceHandleToOutput(OpKernelContext* context, int output_index,

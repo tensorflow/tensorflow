@@ -37,7 +37,7 @@ class FtrlOptimizerTest(test.TestCase):
   def doTestFtrlwithoutRegularization(self, use_resource=False):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.float32]:
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         if use_resource:
           var0 = variables.Variable([0.0, 0.0], dtype=dtype)
           var1 = variables.Variable([0.0, 0.0], dtype=dtype)
@@ -77,7 +77,7 @@ class FtrlOptimizerTest(test.TestCase):
   def testFtrlwithoutRegularization2(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32]:
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([4.0, 3.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -107,7 +107,7 @@ class FtrlOptimizerTest(test.TestCase):
   def testMinimizeSparseResourceVariable(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         var0 = variables.Variable([[1.0, 2.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
 
@@ -129,7 +129,7 @@ class FtrlOptimizerTest(test.TestCase):
   def testFtrlWithL1(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32]:
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([4.0, 3.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -159,7 +159,7 @@ class FtrlOptimizerTest(test.TestCase):
   def testFtrlWithBeta(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32]:
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([4.0, 3.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -185,7 +185,7 @@ class FtrlOptimizerTest(test.TestCase):
   def testFtrlWithL2_Beta(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32]:
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([4.0, 3.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -216,7 +216,7 @@ class FtrlOptimizerTest(test.TestCase):
   def testFtrlWithL1_L2(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32]:
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([4.0, 3.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -253,7 +253,7 @@ class FtrlOptimizerTest(test.TestCase):
     """
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32]:
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([4.0, 3.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -286,7 +286,7 @@ class FtrlOptimizerTest(test.TestCase):
     """Tests the new FTRL op with support for l2 shrinkage on sparse grads."""
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32]:
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         var0 = variables.Variable([[1.0], [2.0]], dtype=dtype)
         var1 = variables.Variable([[4.0], [3.0]], dtype=dtype)
         grads0 = ops.IndexedSlices(
@@ -321,7 +321,7 @@ class FtrlOptimizerTest(test.TestCase):
     """Verifies that l2 shrinkage in FTRL does not change lr schedule."""
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32]:
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True) as sess:
+      with ops.Graph().as_default(), self.cached_session() as sess:
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([1.0, 2.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
@@ -404,7 +404,7 @@ class FtrlOptimizerTest(test.TestCase):
   def testEquivAdagradwithoutRegularization(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32]:
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         val0, val1 = self.applyOptimizer(
             ftrl.Ftrl(
                 3.0,
@@ -415,7 +415,7 @@ class FtrlOptimizerTest(test.TestCase):
                 l2_regularization_strength=0.0),
             dtype)
 
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         val2, val3 = self.applyOptimizer(
             adagrad.AdagradOptimizer(3.0, initial_accumulator_value=0.1), dtype)
 
@@ -449,7 +449,7 @@ class FtrlOptimizerTest(test.TestCase):
   def testEquivSparseGradientDescentwithoutRegularization(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32]:
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         val0, val1 = self.applyOptimizer(
             ftrl.Ftrl(
                 3.0,
@@ -461,7 +461,7 @@ class FtrlOptimizerTest(test.TestCase):
             dtype,
             is_sparse=True)
 
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         val2, val3 = self.applyOptimizer(
             gradient_descent.GradientDescentOptimizer(3.0),
             dtype,
@@ -473,7 +473,7 @@ class FtrlOptimizerTest(test.TestCase):
   def testEquivGradientDescentwithoutRegularization(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32]:
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         val0, val1 = self.applyOptimizer(
             ftrl.Ftrl(
                 3.0,
@@ -484,7 +484,7 @@ class FtrlOptimizerTest(test.TestCase):
                 l2_regularization_strength=0.0),
             dtype)
 
-      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session():
         val2, val3 = self.applyOptimizer(
             gradient_descent.GradientDescentOptimizer(3.0), dtype)
 

@@ -317,13 +317,17 @@ def Input(  # pylint: disable=invalid-name
 
   Note that even if eager execution is enabled,
   `Input` produces a symbolic tensor-like object (i.e. a placeholder).
-  This symbolic tensor-like object can be used with other
-  TensorFlow ops, as such:
+  This symbolic tensor-like object can be used with lower-level
+  TensorFlow ops that take tensors as inputs, as such:
 
   ```python
   x = Input(shape=(32,))
-  y = tf.square(x)
+  y = tf.square(x)  # This op will be treated like a layer
+  model = Model(x, y)
   ```
+
+  (This behavior does not work for higher-order TensorFlow APIs such as
+  control flow and being directly watched by a `tf.GradientTape`).
 
   However, the resulting model will not track any variables that were
   used as inputs to TensorFlow ops. All variable usages must happen within

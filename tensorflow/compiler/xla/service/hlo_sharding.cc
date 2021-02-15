@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -66,7 +67,9 @@ HloSharding HloSharding::PartialTile(
 HloSharding HloSharding::PartialTile(
     const Array<int64>& tile_assignment_last_dim_replicate,
     absl::Span<const OpMetadata> metadata) {
-  if (tile_assignment_last_dim_replicate.num_dimensions() == 1) {
+  if (tile_assignment_last_dim_replicate.num_dimensions() == 1 ||
+      tile_assignment_last_dim_replicate.dimensions().back() ==
+          tile_assignment_last_dim_replicate.num_elements()) {
     return Replicate(metadata);
   }
   if (tile_assignment_last_dim_replicate.dimensions().back() == 1) {
@@ -604,6 +607,21 @@ int64 HloSharding::NumTiles() const {
   return tile_assignment().num_elements();
 }
 
+int64 HloSharding::NumTiles(absl::Span<const int64> dims) const {
+  if (IsTileMaximal()) {
+    return 1;
+  }
+  CHECK(!IsManual());
+  CHECK(!ReplicateOnLastTileDim() ||
+        !absl::c_linear_search(dims, tile_assignment().num_dimensions() - 1));
+  int64 num_tiles = 1;
+  for (auto d : dims) {
+    CHECK(d < tile_assignment().num_dimensions());
+    num_tiles *= tile_assignment().dim(d);
+  }
+  return num_tiles;
+}
+
 HloSharding HloSharding::GetSubSharding(const Shape& shape,
                                         const ShapeIndex& index) const {
   CHECK(IsTuple());
@@ -639,6 +657,34 @@ absl::optional<HloSharding> HloSharding::ExtractSingleSharding() const {
     }
   }
   return tuple_elements_.front();
+}
+
+HloSharding HloSharding::WithMetadata(absl::Span<const OpMetadata> metadata,
+                                      bool overwrite) const {
+  auto assign_metadata = [&](HloSharding& sharding) {
+    if (sharding.metadata_.empty() || overwrite) {
+      sharding.metadata_.assign(metadata.begin(), metadata.end());
+    }
+  };
+
+  HloSharding sharding = *this;
+  if (sharding.IsTuple()) {
+    for (HloSharding& sub_sharding : sharding.tuple_elements()) {
+      assign_metadata(sub_sharding);
+    }
+  } else {
+    assign_metadata(sharding);
+  }
+  return sharding;
+}
+
+HloSharding HloSharding::WithoutMetadata() const {
+  HloSharding sharding = *this;
+  sharding.metadata_.clear();
+  for (HloSharding& sub_sharding : sharding.tuple_elements()) {
+    sub_sharding.metadata_.clear();
+  }
+  return sharding;
 }
 
 size_t HloSharding::Hash() const {

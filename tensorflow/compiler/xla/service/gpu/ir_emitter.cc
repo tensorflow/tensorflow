@@ -166,18 +166,6 @@ Status IrEmitter::HandleConstant(HloInstruction* constant) {
   return Status::OK();
 }
 
-Status IrEmitter::HandleBitcast(HloInstruction* bitcast) {
-  VLOG(2) << "HandleBitcast: " << bitcast->ToString();
-  const HloInstruction* operand = bitcast->operand(0);
-  // Bitcast is a no-op, but we still want to bind it to an llvm::Value
-  // sometimes, e.g., when it's operand is a constant or a bitcast of a
-  // constant.
-  if (bindings_.BoundToIrValue(*operand)) {
-    bindings_.BindHloToIrValue(*bitcast, GetBasePointer(*operand));
-  }
-  return Status::OK();
-}
-
 Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
   VLOG(2) << "HandleAddDependency: " << add_dependency->ToString();
   const HloInstruction* operand = add_dependency->operand(0);
@@ -523,15 +511,6 @@ Status IrEmitter::EmitAtomicOperationForNestedComputation(
 
   return EmitAtomicOperationUsingCAS(computation, output_address,
                                      source_address);
-}
-
-Status IrEmitter::HandleSelect(HloInstruction* select) {
-  auto pred = select->operand(0);
-  TF_RET_CHECK(pred->shape().element_type() == PRED);
-  // We must not call the subclass `DefaultAction` method, lest its
-  // `HandleSelect` call `IrEmitter::HandleSelect` and its `DefaultAction`
-  // assume no handler has already been called.
-  return IrEmitter::DefaultAction(select);
 }
 
 Status IrEmitter::HandleTupleSelect(HloInstruction* tuple_select) {

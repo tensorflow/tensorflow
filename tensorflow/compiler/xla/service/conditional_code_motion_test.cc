@@ -279,6 +279,7 @@ ENTRY main {
 
   const HloInstruction* conditional =
       FindInstruction(module.get(), "conditional");
+  CHECK_NE(conditional, nullptr);
   const HloComputation* on_true = conditional->branch_computation(0);
   ASSERT_EQ(on_true->instruction_count(), 1);
   const HloComputation* on_false = conditional->branch_computation(1);
@@ -1238,6 +1239,127 @@ ENTRY main {
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Tuple(op::GetTupleElement(op::Conditional()),
                                     op::Parameter())));
+}
+
+TEST_F(ConditionalCodeMotionTest, TestConfigurationFlag) {
+  absl::string_view hlo_string =
+      R"(
+HloModule RemoveDotOpOut
+
+on_true {
+  %arg_tuple.1 = (f32[93184,4]{1,0}) parameter(0)
+  %get-tuple-element.1 = f32[93184,4]{1,0} get-tuple-element(%arg_tuple.1), index=0
+  %reshape.8493 = f32[2,512,364]{2,1,0} reshape(f32[93184,4]{1,0} %get-tuple-element.1)
+  %convert.2894 = bf16[2,512,364]{2,1,0} convert(f32[2,512,364]{2,1,0} %reshape.8493)
+  ROOT %tuple.1 = ( bf16[2,512,364]{2,1,0}) tuple(%convert.2894)
+}
+
+on_false {
+  %arg_tuple.2 = (f32[93184,4]{1,0}) parameter(0)
+  %get-tuple-element.3 = f32[93184,4]{1,0} get-tuple-element(%arg_tuple.2), index=0
+  %reshape.9717 = f32[2,512,364]{2,1,0} reshape(f32[93184,4]{1,0} %get-tuple-element.3)
+  %convert.3604 = bf16[2,512,364]{2,1,0} convert(f32[2,512,364]{2,1,0} %reshape.9717), metadata={op_type="Cast" op_name="gradients/Cast_125_grad/Cast"}
+  ROOT %tuple.2 = (bf16[2,512,364]{2,1,0}) tuple(%convert.3604)
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  arg_tuple.11 = (f32[93184,4]{1,0}) parameter(1)
+  arg_tuple.22 = (f32[93184,4]{1,0}) parameter(2)
+  conditional = (bf16[2,512,364]{2,1,0}) conditional(pred.1, arg_tuple.11, arg_tuple.22), true_computation=on_true, false_computation=on_false
+  get-first-index = bf16[2,512,364]{2,1,0} get-tuple-element(conditional), index=0
+  add.1 = bf16[2,512,364]{2,1,0} add(bf16[2,512,364]{2,1,0} get-first-index, bf16[2,512,364]{2,1,0} get-first-index)
+  ROOT result = (bf16[2,512,364]{2,1,0}) tuple(add.1)
+}
+)";
+  // Use a config loop to tune which instructions should be moved/not_moved.
+  for (int max_flip = 1; max_flip < 3; ++max_flip) {
+    for (int flip_stride = 1; flip_stride < ((max_flip > 1) ? 7 : 2);
+         ++flip_stride) {
+      for (int flip_start = 0; flip_start < 7; ++flip_start) {
+        // Start flipping at index config, repeat thereafter, until reaching
+        // max.
+        uint32 search_config =
+            (max_flip << 8) + flip_start + (flip_stride << 16);
+        ConditionalCodeMotion pass(true, true, search_config);
+        VLOG(1) << "Testing max_flip=" << max_flip
+                << "; flip_start = " << flip_start
+                << "; flip_stride = " << flip_stride
+                << "; search_config=" << search_config;
+        auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+        bool opt_result = pass.Run(&*module).ValueOrDie();
+        // Turning off the first/second decision will disable moving out;
+        // Turning off the following decision will again disable moving in.
+        if (flip_start < 2 && max_flip > 1 && flip_stride == 1) {
+          // If the next decision is false, no moving in is allowed either.
+          CHECK_EQ(opt_result, false);
+          continue;
+        }
+        CHECK_EQ(opt_result, true);
+        const HloInstruction* conditional =
+            FindInstruction(module.get(), "conditional");
+        const HloComputation* on_true = conditional->branch_computation(0);
+        const HloComputation* on_false = conditional->branch_computation(1);
+        HloInstruction* root = module->entry_computation()->root_instruction();
+        switch (flip_start) {
+          case 0:
+            TF_FALLTHROUGH_INTENDED;
+          case 1:
+            // After flipping the corresponding decisions,
+            // instructions has been moved inside the conditionals.
+            ASSERT_EQ(on_true->instruction_count(), 6);
+            ASSERT_EQ(on_false->instruction_count(), 6);
+            EXPECT_THAT(root, AllOf(op::Conditional()));
+            break;
+          case 2:
+            // The 2nd decision has been flipped. Reshape was not moved out.
+            ASSERT_EQ(on_true->instruction_count(), 4);
+            ASSERT_EQ(on_false->instruction_count(), 4);
+            EXPECT_THAT(
+                root,
+                AllOf(op::Tuple(op::Add(
+                    op::Convert(op::GetTupleElement(op::Conditional())),
+                    op::Convert(op::GetTupleElement(op::Conditional()))))));
+            break;
+          case 3:
+            // The 3rd decision has been flipped. GTE was not moved out. The
+            // GTE is then merged with the tuple op of the new root in later
+            // cleanup.
+            ASSERT_EQ(on_true->instruction_count(), 1);
+            ASSERT_EQ(on_false->instruction_count(), 1);
+            EXPECT_THAT(root, AllOf(op::Tuple(op::Add(
+                                  op::Convert(op::Reshape(
+                                      op::GetTupleElement(op::Conditional()))),
+                                  op::Convert(op::Reshape(op::GetTupleElement(
+                                      op::Conditional())))))));
+            break;
+          case 4:
+          case 5:
+          case 6:
+            // The 4th decision has been flipped. Parameter was not moved out.
+            // Each conditional has the parameter and the new root.
+            ASSERT_EQ(on_true->instruction_count(), 2);
+            ASSERT_EQ(on_false->instruction_count(), 2);
+            EXPECT_THAT(root,
+                        AllOf(op::Tuple(op::Add(
+                            op::Convert(op::Reshape(op::GetTupleElement(
+                                op::GetTupleElement(op::Conditional())))),
+                            op::Convert(op::Reshape(op::GetTupleElement(
+                                op::GetTupleElement(op::Conditional()))))))));
+            break;
+          default:  // The default cost model is used.
+            ASSERT_EQ(on_true->instruction_count(), 1);
+            ASSERT_EQ(on_false->instruction_count(), 1);
+            EXPECT_THAT(root, AllOf(op::Tuple(op::Add(
+                                  op::Convert(op::Reshape(
+                                      op::GetTupleElement(op::Conditional()))),
+                                  op::Convert(op::Reshape(op::GetTupleElement(
+                                      op::Conditional())))))));
+            break;
+        }
+      }
+    }
+  }
 }
 
 }  // namespace conditional_opt

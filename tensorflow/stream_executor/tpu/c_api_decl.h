@@ -20,10 +20,12 @@ limitations under the License.
 #include <stdint.h>
 
 #include "tensorflow/c/tf_attrtype.h"
-#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/tpu/libtftpu.h"
 
 extern "C" {
+
+struct TF_Status;
+typedef struct TF_Status TF_Status;
 
 // Maximum number of array elements to inline into structs for performance.
 #define TPU_C_API_MAX_INLINED 6
@@ -40,6 +42,13 @@ enum TpuVersionEnum {
   kTpuV3,
   kTpuV4,
 };
+
+typedef struct TpuRuntimeVersion {
+  // The three version numbers are: major, minor, patch
+  int version[3];
+  const char* metadata;
+  size_t metadata_size;
+} TpuRuntimeVersion;
 
 typedef struct SE_Platform SE_Platform;
 typedef struct SE_StreamExecutor SE_StreamExecutor;

@@ -164,7 +164,7 @@ class LhloFuseLinalgPass
       }
     });
     auto patterns = linalg::getLinalgTilingCanonicalizationPatterns(ctx);
-    applyPatternsAndFoldGreedily(func, std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
     // Fuse producers of tiled linalg ops.
     llvm::SmallDenseSet<Operation*> erase_set;
@@ -185,7 +185,7 @@ class LhloFuseLinalgPass
       }
 
       auto patterns = linalg::getLinalgTilingCanonicalizationPatterns(ctx);
-      applyPatternsAndFoldGreedily(func, std::move(patterns));
+      (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
     }
     for (auto* e : erase_set) e->erase();
   }

@@ -26,6 +26,10 @@ if [[ ! -x "$(which "${PIP}")" ]]; then
 fi
 
 PACKAGES=(
+  # NOTE: As numpy has releases that break semver guarantees and several other
+  # deps depend on numpy without an upper bound, we must install numpy before
+  # everything else.
+  "numpy ~= 1.19.2"
   "auditwheel"
   "wheel"
   "setuptools"
@@ -37,7 +41,6 @@ PACKAGES=(
   "bleach"
   "markdown"
   "protobuf"
-  "numpy"
   "scipy"
   "scikit-learn"
   "pandas"
@@ -59,6 +62,7 @@ PACKAGES=(
   "dm-tree"
   "dill"
   "tblib"
+  "pybind11"
 )
 
 # tf.mock require the following for python2:

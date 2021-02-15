@@ -84,6 +84,15 @@ TfLiteStatus ParseArgMax(const Operator* op, ErrorReporter* error_reporter,
 TfLiteStatus ParseArgMin(const Operator* op, ErrorReporter* error_reporter,
                          BuiltinDataAllocator* allocator, void** builtin_data);
 
+TfLiteStatus ParseBatchMatMul(const Operator* op, ErrorReporter* error_reporter,
+                              BuiltinDataAllocator* allocator,
+                              void** builtin_data);
+
+TfLiteStatus ParseBatchToSpaceNd(const Operator* op,
+                                 ErrorReporter* error_reporter,
+                                 BuiltinDataAllocator* allocator,
+                                 void** builtin_data);
+
 TfLiteStatus ParseCeil(const Operator* op, ErrorReporter* error_reporter,
                        BuiltinDataAllocator* allocator, void** builtin_data);
 
@@ -101,6 +110,11 @@ TfLiteStatus ParseConv2D(const Operator* op, ErrorReporter* error_reporter,
 TfLiteStatus ParseCos(const Operator* op, ErrorReporter* error_reporter,
                       BuiltinDataAllocator* allocator, void** builtin_data);
 
+TfLiteStatus ParseDepthToSpace(const Operator* op,
+                               ErrorReporter* error_reporter,
+                               BuiltinDataAllocator* allocator,
+                               void** builtin_data);
+
 TfLiteStatus ParseDepthwiseConv2D(const Operator* op,
                                   ErrorReporter* error_reporter,
                                   BuiltinDataAllocator* allocator,
@@ -113,11 +127,18 @@ TfLiteStatus ParseDequantize(const Operator* op, ErrorReporter* error_reporter,
 TfLiteStatus ParseDiv(const Operator* op, ErrorReporter* error_reporter,
                       BuiltinDataAllocator* allocator, void** builtin_data);
 
+TfLiteStatus ParseElu(const Operator* op, ErrorReporter* error_reporter,
+                      BuiltinDataAllocator* allocator, void** builtin_data);
+
 TfLiteStatus ParseEqual(const Operator* op, ErrorReporter* error_reporter,
                         BuiltinDataAllocator* allocator, void** builtin_data);
 
 TfLiteStatus ParseExp(const Operator* op, ErrorReporter* error_reporter,
                       BuiltinDataAllocator* allocator, void** builtin_data);
+
+TfLiteStatus ParseExpandDims(const Operator* op, ErrorReporter* error_reporter,
+                             BuiltinDataAllocator* allocator,
+                             void** builtin_data);
 
 TfLiteStatus ParseFill(const Operator* op, ErrorReporter* error_reporter,
                        BuiltinDataAllocator* allocator, void** builtin_data);
@@ -137,6 +158,13 @@ TfLiteStatus ParseFullyConnected(const Operator* op,
                                  ErrorReporter* error_reporter,
                                  BuiltinDataAllocator* allocator,
                                  void** builtin_data);
+
+TfLiteStatus ParseGather(const Operator* op, ErrorReporter* error_reporter,
+                         BuiltinDataAllocator* allocator, void** builtin_data);
+
+TfLiteStatus ParseGatherNd(const Operator* op, ErrorReporter* error_reporter,
+                           BuiltinDataAllocator* allocator,
+                           void** builtin_data);
 
 TfLiteStatus ParseGreater(const Operator* op, ErrorReporter* error_reporter,
                           BuiltinDataAllocator* allocator, void** builtin_data);
@@ -259,6 +287,11 @@ TfLiteStatus ParseSin(const Operator* op, ErrorReporter* error_reporter,
 
 TfLiteStatus ParseSoftmax(const Operator* op, ErrorReporter* error_reporter,
                           BuiltinDataAllocator* allocator, void** builtin_data);
+
+TfLiteStatus ParseSpaceToBatchNd(const Operator* op,
+                                 ErrorReporter* error_reporter,
+                                 BuiltinDataAllocator* allocator,
+                                 void** builtin_data);
 
 TfLiteStatus ParseSpaceToDepth(const Operator* op,
                                ErrorReporter* error_reporter,

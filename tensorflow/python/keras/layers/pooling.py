@@ -366,26 +366,22 @@ class MaxPooling2D(Pooling2D):
   ...                  [9., 10., 11., 12.]])
   >>> x = tf.reshape(x, [1, 3, 4, 1])
   >>> max_pool_2d = tf.keras.layers.MaxPooling2D(pool_size=(2, 2),
-  ...    strides=(1, 1), padding='valid')
+  ...    strides=(2, 2), padding='valid')
   >>> max_pool_2d(x)
-  <tf.Tensor: shape=(1, 2, 3, 1), dtype=float32, numpy=
-    array([[[[ 6.],
-             [ 7.],
-             [ 8.]],
-            [[10.],
-             [11.],
-             [12.]]]], dtype=float32)>
-             
+  <tf.Tensor: shape=(1, 1, 2, 1), dtype=float32, numpy=
+    array([[[[6.],
+             [8.]]]], dtype=float32)>
+
   Usage Example:
-  
+
   >>> input_image = tf.constant([[[[1.], [1.], [2.], [4.]],
   ...                            [[2.], [2.], [3.], [2.]],
   ...                            [[4.], [1.], [1.], [1.]],
-  ...                            [[2.], [2.], [1.], [4.]]]]) 
+  ...                            [[2.], [2.], [1.], [4.]]]])
   >>> output = tf.constant([[[[1], [0]],
-  ...                       [[0], [1]]]]) 
+  ...                       [[0], [1]]]])
   >>> model = tf.keras.models.Sequential()
-  >>> model.add(tf.keras.layers.MaxPooling2D(pool_size=(2, 2), 
+  >>> model.add(tf.keras.layers.MaxPooling2D(pool_size=(2, 2),
   ...    input_shape=(4,4,1)))
   >>> model.compile('adam', 'mean_squared_error')
   >>> model.predict(input_image, steps=1)

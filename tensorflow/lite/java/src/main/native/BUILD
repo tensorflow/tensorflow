@@ -26,6 +26,7 @@ cc_library(
         "-ldl",
     ],
     deps = [
+        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:op_resolver",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
@@ -49,6 +50,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/shims:builtin_ops",
         "//tensorflow/lite/core/shims:framework",
+        "//tensorflow/lite/kernels:deprecated_backends",
     ],
     alwayslink = 1,
 )

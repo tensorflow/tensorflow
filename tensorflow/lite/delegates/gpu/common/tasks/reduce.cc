@@ -131,7 +131,11 @@ Reduce::Reduce(const std::map<Axis, int>& axis_to_reduce, OperationType op_type,
       GetMaximumPossibleWGSize(ordered_sizes, max_total_wg_size);
   int current_wg_size_total =
       current_wg_size.x * current_wg_size.y * current_wg_size.z;
-  if (current_wg_size_total < max_total_wg_size / 4) {
+  int threshold = max_total_wg_size / 4;
+  if (gpu_info.IsApple()) {
+    threshold = 16;
+  }
+  if (current_wg_size_total < threshold) {
     use_wg_reduction_ = false;
   } else {
     use_wg_reduction_ = true;
@@ -190,9 +194,9 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
 
   auto get_global_id = [&](int i) {
     if (use_wg_reduction_) {
-      return "get_group_id(" + std::to_string(i) + ")";
+      return "GROUP_ID_" + std::to_string(i);
     } else {
-      return "get_global_id(" + std::to_string(i) + ")";
+      return "GLOBAL_ID_" + std::to_string(i);
     }
   };
 
@@ -202,21 +206,20 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
   const std::string wg_z = std::to_string(work_group_size.z);
   const int wg_total_size =
       work_group_size.x * work_group_size.y * work_group_size.z;
-  c += "__kernel void main_function(\n";
-  c += "$0) {\n";
+  c += "MAIN_FUNCTION($0) {\n";
   if (use_wg_reduction_) {
     c += "  __local float4 accum[" + std::to_string(wg_total_size) + "];\n";
     if (wg_dims == 1) {
-      c += "  int local_x = get_local_id(0);\n";
+      c += "  int local_x = LOCAL_ID_0;\n";
       c += "  int local_id = local_x;\n";
     } else if (wg_dims == 2) {
-      c += "  int local_x = get_local_id(0);\n";
-      c += "  int local_y = get_local_id(1);\n";
+      c += "  int local_x = LOCAL_ID_0;\n";
+      c += "  int local_y = LOCAL_ID_1;\n";
       c += "  int local_id = local_y * " + wg_x + " + local_x;\n";
     } else if (wg_dims == 3) {
-      c += "  int local_x = get_local_id(0);\n";
-      c += "  int local_y = get_local_id(1);\n";
-      c += "  int local_z = get_local_id(2);\n";
+      c += "  int local_x = LOCAL_ID_0;\n";
+      c += "  int local_y = LOCAL_ID_1;\n";
+      c += "  int local_z = LOCAL_ID_2;\n";
       c += "  int local_id = (local_z * " + wg_y + " + local_y) * " + wg_x +
            " + local_x;\n";
     }
@@ -284,9 +287,9 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
     }
   }
   if (op_type == OperationType::REDUCE_SUM || op_type == OperationType::MEAN) {
-    c += "  float4 reducer = (float4)(0.0f);\n";
+    c += "  float4 reducer = INIT_FLOAT4(0.0f);\n";
   } else if (op_type == OperationType::REDUCE_PRODUCT) {
-    c += "  float4 reducer = (float4)(1.0f);\n";
+    c += "  float4 reducer = INIT_FLOAT4(1.0f);\n";
   } else if (op_type == OperationType::REDUCE_MAXIMUM ||
              op_type == OperationType::REDUCE_MINIMUM) {
     c += "  float4 reducer = args.src_tensor.Read<float>(" + src_coordinates +
@@ -311,12 +314,12 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
          " += " + step + ") {\n";
     if (axis == Axis::CHANNELS) {
       c += "    bool last = SRC_S == args.src_tensor.Slices() - 1;\n";
-      c += "    float4 mask_a = last ? (float4)(args.mask_x, args.mask_y, "
-           "args.mask_z, args.mask_w) : (float4)(1.0f);\n";
+      c += "    float4 mask_a = last ? INIT_FLOAT4v4(args.mask_x, args.mask_y, "
+           "args.mask_z, args.mask_w) : INIT_FLOAT4(1.0f);\n";
       if (op_type == OperationType::REDUCE_PRODUCT ||
           op_type == OperationType::REDUCE_MAXIMUM ||
           op_type == OperationType::REDUCE_MINIMUM) {
-        c += "    float4 mask_b = (float4)(1.0f) - mask_a;\n";
+        c += "    float4 mask_b = INIT_FLOAT4(1.0f) - mask_a;\n";
       }
     }
   }
@@ -351,7 +354,7 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
   }
   if (use_wg_reduction_) {
     c += "  accum[local_id] = reducer;\n";
-    c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
+    c += "  LOCAL_MEM_BARRIER;\n";
     const int total_size =
         work_group_size.x * work_group_size.y * work_group_size.z;
     int offset = 1;
@@ -370,7 +373,7 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
            ";\n";
       c += "    accum[t] = " + MakeOp(op_type, "accum[t]", "sum") + ";\n";
       c += "  }\n";
-      c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
+      c += "  LOCAL_MEM_BARRIER;\n";
     }
     c += "  reducer = accum[0];\n";
     reminder *= 4;

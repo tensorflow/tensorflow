@@ -41,7 +41,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/custom_device.h"
+#include "tensorflow/core/common_runtime/eager/custom_device_op_handler.h"
 #include "tensorflow/core/common_runtime/eager/execute.h"
+#include "tensorflow/core/common_runtime/eager/placement_utils.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -484,42 +486,73 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
 class CAPICustomDeviceTensorHandle
     : public tensorflow::CustomDeviceTensorHandle {
  public:
+  using NumDimsCallback = std::function<int(TF_Status* status)>;
+  using DimCallback = std::function<int64_t(int dim_index, TF_Status* status)>;
+  using DeallocatorCallback = std::function<void()>;
+
   CAPICustomDeviceTensorHandle(tensorflow::ImmediateExecutionContext* context,
                                tensorflow::CustomDevice* device,
                                tensorflow::DataType dtype, void* data,
-                               size_t len, std::vector<tensorflow::int64> shape,
-                               void (*deallocator)(void* data, size_t len,
-                                                   void* arg),
-                               void* deallocator_arg)
+                               NumDimsCallback num_dims_callback,
+                               DimCallback dim_callback,
+                               DeallocatorCallback deallocator)
       : tensorflow::CustomDeviceTensorHandle(context, device, dtype),
         data_(data),
-        len_(len),
-        shape_(shape),
-        deallocator_(deallocator),
-        deallocator_arg_(deallocator_arg) {}
-  ~CAPICustomDeviceTensorHandle() override {
-    deallocator_(data_, len_, deallocator_arg_);
-  }
+        num_dims_callback_(num_dims_callback),
+        dim_callback_(dim_callback),
+        deallocator_(deallocator) {}
+
+  ~CAPICustomDeviceTensorHandle() override { deallocator_(); }
   void* DevicePointer() const override { return data_; }
   Status NumDims(int* num_dims) const override {
-    *num_dims = shape_.size();
-    return Status::OK();
+    TF_Status s;
+    *num_dims = num_dims_callback_(&s);
+    return s.status;
   }
   Status Dim(int dim_index, int64* dim) const override {
-    *dim = shape_[dim_index];
-    return Status::OK();
+    TF_Status s;
+    *dim = dim_callback_(dim_index, &s);
+    return s.status;
   }
 
  private:
   void* const data_;
-  size_t len_;
-  std::vector<tensorflow::int64> shape_;
-  void (*const deallocator_)(void* data, size_t len, void* arg);
-  void* const deallocator_arg_;
+  NumDimsCallback num_dims_callback_;
+  DimCallback dim_callback_;
+  DeallocatorCallback deallocator_;
 };
 
 }  // namespace
 }  // namespace tensorflow
+
+TFE_TensorHandle* TFE_NewCustomDeviceTensorHandle(
+    TFE_Context* ctx, const char* device_name, TF_DataType dtype, void* data,
+    int (*num_dims_callback)(void* data, void* arg, TF_Status* status),
+    int64_t (*dim_callback)(void* data, int dim_index, void* arg,
+                            TF_Status* status),
+    void (*deallocator)(void* data, void* arg), void* arg, TF_Status* status) {
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
+  tensorflow::CustomDevice* device = nullptr;
+  if (!context->GetCustomDeviceOpHandler().FindCustomDeviceFromName(device_name,
+                                                                    &device)) {
+    deallocator(data, arg);
+    status->status =
+        tensorflow::errors::InvalidArgument(device_name, " unknown device.");
+    return nullptr;
+  }
+  return tensorflow::wrap(new tensorflow::CAPICustomDeviceTensorHandle(
+      context, device, *reinterpret_cast<tensorflow::DataType*>(&dtype), data,
+      /*num_dims_callback=*/
+      [num_dims_callback, data, arg](TF_Status* status) {
+        return num_dims_callback(data, arg, status);
+      },
+      /*dim_callback=*/
+      [dim_callback, data, arg](int dim_index, TF_Status* status) {
+        return dim_callback(data, dim_index, arg, status);
+      },
+      /*deallocator=*/[deallocator, data, arg]() { deallocator(data, arg); }));
+}
 
 TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
     TFE_Context* ctx, const char* device_name, TF_DataType dtype,
@@ -532,7 +565,8 @@ TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
   status->status = context->FindDeviceFromName(device_name, &device);
   tensorflow::CustomDevice* custom_device = nullptr;
   if (!status->status.ok()) {
-    if (!context->FindCustomDeviceFromName(device_name, &custom_device)) {
+    if (!context->GetCustomDeviceOpHandler().FindCustomDeviceFromName(
+            device_name, &custom_device)) {
       deallocator(data, len, deallocator_arg);
       status->status =
           tensorflow::errors::InvalidArgument(device_name, " unknown device.");
@@ -548,8 +582,17 @@ TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
   if (custom_device != nullptr) {
     return tensorflow::wrap(new tensorflow::CAPICustomDeviceTensorHandle(
         context, custom_device,
-        *reinterpret_cast<tensorflow::DataType*>(&dtype), data, len, dimvec,
-        deallocator, deallocator_arg));
+        *reinterpret_cast<tensorflow::DataType*>(&dtype), data,
+        /*num_dims_callback=*/
+        [num_dims](TF_Status* status) { return num_dims; },
+        /*dim_callback=*/
+        [dimvec](int dim_index, TF_Status* status) {
+          return dimvec[dim_index];
+        },
+        /*deallocator=*/
+        [data, len, deallocator, deallocator_arg]() {
+          deallocator(data, len, deallocator_arg);
+        }));
   }
 
   // TODO(apassos) do we need to wrap the deallocator here to make sure to sync
@@ -615,8 +658,7 @@ const char* TFE_OpGetName(const TFE_Op* op, TF_Status* status) {
 }
 
 TFE_Context* TFE_OpGetContext(const TFE_Op* op, TF_Status* status) {
-  return tensorflow::wrap(
-      &(OperationFromInterface(tensorflow::unwrap(op))->EagerContext()));
+  return tensorflow::wrap(tensorflow::unwrap(op)->GetContext());
 }
 
 void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
@@ -850,11 +892,15 @@ TF_CAPI_EXPORT extern int TFE_OpGetOutputLength(TFE_Op* op,
 
 void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
                  TF_Status* status) {
-  status->status = tensorflow::unwrap(op)->Execute(
-      absl::MakeSpan(reinterpret_cast<tensorflow::AbstractTensorHandle**>(
-                         tensorflow::unwrap(retvals)),
-                     *num_retvals),
-      num_retvals);
+  tensorflow::ImmediateExecutionOperation* unwrapped_op =
+      tensorflow::unwrap(op);
+
+  status->status =
+      unwrapped_op->GetContext()->GetCustomDeviceOpHandler().Execute(
+          unwrapped_op,
+          reinterpret_cast<tensorflow::ImmediateExecutionTensorHandle**>(
+              retvals),
+          num_retvals);
 }
 
 TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
@@ -950,22 +996,17 @@ void TFE_ContextEndStep(TFE_Context* ctx) {
 }
 
 const TFE_OpAttrs* TFE_OpGetAttrs(const TFE_Op* op) {
-  return tensorflow::wrap(
-      &OperationFromInterface(tensorflow::unwrap(op))->Attrs());
+  return tensorflow::wrap(tensorflow::unwrap(op)->GetOpAttrs());
 }
 
 void TFE_OpAddAttrs(TFE_Op* op, const TFE_OpAttrs* attrs) {
-  tensorflow::EagerOperation* operation =
-      OperationFromInterface(tensorflow::unwrap(op));
-  tensorflow::AttrBuilder* destination = operation->MutableAttrs();
-  destination->CopyAttributes(*tensorflow::unwrap(attrs));
+  tensorflow::unwrap(op)->AddAttrs(tensorflow::unwrap(attrs));
 }
 
 void TFE_OpAttrsSerialize(const TFE_OpAttrs* attrs, TF_Buffer* buf,
                           TF_Status* status) {
   tensorflow::NameAttrList name_and_attrs;
-  tensorflow::unwrap(attrs)->FillAttrValueMap(name_and_attrs.mutable_attr());
-  name_and_attrs.set_name(tensorflow::unwrap(attrs)->op_name());
+  tensorflow::unwrap(attrs)->GetNameAttrList(&name_and_attrs);
   status->status = MessageToBuffer(name_and_attrs, buf);
 }
 
@@ -1111,10 +1152,8 @@ void TFE_RegisterCustomDevice(TFE_Context* ctx, TFE_CustomDevice device,
   }
   auto custom_device = std::make_unique<tensorflow::CustomDeviceAPI>(
       ctx, device, device_info, device_name);
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  status->status =
-      context->RegisterCustomDevice(device_name, std::move(custom_device));
+  status->status = tensorflow::unwrap(ctx)->RegisterCustomDevice(
+      device_name, std::move(custom_device));
 }
 
 }  // extern "C"

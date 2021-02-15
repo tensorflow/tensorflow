@@ -50,7 +50,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 2
+_version = 3
 
 xla_platform_names = {
     'cpu': 'Host',

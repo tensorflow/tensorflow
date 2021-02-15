@@ -29,6 +29,7 @@ from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import config
@@ -314,6 +315,20 @@ class ReductionTest(PForTestCase):
     with self.assertRaisesRegex(ValueError,
                                 "parallel_iterations currently unsupported"):
       pfor_control_flow_ops.pfor(loop_fn, 8, parallel_iterations=2)
+
+  def test_var_loop_len(self):
+    if context.executing_eagerly():
+      self.skipTest("Variable length not possible under eager execution.")
+
+    x = random_ops.random_uniform([8, 3])
+
+    def loop_fn(i, pfor_config):
+      return pfor_config.reduce_sum(array_ops.gather(x, i))
+
+    num_iters = array_ops.placeholder(dtypes.int32)
+    pfor = pfor_control_flow_ops.pfor(loop_fn, num_iters)
+    with self.cached_session() as sess:
+      sess.run(pfor, feed_dict={num_iters: 8})
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -796,6 +811,8 @@ class LoggingTest(PForTestCase):
     # TODO(agarwal): make this work with for_loop.
     with session.Session() as sess:
       sess.run(pfor_control_flow_ops.pfor(loop_fn, 3))
+      sess.run(pfor_control_flow_ops.pfor(
+          lambda i, pfor_config: loop_fn(i), 3))
 
 
 class TensorArrayTest(PForTestCase):

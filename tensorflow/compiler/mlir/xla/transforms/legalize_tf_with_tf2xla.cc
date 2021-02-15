@@ -134,7 +134,6 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::ErfcOp>(),
     TypeID::get<TF::ErfinvOp>(),
     TypeID::get<TF::ErfOp>(),
-    TypeID::get<TF::Expm1Op>(),
     TypeID::get<TF::ExtractImagePatchesOp>(),
     TypeID::get<TF::FFT2DOp>(),
     TypeID::get<TF::FFT3DOp>(),
@@ -233,7 +232,6 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::SpaceToBatchOp>(),
     TypeID::get<TF::SpaceToDepthOp>(),
     TypeID::get<TF::SparseToDenseOp>(),
-    TypeID::get<TF::SqrtGradOp>(),
     TypeID::get<TF::SquareOp>(),
     TypeID::get<TF::StatelessMultinomialOp>(),
     TypeID::get<TF::StatelessRandomGetAlgOp>(),
@@ -411,6 +409,13 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
     }
   }
 
+  for (const auto& attr : op_->getAttrs()) {
+    if (attr.second.isa<SymbolRefAttr>()) {
+      return op_->emitRemark()
+             << "ops with symbol references are not supported";
+    }
+  }
+
   auto nodedef_or = tensorflow::ConvertTFDialectOpToNodeDef(
       op_, name_mapper_.GetUniqueName(op_), /*ignore_unregistered_attrs=*/true);
   if (!nodedef_or.ok()) {
@@ -566,10 +571,9 @@ tensorflow::XlaExpression Tf2XlaRewriter::GetExprForOperand(Value operand,
 
 class Tf2XlaRewritePattern : public RewritePattern {
  public:
-  // Set benefit to 0 (= least benefit) so this pattern is only used as a
-  // fallback.
   explicit Tf2XlaRewritePattern(const std::string& device_type)
-      : RewritePattern(0, MatchAnyOpTypeTag()), device_type_(device_type) {}
+      : RewritePattern(/*benefit=*/1, MatchAnyOpTypeTag()),
+        device_type_(device_type) {}
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {

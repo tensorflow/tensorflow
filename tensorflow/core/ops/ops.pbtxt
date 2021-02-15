@@ -432,9 +432,11 @@ op {
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_UINT8
+        type: DT_UINT16
+        type: DT_UINT32
+        type: DT_UINT64
         type: DT_INT8
         type: DT_INT16
-        type: DT_UINT32
         type: DT_INT32
         type: DT_INT64
         type: DT_COMPLEX64
@@ -11216,6 +11218,83 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "data_transfer_protocol"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "DataServiceDatasetV2"
+  input_arg {
+    name: "dataset_id"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "processing_mode"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "address"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "protocol"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "job_name"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "consumer_index"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "num_consumers"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "max_outstanding_requests"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "iteration_counter"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "task_refresh_interval_hint_ms"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "data_transfer_protocol"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -13272,6 +13351,8 @@ op {
         type: DT_UINT16
         type: DT_INT16
         type: DT_INT32
+        type: DT_UINT32
+        type: DT_UINT64
         type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
@@ -14019,6 +14100,14 @@ op {
       }
     }
   }
+  attr {
+    name: "num_features"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
   is_stateful: true
 }
 op {
@@ -14191,6 +14280,14 @@ op {
   }
   attr {
     name: "max_sequence_lengths"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "num_features"
     type: "list(int)"
     default_value {
       list {
@@ -16926,6 +17023,8 @@ op {
         type: DT_UINT16
         type: DT_INT16
         type: DT_INT32
+        type: DT_UINT32
+        type: DT_UINT64
         type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
@@ -19698,6 +19797,13 @@ op {
       s: "\t"
     }
   }
+  attr {
+    name: "offset"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
 }
 op {
   name: "InitializeTableFromTextFileV2"
@@ -19735,6 +19841,13 @@ op {
     type: "string"
     default_value {
       s: "\t"
+    }
+  }
+  attr {
+    name: "offset"
+    type: "int"
+    default_value {
+      i: 0
     }
   }
   is_stateful: true
@@ -24922,10 +25035,14 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_UINT8
+        type: DT_INT8
         type: DT_INT16
         type: DT_INT32
         type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -25398,6 +25515,8 @@ op {
         type: DT_UINT16
         type: DT_INT16
         type: DT_INT32
+        type: DT_UINT32
+        type: DT_UINT64
         type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
@@ -27616,6 +27735,41 @@ op {
   is_stateful: true
 }
 op {
+  name: "ParallelBatchDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "batch_size"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "num_parallel_calls"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "drop_remainder"
+    type: DT_BOOL
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
   name: "ParallelConcat"
   input_arg {
     name: "values"
@@ -29432,6 +29586,8 @@ op {
         type: DT_FLOAT
         type: DT_HALF
         type: DT_DOUBLE
+        type: DT_INT8
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
         type: DT_COMPLEX64
@@ -35662,6 +35818,8 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT8
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
       }
@@ -36009,6 +36167,8 @@ op {
         type: DT_UINT16
         type: DT_INT16
         type: DT_INT32
+        type: DT_UINT32
+        type: DT_UINT64
         type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
@@ -41607,6 +41767,29 @@ op {
   }
 }
 op {
+  name: "RiscAbs"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
   name: "RiscAdd"
   input_arg {
     name: "x"
@@ -41789,6 +41972,29 @@ op {
   }
 }
 op {
+  name: "RiscCeil"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
   name: "RiscCholesky"
   input_arg {
     name: "input"
@@ -41958,6 +42164,56 @@ op {
   }
 }
 op {
+  name: "RiscCos"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "RiscDiv"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
   name: "RiscDot"
   input_arg {
     name: "a"
@@ -41999,6 +42255,29 @@ op {
   }
 }
 op {
+  name: "RiscExp"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
   name: "RiscFft"
   input_arg {
     name: "input"
@@ -42018,6 +42297,29 @@ op {
       list {
         type: DT_COMPLEX64
         type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "RiscFloor"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
       }
     }
   }
@@ -42073,6 +42375,43 @@ op {
   }
 }
 op {
+  name: "RiscImag"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tout"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
   name: "RiscIsFinite"
   input_arg {
     name: "x"
@@ -42081,6 +42420,29 @@ op {
   output_arg {
     name: "y"
     type: DT_BOOL
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "RiscLog"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
   }
   attr {
     name: "T"
@@ -42148,6 +42510,83 @@ op {
   }
   output_arg {
     name: "max"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "RiscMin"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "RiscMul"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "RiscNeg"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
     type_attr: "T"
   }
   attr {
@@ -42266,6 +42705,33 @@ op {
   }
 }
 op {
+  name: "RiscPow"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
   name: "RiscRandomUniform"
   input_arg {
     name: "shape"
@@ -42289,6 +42755,43 @@ op {
       list {
         type: DT_INT32
         type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "RiscReal"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tout"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
       }
     }
   }
@@ -42329,6 +42832,33 @@ op {
         type: DT_INT64
       }
     }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "RiscRem"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
   }
   attr {
     name: "T"
@@ -42501,6 +43031,29 @@ op {
   }
 }
 op {
+  name: "RiscSign"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
   name: "RiscSlice"
   input_arg {
     name: "input"
@@ -42613,6 +43166,33 @@ op {
       }
     }
     has_minimum: true
+  }
+}
+op {
+  name: "RiscSub"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
   }
 }
 op {
@@ -42876,47 +43456,6 @@ op {
       }
     }
   }
-}
-op {
-  name: "Rpc"
-  input_arg {
-    name: "address"
-    type: DT_STRING
-  }
-  input_arg {
-    name: "method"
-    type: DT_STRING
-  }
-  input_arg {
-    name: "request"
-    type: DT_STRING
-  }
-  output_arg {
-    name: "response"
-    type: DT_STRING
-  }
-  attr {
-    name: "protocol"
-    type: "string"
-    default_value {
-      s: ""
-    }
-  }
-  attr {
-    name: "fail_fast"
-    type: "bool"
-    default_value {
-      b: true
-    }
-  }
-  attr {
-    name: "timeout_in_ms"
-    type: "int"
-    default_value {
-      i: 0
-    }
-  }
-  is_stateful: true
 }
 op {
   name: "Rsqrt"
@@ -52859,6 +53398,7 @@ op {
         type: DT_COMPLEX64
         type: DT_COMPLEX128
         type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -56327,6 +56867,8 @@ op {
         type: DT_UINT16
         type: DT_INT16
         type: DT_INT32
+        type: DT_UINT32
+        type: DT_UINT64
         type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
@@ -56407,55 +56949,6 @@ op {
         type: DT_INT32
         type: DT_INT64
       }
-    }
-  }
-  is_stateful: true
-}
-op {
-  name: "TryRpc"
-  input_arg {
-    name: "address"
-    type: DT_STRING
-  }
-  input_arg {
-    name: "method"
-    type: DT_STRING
-  }
-  input_arg {
-    name: "request"
-    type: DT_STRING
-  }
-  output_arg {
-    name: "response"
-    type: DT_STRING
-  }
-  output_arg {
-    name: "status_code"
-    type: DT_INT32
-  }
-  output_arg {
-    name: "status_message"
-    type: DT_STRING
-  }
-  attr {
-    name: "protocol"
-    type: "string"
-    default_value {
-      s: ""
-    }
-  }
-  attr {
-    name: "fail_fast"
-    type: "bool"
-    default_value {
-      b: true
-    }
-  }
-  attr {
-    name: "timeout_in_ms"
-    type: "int"
-    default_value {
-      i: 0
     }
   }
   is_stateful: true

@@ -60,6 +60,9 @@ int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type) {
       return NPY_COMPLEX64;
     case kTfLiteComplex128:
       return NPY_COMPLEX128;
+    case kTfLiteResource:
+    case kTfLiteVariant:
+      return NPY_OBJECT;
     case kTfLiteNoType:
       return NPY_NOTYPE;
       // Avoid default so compiler errors created when new types are made.

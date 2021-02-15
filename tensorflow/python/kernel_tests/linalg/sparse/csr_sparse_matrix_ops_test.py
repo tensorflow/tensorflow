@@ -193,7 +193,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
       a_rt = sparse_csr_matrix_ops.csr_sparse_matrix_to_dense(
           v, type=dtypes.float32)
     v_reassign = state_ops.assign(v, v_id).op
-    with self.assertRaisesOpError("Error while reading resource variable sm"):
+    with self.assertRaisesOpError("uninitialized"):
       self.evaluate(a_rt)
     self.evaluate(v.initializer)
     a_rt_value = self.evaluate(a_rt)

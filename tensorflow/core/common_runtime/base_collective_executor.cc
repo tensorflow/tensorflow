@@ -264,7 +264,7 @@ Status BaseCollectiveExecutor::GetStatus(const Status& s) {
 }
 
 void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
-                                          const CollectiveParams& col_params,
+                                          const CollectiveParams* col_params,
                                           const string& exec_key,
                                           StatusCallback done) {
   // See CompleteParamsAsync() how done() and the timeout callback interacts.
@@ -281,7 +281,7 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
     }
   };
   auto timeout_microseconds = static_cast<int64>(
-      col_params.instance.impl_details.timeout_seconds * 1'000'000);
+      col_params->instance.impl_details.timeout_seconds * 1'000'000);
   if (timeout_microseconds > 0) {
     // TODO(xldrx): Share the timeout watchdog thread among collectives.
     SchedNonBlockingClosureAfter(
@@ -297,15 +297,15 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   }
 
   Tensor* output = ctx->mutable_output(0);
-  const Tensor* input = (col_params.instance.type == REDUCTION_COLLECTIVE ||
-                         col_params.instance.type == GATHER_COLLECTIVE ||
-                         col_params.instance.type == PERMUTE_COLLECTIVE ||
-                         (col_params.instance.type == BROADCAST_COLLECTIVE &&
-                          col_params.is_source))
+  const Tensor* input = (col_params->instance.type == REDUCTION_COLLECTIVE ||
+                         col_params->instance.type == GATHER_COLLECTIVE ||
+                         col_params->instance.type == PERMUTE_COLLECTIVE ||
+                         (col_params->instance.type == BROADCAST_COLLECTIVE &&
+                          col_params->is_source))
                             ? &ctx->input(0)
                             : nullptr;
   CollectiveImplementationInterface* col_impl = nullptr;
-  Status status = CreateCollective(col_params, &col_impl);
+  Status status = CreateCollective(*col_params, &col_impl);
   if (!status.ok()) {
     done_safe(status);
     DCHECK_EQ(nullptr, col_impl);

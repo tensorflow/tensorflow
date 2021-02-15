@@ -73,6 +73,23 @@ void HloReachabilityMap::SetReachable(Index a, Index b) {
   GetBitVector(b).Set(a.v);
 }
 
+std::unique_ptr<HloReachabilityMap> HloReachabilityMap::BuildWithRestrictions(
+    const HloComputation* computation,
+    absl::FunctionRef<void(const HloInstruction*,
+                           std::vector<HloInstruction*>*)>
+        add_dependencies) {
+  const auto& all = computation->MakeInstructionPostOrder();
+  auto result = absl::make_unique<HloReachabilityMap>(all);
+
+  std::vector<HloInstruction*> inputs;
+  for (const HloInstruction* hlo : all) {
+    inputs.clear();
+    add_dependencies(hlo, &inputs);
+    result->FastSetReachabilityToUnion(inputs, hlo);
+  }
+  return result;
+}
+
 std::unique_ptr<HloReachabilityMap> HloReachabilityMap::Build(
     const HloComputation* computation) {
   const auto& all = computation->MakeInstructionPostOrder();

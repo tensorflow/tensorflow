@@ -514,6 +514,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_GATHER_ND:
       if (!op_sig.input_types.empty() &&
+          (op_sig.input_types.at(0) == TensorType_INT16)) {
+        return 3;
+      }
+      if (!op_sig.input_types.empty() &&
           op_sig.input_types.at(0) == TensorType_STRING) {
         return 2;
       }
@@ -538,10 +542,14 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_FILL:
-      if (op_sig.input_types.size() >= 2 &&
-          (op_sig.input_types.at(1) == TensorType_BOOL ||
-           op_sig.input_types.at(1) == TensorType_STRING)) {
-        return 2;
+      if (op_sig.input_types.size() >= 2) {
+        if (op_sig.input_types.at(1) == TensorType_INT8 ||
+            op_sig.input_types.at(1) == TensorType_INT16) {
+          return 3;
+        } else if ((op_sig.input_types.at(1) == TensorType_BOOL ||
+                    op_sig.input_types.at(1) == TensorType_STRING)) {
+          return 2;
+        }
       }
       return 1;
 
@@ -635,7 +643,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     // The version one of broadcast to op won't be not supported since the
     // version one was rollbacked and the builtin op code number has been
     // changed because of builtin op code shortage problem.
+    // Quantized broadcast_to is version 3
     case BuiltinOperator_BROADCAST_TO:
+      if (op_sig.input_types.at(0) == TensorType_INT8 ||
+          op_sig.input_types.at(0) == TensorType_INT16) {
+        return 3;
+      }
       return 2;
     default:
       return 1;

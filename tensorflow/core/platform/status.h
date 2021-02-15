@@ -24,25 +24,12 @@ limitations under the License.
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/stack_frame.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
-
-// A struct representing a frame in a stack trace.
-struct StackFrame {
-  std::string file_name;
-  int line_number;
-  std::string function_name;
-
-  bool operator==(const StackFrame& other) const {
-    return line_number == other.line_number &&
-           function_name == other.function_name && file_name == other.file_name;
-  }
-
-  bool operator!=(const StackFrame& other) const { return !(*this == other); }
-};
 
 #if defined(__clang__)
 // Only clang supports warn_unused_result as a type annotation.

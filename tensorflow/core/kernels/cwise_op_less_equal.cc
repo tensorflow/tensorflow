@@ -18,17 +18,19 @@ limitations under the License.
 namespace tensorflow {
 REGISTER5(BinaryOp, CPU, "LessEqual", functor::less_equal, float, Eigen::half,
           bfloat16, double, int32);
-REGISTER4(BinaryOp, CPU, "LessEqual", functor::less_equal, int64, uint8, int8,
-          int16);
+REGISTER7(BinaryOp, CPU, "LessEqual", functor::less_equal, int64, uint8, uint16,
+          uint32, uint64, int8, int16);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_GPU_KERNELS_ENABLED)
-REGISTER7(BinaryOp, GPU, "LessEqual", functor::less_equal, float, Eigen::half,
-          double, int64, uint8, int8, int16);
+    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+REGISTER9(BinaryOp, GPU, "LessEqual", functor::less_equal, float, Eigen::half,
+          double, int64, uint8, uint16, uint32, uint64, int8);
+REGISTER(BinaryOp, GPU, "LessEqual", functor::less_equal, int16);
 #else
 // TODO(b/172804967): We do not generate unsigned kernels for GPU via mlir.
-REGISTER(BinaryOp, GPU, "LessEqual", functor::less_equal, uint8);
+REGISTER4(BinaryOp, GPU, "LessEqual", functor::less_equal, uint8, uint16,
+          uint32, uint64);
 #endif
 
 // A special GPU kernel for int32.

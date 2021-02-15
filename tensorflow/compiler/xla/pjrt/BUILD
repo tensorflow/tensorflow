@@ -8,6 +8,16 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+package_group(
+    name = "friends",
+    includes = [
+        "//tensorflow:internal",
+    ],
+    packages = [
+        "//third_party/py/jax/...",
+    ],
+)
+
 cc_library(
     name = "worker_thread",
     srcs = ["worker_thread.cc"],
@@ -111,6 +121,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/stream_executor:event",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
@@ -119,10 +130,10 @@ cc_library(
 
 cc_library(
     name = "pjrt_client",
+    srcs = ["pjrt_client.cc"],
     hdrs = ["pjrt_client.h"],
     visibility = ["//tensorflow/compiler/xla:friends"],
     deps = [
-        "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -131,13 +142,11 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/pjrt/distributed:protocol_proto_cc",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
@@ -236,13 +245,13 @@ cc_library(
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/compiler/xla/service:tpu_computation_placer",
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu:tpu_executor_dlsym_initializer",
         "//tensorflow/core/tpu:tpu_on_demand_compiler",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:stream",
         "//tensorflow/stream_executor/lib",
-        "//tensorflow/stream_executor/tpu:tpu_computation_placer",
         "//tensorflow/stream_executor/tpu:tpu_executable_interface",
         "//tensorflow/stream_executor/tpu:tpu_executor",
         "//tensorflow/stream_executor/tpu:tpu_executor_interface",
@@ -274,10 +283,12 @@ cc_library(
     name = "cpu_device",
     srcs = ["cpu_device.cc"],
     hdrs = ["cpu_device.h"],
+    visibility = [":friends"],
     deps = [
         ":pjrt_stream_executor_client",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service:platform_util",
         "@com_google_absl//absl/strings",
     ],

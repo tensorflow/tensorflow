@@ -83,6 +83,12 @@ ExecutableBuildOptions& ExecutableBuildOptions::set_deduplicate_hlo(
   return *this;
 }
 
+ExecutableBuildOptions& ExecutableBuildOptions::set_broadcast_replicated_params(
+    bool broadcast_replicated_params) {
+  broadcast_replicated_params_ = broadcast_replicated_params;
+  return *this;
+}
+
 ExecutableBuildOptions& ExecutableBuildOptions::set_device_assignment(
     const DeviceAssignment& device_assignment) {
   device_assignment_ = device_assignment;

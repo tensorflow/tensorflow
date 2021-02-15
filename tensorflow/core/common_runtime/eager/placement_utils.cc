@@ -77,11 +77,6 @@ bool IsFunction(StringPiece op_name) {
   return false;
 }
 
-bool IsCustomDevice(StringPiece device_name, const EagerContext& ctx) {
-  CustomDevice* custom_device;
-  return ctx.FindCustomDeviceFromName(string(device_name), &custom_device);
-}
-
 Status MaybePinSmallOpsToCpu(
     bool* result, StringPiece op_name,
     absl::Span<ImmediateExecutionTensorHandle* const> args,
@@ -179,52 +174,6 @@ Status MaybePinToResourceDevice(Device** device, const EagerOperation& op) {
       }
     }
   }
-  return Status::OK();
-}
-
-Status MaybePinToCustomDevice(VariantDevice* device, const EagerOperation& op) {
-  // If operation was already placed on a custom device, use it.
-  if (absl::holds_alternative<CustomDevice*>(op.Device())) {
-    *device = op.Device();
-    return Status::OK();
-  } else if (!op.DeviceName().empty()) {
-    // Don't override explicit placements.
-    return Status::OK();
-  }
-
-  // Ops are placed on a custom device if there's no other explicit requested
-  // placement and there is only one custom device in the op inputs.
-  if (!op.Inputs().empty()) {
-    CustomDevice* first = nullptr;
-    for (const ImmediateExecutionTensorHandle* generic_input : op.Inputs()) {
-      // TODO(b/175427838): It would be nice to be able to use tensorflow::isa
-      // here.
-      if (CustomDeviceTensorHandle::classof(generic_input)) {
-        const CustomDeviceTensorHandle* input =
-            down_cast<const CustomDeviceTensorHandle*>(generic_input);
-        CustomDevice* current = input->device();
-        if (first == nullptr) {
-          first = current;
-        } else if (first != current) {
-          return errors::InvalidArgument(absl::StrCat(
-              "If an operation has one of its inputs in a custom device, then "
-              "all inputs should be on that same custom device or another "
-              "physical device. Operation ",
-              op.Name(),
-              " has one input in custom "
-              "device ",
-              first->name(),
-              " and at least one input in a different custom device ",
-              current->name()));
-        }
-      }
-    }
-    if (first != nullptr) {
-      *device = first;
-      return Status::OK();
-    }
-  }
-
   return Status::OK();
 }
 

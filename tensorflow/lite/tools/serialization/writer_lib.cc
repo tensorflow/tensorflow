@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/schema/reflection/schema_generated.h"
-#include "tensorflow/lite/schema/schema_utils.h"
+#include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/tools/serialization/enum_mapping.h"
 #include "tensorflow/lite/version.h"
 

@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_structs.cc.inc"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -145,6 +146,41 @@ bool IsI32Type(Type element_type) {
 bool IsI64Type(Type element_type) {
   return element_type.isInteger(64) && !element_type.isUnsignedInteger();
 }
+
+// Return true if the value is a splat tensor constant zero.
+bool EqualsZero(Value value) {
+  DenseElementsAttr constant;
+  if (!matchPattern(value, m_Constant(&constant)) || !constant.isSplat()) {
+    return false;
+  }
+
+  Type element_type = value.getType().cast<ShapedType>().getElementType();
+  if (element_type.isa<FloatType>()) {
+    return constant.getSplatValue<APFloat>().isZero();
+  } else {
+    return false;
+  }
+}
+
+// Replaces the bias operand with a "none" type value if the bias value is
+// constant zero.
+// `ConcreteOpType` must be an concrete MLIR op class that has an optional
+// bias operand named 'bias'.
+template <typename ConcreteOpType>
+struct RemoveOptionalZeroBias : public OpRewritePattern<ConcreteOpType> {
+  using OpRewritePattern<ConcreteOpType>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ConcreteOpType op,
+                                PatternRewriter &rewriter) const override {
+    if (EqualsZero(op.bias())) {
+      auto none_value = rewriter.create<mlir::ConstantOp>(
+          rewriter.getUnknownLoc(), rewriter.getUnitAttr());
+      op.biasMutable().assign(none_value);
+    }
+
+    return success();
+  }
+};
 
 // Return true if the given Add operation has the CPU kernel supported shapes.
 bool VerifyAddOpShapeConstraints(AddOp op) {
@@ -796,6 +832,33 @@ LogicalResult Verify(FullyConnectedOp op) {
   }
 
   return mlir::success();
+}
+
+void FullyConnectedOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<RemoveOptionalZeroBias<FullyConnectedOp>>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// Conv2DOp
+//===----------------------------------------------------------------------===//
+
+void Conv2DOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                           MLIRContext *context) {
+  // TODO(b/180121750): Enable the pattern after the integration tests are
+  // fixed.
+  // results.insert<RemoveOptionalZeroBias<Conv2DOp>>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// DepthwiseConv2DO
+//===----------------------------------------------------------------------===//
+
+void DepthwiseConv2DOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  // TODO(b/180121750): Enable the pattern after the integration tests are
+  // fixed.
+  // results.insert<RemoveOptionalZeroBias<DepthwiseConv2DOp>>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1653,6 +1716,16 @@ LogicalResult UnpackOp::inferReturnTypes(
   return success();
 }
 
+bool UnpackOp::isCompatibleReturnTypes(ArrayRef<Type> lhs, ArrayRef<Type> rhs) {
+  if (lhs.size() != rhs.size()) return false;
+  for (auto pair : llvm::zip(lhs, rhs)) {
+    if (failed(
+            mlir::verifyCompatibleShape(std::get<0>(pair), std::get<1>(pair))))
+      return false;
+  }
+  return true;
+}
+
 //===----------------------------------------------------------------------===//
 // SplitOp
 //===----------------------------------------------------------------------===//
@@ -1889,6 +1962,38 @@ static LogicalResult Verify(LSTMOp op) {
   }
 
   return success();
+}
+
+namespace {
+
+// Replaces the optional bias operands with a "none" type value if the bias
+// values are constant zeros.
+struct RemoveLSTMOpZeroBias : public OpRewritePattern<LSTMOp> {
+  using OpRewritePattern<LSTMOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LSTMOp op,
+                                PatternRewriter &rewriter) const override {
+    if (EqualsZero(op.input_gate_bias())) {
+      auto none_value = rewriter.create<mlir::ConstantOp>(
+          rewriter.getUnknownLoc(), rewriter.getUnitAttr());
+      op.input_gate_biasMutable().assign(none_value);
+    }
+
+    if (EqualsZero(op.projection_bias())) {
+      auto none_value = rewriter.create<mlir::ConstantOp>(
+          rewriter.getUnknownLoc(), rewriter.getUnitAttr());
+      op.projection_biasMutable().assign(none_value);
+    }
+
+    return success();
+  }
+};
+
+}  // namespace
+
+void LSTMOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                         MLIRContext *context) {
+  results.insert<RemoveLSTMOpZeroBias>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2482,6 +2587,22 @@ struct WhileResultOperandsMatchAndImplicitCapture
     auto &yield = *body_block.getTerminator();
     for (auto ba : body_block.getArguments()) {
       int arg_no = ba.getArgNumber();
+      // Skip removing resources that are not read-only variables.
+      if (getElementTypeOrSelf(ba.getType()).isa<TF::ResourceType>()) {
+        bool has_read_only_variables = true;
+        for (auto user : ba.getUsers()) {
+          // Ternimator ops, for example, tfl::yield op, should be ignored since
+          // the argument can be used for yielding as the `body` function result
+          // and that does not give any meaningful points to the decision
+          // whether the given arugment is a read-only variable or not.
+          if (user->hasTrait<OpTrait::IsTerminator>()) continue;
+          if (!llvm::isa<mlir::TF::ReadVariableOp>(user)) {
+            has_read_only_variables = false;
+            break;
+          }
+        }
+        if (!has_read_only_variables) continue;
+      }
       if (ba == yield.getOperand(arg_no)) {
         unchanged = false;
         auto value = while_op.getOperand(arg_no);

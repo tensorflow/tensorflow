@@ -169,7 +169,7 @@ TF::WhileRegionOp CloneEmptyWhile(bool is_stateless,
 TF::_TPUCompileMlirPlaceholderProgramKeyOp CreateCompilationKeyPlaceholder(
     Location loc, OpBuilder& builder) {
   auto result_type =
-      RankedTensorType::get({2}, builder.getType<TF::StringType>());
+      RankedTensorType::get({3}, builder.getType<TF::StringType>());
   return builder.create<TF::_TPUCompileMlirPlaceholderProgramKeyOp>(
       loc, /*program=*/result_type, llvm::ArrayRef<Value>{});
 }
@@ -248,7 +248,7 @@ TF::_XlaHostComputeMlirOp CreateHostCompute(
 
 void MarkOutsideCompiled(Operation* op) {
   op->setAttr(kXlaOutsideCompilationAttr,
-              StringAttr::get("temp", op->getContext()));
+              StringAttr::get(op->getContext(), "temp"));
 }
 
 // Move outside compiled ops in `src` to to `insertion_point` in host
@@ -297,6 +297,7 @@ void MoveOpsToHost(tf_device::ClusterOp tpu_cluster, Block* src,
     auto recv_at_host = CreateRecvAtHostOp(
         builder, op.getLoc(), host_operand_types, compilation_key,
         device_ordinal, args_communication_key);
+    auto original_op_block = op.getBlock();
     op.moveAfter(recv_at_host);
     op.removeAttr(Identifier::get(kDeviceAttr, op.getContext()));
     if (!external_outputs.empty()) {
@@ -309,7 +310,8 @@ void MoveOpsToHost(tf_device::ClusterOp tpu_cluster, Block* src,
     auto replace_operand_usage = [&](OpOperand& operand) {
       return insertion_point->getParentRegion()->isAncestor(
                  operand.getOwner()->getParentRegion()) ||
-             HasOutsideCompilationAncestor(operand.getOwner());
+             (HasOutsideCompilationAncestor(operand.getOwner()) &&
+              original_op_block == operand.getOwner()->getBlock());
     };
     if (external_operands.empty()) {
       recv_at_host->erase();
@@ -492,8 +494,8 @@ void TPUExtractOutsideCompilation::runOnOperation() {
   module.walk([&](tf_device::ClusterOp tpu_cluster) {
     if (HasOutsideCompilationNested(tpu_cluster.getOperation())) {
       std::string host_device;
-      tensorflow::GetHostDeviceOutsideComputation(devices, tpu_cluster,
-                                                  &host_device);
+      (void)tensorflow::GetHostDeviceOutsideComputation(devices, tpu_cluster,
+                                                        &host_device);
       CreateParallelExecuteForOutsideCompilation(module, tpu_cluster,
                                                  host_device);
     }

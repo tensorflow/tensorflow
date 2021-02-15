@@ -52,6 +52,7 @@ namespace {
 constexpr char kTPUReplicateAttr[] = "_tpu_replicate";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kNameAttr[] = "name";
+constexpr char kNumCoresPerReplicaAttr[] = "num_cores_per_replica";
 constexpr char kNumReplicasAttr[] = "num_replicas";
 constexpr char kReplicatedInputIndicesAttr[] = "_replicated_input_indices";
 constexpr char kMirroredVariableIndicesAttr[] = "_mirrored_variable_indices";
@@ -338,7 +339,8 @@ LogicalResult SortTPUReplicatedInputsByIndex(
 
 // Creates a `tf_device.replicate` to represent replication for the cluster, if
 // necessary.
-LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas) {
+LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
+                               int num_cores_per_replica) {
   // No need to replicate.
   if (num_replicas == 1) return success();
 
@@ -346,14 +348,31 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas) {
     return cluster.emitError() << "requires '" << kNumReplicasAttr
                                << "' int attribute to be at least 1";
 
+  LogicalResult status = success();
   // Collect all used TPUReplicatedInput ops and sort by `index`.
   llvm::SmallSetVector<Operation*, 8> unique_replicated_input_ops;
   mlir::visitUsedValuesDefinedAbove(
       cluster.body(), cluster.body(), [&](mlir::OpOperand* operand) {
         Operation* def = operand->get().getDefiningOp();
-        if (def && llvm::isa<TF::TPUReplicatedInputOp>(def))
+        if (llvm::isa_and_nonnull<TF::TPUReplicatedInputOp>(def))
           unique_replicated_input_ops.insert(def);
+        // When model parallelism is used in conjunction with data parallelism
+        // for resource inputs, we need to collect the per replica resource
+        // inputs from input to `tf.TPUPartitionedInput` ops.
+        if (auto pi = llvm::dyn_cast_or_null<TF::TPUPartitionedInputOp>(def)) {
+          if (pi->getNumOperands() != num_cores_per_replica)
+            status = pi.emitOpError()
+                     << "requires " << num_cores_per_replica
+                     << " operands but found " << pi->getNumOperands();
+          for (auto operand : pi.inputs()) {
+            if (llvm::isa_and_nonnull<TF::TPUReplicatedInputOp>(
+                    operand.getDefiningOp()))
+              unique_replicated_input_ops.insert(operand.getDefiningOp());
+          }
+        }
       });
+
+  if (failed(status)) return failure();
   llvm::SmallVector<Operation*, 8> replicated_input_ops;
   if (failed(SortTPUReplicatedInputsByIndex(
           unique_replicated_input_ops.getArrayRef(), &replicated_input_ops)))
@@ -440,6 +459,9 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas) {
     }
   }
 
+  // Collect all `tf.TPUPartitionedInput` ops to be moved inside the
+  // `tf_device.replicate` later.
+  llvm::SmallSet<Operation*, 4> partitioned_inputs;
   // Update replicated inputs with replicate op block arguments.
   for (auto input_and_block_arg :
        llvm::zip(replicated_input_ops, replicate_op.GetBody().getArguments())) {
@@ -447,13 +469,23 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas) {
     Value block_arg = std::get<1>(input_and_block_arg);
     mlir::replaceAllUsesInRegionWith(input->getResult(0), block_arg,
                                      cluster.body());
+    // Update replicated input use in tf.TPUPartitionedInput op.
+    for (auto& use : input->getUses()) {
+      auto pi = llvm::dyn_cast<TF::TPUPartitionedInputOp>(use.getOwner());
+      if (pi) {
+        pi.setOperand(use.getOperandNumber(), block_arg);
+        partitioned_inputs.insert(pi.getOperation());
+      }
+    }
   }
 
-  // Create terminator for replicate op and move `tf_device.cluster` into
-  // replicate.
+  // Create terminator for replicate op and move `tf_device.cluster` and
+  // `tf.TPUPartitionedInput`(s) into replicate body.
   builder.setInsertionPointToEnd(&replicate_op.GetBody());
   auto return_op = builder.create<tf_device::ReturnOp>(replicate_op.getLoc(),
                                                        cluster.getResults());
+  for (auto pi : partitioned_inputs) pi->moveBefore(return_op);
+
   cluster.getOperation()->moveBefore(return_op);
 
   return success();
@@ -533,8 +565,17 @@ LogicalResult FormClustersInBlock(
       return cluster.emitError()
              << "requires '" << kNumReplicasAttr << "' int attribute";
 
-    if (failed(ReplicateCluster(
-            cluster, num_replicas.cast<mlir::IntegerAttr>().getInt())))
+    int num_cores_per_replica = 1;
+    auto num_cores_per_replica_attr =
+        cluster_metadata->getSecond()
+            .get(kNumCoresPerReplicaAttr)
+            .dyn_cast_or_null<mlir::IntegerAttr>();
+    if (num_cores_per_replica_attr)
+      num_cores_per_replica = num_cores_per_replica_attr.getInt();
+
+    if (failed(ReplicateCluster(cluster,
+                                num_replicas.cast<mlir::IntegerAttr>().getInt(),
+                                num_cores_per_replica)))
       return failure();
 
     // Copy TPUReplicateMetadata attributes to `tf_device.cluster`.
@@ -570,8 +611,9 @@ LogicalResult FormClustersInFunction(
     // Leftover TPUReplicatedInput/TPUReplicatedOutput that are not of
     // `num_replicas` to 1.
     if (!op->use_empty()) {
-      op->emitOpError() << "expects " << op->getName().getStringRef()
-                        << " to have no uses";
+      op->emitOpError() << "is expected to have no uses, but it is operand#"
+                        << op->use_begin()->getOperandNumber() << " of "
+                        << *op->use_begin()->getOwner();
       return WalkResult::interrupt();
     }
 

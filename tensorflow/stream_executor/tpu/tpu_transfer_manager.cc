@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_executor.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
+#include "tensorflow/stream_executor/tpu/tpu_platform_id.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -45,7 +46,7 @@ TpuTransferManager::~TpuTransferManager() {
 }
 
 stream_executor::Platform::Id TpuTransferManager::PlatformId() const {
-  return TpuPlatform::kId;
+  return GetTpuPlatformId();
 }
 
 xla::Shape TpuTransferManager::HostShapeToDeviceShape(
@@ -126,14 +127,14 @@ Status TpuTransferManager::TransferBuffersToInfeed(
 }
 
 Status TpuTransferManager::TransferLiteralFromOutfeed(
-    stream_executor::StreamExecutor* executor, const xla::Shape& literal_shape,
+    stream_executor::StreamExecutor* executor,
     xla::MutableBorrowingLiteral literal) {
   StatusHelper status;
   XLA_Shape c_shape;
   XLA_Literal c_literal;
   auto* tpu_executor = static_cast<TpuExecutor*>(executor->implementation());
 
-  ApiConverter::ToC(literal_shape, &c_shape);
+  ApiConverter::ToC(literal.shape(), &c_shape);
   ApiConverter::ToC(literal, &c_literal);
 
   tpu::ExecutorApiFn()->TpuTransferManager_TransferLiteralFromOutfeedFn(

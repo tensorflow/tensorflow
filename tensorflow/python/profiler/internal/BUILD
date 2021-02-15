@@ -12,7 +12,7 @@ package(
 py_library(
     name = "flops_registry",
     srcs = ["flops_registry.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:graph_util",
@@ -22,7 +22,7 @@ py_library(
 py_library(
     name = "model_analyzer_testlib",
     srcs = ["model_analyzer_testlib.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:array_ops",
@@ -43,7 +43,7 @@ py_test(
     name = "print_model_analysis_test",
     srcs = ["print_model_analysis_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/core/profiler:protos_all_py",
         "//tensorflow/python:array_ops",

@@ -17,7 +17,7 @@ filegroup(
 py_library(
     name = "core",
     srcs = ["core.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:sparse_ops",

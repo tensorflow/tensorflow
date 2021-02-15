@@ -39,12 +39,12 @@ def AllocationSlice : StructAttr<"AllocationSlice", XLAThunks_Dialect, [
 
 def MemzeroThunkOp : ThunkOp<"execute_memzero_thunk"> {
   let arguments = (ins
-    LLVM_PointerTo<LLVM_i8>:$execute_params,
+    LLVM_PointerTo<I8>:$execute_params,
     AllocationSlice:$allocation_slice
   );
   let results = (outs
     I<1>:$ok,
-    LLVM_PointerTo<LLVM_i8>:$error_message
+    LLVM_PointerTo<I8>:$error_message
   );
 }
 

@@ -89,9 +89,25 @@ Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
     Var* variable = nullptr;
     ResourceHandle handle = inputs[var_idx]->flat<ResourceHandle>()(0);
     if (handle.device() != dev->attributes().name()) {
-      return errors::InvalidArgument(
-          "Trying to access resource ", handle.name(), " located in device ",
-          handle.device(), " from device ", dev->attributes().name());
+      std::string definition_location = [&]() -> std::string {
+        if (handle.definition_stack_trace()) {
+          std::vector<StackFrame> stack_frames =
+              handle.definition_stack_trace()->ToStackFrames(
+                  {}, IsInternalFrameForFilename,
+                  /*reverse_traversal=*/true,
+                  /*limit=*/1);
+          if (!stack_frames.empty()) {
+            const StackFrame& last_frame = stack_frames[0];
+            return absl::StrCat(" (defined @ ", last_frame.file_name, ":",
+                                last_frame.line_number, ")");
+          }
+        }
+        return "";
+      }();
+      return errors::InvalidArgument("Trying to access resource ",
+                                     handle.name(), definition_location,
+                                     " located in device ", handle.device(),
+                                     " from device ", dev->attributes().name());
     }
     TF_RETURN_IF_ERROR(rm->LookupOrCreate<Var>(
         handle.container(), handle.name(), &variable, [](Var** ptr) {

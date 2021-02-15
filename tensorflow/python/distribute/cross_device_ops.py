@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import collections
 import copy
+import multiprocessing.dummy
+import multiprocessing.pool
 import threading
 
 import six
@@ -36,7 +38,6 @@ from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import executor as executor_lib
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -44,6 +45,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
 
@@ -521,6 +523,37 @@ class CrossDeviceOps(object):
     """
     return simple_broadcast(tensor, destinations, always_mirrored=True)
 
+  # ========================== Collective APIs ================================
+  #
+  # Different than `reduce`, `batch_reduce` and `broadcast` which must be called
+  # in cross-replcia context, collective APIs are to be called in replica
+  # context.
+
+  def _all_reduce(self, reduce_op, value, replica_id, options):
+    """All-reduce the `value` across all replicas so that all get the result.
+
+    `value` can be a nested structure of tensors. The implementation should
+    generally batch the all-reduces when possible. `options` can be set to
+    hint the batching behavior.
+
+    This API must be called in a replica context.
+
+    Args:
+      reduce_op: A `tf.distribute.ReduceOp` value specifying how values should
+        be combined. Allows using string representation of the enum such as
+        "SUM", "MEAN".
+      value: Value to be reduced. A tensor or a nested structure of tensors.
+      replica_id: An interger indicating the id of the replica where this
+        all_reduce is called under. This is the local replica id that ranges
+        from 0 to len(local_devices) - 1.
+      options: A `tf.distribute.experimental.CommunicationOptions`.
+
+    Returns:
+      A tensor or a nested strucutre of tensors with the reduced values. The
+      structure is the same as `value`.
+    """
+    raise NotImplementedError("_all_reduce must be implemented in descendants.")
+
 
 @tf_export("distribute.ReductionToOneDevice")
 class ReductionToOneDevice(CrossDeviceOps):
@@ -849,6 +882,8 @@ class AllReduceCrossDeviceOps(CrossDeviceOps):
     destinations = dense_values[0]._devices  # pylint: disable=protected-access
     grouped = _group_value_by_device(dense_values)
 
+    # device_grad_packs:
+    # [[(t0_gpu0, None), (t1_gpu0, None)], [(t0_gpu1, None), (t1_gpu1, None)]]
     device_grad_packs, tensor_packer = _pack_tensors(grouped, self._num_packs)
 
     # The actual aggregation of the repacked gradients. Note that they are
@@ -1013,8 +1048,8 @@ class CollectiveAllReduce(CrossDeviceOps):
     # deadlocks. E.g. if two user threads both are launching collectives:
     #   user-thread-0  device0                 device1
     #   user-thread-1          device0 device1
-    # In eager mode, we use one executor per device. Executors use single FIFO
-    # queues, so the above launch sequences end up with the following queues:
+    # In eager mode, we use one thread per device to launch collective ops, so
+    # the above launch sequences end up with the following queues:
     #   device-0  collective-0  collective-1
     #   device-1  collective-1  collective-0
     # This deadlocks since neither collective is able to finish.
@@ -1022,25 +1057,19 @@ class CollectiveAllReduce(CrossDeviceOps):
 
     self._devices = tuple(device_util.canonicalize(d) for d in devices)
     group_key = self._collective_keys.get_group_key(self._devices)
-    # Collective ops requires all devices to participate and is blocking. In
-    # eager, we need one async executor for each device to be able to launch
-    # them altogether. Note that async doesn't imply concurrency. Within an
-    # async executor operations are still executed sequentially. In graph or
-    # function building, the executors are not used.
-    self._executors = []
     self._launchers = []
     # Whether to only use NCCL for batched all-reduce when NCCL is requested.
     # This is because of the lack of mechanism to order NCCL operations
     # deterministically.
     self._limited_nccl = False
     for device in self._devices:
-      executor = executor_lib.new_executor(enable_async=True)
-      self._executors.append(executor)
       launcher = cross_device_utils.CollectiveReplicaLauncher(
-          group_key, group_size, self._collective_keys, device, executor)
+          group_key, group_size, self._collective_keys, device)
       self._launchers.append(launcher)
       if not launcher.can_order_nccl():
         self._limited_nccl = True
+
+    self._pool = multiprocessing.pool.ThreadPool(len(self._devices))
 
     super(CollectiveAllReduce, self).__init__()
 
@@ -1048,6 +1077,55 @@ class CollectiveAllReduce(CrossDeviceOps):
   def _num_between_graph_workers(self):
     # Currently we only support equal number of devices on each worker.
     return self._group_size / len(self._devices)
+
+  def _all_reduce(self, reduce_op, value, replica_id, options):
+    """Implements CrossDeviceOps.all_reduce."""
+    # TODO(b/122840926): reuse this method in _batch_all_reduce.
+    flat_values = nest.flatten(value)
+
+    if isinstance(flat_values[0], ops.IndexedSlices):
+      raise NotImplementedError("all_reduce doesn't support IndexedSlices.")
+
+    batch_size = len(flat_values)
+
+    implementation = options.implementation.value
+    # If NCCL launches can't be ordered (self._limited_nccl == True), we only
+    # use NCCL only when batch_size > 1, hoping that there's only one batched
+    # all-reduce, which is the gradients.
+    if (self._limited_nccl and
+        options.implementation == CommunicationImplementation.NCCL and
+        batch_size == 1):
+      implementation = CommunicationImplementation.AUTO.value
+
+    # Reverse the lists so that there's better chance that values follows
+    # the order in which they are calculated (e.g. when they're gradients), so
+    # as to overlap calculation with communication. However, this may not be
+    # optimal for cases like gradients of complicated non-sequential models.
+    #
+    # Note that we reverse the list before packing so that the first pack won't
+    # be too small, since it's more likely for first few packs to have long
+    # queuing time due to concurrent intense computation.
+    #
+    # TODO(b/147393503): explore solutions for optimal ordering.
+    flat_values.reverse()
+    packs = cross_device_utils.group_by_size(flat_values,
+                                             options.bytes_per_pack)
+
+    launcher = self._launchers[replica_id]
+    if not context.executing_eagerly() and replica_id == 0:
+      logging.info(
+          "Collective all_reduce: %d all-reduces, num_devices = %d, "
+          "group_size = %d, implementation = %s, num_packs = %d", batch_size,
+          len(self._launchers), self._group_size, implementation, len(packs))
+    flat_results = launcher.batch_all_reduce(packs, implementation,
+                                             options.timeout_seconds)
+
+    if reduce_op == reduce_util.ReduceOp.MEAN:
+      for i, v in enumerate(flat_results):
+        flat_results[i] = v / self._group_size
+    flat_results.reverse()
+
+    return nest.pack_sequence_as(value, flat_results)
 
   def reduce_implementation(self, reduce_op, per_replica_value, destinations,
                             options):
@@ -1147,22 +1225,31 @@ class CollectiveAllReduce(CrossDeviceOps):
       for i in range(len(self._devices)):
         values_by_device[i].append(per_replica.values[i])
 
-    outputs_by_device = []
-    with self._lock:
-      for i in range(len(self._devices)):
-        packs = cross_device_utils.group_by_size(
-            values_by_device[i], options.bytes_per_pack)
-        if not context.executing_eagerly() and i == 0:
-          logging.info(
-              "Collective batch_all_reduce: %d all-reduces, num_devices = %d, "
-              "group_size = %d, implementation = %s, num_packs = %d",
-              batch_size, len(self._launchers), self._group_size,
-              implementation, len(packs))
-        outputs_by_device.append(self._launchers[i].batch_all_reduce(
-            packs, implementation, options.timeout_seconds))
+    if context.executing_eagerly():
+      def thread_fn(device_id):
+        with context.eager_mode():
+          packs = cross_device_utils.group_by_size(values_by_device[device_id],
+                                                   options.bytes_per_pack)
+          return self._launchers[device_id].batch_all_reduce(
+              packs, implementation, options.timeout_seconds)
 
-    for e in self._executors:
-      e.wait()
+      num_devices = len(self._devices)
+      with self._lock:
+        outputs_by_device = self._pool.map(thread_fn, list(range(num_devices)))
+    else:
+      outputs_by_device = []
+      with self._lock:
+        for i in range(len(self._devices)):
+          packs = cross_device_utils.group_by_size(
+              values_by_device[i], options.bytes_per_pack)
+          if i == 0:
+            logging.info(
+                "Collective batch_all_reduce: %d all-reduces, num_devices = %d,"
+                " group_size = %d, implementation = %s, num_packs = %d",
+                batch_size, len(self._launchers), self._group_size,
+                implementation, len(packs))
+          outputs_by_device.append(self._launchers[i].batch_all_reduce(
+              packs, implementation, options.timeout_seconds))
 
     mirrored = []
     for values in zip(*outputs_by_device):

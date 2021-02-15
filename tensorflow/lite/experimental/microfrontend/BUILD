@@ -84,7 +84,7 @@ tf_custom_op_py_library(
     kernels = [
         ":audio_microfrontend_op_op_lib",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":audio_microfrontend_op",
         "//tensorflow/python:array_ops",

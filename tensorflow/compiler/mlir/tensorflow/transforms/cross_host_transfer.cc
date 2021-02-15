@@ -80,7 +80,7 @@ void CrossHostTransferPass::runOnFunction(FuncOp func_op, int &key_count) {
       transferred_value_by_value_and_host;
 
   func_op.getBody().walk([&](Operation *op) {
-    if (op->isKnownTerminator()) return WalkResult::advance();
+    if (op->hasTrait<OpTrait::IsTerminator>()) return WalkResult::advance();
 
     OpBuilder builder(op);
     // Get the host address of the op.

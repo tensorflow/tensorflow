@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -191,7 +192,8 @@ Status ShapeVerifier::HandleCholesky(HloInstruction* hlo) {
 // This is just a minimal set of checks; some instructions may have additional
 // requirements.  For example, all-to-all requires that all ReplicaGroups have
 // the same number of replicas, but that isn't checked here.
-static Status CheckReplicaGroups(HloInstruction* hlo) {
+static Status CheckReplicaGroups(HloInstruction* hlo,
+                                 bool use_global_device_ids) {
   std::set<int64> replicas_seen;
   for (const ReplicaGroup& g : hlo->replica_groups()) {
     if (g.replica_ids().empty()) {
@@ -214,22 +216,28 @@ static Status CheckReplicaGroups(HloInstruction* hlo) {
     }
   }
 
+  // If use_global_device_ids() is set, replica_groups cannot be empty.
   // When the channel_id() or use_global_device_ids() is set, device ids in
   // ReplicaGroup config no longer only mean replica ids. So we skip the check
   // on the replica count.
+  if (use_global_device_ids) {
+    if (hlo->replica_groups().empty()) {
+      return InternalError(
+          "Replica group must be specified when use_global_device_ids is true");
+    }
+    // No need to check replica_count.
+    return Status::OK();
+  }
+
   if (auto channel_instr = DynCast<HloChannelInstruction>(hlo)) {
     if (channel_instr->channel_id()) {
       return Status::OK();
     }
   }
-  if (auto all_reduce = DynCast<HloAllReduceInstruction>(hlo)) {
-    if (all_reduce->use_global_device_ids()) {
-      return Status::OK();
-    }
-  }
 
   int64 replica_count = hlo->GetModule()->config().replica_count();
-  if (!replicas_seen.empty() && replicas_seen.size() != replica_count) {
+  if (replica_count != 1 && !replicas_seen.empty() &&
+      replicas_seen.size() != replica_count) {
     return InternalError(
         "Replica count in HloModuleConfig is %d, but ReplicaGroup config "
         "contains %d replicas: %s",
@@ -241,14 +249,10 @@ static Status CheckReplicaGroups(HloInstruction* hlo) {
 
 Status ShapeVerifier::HandleAllGather(HloInstruction* hlo) {
   auto ag = Cast<HloAllGatherInstruction>(hlo);
-  TF_RETURN_IF_ERROR(CheckReplicaGroups(ag));
+  TF_RETURN_IF_ERROR(CheckReplicaGroups(ag, ag->use_global_device_ids()));
   TF_RET_CHECK(ag->all_gather_dimension() >= 0);
   TF_RET_CHECK(ag->all_gather_dimension() < ag->shape().rank());
   TF_RET_CHECK(ag->all_gather_dimension() < ag->operand(0)->shape().rank());
-  if (ag->use_global_device_ids() && ag->replica_groups().empty()) {
-    return InternalError(
-        "Replica group must be specified when use_global_device_ids is true");
-  }
 
   int64 shard_count = CeilOfRatio(
       ag->shape().dimensions(ag->all_gather_dimension()),
@@ -273,20 +277,21 @@ Status ShapeVerifier::HandleAllGather(HloInstruction* hlo) {
                             shard_count));
 }
 
-Status ShapeVerifier::HandleAllReduce(HloInstruction* crs) {
-  TF_RETURN_IF_ERROR(CheckReplicaGroups(crs));
+Status ShapeVerifier::HandleAllReduce(HloInstruction* hlo) {
+  auto ar = Cast<HloAllReduceInstruction>(hlo);
+  TF_RETURN_IF_ERROR(CheckReplicaGroups(ar, ar->use_global_device_ids()));
 
   std::vector<const Shape*> operand_shapes;
-  for (const HloInstruction* operand : crs->operands()) {
+  for (const HloInstruction* operand : hlo->operands()) {
     operand_shapes.push_back(&operand->shape());
   }
-  return CheckShape(crs, ShapeInference::InferAllReduceShape(operand_shapes));
+  return CheckShape(hlo, ShapeInference::InferAllReduceShape(operand_shapes));
 }
 
 Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
-  TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo));
-
   auto* all_to_all = Cast<HloAllToAllInstruction>(hlo);
+  TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo, /*use_global_device_ids=*/false));
+
   TF_RET_CHECK(all_to_all != nullptr);
   if (all_to_all->split_dimension()) {
     if (hlo->replica_groups().empty()) {
@@ -597,8 +602,8 @@ Status ShapeVerifier::HandleConstant(HloInstruction* constant) {
                     /*only_compare_minor_to_major_in_layout=*/true);
 }
 
-Status ShapeVerifier::HandleIota(HloInstruction* instruction) {
-  auto* iota = Cast<HloIotaInstruction>(instruction);
+Status ShapeVerifier::HandleIota(HloInstruction* hlo) {
+  auto* iota = Cast<HloIotaInstruction>(hlo);
   if (!iota->shape().IsArray()) {
     return InternalError("Iota does not support non-array result.");
   }
@@ -1073,6 +1078,8 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kConstant:
+    case HloOpcode::kConvolution:
+    case HloOpcode::kDot:
     case HloOpcode::kAllReduce:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCopyStart:
@@ -1858,9 +1865,9 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     TF_RET_CHECK(shape.dimensions().size() ==
                  transpose->operand(0)->shape().dimensions().size());
     TF_RET_CHECK(std::equal(
-        operand->shape().dimensions().begin(),
-        operand->shape().dimensions().end(),
-        Permute(transpose->dimensions(), shape.dimensions()).begin()))
+        shape.dimensions().begin(), shape.dimensions().end(),
+        Permute(operand->shape().dimensions(), transpose->dimensions())
+            .begin()))
         << "shape: " << shape << ", operand->shape(): " << shape
         << ", dimensions: {" << absl::StrJoin(transpose->dimensions(), ", ")
         << "}";

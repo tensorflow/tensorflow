@@ -41,7 +41,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass();
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareTFPass(
-    bool unfold_batch_matmul, bool allow_bf16_type_legalization);
+    bool unfold_batch_matmul, bool allow_bf16_and_f16_type_legalization);
 
 // Creates an instance of the TensorFlow Lite dialect LowerStaticTensorList
 // pass.
@@ -49,7 +49,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLowerStaticTensorListPass();
 
 // Creates an instance of the TensorFlow Lite dialect Quantize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
-    bool verify_numeric = false);
+    bool verify_numeric = false, bool legacy_float_scale = false);
 
 // Creates an instance of the TensorFlow Lite dialect PrepareQuantize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareQuantizePass(
@@ -99,6 +99,18 @@ std::unique_ptr<OperationPass<FuncOp>> CreateRaiseCustomOpsPass();
 // given.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateInsertCallOnceOpFromSessionInitializerPass();
+
+// Creates a pass which is responsible for legalizing TensorFlow variables to
+// TensorFlow Lite variables.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeVariablesPass();
+
+// Creates a pass which removes any unused bounded input arguments to functions
+// which corresponds to GlobalTensor.
+std::unique_ptr<OperationPass<ModuleOp>> CreateRemoveArgsAndGlobalTensors();
+
+// Creates a pass which is responsible for initializing Tensorflow variables
+// as Tensorflow Lite variables.
+std::unique_ptr<OperationPass<ModuleOp>> CreateInitializeVariablesPass();
 }  // namespace TFL
 
 }  // namespace mlir

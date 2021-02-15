@@ -319,7 +319,7 @@ class SplitProvider {
   // Saves the state of this split provider.
   virtual Status Save(std::function<std::string(std::string)> full_name,
                       IteratorStateWriter* writer) = 0;
-  // Saves the state of this split provider.
+  // Restores the state of this split provider.
   virtual Status Restore(std::function<std::string(std::string)> full_name,
                          IteratorStateReader* reader) = 0;
 };
@@ -706,6 +706,11 @@ class IteratorBase {
     VLOG(2) << "Restored " << input->prefix() << " in "
             << (EnvTime::NowMicros() - start_us) << "us";
     return Status::OK();
+  }
+
+  Status RestoreInput(IteratorContext&& ctx, IteratorStateReader* reader,
+                      const std::unique_ptr<IteratorBase>& input) {
+    return RestoreInput(&ctx, reader, input);
   }
 
   // Saves the state of this iterator.
