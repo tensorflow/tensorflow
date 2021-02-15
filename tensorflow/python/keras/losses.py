@@ -1614,6 +1614,8 @@ def categorical_crossentropy(y_true,
     label_smoothing: Float in [0, 1]. If > `0` then smooth the labels. For
       example, if `0.1`, use `0.1 / num_classes` for non-target labels
       and `0.9 + 0.1 / num_classes` for target labels.
+    axis: (Optional) Defaults to -1. The dimension along which the entropy is
+      computed.
 
   Returns:
     Categorical crossentropy loss value.
@@ -1712,6 +1714,8 @@ def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0, ax
     label_smoothing: Float in [0, 1]. If > `0` then smooth the labels by 
       squeezing them towards 0.5 That is, using `1. - 0.5 * label_smoothing`
       for the target class and `0.5 * label_smoothing` for the non-target class.
+    axis: (Optional) Defaults to -1. The dimension along which the mean is
+      computed.
 
   Returns:
     Binary crossentropy loss value. shape = `[batch_size, d0, .. dN-1]`.
