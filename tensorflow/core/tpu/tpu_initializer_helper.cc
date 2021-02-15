@@ -15,12 +15,55 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/tpu_initializer_helper.h"
 
+#if defined(LIBTPU_ON_GCE)
+#include <fcntl.h>
 #include <stdlib.h>
+#include <unistd.h>
+#endif  // LIBTPU_ON_GCE
 
 #include "absl/strings/str_split.h"
+#include "absl/synchronization/mutex.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace tpu {
+
+bool TryAcquireTpuLock() {
+#if defined(LIBTPU_ON_GCE)
+  static absl::Mutex* mu = new absl::Mutex();
+  absl::MutexLock l(mu);
+
+  static bool attempted_file_open = false;
+  static bool should_load_library = false;
+
+  if (!attempted_file_open) {
+    should_load_library = true;
+
+    // if the TPU_HOST_BOUNDS env var is set, that means we are loading each
+    // chip in a different process and thus multiple libtpu loads are OK.
+    if (getenv("TPU_HOST_BOUNDS") == nullptr) {
+      int fd = open("/tmp/libtpu_lockfile", O_CREAT | O_RDWR);
+
+      // This lock is held until the process exits intentionally. The underlying
+      // TPU device will be held on until it quits.
+      if (lockf(fd, F_TLOCK, 0) != 0) {
+        LOG(WARNING) << "libtpu.so already in used by another process. Not "
+                        "attempting to load libtpu.so in this process.";
+        should_load_library = false;
+      } else {
+        should_load_library = true;
+      }
+    } else {
+      LOG(INFO) << "TPU_HOST_BOUNDS is set, allowing multiple libtpu.so loads.";
+      should_load_library = true;
+    }
+  }
+
+  return should_load_library;
+#else  // LIBTPU_ON_GCE
+  return false;
+#endif
+}
 
 std::pair<std::vector<std::string>, std::vector<const char*>>
 GetLibTpuInitArguments() {
