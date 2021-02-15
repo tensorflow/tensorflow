@@ -75,6 +75,9 @@ class LeakyReLU(Layer):
       raise ValueError('The alpha value of a Leaky ReLU layer '
                        'cannot be None, needs a float. '
                        'Got %s' % alpha)
+    if alpha < 0:
+      raise ValueError('The alpha value of a Leaky ReLU layer '
+                       'should be >=0, got %s' % alpha)
     self.supports_masking = True
     self.alpha = K.cast_to_floatx(alpha)
 
@@ -257,6 +260,9 @@ class ThresholdedReLU(Layer):
     if theta is None:
       raise ValueError('Theta of a Thresholded ReLU layer cannot be '
                        'None, requires a float. Got %s' % theta)
+    if theta < 0:
+      raise ValueError('The theta value of a Thresholded ReLU layer '
+                       'should be >=0, got %s' % theta)
     self.supports_masking = True
     self.theta = K.cast_to_floatx(theta)
 
