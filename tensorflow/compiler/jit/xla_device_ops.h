@@ -117,6 +117,18 @@ class XlaAssignVariableOp : public OpKernel {
                               .TypeConstraint<int64>("out_type")               \
                               .TypeConstraint("T", TYPES),                     \
                           ShapeNOp<int64>);                                    \
+  REGISTER_KERNEL_BUILDER(Name("VariableShape")                                \
+                              .Device(DEVICE)                                  \
+                              .TypeConstraint<int32>("out_type")               \
+                              .HostMemory("output")                            \
+                              .HostMemory("input"),                            \
+                          VariableShapeOp<int32>);                             \
+  REGISTER_KERNEL_BUILDER(Name("VariableShape")                                \
+                              .Device(DEVICE)                                  \
+                              .TypeConstraint<int64>("out_type")               \
+                              .HostMemory("output")                            \
+                              .HostMemory("input"),                            \
+                          VariableShapeOp<int64>);                             \
   REGISTER_KERNEL_BUILDER(Name("Size")                                         \
                               .Device(DEVICE)                                  \
                               .HostMemory("output")                            \

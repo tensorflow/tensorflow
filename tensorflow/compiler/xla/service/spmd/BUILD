@@ -83,6 +83,52 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "canonicalize_all_gather_for_cse_test",
+    srcs = ["canonicalize_all_gather_for_cse_test.cc"],
+    deps = [
+        ":canonicalize_all_gather_for_cse",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "canonicalize_all_gather_for_cse",
+    srcs = ["canonicalize_all_gather_for_cse.cc"],
+    hdrs = ["canonicalize_all_gather_for_cse.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:hlo_query",
+    ],
+)
+
+tf_cc_test(
+    name = "schedule_aware_all_gather_cse_test",
+    srcs = ["schedule_aware_all_gather_cse_test.cc"],
+    deps = [
+        ":schedule_aware_all_gather_cse",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
 cc_library(
     name = "schedule_aware_all_gather_cse",
     srcs = ["schedule_aware_all_gather_cse.cc"],

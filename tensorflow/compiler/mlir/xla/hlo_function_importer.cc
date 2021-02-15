@@ -380,14 +380,29 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kInfeed: {
       attributes.push_back(builder_->getNamedAttr(
-          "infeed_config", mlir::StringAttr::get(instruction->infeed_config(),
-                                                 builder_->getContext())));
+          "infeed_config",
+          mlir::StringAttr::get(builder_->getContext(),
+                                instruction->infeed_config())));
+      // TODO(kramm): Support tuples and tokens.
+      if (instruction->shape().IsArray()) {
+        const xla::Layout l = instruction->shape().layout();
+        absl::Span<const int64> minor_to_major = l.minor_to_major();
+        std::vector<mlir::Attribute> v;
+        for (int64 i : minor_to_major) {
+          v.push_back(builder_->getI32IntegerAttr(i));
+        }
+        llvm::ArrayRef<mlir::Attribute> array_ref(v);
+        mlir::ArrayAttr layout = builder_->getArrayAttr(array_ref);
+        attributes.push_back(builder_->getNamedAttr("layout", layout));
+      }
+
       MakeAndReturn(InfeedOp);
     }
     case HloOpcode::kOutfeed: {
       attributes.push_back(builder_->getNamedAttr(
-          "outfeed_config", mlir::StringAttr::get(instruction->outfeed_config(),
-                                                  builder_->getContext())));
+          "outfeed_config",
+          mlir::StringAttr::get(builder_->getContext(),
+                                instruction->outfeed_config())));
       MakeAndReturn(OutfeedOp);
     }
     case HloOpcode::kPad: {

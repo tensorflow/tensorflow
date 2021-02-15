@@ -65,6 +65,8 @@ Status InitializeTpuLibrary(void* library_handle) {
 }
 
 bool FindAndLoadTpuLibrary() {
+  if (!TryAcquireTpuLock()) return false;
+
   void* library = dlopen("libtpu.so", RTLD_NOW);
   if (library) {
     InitializeTpuLibrary(library);

@@ -176,6 +176,17 @@ void SelectTranspose(const TransposeAttributes& attr,
 std::unique_ptr<GPUOperation> SelectWinograd4x4To36(
     const GpuInfo& gpu_info, const Padding2D& padding,
     const OperationDef& op_def) {
+  if (gpu_info.IsApple()) {
+    const auto src_storage = op_def.src_tensors[0].storage_type;
+    const auto dst_storage = op_def.src_tensors[0].storage_type;
+    if ((src_storage == TensorStorageType::BUFFER ||
+         src_storage == TensorStorageType::IMAGE_BUFFER) &&
+        (dst_storage == TensorStorageType::BUFFER ||
+         dst_storage == TensorStorageType::IMAGE_BUFFER)) {
+      Winograd4x4To36 operation = CreateWinograd4x4To36(op_def, padding);
+      return absl::make_unique<Winograd4x4To36>(std::move(operation));
+    }
+  }
   return absl::make_unique<Winograd4x4To36TileX6>(
       CreateWinograd4x4To36TileX6(gpu_info, op_def, padding));
 }
@@ -183,6 +194,17 @@ std::unique_ptr<GPUOperation> SelectWinograd4x4To36(
 std::unique_ptr<GPUOperation> SelectWinograd36To4x4(
     const GpuInfo& gpu_info, const OperationDef& op_def,
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases) {
+  if (gpu_info.IsApple()) {
+    const auto src_storage = op_def.src_tensors[0].storage_type;
+    const auto dst_storage = op_def.src_tensors[0].storage_type;
+    if ((src_storage == TensorStorageType::BUFFER ||
+         src_storage == TensorStorageType::IMAGE_BUFFER) &&
+        (dst_storage == TensorStorageType::BUFFER ||
+         dst_storage == TensorStorageType::IMAGE_BUFFER)) {
+      Winograd36To4x4 operation = CreateWinograd36To4x4(op_def, biases);
+      return absl::make_unique<Winograd36To4x4>(std::move(operation));
+    }
+  }
   return absl::make_unique<Winograd36To4x4Tile4x1>(
       CreateWinograd36To4x4Tile4x1(gpu_info, op_def, biases));
 }

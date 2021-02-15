@@ -1536,3 +1536,31 @@ func @AvoidFuseFullyConnectedAddWithSplat2D(%arg0: tensor<1x1x1x1x1xf32>, %arg1:
   // CHECK: %[[ADD:.*]] = tfl.add %[[FC_RESULT]], %[[CST2]] {fused_activation_function = "NONE"} : tensor<1x1x1x1x1xf32>
   // CHECK: return %[[ADD]] : tensor<1x1x1x1x1xf32>
 }
+
+// CHECK-LABEL: ConvertMul1ToIdentity
+func @ConvertMul1ToIdentity(%arg0: tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32> {
+  %cst = constant dense<1.0> : tensor<1x2x3x4xf32>
+  %0 = "tfl.mul"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32>
+  return %0 : tensor<1x2x3x4xf32>
+  // CHECK: return %arg0
+}
+
+// CHECK-LABEL: DontConvertMul12ToIdentity
+func @DontConvertMul12ToIdentity(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %cst = constant dense<[1.0, 2.0]> : tensor<2xf32>
+  %0 = "tfl.mul"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+  // CHECK: %cst = constant dense<[1.000000e+00, 2.000000e+00]> : tensor<2xf32>
+  // CHECK: %0 = tfl.mul %arg0, %cst {fused_activation_function = "NONE"} : tensor<2xf32>
+  // CHECK: return %0 : tensor<2xf32>
+}
+
+// CHECK-LABEL: DontConvertMul1WithBroadcastToIdentity
+func @DontConvertMul1WithBroadcastToIdentity(%arg0: tensor<2xf32>) -> tensor<2x2xf32> {
+  %cst = constant dense<1.0> : tensor<2x2xf32>
+  %0 = "tfl.mul"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+  // CHECK: %cst = constant dense<1.000000e+00> : tensor<2x2xf32>
+  // CHECK: %0 = "tfl.mul"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK: return %0 : tensor<2x2xf32>
+}

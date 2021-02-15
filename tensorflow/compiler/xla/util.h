@@ -328,39 +328,6 @@ Status ResourceExhaustedStrCat(Args&&... concat) {
 // uniformly replaced with "indentation".
 string Reindent(absl::string_view original, absl::string_view indentation);
 
-// Checks whether permutation is a permutation of the [0, rank) integer range.
-bool IsPermutation(absl::Span<const int64> permutation, int64 rank);
-
-// Applies `permutation` on `input` and returns the permuted array.
-// For each i, output[permutation[i]] = input[i].
-//
-// Precondition:
-// 1. `permutation` is a permutation of 0..permutation.size()-1.
-// 2. permutation.size() == input.size().
-template <typename Container>
-std::vector<typename Container::value_type> Permute(
-    absl::Span<const int64> permutation, const Container& input) {
-  using T = typename Container::value_type;
-  absl::Span<const T> data(input);
-  CHECK(IsPermutation(permutation, data.size()));
-  std::vector<T> output(data.size());
-  for (size_t i = 0; i < permutation.size(); ++i) {
-    output[permutation[i]] = data[i];
-  }
-  return output;
-}
-
-// Inverts a permutation, i.e., output_permutation[input_permutation[i]] = i.
-std::vector<int64> InversePermutation(
-    absl::Span<const int64> input_permutation);
-
-// Composes two permutations: output[i] = p1[p2[i]].
-std::vector<int64> ComposePermutations(absl::Span<const int64> p1,
-                                       absl::Span<const int64> p2);
-
-// Returns true iff permutation == {0, 1, 2, ...}.
-bool IsIdentityPermutation(absl::Span<const int64> permutation);
-
 template <typename Container>
 int64 PositionInContainer(const Container& container, int64 value) {
   return std::distance(container.begin(), absl::c_find(container, value));

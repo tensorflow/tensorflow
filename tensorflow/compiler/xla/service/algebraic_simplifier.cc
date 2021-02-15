@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/overflow_util.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -2188,7 +2189,7 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
   for (auto dim : lhs_contracting_dims) {
     permutation.push_back(transpose_dims[dim] - lhs_contracting_dims[0]);
   }
-  CHECK(IsPermutation(permutation, permutation.size()));
+  CHECK(IsPermutation(permutation));
   auto new_lhs_contracting_dims =
       ComposePermutations(AsInt64Slice(lhs_contracting_dims), permutation);
   lhs_contracting_dims.Clear();
@@ -3191,6 +3192,30 @@ Status AlgebraicSimplifierVisitor::HandleCompare(HloInstruction* compare) {
                                           compare->comparison_direction()));
         return ReplaceInstruction(compare, new_compare);
       }
+    }
+  }
+
+  if (Cast<HloCompareInstruction>(compare)->type() ==
+      Comparison::Type::kUnsigned) {
+    // X u<  0 -> false
+    if (compare->comparison_direction() == ComparisonDirection::kLt &&
+        IsAll(rhs, 0)) {
+      return ReplaceInstruction(compare, MakeScalarLike(compare, false));
+    }
+    // X u>= 0 -> true
+    if (compare->comparison_direction() == ComparisonDirection::kGe &&
+        IsAll(rhs, 0)) {
+      return ReplaceInstruction(compare, MakeScalarLike(compare, true));
+    }
+    // 0 u>  X -> false
+    if (compare->comparison_direction() == ComparisonDirection::kGt &&
+        IsAll(lhs, 0)) {
+      return ReplaceInstruction(compare, MakeScalarLike(compare, false));
+    }
+    // 0 u<= X -> true
+    if (compare->comparison_direction() == ComparisonDirection::kLe &&
+        IsAll(lhs, 0)) {
+      return ReplaceInstruction(compare, MakeScalarLike(compare, true));
     }
   }
 

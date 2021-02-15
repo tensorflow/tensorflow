@@ -71,7 +71,7 @@ class RGBToHSVTest(test_util.TensorFlowTestCase):
       inp = np.random.rand(*shape).astype(nptype)
 
       # Convert to HSV and back, as a batch and individually
-      with self.cached_session(use_gpu=True) as sess:
+      with self.cached_session() as sess:
         batch0 = constant_op.constant(inp)
         batch1 = image_ops.rgb_to_hsv(batch0)
         batch2 = image_ops.hsv_to_rgb(batch1)
@@ -92,7 +92,7 @@ class RGBToHSVTest(test_util.TensorFlowTestCase):
     data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
     for nptype in [np.float32, np.float64]:
       rgb_np = np.array(data, dtype=nptype).reshape([2, 2, 3]) / 255.
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         hsv = image_ops.rgb_to_hsv(rgb_np)
         rgb = image_ops.hsv_to_rgb(hsv)
         rgb_tf = self.evaluate(rgb)
@@ -113,7 +113,7 @@ class RGBToYIQTest(test_util.TensorFlowTestCase):
       inp = np.random.rand(*shape).astype(nptype)
 
       # Convert to YIQ and back, as a batch and individually
-      with self.cached_session(use_gpu=True) as sess:
+      with self.cached_session() as sess:
         batch0 = constant_op.constant(inp)
         batch1 = image_ops.rgb_to_yiq(batch0)
         batch2 = image_ops.yiq_to_rgb(batch1)
@@ -145,7 +145,7 @@ class RGBToYUVTest(test_util.TensorFlowTestCase):
       inp = np.random.rand(*shape).astype(nptype)
 
       # Convert to YUV and back, as a batch and individually
-      with self.cached_session(use_gpu=True) as sess:
+      with self.cached_session() as sess:
         batch0 = constant_op.constant(inp)
         batch1 = image_ops.rgb_to_yuv(batch0)
         batch2 = image_ops.yuv_to_rgb(batch1)
@@ -187,7 +187,7 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
   def _TestRGBToGrayscale(self, x_np):
     y_np = self._RGBToGrayscale(x_np)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.rgb_to_grayscale(x_tf)
       y_tf = self.evaluate(y)
@@ -209,7 +209,7 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
     y_np = np.array(
         [[1, 1, 1], [2, 2, 2]], dtype=np.uint8).reshape([1, 1, 2, 3])
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.grayscale_to_rgb(x_tf)
       y_tf = self.evaluate(y)
@@ -219,7 +219,7 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
     x_np = np.array([[1, 2]], dtype=np.uint8).reshape([1, 2, 1])
     y_np = np.array([[1, 1, 1], [2, 2, 2]], dtype=np.uint8).reshape([1, 2, 3])
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.grayscale_to_rgb(x_tf)
       y_tf = self.evaluate(y)
@@ -233,7 +233,7 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
 
     # tests if an exception is raised if a three dimensional
     # input is used, i.e. the images have shape [batch size, height, width]
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       # 3-D input with batch dimension.
       x_np = np.array([[1, 2]], dtype=np.uint8).reshape([1, 1, 2])
 
@@ -246,7 +246,7 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
 
     # tests if an exception is raised if a two dimensional
     # input is used, i.e. the images have shape [height, width]
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       # 1-D input without batch dimension.
       x_np = np.array([[1, 2]], dtype=np.uint8).reshape([2])
 
@@ -263,23 +263,23 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
       # Shape inference works and produces expected output where possible
       rgb_shape = [7, None, 19, 3]
       gray_shape = rgb_shape[:-1] + [1]
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         rgb_tf = array_ops.placeholder(dtypes.uint8, shape=rgb_shape)
         gray = image_ops.rgb_to_grayscale(rgb_tf)
         self.assertEqual(gray_shape, gray.get_shape().as_list())
 
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         gray_tf = array_ops.placeholder(dtypes.uint8, shape=gray_shape)
         rgb = image_ops.grayscale_to_rgb(gray_tf)
         self.assertEqual(rgb_shape, rgb.get_shape().as_list())
 
       # Shape inference does not break for unknown shapes
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         rgb_tf_unknown = array_ops.placeholder(dtypes.uint8)
         gray_unknown = image_ops.rgb_to_grayscale(rgb_tf_unknown)
         self.assertFalse(gray_unknown.get_shape())
 
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         gray_tf_unknown = array_ops.placeholder(dtypes.uint8)
         rgb_unknown = image_ops.grayscale_to_rgb(gray_tf_unknown)
         self.assertFalse(rgb_unknown.get_shape())
@@ -424,7 +424,7 @@ class AdjustHueTest(test_util.TensorFlowTestCase):
     y_data = [0, 13, 1, 54, 226, 59, 8, 234, 150, 255, 39, 1]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x = constant_op.constant(x_np, shape=x_shape)
       y = image_ops.adjust_hue(x, delta)
       y_tf = self.evaluate(y)
@@ -439,7 +439,7 @@ class AdjustHueTest(test_util.TensorFlowTestCase):
     y_data = [13, 0, 11, 226, 54, 221, 234, 8, 92, 1, 217, 255]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x = constant_op.constant(x_np, shape=x_shape)
       y = image_ops.adjust_hue(x, delta)
       y_tf = self.evaluate(y)
@@ -454,7 +454,7 @@ class AdjustHueTest(test_util.TensorFlowTestCase):
     y_data = [13, 0, 11, 226, 54, 221, 234, 8, 92, 1, 217, 255]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x = constant_op.constant(x_np, shape=x_shape)
       y = image_ops.adjust_hue(x, delta)
       y_tf = self.evaluate(y)
@@ -479,7 +479,7 @@ class AdjustHueTest(test_util.TensorFlowTestCase):
     return y_v.reshape(x_np.shape)
 
   def _adjustHueTf(self, x_np, delta_h):
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x = constant_op.constant(x_np)
       y = image_ops.adjust_hue(x, delta_h)
       y_tf = self.evaluate(y)
@@ -910,7 +910,7 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
     y_data = [6, 9, 13, 140, 180, 226, 135, 121, 234, 172, 255, 128]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x = constant_op.constant(x_np, shape=x_shape)
       y = image_ops.adjust_saturation(x, saturation_factor)
       y_tf = self.evaluate(y)
@@ -925,7 +925,7 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
     y_data = [0, 5, 13, 0, 106, 226, 30, 0, 234, 89, 255, 0]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x = constant_op.constant(x_np, shape=x_shape)
       y = image_ops.adjust_saturation(x, saturation_factor)
       y_tf = self.evaluate(y)
@@ -940,7 +940,7 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
     y_data = [6, 9, 13, 140, 180, 226, 135, 121, 234, 172, 255, 128]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x = constant_op.constant(x_np, shape=x_shape)
       y = image_ops.adjust_saturation(x, saturation_factor)
       y_tf = self.evaluate(y)
@@ -979,7 +979,7 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
         "gb_same",
         "rgb_same",
     ]
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       for x_shape in x_shapes:
         for test_style in test_styles:
           x_np = np.random.rand(*x_shape) * 255.
@@ -1007,7 +1007,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
 
   def testInvolutionLeftRight(self):
     x_np = np.array([[1, 2, 3], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_left_right(image_ops.flip_left_right(x_tf))
       y_tf = self.evaluate(y)
@@ -1017,7 +1017,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
     x_np = np.array(
         [[[1, 2, 3], [1, 2, 3]], [[1, 2, 3], [1, 2, 3]]],
         dtype=np.uint8).reshape([2, 2, 3, 1])
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_left_right(image_ops.flip_left_right(x_tf))
       y_tf = self.evaluate(y)
@@ -1027,7 +1027,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
     x_np = np.array([[1, 2, 3], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
     y_np = np.array([[3, 2, 1], [3, 2, 1]], dtype=np.uint8).reshape([2, 3, 1])
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_left_right(x_tf)
       y_tf = self.evaluate(y)
@@ -1041,7 +1041,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
         [[[3, 2, 1], [3, 2, 1]], [[3, 2, 1], [3, 2, 1]]],
         dtype=np.uint8).reshape([2, 2, 3, 1])
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_left_right(x_tf)
       y_tf = self.evaluate(y)
@@ -1054,7 +1054,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
       y_np = np.array([[3, 2, 1], [3, 2, 1]], dtype=np.uint8).reshape([2, 3, 1])
       seed = 42
 
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         x_tf = constant_op.constant(x_np, shape=x_np.shape)
         y = image_ops.random_flip_left_right(x_tf, seed=seed)
         self.assertTrue(y.op.name.startswith("random_flip_left_right"))
@@ -1081,7 +1081,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
     x_np = np.array([[1, 2, 3], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
     y_np = np.array([[3, 2, 1], [3, 2, 1]], dtype=np.uint8).reshape([2, 3, 1])
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       count_flipped = 0
       count_unflipped = 0
@@ -1216,7 +1216,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
     x_np = np.vstack([x_np_raw for _ in range(batch_size)])
     y_np = np.vstack([y_np_raw for _ in range(batch_size)])
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       count_flipped = 0
       count_unflipped = 0
@@ -1238,7 +1238,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
   def testInvolutionUpDown(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_up_down(image_ops.flip_up_down(x_tf))
       y_tf = self.evaluate(y)
@@ -1249,7 +1249,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
         [[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]],
         dtype=np.uint8).reshape([2, 2, 3, 1])
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_up_down(image_ops.flip_up_down(x_tf))
       y_tf = self.evaluate(y)
@@ -1259,7 +1259,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
     y_np = np.array([[4, 5, 6], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_up_down(x_tf)
       y_tf = self.evaluate(y)
@@ -1273,7 +1273,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
         [[[4, 5, 6], [1, 2, 3]], [[10, 11, 12], [7, 8, 9]]],
         dtype=np.uint8).reshape([2, 2, 3, 1])
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_up_down(x_tf)
       y_tf = self.evaluate(y)
@@ -1286,7 +1286,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
       y_np = np.array([[4, 5, 6], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
       seed = 42
 
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         x_tf = constant_op.constant(x_np, shape=x_np.shape)
         y = image_ops.random_flip_up_down(x_tf, seed=seed)
         self.assertTrue(y.op.name.startswith("random_flip_up_down"))
@@ -1312,7 +1312,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
     y_np = np.array([[4, 5, 6], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       count_flipped = 0
       count_unflipped = 0
@@ -1344,7 +1344,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
     x_np = np.vstack([x_np_raw for _ in range(batch_size)])
     y_np = np.vstack([y_np_raw for _ in range(batch_size)])
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       count_flipped = 0
       count_unflipped = 0
@@ -1366,7 +1366,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
   def testInvolutionTranspose(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.transpose(image_ops.transpose(x_tf))
       y_tf = self.evaluate(y)
@@ -1377,7 +1377,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
         [[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]],
         dtype=np.uint8).reshape([2, 2, 3, 1])
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.transpose(image_ops.transpose(x_tf))
       y_tf = self.evaluate(y)
@@ -1387,7 +1387,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
     y_np = np.array([[1, 4], [2, 5], [3, 6]], dtype=np.uint8).reshape([3, 2, 1])
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.transpose(x_tf)
       y_tf = self.evaluate(y)
@@ -1402,7 +1402,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
         [[[1, 4], [2, 5], [3, 6]], [[7, 10], [8, 11], [9, 12]]],
         dtype=np.uint8).reshape([2, 3, 2, 1])
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.transpose(x_tf)
       y_tf = self.evaluate(y)
@@ -1454,7 +1454,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
 
   def testRot90GroupOrder(self):
     image = np.arange(24, dtype=np.uint8).reshape([2, 4, 3])
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       rotated = image
       for _ in xrange(4):
         rotated = image_ops.rot90(rotated)
@@ -1462,7 +1462,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
 
   def testRot90GroupOrderWithBatch(self):
     image = np.arange(48, dtype=np.uint8).reshape([2, 2, 4, 3])
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       rotated = image
       for _ in xrange(4):
         rotated = image_ops.rot90(rotated)
@@ -1470,7 +1470,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
 
   def testRot90NumpyEquivalence(self):
     image = np.arange(24, dtype=np.uint8).reshape([2, 4, 3])
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       for k in xrange(4):
         y_np = np.rot90(image, k=k)
         self.assertAllEqual(
@@ -1478,7 +1478,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
 
   def testRot90NumpyEquivalenceWithBatch(self):
     image = np.arange(48, dtype=np.uint8).reshape([2, 2, 4, 3])
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       for k in xrange(4):
         y_np = np.rot90(image, k=k, axes=(1, 2))
         self.assertAllEqual(
@@ -1507,7 +1507,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
 class AdjustContrastTest(test_util.TensorFlowTestCase):
 
   def _testContrast(self, x_np, y_np, contrast_factor):
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.adjust_contrast(x, contrast_factor)
       y_tf = self.evaluate(y)
@@ -1562,7 +1562,7 @@ class AdjustContrastTest(test_util.TensorFlowTestCase):
     return y_np
 
   def _adjustContrastTf(self, x_np, contrast_factor):
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x = constant_op.constant(x_np)
       y = image_ops.adjust_contrast(x, contrast_factor)
       y_tf = self.evaluate(y)
@@ -1596,7 +1596,7 @@ class AdjustContrastTest(test_util.TensorFlowTestCase):
 class AdjustBrightnessTest(test_util.TensorFlowTestCase):
 
   def _testBrightness(self, x_np, y_np, delta, tol=1e-6):
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.adjust_brightness(x, delta)
       y_tf = self.evaluate(y)
@@ -1668,7 +1668,7 @@ class PerImageWhiteningTest(test_util.TensorFlowTestCase,
     x_np = np.arange(0, np.prod(x_shape), dtype=data_type).reshape(x_shape)
     y_np = self._NumpyPerImageWhitening(x_np)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x = constant_op.constant(x_np, dtype=data_type, shape=x_shape)
       y = image_ops.per_image_standardization(x)
       y_tf = self.evaluate(y)
@@ -1678,14 +1678,14 @@ class PerImageWhiteningTest(test_util.TensorFlowTestCase,
     im_np = np.ones([19, 19, 3]).astype(np.float32) * 249
     im = constant_op.constant(im_np)
     whiten = image_ops.per_image_standardization(im)
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       whiten_np = self.evaluate(whiten)
       self.assertFalse(np.any(np.isnan(whiten_np)))
 
   def testBatchWhitening(self):
     imgs_np = np.random.uniform(0., 255., [4, 24, 24, 3])
     whiten_np = [self._NumpyPerImageWhitening(img) for img in imgs_np]
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       imgs = constant_op.constant(imgs_np)
       whiten = image_ops.per_image_standardization(imgs)
       whiten_tf = self.evaluate(whiten)
@@ -1709,7 +1709,7 @@ class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
     y = image_ops.crop_to_bounding_box(x_tensor, offset_height, offset_width,
                                        target_height, target_width)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       return self.evaluate(y)
 
   def _assertReturns(self,
@@ -1910,7 +1910,7 @@ class CentralCropTest(test_util.TensorFlowTestCase):
         dtype=np.int32).reshape(x_shape)
     y_np = np.array([[[3, 4, 5, 6], [3, 4, 5, 6]],
                      [[6, 5, 4, 3], [6, 5, 4, 3]]]).reshape([2, 2, 4, 1])
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       x = constant_op.constant(x_np, shape=x_shape)
       y = image_ops.central_crop(x, 0.5)
       y_tf = self.evaluate(y)
@@ -2022,7 +2022,7 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase,
     def pad_bbox(*args):
       return image_ops.pad_to_bounding_box(*args)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       return self.evaluate(pad_bbox(x_tensor, offset_height, offset_width,
                                     target_height, target_width))
 
@@ -2079,7 +2079,7 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase,
 
     i = constant_op.constant([1, 0, 4, 3], dtype=dtypes.int64)
     y_tf = image_ops.pad_to_bounding_box(x, i[0], i[1], i[2], i[3])
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       self.assertAllClose(y, self.evaluate(y_tf))
 
   def testNoOp(self):
@@ -2259,7 +2259,7 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
     fraction_object_covered = []
 
     num_iter = 1000
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       image_tf = constant_op.constant(image, shape=image.shape)
       image_size_tf = constant_op.constant(
           image_size_np, shape=image_size_np.shape)
@@ -2386,7 +2386,7 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
   def testSampleDistortedBoundingBoxShape(self):
     # Shape function requires placeholders and a graph.
     with ops.Graph().as_default():
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         image_size = constant_op.constant(
             [40, 50, 1], shape=[3], dtype=dtypes.int32)
         bounding_box = constant_op.constant(
@@ -2424,7 +2424,7 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
 
   def testDefaultMinObjectCovered(self):
     # By default min_object_covered=0.1 if not provided
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       image_size = constant_op.constant(
           [40, 50, 1], shape=[3], dtype=dtypes.int32)
       bounding_box = constant_op.constant(
@@ -2651,7 +2651,7 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase, parameterized.TestCase):
       img_np = np.array(data, dtype=nptype).reshape(img_shape)
 
       for method in self.METHODS:
-        with self.cached_session(use_gpu=True):
+        with self.cached_session():
           image = constant_op.constant(img_np, shape=img_shape)
           y = image_ops.resize_images_v2(image, [target_height, target_width],
                                          method)
@@ -2662,7 +2662,7 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase, parameterized.TestCase):
             self.assertAllClose(resized, img_np, atol=1e-5)
 
       # Resizing with a single image must leave the shape unchanged also.
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         img_single = img_np.reshape(single_shape)
         image = constant_op.constant(img_single, shape=single_shape)
         y = image_ops.resize_images_v2(image, [target_height, target_width],
@@ -2688,7 +2688,7 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase, parameterized.TestCase):
     img_np = np.array(data, dtype=np.uint8).reshape(img_shape)
 
     for method in self.METHODS:
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         image = constant_op.constant(img_np, shape=img_shape)
         y = resize_func(image, [6, 4], method)
         yshape = array_ops.shape(y)
@@ -2698,7 +2698,7 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase, parameterized.TestCase):
           self.assertAllClose(resized, img_np, atol=1e-5)
 
       # Resizing with a single image must leave the shape unchanged also.
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         img_single = img_np.reshape(single_shape)
         image = constant_op.constant(img_single, shape=single_shape)
         y = resize_func(image, [6, 4], self.METHODS[0])
@@ -2831,7 +2831,7 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase, parameterized.TestCase):
 
         for method in self.METHODS:
           if test.is_gpu_available() and self.shouldRunOnGPU(method, nptype):
-            with self.cached_session(use_gpu=True):
+            with self.cached_session():
               image = constant_op.constant(img_np, shape=img_shape)
               y = image_ops.resize_images_v2(
                   image, [target_height, target_width], method)
@@ -2888,7 +2888,7 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase, parameterized.TestCase):
     ]
     for nptype in self.TYPES:
       for method in expected_data:
-        with self.cached_session(use_gpu=True):
+        with self.cached_session():
           img_np = np.array(data, dtype=nptype).reshape(img_shape)
           image = constant_op.constant(img_np, shape=img_shape)
           y = image_ops.resize_images_v2(image, [target_height, target_width],
@@ -2908,7 +2908,7 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase, parameterized.TestCase):
     methods_to_test = ((gen_image_ops.resize_bilinear, "triangle"),
                        (gen_image_ops.resize_bicubic, "keyscubic"))
     for legacy_method, new_method in methods_to_test:
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         img_np = np.array(data, dtype=np.float32).reshape(img_shape)
         image = constant_op.constant(img_np, shape=img_shape)
         legacy_result = legacy_method(
@@ -2945,7 +2945,7 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase, parameterized.TestCase):
         73, 33, 23, 39, 73, 33, 23, 39, 14, 16, 19, 21, 14, 16, 19, 21
     ]
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       image = constant_op.constant(img_np, shape=img_shape)
       y = image_ops.resize_images_v2(image, [target_height, target_width],
                                      image_ops.ResizeMethod.AREA)
@@ -2963,7 +2963,7 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase, parameterized.TestCase):
       for nptype in [np.float32, np.float64]:
         img_np = np.arange(
             0, np.prod(input_shape), dtype=nptype).reshape(input_shape)
-        with self.cached_session(use_gpu=True):
+        with self.cached_session():
           image = constant_op.constant(img_np, shape=input_shape)
           new_size = constant_op.constant([target_height, target_width])
           out_op = image_ops.resize_images_v2(
@@ -3039,7 +3039,7 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testNameScope(self):
     # Testing name scope requires placeholders and a graph.
     with ops.Graph().as_default():
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         single_image = array_ops.placeholder(dtypes.float32, shape=[50, 60, 3])
         y = image_ops.resize_images(single_image, [55, 66])
         self.assertTrue(y.op.name.startswith("resize"))
@@ -3060,7 +3060,7 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase, parameterized.TestCase):
           t, ops.convert_to_tensor(target_max),
           preserve_aspect_ratio=preserve_aspect_ratio)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       return self.evaluate(resize_func(x_tensor))
 
   def _assertResizeEqual(self,
@@ -3199,7 +3199,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase,
       img_np = np.array(data, dtype=nptype).reshape(img_shape)
 
       for method in self.METHODS:
-        with self.cached_session(use_gpu=True) as sess:
+        with self.cached_session() as sess:
           image = constant_op.constant(img_np, shape=img_shape)
           y = image_ops.resize_images(image, [target_height, target_width],
                                       method)
@@ -3209,7 +3209,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase,
           self.assertAllClose(resized, img_np, atol=1e-5)
 
       # Resizing with a single image must leave the shape unchanged also.
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         img_single = img_np.reshape(single_shape)
         image = constant_op.constant(img_single, shape=single_shape)
         y = image_ops.resize_images(image, [target_height, target_width],
@@ -3234,7 +3234,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase,
     img_np = np.array(data, dtype=np.uint8).reshape(img_shape)
 
     for method in self.METHODS:
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         image = constant_op.constant(img_np, shape=img_shape)
         y = resize_func(image, [6, 4], method)
         yshape = array_ops.shape(y)
@@ -3243,7 +3243,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase,
         self.assertAllClose(resized, img_np, atol=1e-5)
 
     # Resizing with a single image must leave the shape unchanged also.
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       img_single = img_np.reshape(single_shape)
       image = constant_op.constant(img_single, shape=single_shape)
       y = resize_func(image, [6, 4], self.METHODS[0])
@@ -3374,7 +3374,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase,
 
         for method in self.METHODS:
           if test.is_gpu_available() and self.shouldRunOnGPU(method, nptype):
-            with self.cached_session(use_gpu=True):
+            with self.cached_session():
               image = constant_op.constant(img_np, shape=img_shape)
               y = image_ops.resize_images(image, [target_height, target_width],
                                           method)
@@ -3411,7 +3411,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase,
           image_ops.ResizeMethodV1.NEAREST_NEIGHBOR,
           image_ops.ResizeMethodV1.AREA
       ]:
-        with self.cached_session(use_gpu=True):
+        with self.cached_session():
           img_np = np.array(data, dtype=nptype).reshape(img_shape)
           image = constant_op.constant(img_np, shape=img_shape)
           y = image_ops.resize_images(
@@ -3448,7 +3448,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase,
           image_ops.ResizeMethodV1.NEAREST_NEIGHBOR,
           image_ops.ResizeMethodV1.AREA
       ]:
-        with self.cached_session(use_gpu=True):
+        with self.cached_session():
           img_np = np.array(data, dtype=nptype).reshape(img_shape)
           image = constant_op.constant(img_np, shape=img_shape)
           y = image_ops.resize_images(
@@ -3476,7 +3476,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase,
         75, 81, 80, 72, 69, 70, 105, 112, 75, 36, 45, 92, 111, 105
     ]
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       image = constant_op.constant(img_np, shape=img_shape)
       y = image_ops.resize_images(image, [target_height, target_width],
                                   image_ops.ResizeMethodV1.BICUBIC)
@@ -3499,7 +3499,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase,
         73, 33, 23, 39, 73, 33, 23, 39, 14, 16, 19, 21, 14, 16, 19, 21
     ]
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       image = constant_op.constant(img_np, shape=img_shape)
       y = image_ops.resize_images(image, [target_height, target_width],
                                   image_ops.ResizeMethodV1.AREA)
@@ -3518,7 +3518,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase,
         for align_corners in [True, False]:
           img_np = np.arange(
               0, np.prod(input_shape), dtype=nptype).reshape(input_shape)
-          with self.cached_session(use_gpu=True):
+          with self.cached_session():
             image = constant_op.constant(img_np, shape=input_shape)
             new_size = constant_op.constant([target_height, target_width])
             out_op = image_ops.resize_images(
@@ -3586,7 +3586,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase,
     # Testing name scope requires placeholders and a graph.
     with ops.Graph().as_default():
       img_shape = [1, 3, 2, 1]
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         single_image = array_ops.placeholder(dtypes.float32, shape=[50, 60, 3])
         y = image_ops.resize_images(single_image, [55, 66])
         self.assertTrue(y.op.name.startswith("resize"))
@@ -3603,7 +3603,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase,
     y = image_ops.resize_images(
         x_tensor, target_max, preserve_aspect_ratio=preserve_aspect_ratio)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       return self.evaluate(y)
 
   def _assertResizeEqual(self, x, x_shape, y, y_shape,
@@ -3687,7 +3687,7 @@ class ResizeImageWithPadV1Test(test_util.TensorFlowTestCase):
     else:
       x_tensor = x
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       return self.evaluate(
           image_ops.resize_image_with_pad_v1(x_tensor, target_height,
                                              target_width))
@@ -3807,7 +3807,7 @@ class ResizeImageWithPadV2Test(test_util.TensorFlowTestCase):
     else:
       x_tensor = x
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       return self.evaluate(
           image_ops.resize_image_with_pad_v2(x_tensor, target_height,
                                              target_width))
@@ -3929,7 +3929,7 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
     def resize_crop_or_pad(*args):
       return image_ops.resize_image_with_crop_or_pad(*args)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       return self.evaluate(
           resize_crop_or_pad(x_tensor, target_height, target_width))
 
@@ -4176,7 +4176,7 @@ class JpegTest(test_util.TensorFlowTestCase):
     # Read a real jpeg and verify shape
     path = ("tensorflow/core/lib/jpeg/testdata/"
             "jpeg_merge_test1.jpg")
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       jpeg0 = io_ops.read_file(path)
       image0 = image_ops.decode_jpeg(jpeg0)
       image1 = image_ops.decode_jpeg(image_ops.encode_jpeg(image0))
@@ -4192,7 +4192,7 @@ class JpegTest(test_util.TensorFlowTestCase):
     cmyk_path = os.path.join(base, "jpeg_merge_test1_cmyk.jpg")
     shape = 256, 128, 3
     for channels in 3, 0:
-      with self.cached_session(use_gpu=True) as sess:
+      with self.cached_session() as sess:
         rgb = image_ops.decode_jpeg(
             io_ops.read_file(rgb_path), channels=channels)
         cmyk = image_ops.decode_jpeg(
@@ -4248,7 +4248,7 @@ class JpegTest(test_util.TensorFlowTestCase):
           self.evaluate(result)
 
   def testSynthetic(self):
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       # Encode it, then decode it, then encode it
       image0 = constant_op.constant(simple_color_ramp())
       jpeg0 = image_ops.encode_jpeg(image0)
@@ -4269,7 +4269,7 @@ class JpegTest(test_util.TensorFlowTestCase):
       self.assertLessEqual(len(jpeg0), 6000)
 
   def testSyntheticFasterAlgorithm(self):
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       # Encode it, then decode it, then encode it
       image0 = constant_op.constant(simple_color_ramp())
       jpeg0 = image_ops.encode_jpeg(image0)
@@ -4293,7 +4293,7 @@ class JpegTest(test_util.TensorFlowTestCase):
       self.assertLessEqual(len(jpeg0), 6000)
 
   def testDefaultDCTMethodIsIntegerFast(self):
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       # Compare decoding with both dct_option=INTEGER_FAST and
       # default.  They should be the same.
       image0 = constant_op.constant(simple_color_ramp())
@@ -4308,7 +4308,7 @@ class JpegTest(test_util.TensorFlowTestCase):
   def testShape(self):
     # Shape function requires placeholders and a graph.
     with ops.Graph().as_default():
-      with self.cached_session(use_gpu=True) as sess:
+      with self.cached_session() as sess:
         jpeg = constant_op.constant("nonsense")
         for channels in 0, 1, 3:
           image = image_ops.decode_jpeg(jpeg, channels=channels)
@@ -4319,7 +4319,7 @@ class JpegTest(test_util.TensorFlowTestCase):
     # Read a real jpeg and verify shape.
     path = ("tensorflow/core/lib/jpeg/testdata/"
             "jpeg_merge_test1.jpg")
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       jpeg = io_ops.read_file(path)
       # Extract shape without decoding.
       image_shape = self.evaluate(image_ops.extract_jpeg_shape(jpeg))
@@ -4329,7 +4329,7 @@ class JpegTest(test_util.TensorFlowTestCase):
     # Read a cmyk jpeg image, and verify its shape.
     path = ("tensorflow/core/lib/jpeg/testdata/"
             "jpeg_merge_test1_cmyk.jpg")
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       jpeg = io_ops.read_file(path)
       image_shape = self.evaluate(image_ops.extract_jpeg_shape(jpeg))
       # Cmyk jpeg image has 4 channels.
@@ -4346,7 +4346,7 @@ class JpegTest(test_util.TensorFlowTestCase):
       jpeg = io_ops.read_file(path)
       image = image_ops.decode_jpeg(jpeg)
       random_jpeg_image = image_ops.random_jpeg_quality(image, 40, 100)
-      with self.cached_session(use_gpu=True) as sess:
+      with self.cached_session() as sess:
         # Test randomization.
         random_jpeg_images = [sess.run(random_jpeg_image) for _ in range(5)]
         are_images_equal = []
@@ -4398,11 +4398,11 @@ class JpegTest(test_util.TensorFlowTestCase):
       image = image_ops.decode_jpeg(jpeg)
       adjust_jpeg_quality_image = image_ops.adjust_jpeg_quality(
           image, jpeg_quality)
-      with self.cached_session(use_gpu=True) as sess:
+      with self.cached_session() as sess:
         sess.run(adjust_jpeg_quality_image)
 
   def testAdjustJpegQualityShape(self):
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       image = constant_op.constant(
           np.arange(24, dtype=np.uint8).reshape([2, 4, 3]))
       adjusted_image = image_ops.adjust_jpeg_quality(image, 80)
@@ -4418,7 +4418,7 @@ class PngTest(test_util.TensorFlowTestCase):
               (3, "lena_palette.png"), (4, "lena_palette_trns.png"))
     for channels_in, filename in inputs:
       for channels in 0, 1, 3, 4:
-        with self.cached_session(use_gpu=True) as sess:
+        with self.cached_session() as sess:
           png0 = io_ops.read_file(prefix + filename)
           image0 = image_ops.decode_png(png0, channels=channels)
           png0, image0 = self.evaluate([png0, image0])
@@ -4428,7 +4428,7 @@ class PngTest(test_util.TensorFlowTestCase):
             self.assertAllEqual(image0, self.evaluate(image1))
 
   def testSynthetic(self):
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       # Encode it, then decode it
       image0 = constant_op.constant(simple_color_ramp())
       png0 = image_ops.encode_png(image0, compression=7)
@@ -4443,7 +4443,7 @@ class PngTest(test_util.TensorFlowTestCase):
       self.assertLessEqual(len(png0), 750)
 
   def testSyntheticUint16(self):
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       # Encode it, then decode it
       image0 = constant_op.constant(simple_color_ramp(), dtype=dtypes.uint16)
       png0 = image_ops.encode_png(image0, compression=7)
@@ -4458,7 +4458,7 @@ class PngTest(test_util.TensorFlowTestCase):
       self.assertLessEqual(len(png0), 1500)
 
   def testSyntheticTwoChannel(self):
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       # Strip the b channel from an rgb image to get a two-channel image.
       gray_alpha = simple_color_ramp()[:, :, 0:2]
       image0 = constant_op.constant(gray_alpha)
@@ -4469,7 +4469,7 @@ class PngTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(image0, image1)
 
   def testSyntheticTwoChannelUint16(self):
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       # Strip the b channel from an rgb image to get a two-channel image.
       gray_alpha = simple_color_ramp()[:, :, 0:2]
       image0 = constant_op.constant(gray_alpha, dtype=dtypes.uint16)
@@ -4482,7 +4482,7 @@ class PngTest(test_util.TensorFlowTestCase):
   def testShape(self):
     # Shape function requires placeholders and a graph.
     with ops.Graph().as_default():
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         png = constant_op.constant("nonsense")
         for channels in 0, 1, 3:
           image = image_ops.decode_png(png, channels=channels)
@@ -4500,7 +4500,7 @@ class GifTest(test_util.TensorFlowTestCase):
     STRIDE = 5
     shape = (12, HEIGHT, WIDTH, 3)
 
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       gif0 = io_ops.read_file(prefix + filename)
       image0 = image_ops.decode_gif(gif0)
       gif0, image0 = self.evaluate([gif0, image0])
@@ -4528,14 +4528,14 @@ class GifTest(test_util.TensorFlowTestCase):
   def testShape(self):
     # Shape function requires placeholders and a graph.
     with ops.Graph().as_default():
-      with self.cached_session(use_gpu=True) as sess:
+      with self.cached_session() as sess:
         gif = constant_op.constant("nonsense")
         image = image_ops.decode_gif(gif)
         self.assertEqual(image.get_shape().as_list(), [None, None, None, 3])
 
   def testAnimatedGif(self):
     # Test if all frames in the animated GIF file is properly decoded.
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       base = "tensorflow/core/lib/gif/testdata"
       gif = io_ops.read_file(os.path.join(base, "pendulum_sm.gif"))
       gt_frame0 = io_ops.read_file(os.path.join(base, "pendulum_sm_frame0.png"))
@@ -4560,7 +4560,7 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
     x_np = np.array(original, dtype=original_dtype.as_numpy_dtype())
     y_np = np.array(expected, dtype=output_dtype.as_numpy_dtype())
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       image = constant_op.constant(x_np)
       y = image_ops.convert_image_dtype(image, output_dtype)
       self.assertTrue(y.dtype == output_dtype)
@@ -4577,7 +4577,7 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
     # Tests with Tensor.op requires a graph.
     with ops.Graph().as_default():
       # Make sure converting to the same data type creates only an identity op
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         image = constant_op.constant([1], dtype=dtypes.uint8)
         image_ops.convert_image_dtype(image, dtypes.uint8)
         y = image_ops.convert_image_dtype(image, dtypes.uint8)
@@ -4586,7 +4586,7 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
 
   def testConvertBetweenInteger(self):
     # Make sure converting to between integer types scales appropriately
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       self._convert([0, 255], dtypes.uint8, dtypes.int16, [0, 255 * 128])
       self._convert([0, 32767], dtypes.int16, dtypes.uint8, [0, 255])
       self._convert([0, 2**32], dtypes.int64, dtypes.int32, [0, 1])
@@ -4594,7 +4594,7 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
 
   def testConvertBetweenFloat(self):
     # Make sure converting to between float types does nothing interesting
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       self._convert([-1.0, 0, 1.0, 200000], dtypes.float32, dtypes.float64,
                     [-1.0, 0, 1.0, 200000])
       self._convert([-1.0, 0, 1.0, 200000], dtypes.float64, dtypes.float32,
@@ -4602,14 +4602,14 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
 
   def testConvertBetweenIntegerAndFloat(self):
     # Make sure converting from and to a float type scales appropriately
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       self._convert([0, 1, 255], dtypes.uint8, dtypes.float32,
                     [0, 1.0 / 255.0, 1])
       self._convert([0, 1.1 / 255.0, 1], dtypes.float32, dtypes.uint8,
                     [0, 1, 255])
 
   def testConvertBetweenInt16AndInt8(self):
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       # uint8, uint16
       self._convert([0, 255 * 256], dtypes.uint16, dtypes.uint8, [0, 255])
       self._convert([0, 255], dtypes.uint8, dtypes.uint16, [0, 255 * 256])
@@ -4640,7 +4640,7 @@ class TotalVariationTest(test_util.TensorFlowTestCase):
     """
 
     # Create a TensorFlow session.
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       # Add a constant to the TensorFlow graph that holds the input.
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
 
@@ -5256,7 +5256,7 @@ class VerifyCompatibleImageShapesTest(test_util.TensorFlowTestCase):
       img = array_ops.placeholder(dtype=dtypes.float32)
       img_np = np.array((2, 2))
 
-      with self.cached_session(use_gpu=True) as sess:
+      with self.cached_session() as sess:
         _, _, checks = image_ops_impl._verify_compatible_image_shapes(img, img)
         with self.assertRaises(errors.InvalidArgumentError):
           sess.run(checks, {img: img_np})
@@ -5270,7 +5270,7 @@ class VerifyCompatibleImageShapesTest(test_util.TensorFlowTestCase):
       img1_np = np.array([1, 2, 2, 1])
       img2_np = np.array([1, 3, 3, 1])
 
-      with self.cached_session(use_gpu=True) as sess:
+      with self.cached_session() as sess:
         _, _, checks = image_ops_impl._verify_compatible_image_shapes(
             img1, img2)
         with self.assertRaises(errors.InvalidArgumentError):
@@ -5289,7 +5289,7 @@ class PSNRTest(test_util.TensorFlowTestCase):
     return np.expand_dims(im, axis=0)
 
   def _LoadTestImages(self):
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       q20 = self._LoadTestImage(sess, "cat_q20.jpg")
       q72 = self._LoadTestImage(sess, "cat_q72.jpg")
       q95 = self._LoadTestImage(sess, "cat_q95.jpg")
@@ -5309,7 +5309,7 @@ class PSNRTest(test_util.TensorFlowTestCase):
     image2 = self._RandomImage((8, 8, 1), 1)
     psnr = self._PSNR_NumPy(image1, image2, 1)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       tf_image1 = constant_op.constant(image1, shape=image1.shape,
                                        dtype=dtypes.float32)
       tf_image2 = constant_op.constant(image2, shape=image2.shape,
@@ -5322,7 +5322,7 @@ class PSNRTest(test_util.TensorFlowTestCase):
     image2 = self._RandomImage((10, 8, 8, 1), 1)
     psnr = self._PSNR_NumPy(image1, image2, 1)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       tf_image1 = constant_op.constant(image1, shape=image1.shape,
                                        dtype=dtypes.float32)
       tf_image2 = constant_op.constant(image2, shape=image2.shape,
@@ -5343,7 +5343,7 @@ class PSNRTest(test_util.TensorFlowTestCase):
     self.assertNear(35.302, psnr3, 0.001)
 
     # Test TensorFlow implementation.
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       tf_q20 = constant_op.constant(q20, shape=q20.shape, dtype=dtypes.float32)
       tf_q72 = constant_op.constant(q72, shape=q72.shape, dtype=dtypes.float32)
       tf_q95 = constant_op.constant(q95, shape=q95.shape, dtype=dtypes.float32)
@@ -5357,7 +5357,7 @@ class PSNRTest(test_util.TensorFlowTestCase):
   def testInfinity(self):
     q20, _, _ = self._LoadTestImages()
     psnr = self._PSNR_NumPy(q20, q20, 1)
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       tf_q20 = constant_op.constant(q20, shape=q20.shape, dtype=dtypes.float32)
       tf_psnr = self.evaluate(image_ops.psnr(tf_q20, tf_q20, 1, "psnr"))
       self.assertAllClose(psnr, tf_psnr, atol=0.001)
@@ -5371,7 +5371,7 @@ class PSNRTest(test_util.TensorFlowTestCase):
     img1 = image_ops.convert_image_dtype(img1, dtypes.float32)
     img2 = image_ops.convert_image_dtype(img2, dtypes.float32)
     psnr_float32 = image_ops.psnr(img1, img2, 1.0)
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       self.assertAllClose(
           self.evaluate(psnr_uint8), self.evaluate(psnr_float32), atol=0.001)
 
@@ -5396,7 +5396,7 @@ class SSIMTest(test_util.TensorFlowTestCase):
     return np.expand_dims(im, axis=0)
 
   def _LoadTestImages(self):
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       return [self._LoadTestImage(sess, f) for f in self._filenames]
 
   def _RandomImage(self, shape, max_val):
@@ -5412,7 +5412,7 @@ class SSIMTest(test_util.TensorFlowTestCase):
       return image_ops.ssim(
           *x, max_val=1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       scores = [
           self.evaluate(ssim_func(t))
           for t in itertools.combinations_with_replacement(img, 2)
@@ -5436,7 +5436,7 @@ class SSIMTest(test_util.TensorFlowTestCase):
         filter_sigma=1.5,
         k1=0.01,
         k2=0.03)
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       self.assertAllClose(expected, self.evaluate(ssim), atol=1e-4)
 
   def testBatchNumpyInputs(self):
@@ -5447,7 +5447,7 @@ class SSIMTest(test_util.TensorFlowTestCase):
     img1 = np.concatenate(img1)
     img2 = np.concatenate(img2)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       img1 = self.evaluate(constant_op.constant(img1))
       img2 = self.evaluate(constant_op.constant(img2))
 
@@ -5459,7 +5459,7 @@ class SSIMTest(test_util.TensorFlowTestCase):
         filter_sigma=1.5,
         k1=0.01,
         k2=0.03)
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       self.assertAllClose(expected, self.evaluate(ssim), atol=1e-4)
 
   def testBroadcast(self):
@@ -5472,7 +5472,7 @@ class SSIMTest(test_util.TensorFlowTestCase):
 
     ssim = image_ops.ssim(
         img1, img2, 1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       self.assertAllClose(expected, self.evaluate(ssim), atol=1e-4)
 
   def testNegative(self):
@@ -5492,7 +5492,7 @@ class SSIMTest(test_util.TensorFlowTestCase):
         filter_sigma=1.5,
         k1=0.01,
         k2=0.03)
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       self.assertLess(self.evaluate(ssim), 0)
 
   def testInt(self):
@@ -5506,7 +5506,7 @@ class SSIMTest(test_util.TensorFlowTestCase):
     img2 = image_ops.convert_image_dtype(img2, dtypes.float32)
     ssim_float32 = image_ops.ssim(
         img1, img2, 1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       self.assertAllClose(
           self.evaluate(ssim_uint8), self.evaluate(ssim_float32), atol=0.001)
 
@@ -5531,7 +5531,7 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     return np.expand_dims(im, axis=0)
 
   def _LoadTestImages(self):
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       return [self._LoadTestImage(sess, f) for f in self._filenames]
 
   def _RandomImage(self, shape, max_val):
@@ -5550,7 +5550,7 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
       return image_ops.ssim_multiscale(
           *x, max_val=1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       scores = [
           self.evaluate(ssim_func(t))
           for t in itertools.combinations_with_replacement(img, 2)
@@ -5627,7 +5627,7 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
         filter_sigma=1.5,
         k1=0.01,
         k2=0.03)
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       self.assertAllClose(expected, self.evaluate(msssim), 1e-4)
 
   def testBroadcast(self):
@@ -5641,7 +5641,7 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
 
     score_tensor = image_ops.ssim_multiscale(
         img1, img2, 1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       self.assertAllClose(expected, self.evaluate(score_tensor), 1e-4)
 
   def testRange(self):
@@ -5651,7 +5651,7 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     If any of the value is negative so that the geometric mean is not
     well-defined, then treat the MS-SSIM score as zero.
     """
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       img1 = self._LoadTestImage(sess, "checkerboard1.png")
       img2 = self._LoadTestImage(sess, "checkerboard3.png")
       images = [img1, img2, np.zeros_like(img1),
@@ -5680,7 +5680,7 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     img2 = image_ops.convert_image_dtype(img2, dtypes.float32)
     ssim_float32 = image_ops.ssim_multiscale(
         img1, img2, 1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       self.assertAllClose(
           self.evaluate(ssim_uint8), self.evaluate(ssim_float32), atol=0.001)
 
@@ -5688,7 +5688,7 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     """Test case for GitHub issue 28241."""
     image = np.random.random([512, 512, 1])
     score_tensor = image_ops.ssim_multiscale(image, image, max_val=1.0)
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       _ = self.evaluate(score_tensor)
 
 
@@ -5728,7 +5728,7 @@ class ImageGradientsTest(test_util.TensorFlowTestCase):
     batch = constant_op.constant(batch)
     assert batch.get_shape().as_list() == [2, 2, 3, 2]
     dy, dx = image_ops.image_gradients(batch)
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       actual_dy = self.evaluate(dy)
       actual_dx = self.evaluate(dx)
       self.assertAllClose(expected_dy, actual_dy)
@@ -5749,7 +5749,7 @@ class SobelEdgesTest(test_util.TensorFlowTestCase):
     expected = np.reshape([[[0, 0], [0, 12], [0, 0]],
                            [[0, 0], [0, 12], [0, 0]]], [1, 2, 3, 1, 2])
     sobel = image_ops.sobel_edges(img)
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       actual_sobel = self.evaluate(sobel)
       self.assertAllClose(expected, actual_sobel)
 
@@ -5771,7 +5771,7 @@ class SobelEdgesTest(test_util.TensorFlowTestCase):
     expected_batch = np.concatenate([expected_two_channel] * batch_size, axis=0)
 
     sobel = image_ops.sobel_edges(img)
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       actual_sobel = self.evaluate(sobel)
       self.assertAllClose(expected_batch, actual_sobel)
 
@@ -5842,7 +5842,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testJpegUint16(self):
     for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
       with compat.forward_compatibility_horizon(*horizon):
-        with self.cached_session(use_gpu=True) as sess:
+        with self.cached_session() as sess:
           base = "tensorflow/core/lib/jpeg/testdata"
           jpeg0 = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
           image0 = image_ops.decode_image(jpeg0, dtype=dtypes.uint16)
@@ -5854,7 +5854,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testPngUint16(self):
     for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
       with compat.forward_compatibility_horizon(*horizon):
-        with self.cached_session(use_gpu=True) as sess:
+        with self.cached_session() as sess:
           base = "tensorflow/core/lib/png/testdata"
           png0 = io_ops.read_file(os.path.join(base, "lena_rgba.png"))
           image0 = image_ops.decode_image(png0, dtype=dtypes.uint16)
@@ -5873,7 +5873,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testGifUint16(self):
     for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
       with compat.forward_compatibility_horizon(*horizon):
-        with self.cached_session(use_gpu=True) as sess:
+        with self.cached_session() as sess:
           base = "tensorflow/core/lib/gif/testdata"
           gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
           image0 = image_ops.decode_image(gif0, dtype=dtypes.uint16)
@@ -5885,7 +5885,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testBmpUint16(self):
     for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
       with compat.forward_compatibility_horizon(*horizon):
-        with self.cached_session(use_gpu=True) as sess:
+        with self.cached_session() as sess:
           base = "tensorflow/core/lib/bmp/testdata"
           bmp0 = io_ops.read_file(os.path.join(base, "lena.bmp"))
           image0 = image_ops.decode_image(bmp0, dtype=dtypes.uint16)
@@ -5897,7 +5897,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testJpegFloat32(self):
     for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
       with compat.forward_compatibility_horizon(*horizon):
-        with self.cached_session(use_gpu=True) as sess:
+        with self.cached_session() as sess:
           base = "tensorflow/core/lib/jpeg/testdata"
           jpeg0 = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
           image0 = image_ops.decode_image(jpeg0, dtype=dtypes.float32)
@@ -5909,7 +5909,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testPngFloat32(self):
     for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
       with compat.forward_compatibility_horizon(*horizon):
-        with self.cached_session(use_gpu=True) as sess:
+        with self.cached_session() as sess:
           base = "tensorflow/core/lib/png/testdata"
           png0 = io_ops.read_file(os.path.join(base, "lena_rgba.png"))
           image0 = image_ops.decode_image(png0, dtype=dtypes.float32)
@@ -5921,7 +5921,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testGifFloat32(self):
     for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
       with compat.forward_compatibility_horizon(*horizon):
-        with self.cached_session(use_gpu=True) as sess:
+        with self.cached_session() as sess:
           base = "tensorflow/core/lib/gif/testdata"
           gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
           image0 = image_ops.decode_image(gif0, dtype=dtypes.float32)
@@ -5933,7 +5933,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testBmpFloat32(self):
     for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
       with compat.forward_compatibility_horizon(*horizon):
-        with self.cached_session(use_gpu=True) as sess:
+        with self.cached_session() as sess:
           base = "tensorflow/core/lib/bmp/testdata"
           bmp0 = io_ops.read_file(os.path.join(base, "lena.bmp"))
           image0 = image_ops.decode_image(bmp0, dtype=dtypes.float32)
@@ -5945,7 +5945,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testExpandAnimations(self):
     for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
       with compat.forward_compatibility_horizon(*horizon):
-        with self.cached_session(use_gpu=True) as sess:
+        with self.cached_session() as sess:
           base = "tensorflow/core/lib/gif/testdata"
           gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
 

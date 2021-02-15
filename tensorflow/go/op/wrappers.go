@@ -1827,33 +1827,33 @@ func UniqueWithCountsV2OutIdx(value tf.DataType) UniqueWithCountsV2Attr {
 // For example:
 //
 // ```
-// # tensor 'x' is [1, 1, 2, 4, 4, 4, 7, 8, 8]
-// y, idx, count = unique_with_counts(x)
+// x = tf.constant([1, 1, 2, 4, 4, 4, 7, 8, 8])
+// y, idx, count = UniqueWithCountsV2(x, axis = [0])
 // y ==> [1, 2, 4, 7, 8]
 // idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
 // count ==> [2, 1, 3, 1, 2]
 // ```
 //
-// For an `2-D` tensor `x` with `axis = 0`:
+// For a `2-D` tensor `x` with `axis = 0`:
 //
 // ```
-// # tensor 'x' is [[1, 0, 0],
-// #                [1, 0, 0],
-// #                [2, 0, 0]]
-// y, idx, count = unique_with_counts(x, axis=0)
+// x = tf.constant([[1, 0, 0],
+//                 [1, 0, 0],
+//                 [2, 0, 0]])
+// y, idx, count = UniqueWithCountsV2(x, axis=[0])
 // y ==> [[1, 0, 0],
 //        [2, 0, 0]]
 // idx ==> [0, 0, 1]
 // count ==> [2, 1]
 // ```
 //
-// For an `2-D` tensor `x` with `axis = 1`:
+// For a `2-D` tensor `x` with `axis = 1`:
 //
 // ```
-// # tensor 'x' is [[1, 0, 0],
-// #                [1, 0, 0],
-// #                [2, 0, 0]]
-// y, idx, count = unique_with_counts(x, axis=1)
+// x = tf.constant([[1, 0, 0],
+//                 [1, 0, 0],
+//                 [2, 0, 0]])
+// y, idx, count = UniqueWithCountsV2(x, axis=[1])
 // y ==> [[1, 0],
 //        [1, 0],
 //        [2, 0]]
@@ -32571,8 +32571,8 @@ func SparseReduceSumSparse(scope *Scope, input_indices tf.Output, input_values t
 //
 // See: https://en.wikipedia.org/wiki/Rectifier_(neural_networks)
 // Example usage:
-// >>> tf.nn.relu([-2., 0., -0., 3.]).numpy()
-// array([ 0.,  0., -0.,  3.], dtype=float32)
+// >>> tf.nn.relu([-2., 0., 3.]).numpy()
+// array([0., 0., 3.], dtype=float32)
 func Relu(scope *Scope, features tf.Output) (activations tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -41790,6 +41790,14 @@ func InitializeTableFromTextFileV2VocabSize(value int64) InitializeTableFromText
 func InitializeTableFromTextFileV2Delimiter(value string) InitializeTableFromTextFileV2Attr {
 	return func(m optionalAttr) {
 		m["delimiter"] = value
+	}
+}
+
+// InitializeTableFromTextFileV2Offset sets the optional offset attribute to value.
+// If not specified, defaults to 0
+func InitializeTableFromTextFileV2Offset(value int64) InitializeTableFromTextFileV2Attr {
+	return func(m optionalAttr) {
+		m["offset"] = value
 	}
 }
 

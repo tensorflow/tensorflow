@@ -526,9 +526,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
 
   m.def(
       "TFE_GetMemoryInfo", [](py::handle& ctx, const char* device_name) {
-        tensorflow::EagerContext* context = tensorflow::ContextFromInterface(
+        auto* context =
             reinterpret_cast<tensorflow::ImmediateExecutionContext*>(
-                tensorflow::InputTFE_Context(ctx)));
+                tensorflow::InputTFE_Context(ctx));
 
         tensorflow::DeviceNameUtils::ParsedName input_device_name;
         if (!tensorflow::DeviceNameUtils::ParseFullOrLocalName(
@@ -539,7 +539,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         }
 
         std::vector<tensorflow::Device*> devices =
-            context->local_device_mgr()->ListDevices();
+            context->ListLocalTfDevices();
 
         tensorflow::Device* matched_device = nullptr;
         for (int device_idx = 0; device_idx < devices.size(); device_idx++) {

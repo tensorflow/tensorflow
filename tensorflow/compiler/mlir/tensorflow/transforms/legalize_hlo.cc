@@ -24,7 +24,6 @@ limitations under the License.
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
@@ -382,12 +381,12 @@ llvm::SmallVector<ValueT, 4> Concat(RangeTs &&...ranges) {
 }
 
 // A struct to hold axes and sizes for a set of dimensions.
-struct DimensionSetVector {
-  llvm::ArrayRef<int64_t> AxesArray() const { return axes.getArrayRef(); }
-  llvm::ArrayRef<int64_t> SizesArray() const { return sizes.getArrayRef(); }
+struct DimensionVector {
+  llvm::ArrayRef<int64_t> AxesArray() const { return axes; }
+  llvm::ArrayRef<int64_t> SizesArray() const { return sizes; }
 
-  llvm::SmallSetVector<int64_t, 4> axes;
-  llvm::SmallSetVector<int64_t, 4> sizes;
+  llvm::SmallVector<int64_t, 4> axes;
+  llvm::SmallVector<int64_t, 4> sizes;
 };
 
 // A struct to hold information about dimensions of dot_general operands.
@@ -397,34 +396,32 @@ class DotDimensionsInfo {
                     DenseIntElementsAttr contracting_dimensions) {
     const int rank = type.getRank();
     for (const int dim : batch_dimensions.getValues<int64_t>()) {
-      batch_dimensions_.axes.insert(dim);
-      batch_dimensions_.sizes.insert(type.getDimSize(dim));
+      batch_dimensions_.axes.push_back(dim);
+      batch_dimensions_.sizes.push_back(type.getDimSize(dim));
     }
 
     for (const int dim : contracting_dimensions.getValues<int64_t>()) {
-      contracting_dimensions_.axes.insert(dim);
-      contracting_dimensions_.sizes.insert(type.getDimSize(dim));
+      contracting_dimensions_.axes.push_back(dim);
+      contracting_dimensions_.sizes.push_back(type.getDimSize(dim));
     }
 
     for (int dim = 0; dim < rank; ++dim) {
-      if (contracting_dimensions_.axes.count(dim) > 0 ||
-          batch_dimensions_.axes.count(dim) > 0) {
+      if (llvm::count(contracting_dimensions_.axes, dim) > 0 ||
+          llvm::count(batch_dimensions_.axes, dim) > 0) {
         continue;
       }
-      out_dimensions_.axes.insert(dim);
-      out_dimensions_.sizes.insert(type.getDimSize(dim));
+      out_dimensions_.axes.push_back(dim);
+      out_dimensions_.sizes.push_back(type.getDimSize(dim));
     }
   }
 
-  const DimensionSetVector &batch_dimensions() const {
-    return batch_dimensions_;
-  }
-  const DimensionSetVector &contracting_dimensions() const {
+  const DimensionVector &batch_dimensions() const { return batch_dimensions_; }
+  const DimensionVector &contracting_dimensions() const {
     return contracting_dimensions_;
   }
   // Out dimensions are any dimensions that are neither batch nor contracting
   // dimensions, hence will be propagated to output shape.
-  const DimensionSetVector &out_dimensions() const { return out_dimensions_; }
+  const DimensionVector &out_dimensions() const { return out_dimensions_; }
 
   // Returns the total dimension size after flattening all contracting
   // dimensions.
@@ -442,11 +439,11 @@ class DotDimensionsInfo {
   }
 
  private:
-  DimensionSetVector batch_dimensions_;
-  DimensionSetVector contracting_dimensions_;
+  DimensionVector batch_dimensions_;
+  DimensionVector contracting_dimensions_;
   // Out dimensions are any dimensions that are neither batch nor contracting
   // dimensions, hence will be propagated to output shape.
-  DimensionSetVector out_dimensions_;
+  DimensionVector out_dimensions_;
 };
 
 Value ConvertDot(PatternRewriter &rewriter, Value lhs, Value rhs,

@@ -132,13 +132,23 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
   AddSrcTensor("src_tensor", src_desc);
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
-  if (op_def.src_tensors.size() == 2) {
+  if (op_def.src_tensors.size() != 1) {
     // dynamic weights
-    BufferDescriptor desc;
-    desc.element_type = op_def.src_tensors[1].data_type;
-    desc.element_size = 16;
-    desc.memory_type = MemoryType::GLOBAL;
-    AddSrcBuffer("weights", desc);
+    if (weights_layout_ == WeightsLayout::kOHWIOGroupI4O4 ||
+        weights_layout_ == WeightsLayout::kOHWIOGroupO4I4) {
+      BufferDescriptor desc;
+      desc.element_type = op_def.src_tensors[1].data_type;
+      desc.element_size = 16;
+      desc.memory_type = MemoryType::GLOBAL;
+      AddSrcBuffer("weights", desc);
+    } else {
+      for (int i = 0; i < 4; ++i) {
+        Texture2DDescriptor desc;
+        desc.element_type = op_def.src_tensors[1 + i].data_type;
+        const std::string name = "weights" + std::to_string(i);
+        AddSrcTexture2D("weights" + std::to_string(i), desc);
+      }
+    }
   }
 
   const auto& src_def = op_def.src_tensors[0];
@@ -568,7 +578,7 @@ void ConvolutionTransposed::GetPossibleKernelWorkGroups(
 ConvolutionTransposed CreateConvolutionTransposed(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
-  const bool weights_are_buffer = gpu_info.IsMali();
+  const bool weights_are_buffer = gpu_info.IsMali() || gpu_info.IsApple();
   ConvolutionTransposed result(definition, attr, gpu_info, weights_are_buffer);
   result.UploadWeights(attr.weights, weights_are_buffer);
 
@@ -585,7 +595,7 @@ ConvolutionTransposed CreateConvolutionTransposed(
 ConvolutionTransposed CreateConvolutionTransposed3D(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposed3DAttributes& attr) {
-  const bool weights_are_buffer = gpu_info.IsMali();
+  const bool weights_are_buffer = gpu_info.IsMali() || gpu_info.IsApple();
   ConvolutionTransposed result(definition, attr, gpu_info, weights_are_buffer);
   result.UploadWeights(attr.weights, weights_are_buffer);
 
@@ -602,13 +612,32 @@ ConvolutionTransposed CreateConvolutionTransposed3D(
 ConvolutionTransposed CreateConvolutionTransposedDynamicWeights(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
-  const bool weights_are_buffer = true;
-  ConvolutionTransposed result(definition, attr, gpu_info, weights_are_buffer);
+  const bool weights_are_buffer = gpu_info.IsMali();
+  OperationDef new_def = definition;
+  new_def.src_tensors = {
+      definition.src_tensors[0]};  // leaving only src_tensor def, weights defs
+                                   // will be added later
+  const DataType weights_type = definition.GetDataType();
+  if (weights_are_buffer) {
+    // add 1 src_tensor(buffer) for weights
+    new_def.src_tensors.push_back(
+        {weights_type, TensorStorageType::BUFFER, Layout::HWC});
+  } else {
+    // add 4 src_tensors(4X textures 2d) for weights
+    new_def.src_tensors.push_back(
+        {weights_type, TensorStorageType::TEXTURE_2D, Layout::HWC});
+    new_def.src_tensors.push_back(
+        {weights_type, TensorStorageType::TEXTURE_2D, Layout::HWC});
+    new_def.src_tensors.push_back(
+        {weights_type, TensorStorageType::TEXTURE_2D, Layout::HWC});
+    new_def.src_tensors.push_back(
+        {weights_type, TensorStorageType::TEXTURE_2D, Layout::HWC});
+  }
+  ConvolutionTransposed result(new_def, attr, gpu_info, weights_are_buffer);
 
   TensorLinearDescriptor desc;
-  desc.storage_type =
-      DeduceLinearStorageType(definition.GetPrimaryStorageType());
-  desc.element_type = definition.GetDataType();
+  desc.storage_type = DeduceLinearStorageType(new_def.GetPrimaryStorageType());
+  desc.element_type = new_def.GetDataType();
   desc.UploadLinearData(attr.bias);
   result.args_.AddObject(
       "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));

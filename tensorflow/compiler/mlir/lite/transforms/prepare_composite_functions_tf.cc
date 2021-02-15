@@ -74,7 +74,7 @@ class ConvertEmbeddedLookupFunc {
 
   void RewriteFunc() {
     func_->setAttr(kTFImplements,
-                   StringAttr::get("embedding_lookup", func_.getContext()));
+                   StringAttr::get(func_.getContext(), "embedding_lookup"));
     Value lookup = func_.getArgument(1);
     Value value = func_.getArgument(0);
     auto output_type = func_.getType().getResult(0);

@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 
+#include "tensorflow/c/eager/abstract_op_attrs.h"
 #include "tensorflow/c/tf_attrtype.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -88,10 +89,16 @@ Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
 // messages to be destructed, which is not thread safe. This means that it is
 // currently not safe to set attributes on *different* AttrBuilder objects from
 // multiple threads. This does not apply to `CopyAttributes`.
-class AttrBuilder {
+class AttrBuilder : public AbstractOpAttrs {
  public:
-  AttrBuilder() {}
-  explicit AttrBuilder(const char* op) { Reset(op); }
+  AttrBuilder()
+      : AbstractOpAttrs(AbstractOpAttrs::AbstractOpAttrsKind::kEager) {}
+
+  ~AttrBuilder() override {}
+  explicit AttrBuilder(const char* op)
+      : AbstractOpAttrs(AbstractOpAttrs::AbstractOpAttrsKind::kEager) {
+    Reset(op);
+  }
 
   void Reset(const char* op) {
     op_name_ = op;
@@ -161,6 +168,14 @@ class AttrBuilder {
   // AttrValueMap.
   void CopyAttributes(const AttrBuilder& other);
 
+  void GetNameAttrList(tensorflow::NameAttrList* name_and_attrs) const override;
+
+  bool GetInt(absl::string_view attr_name, int64_t* result) const override;
+  bool GetFloat(absl::string_view attr_name, float* result) const override;
+  bool GetBool(absl::string_view attr_name, bool* result) const override;
+  bool GetType(absl::string_view attr_name,
+               tensorflow::DataType* result) const override;
+
  private:
   tensorflow::Fprint128 BuildCacheKeyForDevice(const StringPiece device) const;
 
@@ -201,7 +216,6 @@ Status AttrBuilder::Get(StringPiece attr_name, bool* value) const;
 template <>
 Status AttrBuilder::Get(StringPiece attr_name,
                         tensorflow::DataType* value) const;
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_ATTR_BUILDER_H_

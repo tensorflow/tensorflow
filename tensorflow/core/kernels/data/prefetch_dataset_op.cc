@@ -263,7 +263,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock input_l(input_mu_);
       mutex_lock l(*mu_);
-      buffer_.clear();
+      DCHECK(buffer_.empty());
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       size_t buffer_size;
       {
@@ -293,6 +293,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
                                    &buffer_element.value.back()));
           }
         }
+        RecordBufferEnqueue(ctx, buffer_element.value);
       }
       return Status::OK();
     }

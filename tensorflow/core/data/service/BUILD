@@ -57,6 +57,7 @@ tf_proto_library(
     ],
     visibility = [
         ":data_transfer_visibility",
+        "//tensorflow:internal",
     ],
 )
 
@@ -95,6 +96,7 @@ cc_library(
         ":dispatcher_cc_grpc_proto",
         ":grpc_util",
         ":worker_cc_grpc_proto",
+        ":worker_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -415,6 +417,7 @@ cc_library(
     hdrs = ["task_runner.h"],
     deps = [
         ":common_proto_cc",
+        ":worker_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/data:compression_utils",
@@ -428,11 +431,14 @@ tf_cc_test(
     srcs = ["task_runner_test.cc"],
     deps = [
         ":task_runner",
+        ":worker_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/data:compression_utils",
+        "//tensorflow/core/data:dataset_proto_cc",
         "@com_google_absl//absl/memory",
     ],
 )

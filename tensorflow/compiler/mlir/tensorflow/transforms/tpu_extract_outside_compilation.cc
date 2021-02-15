@@ -248,7 +248,7 @@ TF::_XlaHostComputeMlirOp CreateHostCompute(
 
 void MarkOutsideCompiled(Operation* op) {
   op->setAttr(kXlaOutsideCompilationAttr,
-              StringAttr::get("temp", op->getContext()));
+              StringAttr::get(op->getContext(), "temp"));
 }
 
 // Move outside compiled ops in `src` to to `insertion_point` in host

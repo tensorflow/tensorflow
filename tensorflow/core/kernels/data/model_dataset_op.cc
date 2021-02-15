@@ -173,8 +173,11 @@ class ModelDatasetOp::Dataset : public DatasetBase {
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
+      IteratorContext::Params params(ctx);
+      params.model = model_;
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+      TF_RETURN_IF_ERROR(RestoreInput(IteratorContext(std::move(params)),
+                                      reader, input_impl_));
       return Status::OK();
     }
 

@@ -79,6 +79,8 @@ tensorflow::Status SetTpuOpsStructFns(void* library_handle) {
   TFTPU_SET_FN(ops_api_fn, TpuProfiler_Stop);
   TFTPU_SET_FN(ops_api_fn, TpuProfiler_CollectData);
 
+  TFTPU_SET_FN(ops_api_fn, TfTpu_InitializeTpuModelServer);
+
   return tensorflow::Status::OK();
 }
 

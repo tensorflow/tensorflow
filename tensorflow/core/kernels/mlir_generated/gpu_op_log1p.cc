@@ -18,8 +18,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Log1p, f16, DT_HALF, Eigen::half);
-GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Log1p, f32, DT_FLOAT, float);
-GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Log1p, f64, DT_DOUBLE, double);
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Log1p, f16, Eigen::half);
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Log1p, f32, float);
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Log1p, f64, double);
 
 }  // namespace tensorflow

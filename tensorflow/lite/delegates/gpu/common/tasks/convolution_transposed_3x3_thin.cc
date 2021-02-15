@@ -70,7 +70,7 @@ std::string ConvolutionTransposed3x3Thin::GenerateConvolutionTransposedCode(
         break;
       case CalculationsPrecision::F32_F16:
         c += "#define CONV(R, SRC, F, i) \\\n";
-        c += "  R += convert_float4(SRC.x * F[i + 0] + SRC.y * F[i + 1]";
+        c += "  R += TO_ACCUM_TYPE(SRC.x * F[i + 0] + SRC.y * F[i + 1]";
         c += "+ SRC.z * F[i + 2] + SRC.w * F[i + 3]);\n";
         break;
     }
@@ -83,27 +83,26 @@ std::string ConvolutionTransposed3x3Thin::GenerateConvolutionTransposedCode(
     c += "  R.w += dot(SRC, F[i + 3]);   \n";
   }
 
-  c += "__kernel void main_function(\n";
-  c += "$0) {\n";
+  c += "MAIN_FUNCTION($0) {\n";
   if (op_def.IsBatchSupported()) {
-    c += "  int linear_id = get_global_id(0);\n";
+    c += "  int linear_id = GLOBAL_ID_0;\n";
     c += "  int X = linear_id / args.dst_tensor.Batch();\n";
     c += "  int B = linear_id % args.dst_tensor.Batch();\n";
     c += "  args.dst_tensor.SetBatchRef(B);\n";
     c += "  args.src_tensor.SetBatchRef(B);\n";
   } else {
-    c += "  int X = get_global_id(0);\n";
+    c += "  int X = GLOBAL_ID_0;\n";
   }
-  c += "  int Y = get_global_id(1);\n";
+  c += "  int Y = GLOBAL_ID_1;\n";
   c += "  if (X >= args.src_tensor.Width() || Y >= args.src_tensor.Height()) "
        "return;\n";
   for (int d = 0; d < dst_depth; ++d) {
     const std::string layer = std::to_string(d);
     c += "  ACCUM_FLT4 r" + layer + "[2][2];\n";
-    c += "  r" + layer + "[0][0] = (ACCUM_FLT4)(0.0f);\n";
-    c += "  r" + layer + "[0][1] = (ACCUM_FLT4)(0.0f);\n";
-    c += "  r" + layer + "[1][0] = (ACCUM_FLT4)(0.0f);\n";
-    c += "  r" + layer + "[1][1] = (ACCUM_FLT4)(0.0f);\n";
+    c += "  r" + layer + "[0][0] = INIT_ACCUM_FLT4(0.0f);\n";
+    c += "  r" + layer + "[0][1] = INIT_ACCUM_FLT4(0.0f);\n";
+    c += "  r" + layer + "[1][0] = INIT_ACCUM_FLT4(0.0f);\n";
+    c += "  r" + layer + "[1][1] = INIT_ACCUM_FLT4(0.0f);\n";
   }
   int filters_index = 0;
   for (int s = 0; s < src_depth; ++s) {
@@ -113,9 +112,9 @@ std::string ConvolutionTransposed3x3Thin::GenerateConvolutionTransposedCode(
       c += "  bool x_in = X + 1 < args.src_tensor.Width();\n";
       c += "  bool y_in = Y + 1 < args.src_tensor.Height();\n";
       c += "  FLT4 src0 = args.src_tensor.Read(X, Y, " + z + ");\n";
-      c += "  FLT4 src1 = (FLT4)(0.0);\n";
-      c += "  FLT4 src2 = (FLT4)(0.0);\n";
-      c += "  FLT4 src3 = (FLT4)(0.0);\n";
+      c += "  FLT4 src1 = INIT_FLT4(0.0);\n";
+      c += "  FLT4 src2 = INIT_FLT4(0.0);\n";
+      c += "  FLT4 src3 = INIT_FLT4(0.0);\n";
       c += "  if (x_in) {\n";
       c += "    src1 = args.src_tensor.Read(X + 1, Y, " + z + ");\n";
       c += "  }\n";
@@ -251,11 +250,19 @@ ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3Thin(
 ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3ThinDynamicWeights(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
-  ConvolutionTransposed3x3Thin result(gpu_info, definition, attr);
+  OperationDef new_def = definition;
+  new_def.src_tensors = {
+      definition.src_tensors[0]};  // leaving only src_tensor def, weights defs
+                                   // will be added later
+  const DataType weights_type = definition.GetDataType();
+  // add 1 src_tensor(buffer) for weights
+  new_def.src_tensors.push_back(
+      {weights_type, TensorStorageType::BUFFER, Layout::HWC});
+  ConvolutionTransposed3x3Thin result(gpu_info, new_def, attr);
 
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::TEXTURE_2D;
-  desc.element_type = definition.GetDataType();
+  desc.element_type = new_def.GetDataType();
   desc.UploadLinearData(attr.bias);
   result.args_.AddObject(
       "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));

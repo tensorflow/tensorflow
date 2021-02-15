@@ -40,6 +40,7 @@ py_library(
         ":control_flow_util",
         ":engine_utils",
         ":generic_utils",
+        ":kpl_test_utils",
         ":layer_utils",
         ":multi_gpu_utils",
         ":np_utils",
@@ -50,6 +51,13 @@ py_library(
 py_library(
     name = "control_flow_util",
     srcs = ["control_flow_util.py"],
+    srcs_version = "PY3",
+    deps = [],
+)
+
+py_library(
+    name = "kpl_test_utils",
+    srcs = ["kpl_test_utils.py"],
     srcs_version = "PY3",
     deps = [],
 )

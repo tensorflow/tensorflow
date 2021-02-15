@@ -654,6 +654,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/grappler/clusters:single_machine",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
         "//tensorflow/core/grappler/utils:grappler_test",
+        "//tensorflow/core/lib/random",
     ],
 )
 

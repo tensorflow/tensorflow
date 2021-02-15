@@ -3,7 +3,8 @@ tensorflow/lite/micro/benchmarks/keyword_benchmark.cc \
 tensorflow/lite/micro/benchmarks/keyword_scrambled_model_data.cc
 
 KEYWORD_BENCHMARK_HDRS := \
-tensorflow/lite/micro/benchmarks/keyword_scrambled_model_data.h
+tensorflow/lite/micro/benchmarks/keyword_scrambled_model_data.h \
+tensorflow/lite/micro/benchmarks/micro_benchmark.h
 
 PERSON_DETECTION_BENCHMARK_SRCS := \
 tensorflow/lite/micro/benchmarks/person_detection_benchmark.cc \
@@ -20,4 +21,3 @@ $(KEYWORD_BENCHMARK_SRCS),$(KEYWORD_BENCHMARK_HDRS)))
 
 $(eval $(call microlite_test,person_detection_benchmark,\
 $(PERSON_DETECTION_BENCHMARK_SRCS),$(PERSON_DETECTION_BENCHMARK_HDRS)))
-

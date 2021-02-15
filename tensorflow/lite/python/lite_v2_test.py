@@ -1435,18 +1435,25 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
         expected = expected.c
       self.assertAllClose(expected, actual)
 
-  @parameterized.named_parameters(('LSTM', tf.keras.layers.LSTM),
-                                  ('SimpleRNN', tf.keras.layers.SimpleRNN),
-                                  ('GRU', tf.keras.layers.GRU))
+  @parameterized.named_parameters(
+      ('LSTM_BatchSize_None', tf.keras.layers.LSTM, None),
+      ('SimpleRNN_BatchSize_None', tf.keras.layers.SimpleRNN, None),
+      ('GRU_BatchSize_None', tf.keras.layers.GRU, None),
+      ('LSTM_BatchSize_One', tf.keras.layers.LSTM, 1),
+      ('SimpleRNN_BatchSize_One', tf.keras.layers.SimpleRNN, 1),
+      ('GRU_BatchSize_One', tf.keras.layers.GRU, 1))
   @test_util.run_v2_only
-  def testKerasRNN(self, rnn_layer):
-    # This relies on TFLiteConverter to rewrite unknown batch size to 1. The
-    # model will fail if resizing the input to non-1 batch size.
+  def testKerasRNN(self, rnn_layer, batch_size):
+    # This test will run with `batch_size=1` and `batch_size=None`.
+    # When `batch_size=1`, the model will convert to fused RNN, and when
+    # `batch_size=None`, it will convert to unfused RNN
+    # (similar for tests below).
     input_data = tf.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
     rnn_obj = rnn_layer(units=10, input_shape=(10, 10))
     model = tf.keras.models.Sequential([
-        tf.keras.layers.Input(batch_size=1, shape=(10, 10), name='input'),
+        tf.keras.layers.Input(
+            batch_size=batch_size, shape=(10, 10), name='input'),
         rnn_obj,
     ])
 
@@ -1480,12 +1487,16 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     expected_value = model.predict(input_data)
     self.assertAllClose(expected_value, actual_value, atol=1e-05)
 
+  @parameterized.named_parameters(('BatchSize_None', None),
+                                  ('BatchSize_One', 1))
   @test_util.run_v2_only
-  def testKerasBidirectionalRNNReturnSequence(self):
+  def testKerasBidirectionalRNNReturnSequence(self, batch_size):
     input_data = tf.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
     model = tf.keras.models.Sequential()
-    model.add(tf.keras.layers.Input(batch_size=1, shape=(10, 10), name='input'))
+    model.add(
+        tf.keras.layers.Input(
+            batch_size=batch_size, shape=(10, 10), name='input'))
     model.add(
         tf.keras.layers.Bidirectional(
             tf.keras.layers.LSTM(units=10, return_sequences=True),
@@ -1503,12 +1514,16 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     expected_value = model.predict(input_data)
     self.assertAllClose(expected_value, actual_value, atol=1e-05)
 
+  @parameterized.named_parameters(('BatchSize_None', None),
+                                  ('BatchSize_One', 1))
   @test_util.run_v2_only
-  def testKerasBidirectionalRNN(self):
+  def testKerasBidirectionalRNN(self, batch_size):
     input_data = tf.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
     model = tf.keras.models.Sequential()
-    model.add(tf.keras.layers.Input(batch_size=1, shape=(10, 10), name='input'))
+    model.add(
+        tf.keras.layers.Input(
+            batch_size=batch_size, shape=(10, 10), name='input'))
     model.add(tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(units=10)))
     model.add(tf.keras.layers.Dense(5))
     model.add(tf.keras.layers.Activation('softmax'))
