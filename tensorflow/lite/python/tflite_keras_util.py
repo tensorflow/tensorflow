@@ -183,6 +183,11 @@ def trace_model_call(model, input_signature=None):
         model, inputs=inputs, build_graph=False, training=False, saving=True):
       outputs = model(inputs, training=False)
 
-    return outputs
+    # Outputs always has to be a flat dict.
+    output_names = model.output_names  # Functional Model.
+    if output_names is None:  # Subclassed Model.
+      output_names = create_pseudo_output_names(outputs)
+    outputs = nest.flatten(outputs)
+    return {name: output for name, output in zip(output_names, outputs)}
 
   return _wrapped_model
