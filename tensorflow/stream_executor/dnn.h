@@ -446,6 +446,14 @@ class FilterDescriptor {
     return AsInt64Slice(tensor_.dimensions()).subspan(2);
   }
 
+  // Full dimensions of the underlying filter,
+  // ordered according to a specific layout.
+  std::vector<int64> full_dims(const FilterLayout& layout) const;
+
+  // Full strides of the underlying filter,
+  // ordered according to a specific layout.
+  std::vector<int64> full_strides(const FilterLayout& layout) const;
+
  private:
   absl::Span<int64> input_filter_dims() {
     return AsInt64Slice(tensor_.mutable_dimensions()).subspan(2);
