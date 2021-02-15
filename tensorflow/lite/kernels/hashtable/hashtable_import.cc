@@ -92,6 +92,11 @@ TfLiteRegistration* Register_HASHTABLE_IMPORT() {
   return &r;
 }
 
+// Alias for selective build.
+TfLiteRegistration* Register_LOOKUP_TABLE_IMPORT_V2() {
+  return Register_HASHTABLE_IMPORT();
+}
+
 }  // namespace custom
 }  // namespace ops
 }  // namespace tflite

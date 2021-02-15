@@ -131,6 +131,9 @@ TfLiteRegistration* Register_HASHTABLE() {
   return &r;
 }
 
+// Alias for selective build.
+TfLiteRegistration* Register_HASH_TABLE_V2() { return Register_HASHTABLE(); }
+
 }  // namespace custom
 }  // namespace ops
 }  // namespace tflite

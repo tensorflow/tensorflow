@@ -98,6 +98,11 @@ TfLiteRegistration* Register_HASHTABLE_FIND() {
   return &r;
 }
 
+// Alias for selective build.
+TfLiteRegistration* Register_LOOKUP_TABLE_FIND_V2() {
+  return Register_HASHTABLE_FIND();
+}
+
 }  // namespace custom
 }  // namespace ops
 }  // namespace tflite
