@@ -323,6 +323,13 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::ConvertOp>(
     // No conversion is needed for the same width integers
     return args.front();
   }
+  if (targetType.isInteger(/*width=*/1)) {
+    Value zero = b->create<ConstantOp>(loc, b->getFloatAttr(sourceType, 0.0));
+    if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
+      zero = b->create<::mlir::SplatOp>(loc, vec_type, zero);
+    }
+    return b->create<mlir::CmpFOp>(loc, CmpFPredicate::UNE, args.front(), zero);
+  }
   if (mlir::FPToSIOp::areCastCompatible(sourceType, targetType)) {
     return b->create<mlir::FPToSIOp>(loc, result_types, args, mlir::None);
   }
