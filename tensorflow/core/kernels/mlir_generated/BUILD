@@ -707,7 +707,6 @@ gpu_kernel_library(
         "i16",
         "i64",
     ],
-    unroll_factors = "4",
 )
 
 gpu_kernel_library(
@@ -988,7 +987,6 @@ gpu_kernel_library(
         "f64",
         "i64",
     ],
-    unroll_factors = "4",
 )
 
 gpu_kernel_library(
