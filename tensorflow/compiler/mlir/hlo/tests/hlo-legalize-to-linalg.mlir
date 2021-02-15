@@ -727,20 +727,6 @@ func @convert_f64_to_f32(%input: tensor<2x2xf64>) -> tensor<2x2xf32> {
 
 // -----
 
-// CHECK-LABEL: func @convert_f32_to_i1
-func @convert_f32_to_i1(%input: tensor<2x2xf32>) -> tensor<2x2xi1> {
-  %result = "mhlo.convert"(%input) : (tensor<2x2xf32>) -> tensor<2x2xi1>
-  return %result : tensor<2x2xi1>
-}
-// CHECK: linalg.init_tensor
-// CHECK: linalg.generic
-// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %{{.*}}: i1):
-// CHECK-NEXT:   %[[ZERO:.*]] = constant 0.000000e+00 : f32
-// CHECK-NEXT:   %[[RESULT:.*]] = cmpf une, %[[OPERAND_IN]], %[[ZERO]] : f32
-// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
-
-// -----
-
 // CHECK-LABEL: func @convert_f32_to_i32
 func @convert_f32_to_i32(%input: tensor<2x2xf32>) -> tensor<2x2xi32> {
   %result = "mhlo.convert"(%input) : (tensor<2x2xf32>) -> tensor<2x2xi32>
