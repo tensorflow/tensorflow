@@ -311,6 +311,26 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::ConvertOp>(
     // No conversion is needed for the same width floats
     return args.front();
   }
+  if (targetType.isInteger(/*width=*/1)) {
+    // When casting to bool, we need to compare whether the value is equal to
+    // zero.
+    if (sourceType.isSignlessInteger()) {
+      Value zero_intval = b->create<::mlir::ConstantIntOp>(
+          loc, 0, sourceType.cast<IntegerType>().getWidth());
+      if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
+        zero_intval = b->create<::mlir::SplatOp>(loc, vec_type, zero_intval);
+      }
+      return b->create<mlir::CmpIOp>(loc, CmpIPredicate::ne, args.front(),
+                                     zero_intval);
+    } else if (sourceType.isa<FloatType>()) {
+      Value zero = b->create<ConstantOp>(loc, b->getFloatAttr(sourceType, 0.0));
+      if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
+        zero = b->create<::mlir::SplatOp>(loc, vec_type, zero);
+      }
+      return b->create<mlir::CmpFOp>(loc, CmpFPredicate::UNE, args.front(),
+                                     zero);
+    }
+  }
   if (sourceType.isSignlessInteger() && targetType.isSignlessInteger()) {
     IntegerType src = sourceType.cast<IntegerType>();
     IntegerType res = targetType.cast<IntegerType>();
@@ -326,13 +346,6 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::ConvertOp>(
     }
     // No conversion is needed for the same width integers
     return args.front();
-  }
-  if (targetType.isInteger(/*width=*/1)) {
-    Value zero = b->create<ConstantOp>(loc, b->getFloatAttr(sourceType, 0.0));
-    if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
-      zero = b->create<::mlir::SplatOp>(loc, vec_type, zero);
-    }
-    return b->create<mlir::CmpFOp>(loc, CmpFPredicate::UNE, args.front(), zero);
   }
   if (mlir::FPToSIOp::areCastCompatible(sourceType, targetType)) {
     return b->create<mlir::FPToSIOp>(loc, result_types, args, mlir::None);

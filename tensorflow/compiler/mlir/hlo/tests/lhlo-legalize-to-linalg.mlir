@@ -514,6 +514,20 @@ func @convert_f32_to_f32(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @convert_i32_to_i1
+func @convert_i32_to_i1(%input: memref<2x2xi32>, %result: memref<2x2xi1>) {
+  "lmhlo.convert"(%input, %result)
+      : (memref<2x2xi32>, memref<2x2xi1>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %[[RESULT_OUT:.*]]: i1):
+// CHECK-NEXT:   %[[ZERO:.*]] = constant 0 : i32
+// CHECK-NEXT:   %[[RESULT:.*]] = cmpi ne, %[[OPERAND_IN]], %[[ZERO]] : i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// -----
+
 // CHECK-LABEL: func @convert_f32_to_i1
 func @convert_f32_to_i1(%input: memref<2x2xf32>, %result: memref<2x2xi1>) {
   "lmhlo.convert"(%input, %result)
