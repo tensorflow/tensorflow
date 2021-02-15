@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://www.tensorflow.org/images/tf_logo_social.png">
+  <img src="https://o.remove.bg/downloads/dd823ce3-93a9-46ad-a106-80b2daf1bc4e/tf_logo-removebg-preview.png" style="width:100%;">
 </div>
 
 [![Python](https://img.shields.io/pypi/pyversions/tensorflow.svg?style=plastic)](https://badge.fury.io/py/tensorflow)
