@@ -662,6 +662,19 @@ func @convert_i1_to_f32(%input: tensor<2x2xi1>) -> tensor<2x2xf32> {
 
 // -----
 
+// CHECK-LABEL: func @convert_i1_to_i32
+func @convert_i1_to_i32(%input: tensor<2x2xi1>) -> tensor<2x2xi32> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xi1>) -> tensor<2x2xi32>
+  return %result : tensor<2x2xi32>
+}
+// CHECK: linalg.init_tensor
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i1, %{{.*}}: i32):
+// CHECK-NEXT:   %[[RESULT:.*]] = zexti %[[OPERAND_IN]] : i1 to i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
+
+// -----
+
 // CHECK-LABEL: func @convert_i32_to_f32
 func @convert_i32_to_f32(%input: tensor<2x2xi32>) -> tensor<2x2xf32> {
   %result = "mhlo.convert"(%input) : (tensor<2x2xi32>) -> tensor<2x2xf32>
@@ -683,7 +696,7 @@ func @convert_i16_to_i32(%input: tensor<2x2xi16>) -> tensor<2x2xi32> {
 // CHECK: linalg.init_tensor
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i16, %{{.*}}: i32):
-// CHECK-NEXT:   %[[RESULT:.*]] = zexti %[[OPERAND_IN]] : i16 to i32
+// CHECK-NEXT:   %[[RESULT:.*]] = sexti %[[OPERAND_IN]] : i16 to i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
 
 // -----

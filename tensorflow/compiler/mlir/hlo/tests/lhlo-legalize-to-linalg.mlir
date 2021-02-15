@@ -419,6 +419,18 @@ func @convert_i1_to_f32(%input: memref<2x2xi1>, %result: memref<2x2xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @convert_i1_to_i32
+func @convert_i1_to_i32(%input: memref<2x2xi1>, %result: memref<2x2xi32>) {
+  "lmhlo.convert"(%input, %result) : (memref<2x2xi1>, memref<2x2xi32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i1, %[[RESULT_OUT:.*]]: i32):
+// CHECK-NEXT:   %[[RESULT:.*]] = zexti %[[OPERAND_IN]] : i1 to i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
+
+// -----
+
 // CHECK-LABEL: func @convert_i32_to_f32
 func @convert_i32_to_f32(%input: memref<2x2xi32>, %result: memref<2x2xf32>) {
   "lmhlo.convert"(%input, %result) : (memref<2x2xi32>, memref<2x2xf32>) -> ()
@@ -439,7 +451,7 @@ func @convert_i16_to_i32(%input: memref<2x2xi16>,
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i16, %[[RESULT_OUT:.*]]: i32):
-// CHECK-NEXT:   %[[RESULT:.*]] = zexti %[[OPERAND_IN]] : i16 to i32
+// CHECK-NEXT:   %[[RESULT:.*]] = sexti %[[OPERAND_IN]] : i16 to i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
 
 // -----

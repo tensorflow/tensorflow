@@ -316,8 +316,12 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::ConvertOp>(
     IntegerType res = targetType.cast<IntegerType>();
     if (src.getWidth() > res.getWidth()) {
       return b->create<mlir::TruncateIOp>(loc, result_types, args, mlir::None);
-    } else if (src.getWidth() < res.getWidth()) {
+    } else if (src.getWidth() == 1) {
+      // Special case boolean values, so they get casted to `1` instead of `-1`.
       return b->create<mlir::ZeroExtendIOp>(loc, result_types, args,
+                                            mlir::None);
+    } else if (src.getWidth() < res.getWidth()) {
+      return b->create<mlir::SignExtendIOp>(loc, result_types, args,
                                             mlir::None);
     }
     // No conversion is needed for the same width integers
