@@ -55,7 +55,7 @@ class SelfAdjointEigTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testConcurrentExecutesWithoutError(self):
     all_ops = []
-    with self.session() as sess:
+    with self.session():
       for compute_v_ in True, False:
         matrix1 = random_ops.random_normal([5, 5], seed=42)
         matrix2 = random_ops.random_normal([5, 5], seed=42)
@@ -84,7 +84,7 @@ class SelfAdjointEigTest(test.TestCase):
             "self_adjoint_eig_fail_if_denorms_flushed.txt")).astype(np.float32)
     self.assertEqual(matrix.shape, (32, 32))
     matrix_tensor = constant_op.constant(matrix)
-    with self.session() as sess:
+    with self.session():
       (e, v) = self.evaluate(linalg_ops.self_adjoint_eig(matrix_tensor))
       self.assertEqual(e.size, 32)
       self.assertAllClose(

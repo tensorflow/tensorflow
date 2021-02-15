@@ -64,7 +64,7 @@ class SparseXentTest(test.TestCase):
 
   def _testXent(self, np_features, np_labels):
     np_loss, np_backprop = self._npXent(np_features, np_labels)
-    with self.cached_session() as sess:
+    with self.cached_session():
       loss, backprop = gen_nn_ops.sparse_softmax_cross_entropy_with_logits(
           np_features, np_labels)
       tf_loss, tf_backprop = self.evaluate([loss, backprop])
@@ -73,7 +73,7 @@ class SparseXentTest(test.TestCase):
 
   def testSingleClass(self):
     for label_dtype in np.int32, np.int64:
-      with self.cached_session() as sess:
+      with self.cached_session():
         loss, backprop = gen_nn_ops.sparse_softmax_cross_entropy_with_logits(
             np.array([[1.], [-1.], [0.]]).astype(np.float32),
             np.array([0, 0, 0]).astype(label_dtype))

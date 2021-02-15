@@ -71,7 +71,7 @@ class RGBToHSVTest(test_util.TensorFlowTestCase):
       inp = np.random.rand(*shape).astype(nptype)
 
       # Convert to HSV and back, as a batch and individually
-      with self.cached_session() as sess:
+      with self.cached_session():
         batch0 = constant_op.constant(inp)
         batch1 = image_ops.rgb_to_hsv(batch0)
         batch2 = image_ops.hsv_to_rgb(batch1)
@@ -113,7 +113,7 @@ class RGBToYIQTest(test_util.TensorFlowTestCase):
       inp = np.random.rand(*shape).astype(nptype)
 
       # Convert to YIQ and back, as a batch and individually
-      with self.cached_session() as sess:
+      with self.cached_session():
         batch0 = constant_op.constant(inp)
         batch1 = image_ops.rgb_to_yiq(batch0)
         batch2 = image_ops.yiq_to_rgb(batch1)
@@ -145,7 +145,7 @@ class RGBToYUVTest(test_util.TensorFlowTestCase):
       inp = np.random.rand(*shape).astype(nptype)
 
       # Convert to YUV and back, as a batch and individually
-      with self.cached_session() as sess:
+      with self.cached_session():
         batch0 = constant_op.constant(inp)
         batch1 = image_ops.rgb_to_yuv(batch0)
         batch2 = image_ops.yuv_to_rgb(batch1)
@@ -3199,7 +3199,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase,
       img_np = np.array(data, dtype=nptype).reshape(img_shape)
 
       for method in self.METHODS:
-        with self.cached_session() as sess:
+        with self.cached_session():
           image = constant_op.constant(img_np, shape=img_shape)
           y = image_ops.resize_images(image, [target_height, target_width],
                                       method)
@@ -4176,7 +4176,7 @@ class JpegTest(test_util.TensorFlowTestCase):
     # Read a real jpeg and verify shape
     path = ("tensorflow/core/lib/jpeg/testdata/"
             "jpeg_merge_test1.jpg")
-    with self.cached_session() as sess:
+    with self.cached_session():
       jpeg0 = io_ops.read_file(path)
       image0 = image_ops.decode_jpeg(jpeg0)
       image1 = image_ops.decode_jpeg(image_ops.encode_jpeg(image0))
@@ -4192,7 +4192,7 @@ class JpegTest(test_util.TensorFlowTestCase):
     cmyk_path = os.path.join(base, "jpeg_merge_test1_cmyk.jpg")
     shape = 256, 128, 3
     for channels in 3, 0:
-      with self.cached_session() as sess:
+      with self.cached_session():
         rgb = image_ops.decode_jpeg(
             io_ops.read_file(rgb_path), channels=channels)
         cmyk = image_ops.decode_jpeg(
@@ -4248,7 +4248,7 @@ class JpegTest(test_util.TensorFlowTestCase):
           self.evaluate(result)
 
   def testSynthetic(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       # Encode it, then decode it, then encode it
       image0 = constant_op.constant(simple_color_ramp())
       jpeg0 = image_ops.encode_jpeg(image0)
@@ -4269,7 +4269,7 @@ class JpegTest(test_util.TensorFlowTestCase):
       self.assertLessEqual(len(jpeg0), 6000)
 
   def testSyntheticFasterAlgorithm(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       # Encode it, then decode it, then encode it
       image0 = constant_op.constant(simple_color_ramp())
       jpeg0 = image_ops.encode_jpeg(image0)
@@ -4293,7 +4293,7 @@ class JpegTest(test_util.TensorFlowTestCase):
       self.assertLessEqual(len(jpeg0), 6000)
 
   def testDefaultDCTMethodIsIntegerFast(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       # Compare decoding with both dct_option=INTEGER_FAST and
       # default.  They should be the same.
       image0 = constant_op.constant(simple_color_ramp())
@@ -4308,7 +4308,7 @@ class JpegTest(test_util.TensorFlowTestCase):
   def testShape(self):
     # Shape function requires placeholders and a graph.
     with ops.Graph().as_default():
-      with self.cached_session() as sess:
+      with self.cached_session():
         jpeg = constant_op.constant("nonsense")
         for channels in 0, 1, 3:
           image = image_ops.decode_jpeg(jpeg, channels=channels)
@@ -4418,7 +4418,7 @@ class PngTest(test_util.TensorFlowTestCase):
               (3, "lena_palette.png"), (4, "lena_palette_trns.png"))
     for channels_in, filename in inputs:
       for channels in 0, 1, 3, 4:
-        with self.cached_session() as sess:
+        with self.cached_session():
           png0 = io_ops.read_file(prefix + filename)
           image0 = image_ops.decode_png(png0, channels=channels)
           png0, image0 = self.evaluate([png0, image0])
@@ -4428,7 +4428,7 @@ class PngTest(test_util.TensorFlowTestCase):
             self.assertAllEqual(image0, self.evaluate(image1))
 
   def testSynthetic(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       # Encode it, then decode it
       image0 = constant_op.constant(simple_color_ramp())
       png0 = image_ops.encode_png(image0, compression=7)
@@ -4443,7 +4443,7 @@ class PngTest(test_util.TensorFlowTestCase):
       self.assertLessEqual(len(png0), 750)
 
   def testSyntheticUint16(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       # Encode it, then decode it
       image0 = constant_op.constant(simple_color_ramp(), dtype=dtypes.uint16)
       png0 = image_ops.encode_png(image0, compression=7)
@@ -4458,7 +4458,7 @@ class PngTest(test_util.TensorFlowTestCase):
       self.assertLessEqual(len(png0), 1500)
 
   def testSyntheticTwoChannel(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       # Strip the b channel from an rgb image to get a two-channel image.
       gray_alpha = simple_color_ramp()[:, :, 0:2]
       image0 = constant_op.constant(gray_alpha)
@@ -4469,7 +4469,7 @@ class PngTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(image0, image1)
 
   def testSyntheticTwoChannelUint16(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       # Strip the b channel from an rgb image to get a two-channel image.
       gray_alpha = simple_color_ramp()[:, :, 0:2]
       image0 = constant_op.constant(gray_alpha, dtype=dtypes.uint16)
@@ -4500,7 +4500,7 @@ class GifTest(test_util.TensorFlowTestCase):
     STRIDE = 5
     shape = (12, HEIGHT, WIDTH, 3)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       gif0 = io_ops.read_file(prefix + filename)
       image0 = image_ops.decode_gif(gif0)
       gif0, image0 = self.evaluate([gif0, image0])
@@ -4528,7 +4528,7 @@ class GifTest(test_util.TensorFlowTestCase):
   def testShape(self):
     # Shape function requires placeholders and a graph.
     with ops.Graph().as_default():
-      with self.cached_session() as sess:
+      with self.cached_session():
         gif = constant_op.constant("nonsense")
         image = image_ops.decode_gif(gif)
         self.assertEqual(image.get_shape().as_list(), [None, None, None, 3])
@@ -5842,7 +5842,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testJpegUint16(self):
     for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
       with compat.forward_compatibility_horizon(*horizon):
-        with self.cached_session() as sess:
+        with self.cached_session():
           base = "tensorflow/core/lib/jpeg/testdata"
           jpeg0 = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
           image0 = image_ops.decode_image(jpeg0, dtype=dtypes.uint16)
@@ -5854,7 +5854,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testPngUint16(self):
     for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
       with compat.forward_compatibility_horizon(*horizon):
-        with self.cached_session() as sess:
+        with self.cached_session():
           base = "tensorflow/core/lib/png/testdata"
           png0 = io_ops.read_file(os.path.join(base, "lena_rgba.png"))
           image0 = image_ops.decode_image(png0, dtype=dtypes.uint16)
@@ -5873,7 +5873,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testGifUint16(self):
     for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
       with compat.forward_compatibility_horizon(*horizon):
-        with self.cached_session() as sess:
+        with self.cached_session():
           base = "tensorflow/core/lib/gif/testdata"
           gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
           image0 = image_ops.decode_image(gif0, dtype=dtypes.uint16)
@@ -5885,7 +5885,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testBmpUint16(self):
     for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
       with compat.forward_compatibility_horizon(*horizon):
-        with self.cached_session() as sess:
+        with self.cached_session():
           base = "tensorflow/core/lib/bmp/testdata"
           bmp0 = io_ops.read_file(os.path.join(base, "lena.bmp"))
           image0 = image_ops.decode_image(bmp0, dtype=dtypes.uint16)
@@ -5897,7 +5897,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testJpegFloat32(self):
     for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
       with compat.forward_compatibility_horizon(*horizon):
-        with self.cached_session() as sess:
+        with self.cached_session():
           base = "tensorflow/core/lib/jpeg/testdata"
           jpeg0 = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
           image0 = image_ops.decode_image(jpeg0, dtype=dtypes.float32)
@@ -5909,7 +5909,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testPngFloat32(self):
     for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
       with compat.forward_compatibility_horizon(*horizon):
-        with self.cached_session() as sess:
+        with self.cached_session():
           base = "tensorflow/core/lib/png/testdata"
           png0 = io_ops.read_file(os.path.join(base, "lena_rgba.png"))
           image0 = image_ops.decode_image(png0, dtype=dtypes.float32)
@@ -5921,7 +5921,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testGifFloat32(self):
     for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
       with compat.forward_compatibility_horizon(*horizon):
-        with self.cached_session() as sess:
+        with self.cached_session():
           base = "tensorflow/core/lib/gif/testdata"
           gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
           image0 = image_ops.decode_image(gif0, dtype=dtypes.float32)
@@ -5933,7 +5933,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testBmpFloat32(self):
     for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
       with compat.forward_compatibility_horizon(*horizon):
-        with self.cached_session() as sess:
+        with self.cached_session():
           base = "tensorflow/core/lib/bmp/testdata"
           bmp0 = io_ops.read_file(os.path.join(base, "lena.bmp"))
           image0 = image_ops.decode_image(bmp0, dtype=dtypes.float32)
@@ -5945,7 +5945,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testExpandAnimations(self):
     for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
       with compat.forward_compatibility_horizon(*horizon):
-        with self.cached_session() as sess:
+        with self.cached_session():
           base = "tensorflow/core/lib/gif/testdata"
           gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
 
