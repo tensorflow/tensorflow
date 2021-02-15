@@ -1286,13 +1286,23 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64 bytes) {
   CUresult result =
       cuPointerGetAttribute(&context, CU_POINTER_ATTRIBUTE_CONTEXT, pointer);
   if (result == CUDA_SUCCESS) {
-    CHECK(context != nullptr) << "success should entail non-null context";
+    // For cudaMallocAsync, the context returned is null.  For now
+    // return not-available. But how to manage that correctly
+    // everywhere in TF?  Currently this is only used during error
+    // handling.  So all is working fine, but TF have a different
+    // error then the original one.
+    if (context == nullptr) {
+      return port::Status(
+          port::error::UNAVAILABLE,
+          absl::StrCat("failed to query context for device pointer: ",
+                       ToString(result)));
+    }
     return context;
   }
 
   return port::Status(
       port::error::INTERNAL,
-      absl::StrCat("failed to query device pointer for context: ",
+      absl::StrCat("failed to query context for device pointer: ",
                    ToString(result)));
 }
 
