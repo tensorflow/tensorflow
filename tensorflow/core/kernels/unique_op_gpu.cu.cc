@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/kernels/gpu_prim_helpers.h"
+#include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -51,67 +52,119 @@ struct SegmentIndicatorFunctor {
   }
 };
 
-// Scatters the unique input values to output and the unique indexes to idx.
-// If provided, segment_ends is filled with the end position of each unique
-// value's span in the sorted array (the last element is not written as it is
-// always equal to input_size; so segment_ends only needs to have space for
-// uniq_size - 1 elements).
-template <typename T, typename TIndex>
-__global__ void ScatterToOutputsKernel(
-    int64 input_size, const T* __restrict__ sorted_input,
-    const TIndex* __restrict__ sorted_idx,
-    const TIndex* __restrict__ sort_permutation, T* __restrict__ output,
-    TIndex* __restrict__ idx, TIndex* __restrict__ segment_ends) {
+template <typename TIndex>
+__global__ void ExtractFirstOccurrenceIndicesKernel(
+    int64 input_size, int64 uniq_size,
+    const TIndex* __restrict__ sorted_input_inds,
+    const TIndex* __restrict__ sorted_input_unique_ids,
+    TIndex* __restrict__ unique_input_inds, TIndex* __restrict__ segment_ends) {
   GPU_1D_KERNEL_LOOP(i, input_size) {
-    TIndex sorted_idx_i = sorted_idx[i];
-    if (i == 0 || sorted_idx_i != sorted_idx[i - 1]) {
-      output[sorted_idx_i] = sorted_input[i];
-      if (segment_ends && i > 0) {
-        segment_ends[sorted_idx_i - 1] = i;
+    TIndex sorted_input_unique_id = sorted_input_unique_ids[i];
+    if (i == 0 || sorted_input_unique_id != sorted_input_unique_ids[i - 1]) {
+      unique_input_inds[sorted_input_unique_id] = sorted_input_inds[i];
+      if (segment_ends) {
+        if (i == 0) {
+          // First thread writes the last element.
+          segment_ends[uniq_size - 1] = input_size;
+        } else {
+          segment_ends[sorted_input_unique_id - 1] = i;
+        }
       }
     }
-    idx[sort_permutation[i]] = sorted_idx_i;
   }
+}
+
+// Scatters the index of the first occurrence of each unique input value to
+// unique_input_inds.
+// If segment_ends is not nullptr, it is filled with the end index of each
+// unique value's range in the sorted input (the last element is always set
+// to input_size).
+template <typename TIndex>
+Status ExtractFirstOccurrenceIndices(const GPUDevice& d, int64 input_size,
+                                     int64 uniq_size,
+                                     const TIndex* sorted_input_inds,
+                                     const TIndex* sorted_input_unique_ids,
+                                     TIndex* unique_input_inds,
+                                     TIndex* segment_ends) {
+  if (input_size == 0) return Status::OK();
+  GpuLaunchConfig config = GetGpuLaunchConfig(
+      input_size, d, &ExtractFirstOccurrenceIndicesKernel<TIndex>,
+      /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
+  return GpuLaunchKernel(ExtractFirstOccurrenceIndicesKernel<TIndex>,
+                         config.block_count, config.thread_per_block, 0,
+                         d.stream(), input_size, uniq_size, sorted_input_inds,
+                         sorted_input_unique_ids, unique_input_inds,
+                         segment_ends);
 }
 
 template <typename T, typename TIndex>
-Status ScatterToOutputs(const GPUDevice& d, int64 input_size,
-                        const T* sorted_input, const TIndex* sorted_idx,
-                        const TIndex* sort_permutation, T* output, TIndex* idx,
-                        TIndex* segment_ends) {
-  if (input_size == 0) return Status::OK();
-  GpuLaunchConfig config = GetGpuLaunchConfig(
-      input_size, d, &ScatterToOutputsKernel<T, TIndex>,
-      /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
-  return GpuLaunchKernel(ScatterToOutputsKernel<T, TIndex>, config.block_count,
-                         config.thread_per_block, 0, d.stream(), input_size,
-                         sorted_input, sorted_idx, sort_permutation, output,
-                         idx, segment_ends);
-}
-
-// Computes value counts by taking adjacent differences of segment_ends.
-template <typename TIndex>
-__global__ void ComputeCountsKernel(int64 uniq_size, int64 input_size,
-                                    const TIndex* __restrict__ segment_ends,
-                                    TIndex* __restrict__ count) {
+__global__ void GatherOutputsAndInvertPermutationKernel(
+    int64 uniq_size, const T* __restrict__ input,
+    const TIndex* __restrict__ sorted_unique_input_inds,
+    const TIndex* __restrict__ sorted_unique_perm,
+    const TIndex* __restrict__ segment_ends, T* __restrict__ output,
+    TIndex* __restrict__ inv_sorted_unique_perm, TIndex* __restrict__ count) {
   GPU_1D_KERNEL_LOOP(i, uniq_size) {
-    TIndex beg = i == 0 ? 0 : segment_ends[i - 1];
-    TIndex end = i < uniq_size - 1 ? segment_ends[i] : input_size;
-    count[i] = end - beg;
+    output[i] = input[sorted_unique_input_inds[i]];
+    auto j = sorted_unique_perm[i];
+    inv_sorted_unique_perm[j] = i;
+    if (count) {
+      TIndex beg = j == 0 ? 0 : segment_ends[j - 1];
+      TIndex end = segment_ends[j];
+      count[i] = end - beg;
+    }
   }
 }
 
+// Gathers input values using sorted_unique_input_inds, and inverts the
+// permutation specified by sorted_unique_perm.
+template <typename T, typename TIndex>
+Status GatherOutputsAndInvertPermutation(const GPUDevice& d, int64 uniq_size,
+                                         const T* input,
+                                         const TIndex* sorted_unique_input_inds,
+                                         const TIndex* sorted_unique_perm,
+                                         const TIndex* segment_ends, T* output,
+                                         TIndex* inv_sorted_unique_perm,
+                                         TIndex* count) {
+  if (uniq_size == 0) return Status::OK();
+  GpuLaunchConfig config = GetGpuLaunchConfig(
+      uniq_size, d, &GatherOutputsAndInvertPermutationKernel<T, TIndex>,
+      /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
+  return GpuLaunchKernel(GatherOutputsAndInvertPermutationKernel<T, TIndex>,
+                         config.block_count, config.thread_per_block, 0,
+                         d.stream(), uniq_size, input, sorted_unique_input_inds,
+                         sorted_unique_perm, segment_ends, output,
+                         inv_sorted_unique_perm, count);
+}
+
 template <typename TIndex>
-Status ComputeCounts(const GPUDevice& d, int64 uniq_size, int64 input_size,
-                     const TIndex* __restrict__ segment_ends,
-                     TIndex* __restrict__ count) {
+__global__ void LookupAndScatterUniqueIdsKernel(
+    int64 input_size, const TIndex* sorted_input_inds,
+    const TIndex* __restrict__ sorted_input_unique_ids,
+    const TIndex* __restrict__ inv_sorted_unique_perm,
+    TIndex* __restrict__ idx) {
+  GPU_1D_KERNEL_LOOP(i, input_size) {
+    idx[sorted_input_inds[i]] =
+        inv_sorted_unique_perm[sorted_input_unique_ids[i]];
+  }
+}
+
+// Maps the values of sorted_input_unique_ids and scatters them to idx using
+// sorted_input_inds.
+template <typename TIndex>
+Status LookupAndScatterUniqueIds(const GPUDevice& d, int64 input_size,
+                                 const TIndex* sorted_input_inds,
+                                 const TIndex* sorted_input_unique_ids,
+                                 const TIndex* inv_sorted_unique_perm,
+                                 TIndex* idx) {
   if (input_size == 0) return Status::OK();
   GpuLaunchConfig config = GetGpuLaunchConfig(
-      uniq_size, d, &ComputeCountsKernel<TIndex>,
+      input_size, d, &LookupAndScatterUniqueIdsKernel<TIndex>,
       /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
-  return GpuLaunchKernel(ComputeCountsKernel<TIndex>, config.block_count,
-                         config.thread_per_block, 0, d.stream(), uniq_size,
-                         input_size, segment_ends, count);
+  return GpuLaunchKernel(LookupAndScatterUniqueIdsKernel<TIndex>,
+                         config.block_count, config.thread_per_block, 0,
+                         d.stream(), input_size, sorted_input_inds,
+                         sorted_input_unique_ids, inv_sorted_unique_perm, idx);
 }
 
 }  // namespace
@@ -122,6 +175,16 @@ class UniqueOpGPU : public AsyncOpKernel {
  public:
   explicit UniqueOpGPU(OpKernelConstruction* context)
       : AsyncOpKernel(context) {}
+
+  template <typename U>
+  void AllocateTemp(OpKernelContext* context, int64 size, Tensor* tensor,
+                    U** tensor_data, DoneCallback done) const {
+    OP_REQUIRES_OK_ASYNC(context,
+                         context->allocate_temp(DataTypeToEnum<U>::value,
+                                                TensorShape({size}), tensor),
+                         done);
+    *tensor_data = tensor->flat<U>().data();
+  }
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
     const Tensor& input = context->input(0);
@@ -139,40 +202,56 @@ class UniqueOpGPU : public AsyncOpKernel {
                       done);
 
     se::Stream* stream = context->op_device_context()->stream();
-    OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
+    OP_REQUIRES_ASYNC(context, stream,
+                      errors::Internal("No GPU stream available."), done);
 
     int64 input_size = input.NumElements();
 
     // The algorithm implemented here is as follows:
-    // 1) Sort input to get sorted_input and sort_permutation.
-    // 2) Construct an indicator array (0's with a 1 at the end of each segment)
-    //    from sorted_input and scan it to produce sorted_idx.
-    // 3) Use sorted_idx to scatter each unique value in sorted_input to output,
-    //    and use sort_permutation to scatter sorted_idx to idx.
-    //    If counts are required, also scatter array indices to segment_ends.
-    // 4) If counts are required, take the adjacent difference between values in
-    //    segment_ends to produce counts.
+    // 1) Sort the input to group equal values together in segments.
+    //      sorted_input, sorted_input_inds = sort(input)
+    // 2) Identify the boundaries between segments and use prefix sum to
+    //    compute the unique ID for each sorted value.
+    //      sorted_input_unique_ids = prefix_sum(indicator(sorted_input))
+    // 3) Extract the input index of the first occurrence of each unique value.
+    //    If counts are required, also extract the end index of each segment.
+    //      unique_input_inds[sorted_input_unique_ids] =
+    //          sorted_input_inds (@ indicator)
+    //      segment_ends[sorted_input_unique_ids[i] - 1] = i (@ indicator)
+    // 4) Sort the extracted unique input indices to put them in order of
+    //    first appearance.
+    //      sorted_unique_input_inds, sorted_unique_perm =
+    //          sort(unique_input_inds)
+    // 5) Gather the sorted unique input values to produce output, and invert
+    //    the second sort permutation to produce an inverse ID mapping. If
+    //    counts are required, also take the adjacent difference between
+    //    segment_ends indices to produce counts.
+    //      output = input[sorted_unique_input_inds]
+    //      inv_sorted_unique_perm[sorted_unique_perm[i]] = i
+    //      counts = adjacent_difference(segment_ends)
+    // 6) Look up unique IDs via the inverse ID mapping and scatter them using
+    //    the original sort permutation to produce the indices output.
+    //      idx[sorted_input_inds] =
+    //          inv_sorted_unique_perm[sorted_input_unique_ids]
+
+    Tensor sorted_input_inds;
+    TIndex* sorted_input_inds_ptr = nullptr;
+    AllocateTemp(context, input_size, &sorted_input_inds,
+                 &sorted_input_inds_ptr, done);
+    if (!context->status().ok()) return;
 
     Tensor sorted_input;
-    OP_REQUIRES_OK_ASYNC(
-        context,
-        context->allocate_temp(DataTypeToEnum<T>::value,
-                               TensorShape({input_size}), &sorted_input),
-        done);
-    T* sorted_input_ptr = sorted_input.flat<T>().data();
-    Tensor sort_permutation;
-    OP_REQUIRES_OK_ASYNC(
-        context,
-        context->allocate_temp(DataTypeToEnum<TIndex>::value,
-                               TensorShape({input_size}), &sort_permutation),
-        done);
-    TIndex* sort_permutation_ptr = sort_permutation.flat<TIndex>().data();
+    T* sorted_input_ptr = nullptr;
+    AllocateTemp(context, input_size, &sorted_input, &sorted_input_ptr, done);
+    if (!context->status().ok()) return;
+
     const T* input_ptr = input.flat<T>().data();
     OP_REQUIRES_OK_ASYNC(
         context,
-        (GpuRadixSort(context, input_size, input_ptr, sorted_input_ptr,
-                      /*indices = */ static_cast<const TIndex*>(nullptr),
-                      sort_permutation_ptr)),
+        (GpuRadixSort(context, input_size, /*keys_in = */ input_ptr,
+                      /*keys_out = */ sorted_input_ptr,
+                      /*indices_in = */ static_cast<const TIndex*>(nullptr),
+                      /*indices_out = */ sorted_input_inds_ptr)),
         done);
 
     // Create a fancy input iterator to indicate segment boundaries.
@@ -180,20 +259,20 @@ class UniqueOpGPU : public AsyncOpKernel {
                                     gpuprim::CountingInputIterator<TIndex>>
         segment_indicator_iter(0, {sorted_input_ptr});
 
-    Tensor sorted_idx;
-    OP_REQUIRES_OK_ASYNC(
-        context,
-        context->allocate_temp(DataTypeToEnum<TIndex>::value,
-                               TensorShape({input_size}), &sorted_idx),
-        done);
-    TIndex* sorted_idx_ptr = sorted_idx.flat<TIndex>().data();
+    Tensor sorted_input_unique_ids;
+    TIndex* sorted_input_unique_ids_ptr = nullptr;
+    AllocateTemp(context, input_size, &sorted_input_unique_ids,
+                 &sorted_input_unique_ids_ptr, done);
+    if (!context->status().ok()) return;
+
     OP_REQUIRES_OK_ASYNC(
         context,
         GpuInclusivePrefixSum(context, input_size, segment_indicator_iter,
-                              sorted_idx_ptr),
+                              sorted_input_unique_ids_ptr),
         done);
 
-    // Copy the last element of sorted_idx back to the host to obtain uniq_size.
+    // Copy the last element of sorted_input_unique_ids back to the host to
+    // obtain uniq_size.
     ScratchSpace<TIndex> last_idx_host(context, 1, /* on_host */ true);
     if (input_size > 0) {
       OP_REQUIRES_ASYNC(
@@ -202,7 +281,8 @@ class UniqueOpGPU : public AsyncOpKernel {
               ->ThenMemcpy(
                   last_idx_host.mutable_data(),
                   se::DeviceMemoryBase(
-                      const_cast<TIndex*>(sorted_idx_ptr) + (input_size - 1),
+                      const_cast<TIndex*>(sorted_input_unique_ids_ptr) +
+                          (input_size - 1),
                       sizeof(*last_idx_host.data())),
                   sizeof(*last_idx_host.data()))
               .ok(),
@@ -212,64 +292,116 @@ class UniqueOpGPU : public AsyncOpKernel {
     }
 
     bool has_count_output = num_outputs() > 2;
-    auto async_finish_computation =
-        [context, input_size, sorted_input, sorted_idx, sort_permutation,
-         last_idx_host, has_count_output, done]() -> void {
+    auto async_finish_computation = [this, context, input_size, input_ptr,
+                                     sorted_input_inds, sorted_input_inds_ptr,
+                                     sorted_input_unique_ids,
+                                     sorted_input_unique_ids_ptr, last_idx_host,
+                                     has_count_output, done]() -> void {
       const GPUDevice& device = context->eigen_gpu_device();
       int64 uniq_size = (*last_idx_host.data()) + 1;
 
-      // Allocate output for unique values.
+      Tensor unique_input_inds;
+      TIndex* unique_input_inds_ptr = nullptr;
+      AllocateTemp(context, uniq_size, &unique_input_inds,
+                   &unique_input_inds_ptr, done);
+      if (!context->status().ok()) return;
+
+      Tensor segment_ends;
+      TIndex* segment_ends_ptr = nullptr;
+      if (has_count_output) {
+        AllocateTemp(context, uniq_size, &segment_ends, &segment_ends_ptr,
+                     done);
+        if (!context->status().ok()) return;
+      }
+
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          ExtractFirstOccurrenceIndices(
+              device, input_size, uniq_size, sorted_input_inds_ptr,
+              sorted_input_unique_ids_ptr, unique_input_inds_ptr,
+              segment_ends_ptr),
+          done);
+
+      Tensor sorted_unique_input_inds;
+      TIndex* sorted_unique_input_inds_ptr = nullptr;
+      AllocateTemp(context, uniq_size, &sorted_unique_input_inds,
+                   &sorted_unique_input_inds_ptr, done);
+      if (!context->status().ok()) return;
+
+      Tensor sorted_unique_perm;
+      TIndex* sorted_unique_perm_ptr = nullptr;
+      AllocateTemp(context, uniq_size, &sorted_unique_perm,
+                   &sorted_unique_perm_ptr, done);
+      if (!context->status().ok()) return;
+
+      // Sort by input index so that output is in order of appearance.
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          (GpuRadixSort(context, uniq_size,
+                        /*keys_in = */ unique_input_inds_ptr,
+                        /*keys_out = */ sorted_unique_input_inds_ptr,
+                        /*indices_in = */ static_cast<const TIndex*>(nullptr),
+                        /*indices_out = */ sorted_unique_perm_ptr,
+                        /*begin_bit = */ 0,
+                        /*end_bit = */ Log2Ceiling(input_size))),
+          done);
+
+      // Free temporary tensor that is no longer needed.
+      unique_input_inds = Tensor();
+      unique_input_inds_ptr = nullptr;
+
       Tensor* output = nullptr;
       OP_REQUIRES_OK_ASYNC(
           context,
           context->allocate_output(0, TensorShape({uniq_size}), &output), done);
       T* output_ptr = output->flat<T>().data();
 
-      // Allocate output for indices.
+      Tensor inv_sorted_unique_perm;
+      TIndex* inv_sorted_unique_perm_ptr = nullptr;
+      AllocateTemp(context, uniq_size, &inv_sorted_unique_perm,
+                   &inv_sorted_unique_perm_ptr, done);
+      if (!context->status().ok()) return;
+
+      TIndex* count_ptr = nullptr;
+      if (has_count_output) {
+        Tensor* count = nullptr;
+        OP_REQUIRES_OK_ASYNC(
+            context,
+            context->allocate_output(2, TensorShape({uniq_size}), &count),
+            done);
+        count_ptr = count->flat<TIndex>().data();
+      }
+
+      // Compute output and counts (if necessary).
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          GatherOutputsAndInvertPermutation(
+              device, uniq_size, input_ptr, sorted_unique_input_inds_ptr,
+              sorted_unique_perm_ptr, segment_ends_ptr, output_ptr,
+              inv_sorted_unique_perm_ptr, count_ptr),
+          done);
+
+      // Free temporary tensors that are no longer needed.
+      sorted_unique_perm = Tensor();
+      sorted_unique_perm_ptr = nullptr;
+      sorted_unique_input_inds = Tensor();
+      sorted_unique_input_inds_ptr = nullptr;
+      segment_ends = Tensor();
+      segment_ends_ptr = nullptr;
+
       Tensor* idx = nullptr;
       OP_REQUIRES_OK_ASYNC(
           context, context->allocate_output(1, TensorShape({input_size}), &idx),
           done);
       TIndex* idx_ptr = idx->flat<TIndex>().data();
 
-      Tensor* count = nullptr;
-      Tensor segment_ends;
-      TIndex* segment_ends_ptr = nullptr;
-      if (has_count_output) {
-        // Allocate temp space and output for counts.
-        OP_REQUIRES_OK_ASYNC(
-            context,
-            context->allocate_output(2, TensorShape({uniq_size}), &count),
-            done);
-        OP_REQUIRES_OK_ASYNC(
-            context,
-            context->allocate_temp(
-                DataTypeToEnum<TIndex>::value,
-                TensorShape({std::max(uniq_size - 1, int64(0))}),
-                &segment_ends),
-            done);
-        segment_ends_ptr = segment_ends.flat<TIndex>().data();
-      }
-
-      // Compute output and idx.
-      const T* sorted_input_ptr = sorted_input.flat<T>().data();
-      const TIndex* sorted_idx_ptr = sorted_idx.flat<TIndex>().data();
-      const TIndex* sort_permutation_ptr =
-          sort_permutation.flat<TIndex>().data();
+      // Compute indices output.
       OP_REQUIRES_OK_ASYNC(
           context,
-          ScatterToOutputs(device, input_size, sorted_input_ptr, sorted_idx_ptr,
-                           sort_permutation_ptr, output_ptr, idx_ptr,
-                           segment_ends_ptr),
+          LookupAndScatterUniqueIds(device, input_size, sorted_input_inds_ptr,
+                                    sorted_input_unique_ids_ptr,
+                                    inv_sorted_unique_perm_ptr, idx_ptr),
           done);
-
-      if (has_count_output) {
-        TIndex* count_ptr = count->flat<TIndex>().data();
-        OP_REQUIRES_OK_ASYNC(context,
-                             ComputeCounts(device, uniq_size, input_size,
-                                           segment_ends_ptr, count_ptr),
-                             done);
-      }
 
       done();
     };
