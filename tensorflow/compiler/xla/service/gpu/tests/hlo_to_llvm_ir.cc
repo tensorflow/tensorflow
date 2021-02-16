@@ -13,9 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
+#include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
+#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/tools/hlo_module_loader.h"
@@ -31,10 +34,15 @@ the XLA GPU IR emitters.
 
 Note that the LLVM IR does not contain the *full* module, but only parts that
 will be code generated into PTX.  The NVPTX compiler also generates a
-GpuExecutable on the side that is not printed.)";
+GpuExecutable on the side that is not printed.
+
+When passed the parameter `--ptx`, the LLVM IR will be optimized and PTX
+will be emitted and printed instead of the non-optimized LLVM.
+By default SM 70 is targeted. But this can be changed with `--sm=SM`.)";
 
 namespace {
-xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text) {
+xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
+                                  bool generate_ptx, int sm) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::HloModule> hlo_module,
       xla::LoadModuleFromData(/*data=*/hlo_text, /*format=*/"hlo"));
@@ -54,8 +62,8 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text) {
   gpu_device_info.block_dim_limit_z = 65535;
 
   xla::gpu::CudaComputeCapability cuda_compute_capability;
-  cuda_compute_capability.cc_major = 7;
-  cuda_compute_capability.cc_minor = 0;
+  cuda_compute_capability.cc_major = sm / 10;
+  cuda_compute_capability.cc_minor = sm % 10;
   std::string target_triple = "nvptx64-nvidia-cuda";
   std::string datalayout = "nvptx64-nvidia-cuda";
   TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> llvm_module,
@@ -66,11 +74,24 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text) {
                           /*platform_name=*/"CUDA", gpu_device_info,
                           cuda_compute_capability, /*pointer_size=*/8));
 
-  llvm_module->print(llvm::outs(), nullptr);
+  if (!generate_ptx) {
+    llvm_module->print(llvm::outs(), nullptr);
+  } else {
+    std::pair<int, int> gpu_version = std::make_pair(
+      cuda_compute_capability.cc_major,
+      cuda_compute_capability.cc_minor);
+    std::string libdevice_dir = xla::gpu::GetLibdeviceDir(hlo_module->config());
+    TF_ASSIGN_OR_RETURN(
+      std::string ptx,
+      xla::gpu::nvptx::CompileToPtx(llvm_module.get(), gpu_version,
+				    hlo_module->config(), libdevice_dir));
+    std::cout << ptx << std::endl;
+  }
   return xla::Status::OK();
 }
 
-xla::Status CompileAndPrintLlvmIrFromFile(const std::string& file_name) {
+xla::Status CompileAndPrintLlvmIrFromFile(const std::string& file_name,
+					  bool ptx, int sm) {
   std::string full_text;
   TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(tensorflow::Env::Default(),
                                                   file_name, &full_text));
@@ -78,7 +99,7 @@ xla::Status CompileAndPrintLlvmIrFromFile(const std::string& file_name) {
   std::vector<std::string> hlo_module_texts =
       absl::StrSplit(full_text, "// -----");
   for (const std::string& hlo_module_text : hlo_module_texts) {
-    TF_RETURN_IF_ERROR(CompileAndPrintLlvmIr(hlo_module_text));
+    TF_RETURN_IF_ERROR(CompileAndPrintLlvmIr(hlo_module_text, ptx, sm));
   }
 
   return xla::Status::OK();
@@ -86,8 +107,12 @@ xla::Status CompileAndPrintLlvmIrFromFile(const std::string& file_name) {
 }  // namespace
 
 int main(int argc, char** argv) {
+  bool ptx = false;
+  int sm = 70;
   std::vector<tensorflow::Flag> flag_list;
   xla::AppendDebugOptionsFlags(&flag_list);
+  flag_list.emplace_back("ptx", &ptx, "Print PTX instead of not optimized LLVM.");
+  flag_list.emplace_back("sm", &sm, "Specify the SM to target (useful only with --ptx).");
   // The usage string includes the message at the top of the file, the
   // DebugOptions flags and the flags defined above.
   const std::string kUsageString = absl::StrCat(
@@ -99,7 +124,7 @@ int main(int argc, char** argv) {
   }
 
   QCHECK(argc == 2) << "Must specify a single input file";
-  TF_CHECK_OK(CompileAndPrintLlvmIrFromFile(argv[1]));
+  TF_CHECK_OK(CompileAndPrintLlvmIrFromFile(argv[1], ptx, sm));
 
   return 0;
 }

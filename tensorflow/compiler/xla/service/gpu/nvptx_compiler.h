@@ -32,6 +32,8 @@ namespace gpu {
 
 void WarnIfBadDriverJITVersion();
 
+string GetLibdeviceDir(const HloModuleConfig& hlo_module_config);
+
 // NVPTXCompiler generates efficient GPU executables for NVPTX target.
 class NVPTXCompiler : public GpuCompiler {
  public:
