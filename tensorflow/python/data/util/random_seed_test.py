@@ -24,7 +24,6 @@ from absl.testing import parameterized
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.util import random_seed as data_random_seed
-from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -125,24 +124,15 @@ class RandomSeedTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testRandomSeed(self, input_fn, output_fn):
 
     tinput, toutput = input_fn._obj(), output_fn._obj() # pylint: disable=protected-access
-    def check(tinput, toutput):
-      random_seed.set_random_seed(tinput[0])
-      g_seed, op_seed = data_random_seed.get_seed(tinput[1])
-      g_seed = self.evaluate(g_seed)
-      op_seed = self.evaluate(op_seed)
-      msg = 'test_case = {0}, got {1}, want {2}'.format(
-          tinput, (g_seed, op_seed), toutput)
-      self.assertEqual((g_seed, op_seed), toutput, msg=msg)
-      random_seed.set_random_seed(None)
+    random_seed.set_random_seed(tinput[0])
+    g_seed, op_seed = data_random_seed.get_seed(tinput[1])
+    g_seed = self.evaluate(g_seed)
+    op_seed = self.evaluate(op_seed)
+    msg = 'test_case = {0}, got {1}, want {2}'.format(
+        tinput, (g_seed, op_seed), toutput)
+    self.assertEqual((g_seed, op_seed), toutput, msg=msg)
+    random_seed.set_random_seed(None)
 
-    check(tinput=tinput, toutput=toutput)
-
-    if not context.executing_eagerly():
-      random_seed.set_random_seed(1)
-      for i in range(10):
-        tinput = (1, None)
-        toutput = (1, i)
-        check(tinput=tinput, toutput=toutput)
 
 if __name__ == '__main__':
   test.main()
