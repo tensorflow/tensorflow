@@ -2163,7 +2163,6 @@ inline void Add(const ArithmeticParams& params,
     reference_ops::BroadcastAdd4DSlow(params, input1_shape, input1_data,
                                       input2_shape, input2_data, output_shape,
                                       output_data);
-    return;
   }
 }
 
