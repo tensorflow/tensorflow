@@ -35,37 +35,6 @@ namespace {
 class ReductionVectorizationTest : public GpuCodegenTest {};
 
 
-TEST_F(ReductionVectorizationTest, DISABLED_DisableSin) {
-  const char* hlo_text = R"(
-HloModule DisableSin
-
-%add_float {
-  %x = f32[] parameter(0)
-  %y = f32[] parameter(1)
-  ROOT %add.17 = f32[] add(f32[] %x, f32[] %y)
-}
-
-ENTRY %main {
-  %arg0.1 = f32[5,131072] parameter(0)
-  %sine = f32[5,131072] sine(f32[5,131072] %arg0.1)
-  %constant.0 = f32[] constant(0)
-  ROOT %reduce.18 = f32[5] reduce(f32[5,131072] %sine, f32[] %constant.0), dimensions={1}, to_apply=%add_float
-}
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> optimized_module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  CompileAndOptionallyVerifyPtx(std::move(optimized_module),
-                                R"(
-CHECK-NOT: ld.global.nc.v2.f32
-CHECK-NOT: ld.global.nc.v4.f32
-CHECK-NOT: ld.global.nc.u64
-CHECK-NOT: ld.global.u64
-)");
-
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
-}
-
 class ReductionVectorizationNoOptTest : public GpuCodegenTest {
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
