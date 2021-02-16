@@ -17,9 +17,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-GENERATE_BINARY_GPU_KERNEL(LogicalOr, i1, bool);
+GENERATE_BINARY_GPU_KERNEL(LogicalOr, DT_BOOL);
 // LogicalOr does not have a "T" attribute because it only works with type
 // bool. So we need to register it without TypeConstraint<bool>("T").
-REGISTER_GPU_KERNEL_NO_TYPE_CONSTRAINT(LogicalOr, i1, i1);
+REGISTER_GPU_KERNEL_NO_TYPE_CONSTRAINT(LogicalOr, DT_BOOL);
 
 }  // namespace tensorflow

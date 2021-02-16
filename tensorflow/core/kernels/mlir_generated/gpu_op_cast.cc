@@ -18,35 +18,33 @@ limitations under the License.
 
 namespace tensorflow {
 
-#define CURRY_TYPES(FN, arg0, arg1) \
-  FN(arg0, i1, bool, arg1);         \
-  FN(arg0, i8, int8, arg1);         \
-  FN(arg0, i16, int16, arg1);       \
-  FN(arg0, i32, int32, arg1);       \
-  FN(arg0, i64, int64, arg1);       \
-  FN(arg0, f16, Eigen::half, arg1); \
-  FN(arg0, f32, float, arg1);       \
-  FN(arg0, f64, double, arg1)
+#define CURRY_TYPES(FN, arg0) \
+  FN(arg0, DT_BOOL);          \
+  FN(arg0, DT_INT8);          \
+  FN(arg0, DT_INT16);         \
+  FN(arg0, DT_INT32);         \
+  FN(arg0, DT_INT64);         \
+  FN(arg0, DT_HALF);          \
+  FN(arg0, DT_FLOAT);         \
+  FN(arg0, DT_DOUBLE)
 
-#define GENERATE_AND_REGISTER_CAST_GPU(mlir_input_type, mlir_output_type, \
-                                       result_data_type, input_data_type) \
-  GENERATE_UNARY_GPU_KERNEL2(Cast, mlir_input_type, mlir_output_type,     \
-                             result_data_type, input_data_type);          \
-  REGISTER_KERNEL_BUILDER(                                                \
-      Name("Cast")                                                        \
-          .TypeConstraint<input_data_type>("SrcT")                        \
-          .TypeConstraint<result_data_type>("DstT")                       \
-          .Device(DEVICE_GPU),                                            \
-      MLIR_OP(Cast, GPU, mlir_input_type, mlir_output_type))
+#define GENERATE_AND_REGISTER_CAST_GPU(input_type, output_type)               \
+  GENERATE_UNARY_GPU_KERNEL2(Cast, input_type, output_type)                   \
+  REGISTER_KERNEL_BUILDER(                                                    \
+      Name("Cast")                                                            \
+          .TypeConstraint<typename EnumToDataType<input_type>::Type>("SrcT")  \
+          .TypeConstraint<typename EnumToDataType<output_type>::Type>("DstT") \
+          .Device(DEVICE_GPU),                                                \
+      MLIR_OP(Cast, GPU, input_type, output_type))
 
-CURRY_TYPES(GENERATE_AND_REGISTER_CAST_GPU, i1, bool)
-CURRY_TYPES(GENERATE_AND_REGISTER_CAST_GPU, i8, int8)
-CURRY_TYPES(GENERATE_AND_REGISTER_CAST_GPU, i16, int16)
-CURRY_TYPES(GENERATE_AND_REGISTER_CAST_GPU, i32, int32)
-CURRY_TYPES(GENERATE_AND_REGISTER_CAST_GPU, i64, int64)
-CURRY_TYPES(GENERATE_AND_REGISTER_CAST_GPU, f16, Eigen::half)
-CURRY_TYPES(GENERATE_AND_REGISTER_CAST_GPU, f32, float)
-CURRY_TYPES(GENERATE_AND_REGISTER_CAST_GPU, f64, double)
+CURRY_TYPES(GENERATE_AND_REGISTER_CAST_GPU, DT_BOOL)
+CURRY_TYPES(GENERATE_AND_REGISTER_CAST_GPU, DT_INT8)
+CURRY_TYPES(GENERATE_AND_REGISTER_CAST_GPU, DT_INT16)
+CURRY_TYPES(GENERATE_AND_REGISTER_CAST_GPU, DT_INT32)
+CURRY_TYPES(GENERATE_AND_REGISTER_CAST_GPU, DT_INT64)
+CURRY_TYPES(GENERATE_AND_REGISTER_CAST_GPU, DT_HALF)
+CURRY_TYPES(GENERATE_AND_REGISTER_CAST_GPU, DT_FLOAT)
+CURRY_TYPES(GENERATE_AND_REGISTER_CAST_GPU, DT_DOUBLE)
 
 #undef REGISTER_CAST_GPU
 #undef CURRY_TYPES
