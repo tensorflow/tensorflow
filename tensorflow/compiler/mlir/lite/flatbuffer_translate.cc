@@ -158,9 +158,13 @@ static LogicalResult MlirToFlatBufferFileTranslateFunction(
     op_or_arg_name_mapper =
         std::make_unique<tensorflow::OpOrArgLocNameMapper>();
   }
-  if (tflite::MlirToFlatBufferTranslateFunction(
-          module, &serialized_flatbuffer, emit_builtin_tflite_ops,
-          emit_select_tf_ops, emit_custom_ops, op_or_arg_name_mapper.get()))
+  tflite::FlatbufferExportOptions options;
+  options.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
+  options.emit_custom_ops = emit_custom_ops;
+  options.emit_select_tf_ops = emit_select_tf_ops;
+  options.op_or_arg_name_mapper = op_or_arg_name_mapper.get();
+  if (!tflite::MlirToFlatBufferTranslateFunction(module, options,
+                                                 &serialized_flatbuffer))
     return mlir::failure();
 
   output << serialized_flatbuffer;

@@ -1710,6 +1710,9 @@ Optional<std::string> Translator::Translate(
     const std::unordered_set<std::string>& select_user_tf_ops,
     const std::unordered_set<std::string>& tags,
     OpOrArgNameMapper* op_or_arg_name_mapper) {
+  OpOrArgLocNameMapper default_op_or_arg_name_mapper;
+  if (!op_or_arg_name_mapper)
+    op_or_arg_name_mapper = &default_op_or_arg_name_mapper;
   if (!UpdateEntryFunction(module)) return llvm::None;
   if (!IsValidTFLiteMlirModule(module)) return llvm::None;
   Translator translator(module, emit_builtin_tflite_ops, emit_select_tf_ops,
@@ -1942,69 +1945,23 @@ BufferOffset<tflite::SparsityParameters> Translator::BuildSparsityParameters(
 
 }  // namespace
 
-// Translates the given MLIR module in the TFLite dialect to TFLite FlatBuffer
-// format. Returns false on success.
-//
+namespace tflite {
 // TODO(hinsu): Support all valid MLIR modules in TFLite dialect by supporting
 // the following:
 //
 // * Quantization
 // * Ops with variable tensors
 //
-bool tflite::MlirToFlatBufferTranslateFunction(
-    ModuleOp module, std::string* serialized_flatbuffer,
-    bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
-    OpOrArgNameMapper* op_or_arg_name_mapper) {
-  return MlirToFlatBufferTranslateFunction(
-      module, serialized_flatbuffer, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, /*saved_model_tags=*/{},
-      op_or_arg_name_mapper);
-}
-
-bool tflite::MlirToFlatBufferTranslateFunction(
-    ModuleOp module, std::string* serialized_flatbuffer,
-    bool emit_builtin_tflite_ops, bool emit_select_tf_ops,
-    bool emit_custom_ops) {
-  OpOrArgLocNameMapper op_or_arg_name_mapper;
-  return MlirToFlatBufferTranslateFunction(
-      module, serialized_flatbuffer, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, /*saved_model_tags=*/{},
-      &op_or_arg_name_mapper);
-}
-
-bool tflite::MlirToFlatBufferTranslateFunction(
-    mlir::ModuleOp module, std::string* serialized_flatbuffer,
-    bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
-    const std::unordered_set<std::string>& saved_model_tags) {
-  OpOrArgLocNameMapper op_or_arg_name_mapper;
-  return MlirToFlatBufferTranslateFunction(
-      module, serialized_flatbuffer, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, saved_model_tags,
-      &op_or_arg_name_mapper);
-}
-
-bool tflite::MlirToFlatBufferTranslateFunction(
-    mlir::ModuleOp module, std::string* serialized_flatbuffer,
-    bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
-    const std::unordered_set<std::string>& saved_model_tags,
-    OpOrArgNameMapper* op_or_arg_name_mapper) {
-  std::unordered_set<std::string> select_user_tf_ops;
-  return MlirToFlatBufferTranslateFunction(
-      module, serialized_flatbuffer, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, select_user_tf_ops, saved_model_tags,
-      op_or_arg_name_mapper);
-}
-
-bool tflite::MlirToFlatBufferTranslateFunction(
-    ModuleOp module, std::string* serialized_flatbuffer,
-    bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
-    const std::unordered_set<std::string>& select_user_tf_ops,
-    const std::unordered_set<std::string>& saved_model_tags,
-    tensorflow::OpOrArgNameMapper* op_or_arg_name_mapper) {
+bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
+                                       const FlatbufferExportOptions& options,
+                                       std::string* serialized_flatbuffer) {
   auto maybe_translated = Translator::Translate(
-      module, emit_builtin_tflite_ops, emit_select_tf_ops, emit_custom_ops,
-      select_user_tf_ops, saved_model_tags, op_or_arg_name_mapper);
-  if (!maybe_translated) return true;
+      module, options.emit_builtin_tflite_ops, options.emit_select_tf_ops,
+      options.emit_custom_ops, options.select_user_tf_ops,
+      options.saved_model_tags, options.op_or_arg_name_mapper);
+  if (!maybe_translated) return false;
   *serialized_flatbuffer = std::move(*maybe_translated);
-  return false;
+  return true;
 }
+
+}  // namespace tflite
