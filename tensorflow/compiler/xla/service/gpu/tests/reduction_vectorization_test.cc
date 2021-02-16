@@ -35,56 +35,6 @@ namespace {
 class ReductionVectorizationTest : public GpuCodegenTest {};
 
 
-TEST_F(ReductionVectorizationTest, DISABLED_Exp) {
-  const char* hlo_text = R"(
-HloModule DisableSin
-
-%add_float {
-  %x = f32[] parameter(0)
-  %y = f32[] parameter(1)
-  ROOT %add.17 = f32[] add(f32[] %x, f32[] %y)
-}
-
-ENTRY %main {
-  %arg0.1 = f32[5,131072] parameter(0)
-  %sine = f32[5,131072] exponential(f32[5,131072] %arg0.1)
-  %constant.0 = f32[] constant(0)
-  ROOT %reduce.18 = f32[5] reduce(f32[5,131072] %sine, f32[] %constant.0), dimensions={1}, to_apply=%add_float
-}
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> optimized_module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  se::StreamExecutor* executor = backend().default_stream_executor();
-  int cc_major = 0, cc_minor = 0;
-  executor->GetDeviceDescription().cuda_compute_capability(&cc_major,
-                                                           &cc_minor);
-  string expected_ptx;
-  if (cc_major >= 6) {
-    expected_ptx = R"(
-CHECK: ld.global.nc.v2.f32
-CHECK: ld.global.nc.v2.f32
-CHECK: ld.global.nc.v2.f32
-CHECK: ld.global.nc.v2.f32
-)";
-  } else {
-    expected_ptx = R"(
-CHECK-NOT: ld.global.nc.v2.f32
-CHECK: ld.global.nc.f32
-CHECK: ld.global.nc.f32
-CHECK: ld.global.nc.f32
-CHECK: ld.global.nc.f32
-CHECK: ld.global.nc.f32
-CHECK: ld.global.nc.f32
-CHECK: ld.global.nc.f32
-CHECK: ld.global.nc.f32
-)";
-  }
-  CompileAndOptionallyVerifyPtx(std::move(optimized_module), expected_ptx);
-
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
-}
-
 TEST_F(ReductionVectorizationTest, DISABLED_DisableSin) {
   const char* hlo_text = R"(
 HloModule DisableSin
