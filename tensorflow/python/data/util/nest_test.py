@@ -22,8 +22,8 @@ import collections
 import numpy as np
 from absl.testing import parameterized
 
-from tensorflow.python.data.util import nest
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.data.util import nest
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import sparse_tensor

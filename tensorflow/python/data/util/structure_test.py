@@ -25,10 +25,10 @@ import wrapt
 from absl.testing import parameterized
 
 from tensorflow.python.data.kernel_tests import test_base
-from tensorflow.python.framework import combinations
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops

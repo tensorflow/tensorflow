@@ -20,9 +20,9 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import traverse
-from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.framework import combinations
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import math_ops
