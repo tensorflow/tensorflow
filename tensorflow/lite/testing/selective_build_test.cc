@@ -64,12 +64,12 @@ bool RunWithRandomInputs(const std::string& filename) {
 }
 
 TEST(SelectiveBuiltTest, AddModel) {
-  std::string model = "third_party/tensorflow/lite/testdata/add.bin";
+  std::string model = "tensorflow/lite/testdata/add.bin";
   EXPECT_THAT(RunWithRandomInputs(model), true);
 }
 
 TEST(SelectiveBuiltTest, LSTMModel) {
-  std::string model = "third_party/tensorflow/lite/testdata/lstm.bin";
+  std::string model = "tensorflow/lite/testdata/lstm.bin";
   EXPECT_THAT(RunWithRandomInputs(model), true);
 }
 }  // namespace tflite
