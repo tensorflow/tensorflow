@@ -64,7 +64,7 @@ py_test(
     deps = [
         ":benchmark_util",
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//third_party/py/numpy",
     ],
 )
@@ -79,7 +79,7 @@ cuda_py_test(
     ],
     deps = [
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/keras/utils:tf_inspect",
     ],
 )
@@ -90,7 +90,7 @@ cuda_py_test(
     python_version = "PY3",
     deps = [
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
@@ -100,7 +100,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":distribution_util",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//third_party/py/numpy",
     ],
 )
@@ -112,7 +112,7 @@ py_test(
     tags = COMMON_TAGS,
     deps = [
         ":benchmark_util",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
@@ -124,7 +124,7 @@ cuda_py_test(
     deps = [
         ":benchmark_util",
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
@@ -136,7 +136,7 @@ cuda_py_test(
     deps = [
         ":benchmark_util",
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
@@ -148,7 +148,7 @@ cuda_py_test(
     deps = [
         ":benchmark_util",
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
@@ -160,7 +160,7 @@ cuda_py_test(
     deps = [
         ":benchmark_util",
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//third_party/py/numpy",
     ],
 )
@@ -173,7 +173,7 @@ cuda_py_test(
     deps = [
         ":benchmark_util",
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
@@ -185,7 +185,7 @@ cuda_py_test(
     deps = [
         ":benchmark_util",
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
@@ -197,7 +197,7 @@ cuda_py_test(
     deps = [
         ":benchmark_util",
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//third_party/py/numpy",
     ],
 )
@@ -210,7 +210,7 @@ cuda_py_test(
     deps = [
         ":benchmark_util",
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
@@ -223,7 +223,7 @@ cuda_py_test(
         ":benchmark_util",
         ":distribution_util",
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
@@ -232,7 +232,7 @@ py_library(
     srcs = ["distribution_util.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
@@ -246,7 +246,7 @@ py_test(
     deps = [
         ":benchmark_util",
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/keras/optimizer_v2",
     ],
 )
@@ -263,5 +263,5 @@ py_binary(
     srcs = ["model_memory_profile.py"],
     python_version = "PY3",
     tags = ["no_oss"],
-    deps = ["//tensorflow:tensorflow_py"],
+    deps = ["//tensorflow:tensorflow_py_no_contrib"],
 )
