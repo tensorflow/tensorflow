@@ -2724,7 +2724,7 @@ inline void SubWithActivation(
     const T* input1_data, const RuntimeShape& input2_shape,
     const T* input2_data, const RuntimeShape& output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("SubWithActivation_optimized");
-
+  TFLITE_DCHECK_EQ(input1_shape.FlatSize(), input2_shape.FlatSize());
   auto input1_map = MapAsVector(input1_data, input1_shape);
   auto input2_map = MapAsVector(input2_data, input2_shape);
   auto output_map = MapAsVector(output_data, output_shape);
