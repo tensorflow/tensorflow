@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR=${SCRIPT_DIR}/../../../../../..
+ROOT_DIR=${SCRIPT_DIR}/../../../../..
 cd "${ROOT_DIR}"
 
 source tensorflow/lite/micro/tools/make/bash_helpers.sh
@@ -43,23 +43,28 @@ if [ ! -d ${DOWNLOADS_DIR} ]; then
   exit 1
 fi
 
-DOWNLOADED_CMSIS_PATH=${DOWNLOADS_DIR}/cmsis
+DOWNLOADED_CORSTONE_PATH=${DOWNLOADS_DIR}/corstone300
 
-if [ -d ${DOWNLOADED_CMSIS_PATH} ]; then
-  echo >&2 "${DOWNLOADED_CMSIS_PATH} already exists, skipping the download."
+if [ -d ${DOWNLOADED_CORSTONE_PATH} ]; then
+  echo >&2 "${DOWNLOADED_CORSTONE_PATH} already exists, skipping the download."
 else
+  UNAME_S=`uname -s`
+  if [ ${UNAME_S} == Linux ]; then
+    CORSTONE_URL=https://developer.arm.com/-/media/Arm%20Developer%20Community/Downloads/OSS/FVP/Corstone-300/FVP_Corstone_SSE-300_Ethos-U55_11.12_57.tgz
+    EXPECTED_MD5=08cc89b02a41917c2224f390f3ac0b47
+  else
+    echo "OS type ${UNAME_S} not supported."
+    exit 1
+  fi
 
-  ZIP_PREFIX="71627bc91534ed9eec2361c0ef6442cd057653e0"
-  CMSIS_URL="http://github.com/ARM-software/CMSIS_5/archive/${ZIP_PREFIX}.zip"
-  CMSIS_MD5="207c49970758c663e2ce1cc0245972a9"
+  TEMPFILE=$(mktemp -d)/temp_file
+  wget ${CORSTONE_URL} -O ${TEMPFILE} >&2
+  check_md5 ${TEMPFILE} ${EXPECTED_MD5}
 
-  # wget is much faster than git clone of the entire repo. So we wget a specific
-  # version and can then apply a patch, as needed.
-  wget ${CMSIS_URL} -O /tmp/${ZIP_PREFIX}.zip >&2
-  check_md5 /tmp/${ZIP_PREFIX}.zip ${CMSIS_MD5}
-
-  unzip -qo /tmp/${ZIP_PREFIX}.zip -d /tmp >&2
-  mv /tmp/CMSIS_5-${ZIP_PREFIX} ${DOWNLOADED_CMSIS_PATH}
+  TEMPDIR=$(mktemp -d)
+  tar -C ${TEMPDIR} -xvzf ${TEMPFILE} >&2
+  mkdir ${DOWNLOADED_CORSTONE_PATH}
+  ${TEMPDIR}/FVP_Corstone_SSE-300_Ethos-U55.sh --i-agree-to-the-contained-eula --no-interactive -d ${DOWNLOADED_CORSTONE_PATH} >&2
 fi
 
 echo "SUCCESS"
