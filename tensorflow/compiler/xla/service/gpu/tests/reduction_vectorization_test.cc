@@ -35,35 +35,6 @@ namespace {
 class ReductionVectorizationTest : public GpuCodegenTest {};
 
 
-TEST_F(ReductionVectorizationTest, DISABLED_DisabledOddColumns) {
-  const char* hlo_text = R"(
-HloModule ReduceTileFit
-
-%max_ {
-  %x = f32[] parameter(0)
-  %y = f32[] parameter(1)
-  ROOT %maximum.7 = f32[] maximum(%x, %y)
-}
-
-ENTRY %main {
-  %param_0 = f32[5,131071] parameter(0)
-  %constant.3 = f32[] constant(0)
-  ROOT %reduce.8 = f32[5] reduce(f32[5,131071] %param_0, f32[] %constant.3), dimensions={1}, to_apply=%max_
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> optimized_module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  CompileAndOptionallyVerifyPtx(std::move(optimized_module),
-                                R"(
-CHECK-NOT: ld.global.nc.v2.f32
-CHECK-NOT: ld.global.nc.v4.f32
-CHECK-NOT: ld.global.nc.u64
-CHECK-NOT: ld.global.u64
-)");
-
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
-}
-
 TEST_F(ReductionVectorizationTest, DISABLED_Exp) {
   const char* hlo_text = R"(
 HloModule DisableSin
