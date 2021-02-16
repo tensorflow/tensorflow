@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/platform/bfloat16.h"
+#include "tensorflow/core/platform/cus.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/tstring.h"
 

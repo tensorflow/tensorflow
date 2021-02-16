@@ -362,6 +362,7 @@ bool CompressTensorProtoInPlace(int64 min_num_elements,
     HANDLE_COMPRESS_CASE(DT_QINT32);
     HANDLE_COMPRESS_CASE(DT_HALF);
     HANDLE_COMPRESS_CASE(DT_BFLOAT16);
+    HANDLE_COMPRESS_CASE(DT_CUS);
     default:
       return false;
   }

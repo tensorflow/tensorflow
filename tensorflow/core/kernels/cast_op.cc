@@ -210,6 +210,8 @@ class GpuCastOp : public CastOpBase {
       work_ = GetGpuCastFromComplex128(dst_dtype_);
     } else if (src_dtype_ == DT_BFLOAT16) {
       work_ = GetGpuCastFromBfloat(dst_dtype_);
+    } else if (src_dtype_ == DT_CUS){
+      work_ = GetGpuCastFromCus(dst_dtype_);
     }
 
     return work_ == nullptr ? Unimplemented() : Status::OK();
@@ -245,7 +247,9 @@ CURRY_TYPES2(REGISTER_CAST_GPU, double);
 CURRY_TYPES2(REGISTER_CAST_GPU, std::complex<float>);
 CURRY_TYPES2(REGISTER_CAST_GPU, std::complex<double>);
 REGISTER_CAST_GPU(float, bfloat16);
-REGISTER_CAST_GPU(bfloat16, float);
+REGISTER_CAST_GPU(bfloat16, float);    
+REGISTER_CAST_GPU(float, cus);
+REGISTER_CAST_GPU(cus, float);    
 
 #undef REGISTER_CAST_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

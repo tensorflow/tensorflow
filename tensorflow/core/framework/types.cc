@@ -91,6 +91,8 @@ string DataTypeStringInternal(DataType dtype) {
       return "qint32";
     case DT_BFLOAT16:
       return "bfloat16";
+    case DT_CUS:
+      return "cus";
     case DT_HALF:
       return "half";
     case DT_RESOURCE:
@@ -184,6 +186,9 @@ bool DataTypeFromString(StringPiece sp, DataType* dt) {
   } else if (sp == "bfloat16") {
     *dt = DT_BFLOAT16;
     return true;
+  } else if (sp == "cus") {
+    *dt = DT_CUS;
+    return true;
   } else if (sp == "half" || sp == "float16") {
     *dt = DT_HALF;
     return true;
@@ -265,6 +270,7 @@ DEFINE_DATATYPETOENUM_VALUE(qint16);
 DEFINE_DATATYPETOENUM_VALUE(quint16);
 DEFINE_DATATYPETOENUM_VALUE(qint32);
 DEFINE_DATATYPETOENUM_VALUE(bfloat16);
+DEFINE_DATATYPETOENUM_VALUE(cus);
 DEFINE_DATATYPETOENUM_VALUE(Eigen::half);
 DEFINE_DATATYPETOENUM_VALUE(ResourceHandle);
 DEFINE_DATATYPETOENUM_VALUE(Variant);

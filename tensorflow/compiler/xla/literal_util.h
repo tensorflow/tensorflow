@@ -218,15 +218,30 @@ class LiteralUtil {
   // recursively converts its elements.
   static Literal ConvertBF16ToF32(const LiteralSlice& bf16_literal);
 
+  // If the given literal's data type is cus, converts it to a float
+  // literal; otherwise, returns a copy of it. If the literal is a tuple,
+  // recursively converts its elements.
+  static Literal ConvertCusToF32(const LiteralSlice& cus_literal);
+
   // If the given literal's data type is bfloat16, converts it to a double
   // literal; otherwise, returns a copy of it. If the literal is a tuple,
   // recursively converts its elements.
   static Literal ConvertBF16ToF64(const LiteralSlice& bf16_literal);
 
+  // If the given literal's data type is cus, converts it to a double
+  // literal; otherwise, returns a copy of it. If the literal is a tuple,
+  // recursively converts its elements.
+  static Literal ConvertCusToF64(const LiteralSlice& cus_literal);
+
   // If the given literal's data type is float, converts it to a bfloat16
   // literal; otherwise, returns a copy of it. If the literal is a tuple,
   // recursively converts its elements.
   static Literal ConvertF32ToBF16(const LiteralSlice& f32_literal);
+
+  // If the given literal's data type is float, converts it to a cus
+  // literal; otherwise, returns a copy of it. If the literal is a tuple,
+  // recursively converts its elements.
+  static Literal ConvertF32ToCus(const LiteralSlice& f32_literal);
 
   // If the given literal's data type is float, converts it to a double
   // literal; otherwise, returns a copy of it. If the literal is a tuple,
@@ -237,6 +252,11 @@ class LiteralUtil {
   // literal; otherwise, returns a copy of it. If the literal is a tuple,
   // recursively converts its elements.
   static Literal ConvertF64ToBF16(const LiteralSlice& f64_literal);
+
+  // If the given literal's data type is double, converts it to a cus
+  // literal; otherwise, returns a copy of it. If the literal is a tuple,
+  // recursively converts its elements.
+  static Literal ConvertF64ToCus(const LiteralSlice& f64_literal);
 
   // If the given literal's data type is double, converts it to a bfloat16
   // literal; otherwise, returns a copy of it. If the literal is a tuple,

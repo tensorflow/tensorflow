@@ -58,6 +58,9 @@ Status DataTypeToPrimitiveType(DataType data_type, xla::PrimitiveType* type) {
     case tensorflow::DT_BFLOAT16:
       *type = xla::BF16;
       return Status::OK();
+    case tensorflow::DT_CUS:
+      *type = xla::CUS;
+      return Status::OK();
     case tensorflow::DT_HALF:
       *type = xla::F16;
       return Status::OK();
@@ -85,6 +88,7 @@ xla::StatusOr<DataType> EncodePrimitiveTypeAsDataType(xla::PrimitiveType type) {
       data_type_map = *new absl::flat_hash_map<xla::PrimitiveType, DataType>({
           {xla::PRED, DT_BOOL},
           {xla::BF16, DT_BFLOAT16},
+          {xla::CUS, DT_CUS},
           {xla::F16, DT_HALF},
           {xla::F32, DT_FLOAT},
           {xla::F64, DT_DOUBLE},
@@ -97,7 +101,7 @@ xla::StatusOr<DataType> EncodePrimitiveTypeAsDataType(xla::PrimitiveType type) {
           {xla::U16, DT_UINT16},
           {xla::U32, DT_UINT32},
           {xla::U64, DT_UINT64},
-          {xla::C128, DT_COMPLEX128},
+          {xla::C128, DT_COMPLEX128}
       });
 
   auto it = data_type_map.find(type);

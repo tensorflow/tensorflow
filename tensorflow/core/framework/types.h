@@ -27,6 +27,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
 // clang-format on
 #include "tensorflow/core/framework/bfloat16.h"
+#include "tensorflow/core/framework/cus.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -262,7 +263,7 @@ constexpr DataTypeSet kAllTypes =
     ToSet(DT_BOOL) | ToSet(DT_QINT8) | ToSet(DT_QUINT8) | ToSet(DT_QINT16) |
     ToSet(DT_QUINT16) | ToSet(DT_QINT32) | ToSet(DT_HALF) | ToSet(DT_RESOURCE) |
     ToSet(DT_VARIANT) | ToSet(DT_UINT32) | ToSet(DT_UINT64) |
-    ToSet(DT_BFLOAT16);
+    ToSet(DT_BFLOAT16) | ToSet(DT_CUS);
 inline const DataTypeSet& AllTypes() { return kAllTypes; }
 
 #if !defined(IS_MOBILE_PLATFORM) || defined(SUPPORT_SELECTIVE_REGISTRATION)
@@ -271,7 +272,8 @@ inline const DataTypeSet& AllTypes() { return kAllTypes; }
 constexpr DataTypeSet kRealNumberTypes =
     ToSet(DT_FLOAT) | ToSet(DT_DOUBLE) | ToSet(DT_INT32) | ToSet(DT_INT64) |
     ToSet(DT_UINT8) | ToSet(DT_INT16) | ToSet(DT_INT8) | ToSet(DT_UINT16) |
-    ToSet(DT_HALF) | ToSet(DT_UINT32) | ToSet(DT_UINT64) | ToSet(DT_BFLOAT16);
+    ToSet(DT_HALF) | ToSet(DT_UINT32) | ToSet(DT_UINT64) | ToSet(DT_BFLOAT16) |
+    ToSet(DT_CUS);
 inline const DataTypeSet RealNumberTypes() { return kRealNumberTypes; }
 
 // Return the list of all numeric types.
@@ -282,7 +284,7 @@ const DataTypeSet kNumberTypes =
     ToSet(DT_UINT8) | ToSet(DT_UINT16) | ToSet(DT_INT16) | ToSet(DT_INT8) |
     ToSet(DT_COMPLEX64) | ToSet(DT_COMPLEX128) | ToSet(DT_QINT8) |
     ToSet(DT_QUINT8) | ToSet(DT_QINT32) | ToSet(DT_HALF) | ToSet(DT_UINT32) |
-    ToSet(DT_UINT64) | ToSet(DT_BFLOAT16);
+    ToSet(DT_UINT64) | ToSet(DT_BFLOAT16) | ToSet(DT_CUS);
 inline const DataTypeSet& NumberTypes() { return kNumberTypes; }
 
 constexpr DataTypeSet kQuantizedTypes = ToSet(DT_QINT8) | ToSet(DT_QUINT8) |
@@ -295,7 +297,7 @@ const DataTypeSet kRealAndQuantizedTypes =
     ToSet(DT_FLOAT) | ToSet(DT_DOUBLE) | ToSet(DT_INT32) | ToSet(DT_INT64) |
     ToSet(DT_UINT8) | ToSet(DT_UINT16) | ToSet(DT_INT16) | ToSet(DT_INT8) |
     ToSet(DT_QINT8) | ToSet(DT_QUINT8) | ToSet(DT_QINT16) | ToSet(DT_QUINT16) |
-    ToSet(DT_QINT32) | ToSet(DT_HALF) | ToSet(DT_BFLOAT16);
+    ToSet(DT_QINT32) | ToSet(DT_HALF) | ToSet(DT_BFLOAT16) | ToSet(DT_CUS);
 inline const DataTypeSet& RealAndQuantizedTypes() {
   return kRealAndQuantizedTypes;
 }
@@ -395,6 +397,7 @@ MATCH_TYPE_AND_ENUM(qint16, DT_QINT16);
 MATCH_TYPE_AND_ENUM(quint16, DT_QUINT16);
 MATCH_TYPE_AND_ENUM(qint32, DT_QINT32);
 MATCH_TYPE_AND_ENUM(bfloat16, DT_BFLOAT16);
+MATCH_TYPE_AND_ENUM(cus, DT_CUS);
 MATCH_TYPE_AND_ENUM(Eigen::half, DT_HALF);
 MATCH_TYPE_AND_ENUM(ResourceHandle, DT_RESOURCE);
 MATCH_TYPE_AND_ENUM(Variant, DT_VARIANT);
@@ -472,7 +475,7 @@ constexpr DataTypeSet kDataTypesCanUseMemcpy =
     ToSet(DT_COMPLEX64) | ToSet(DT_COMPLEX128) | ToSet(DT_INT64) |
     ToSet(DT_UINT64) | ToSet(DT_BOOL) | ToSet(DT_QINT8) | ToSet(DT_QUINT8) |
     ToSet(DT_QINT16) | ToSet(DT_QUINT16) | ToSet(DT_QINT32) |
-    ToSet(DT_BFLOAT16) | ToSet(DT_HALF);
+    ToSet(DT_BFLOAT16) | ToSet(DT_CUS) | ToSet(DT_HALF);
 inline bool DataTypeCanUseMemcpy(DataType dt) {
   return kDataTypesCanUseMemcpy.Contains(dt);
 }

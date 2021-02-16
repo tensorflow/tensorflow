@@ -101,6 +101,7 @@ Comparison::Type Comparison::DefaultComparisonType(PrimitiveType type) {
     case F16:
     case F32:
     case BF16:
+    case CUS:
     case F64:
     case C64:
     case C128:

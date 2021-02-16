@@ -295,6 +295,39 @@ struct Helper<Variant> {
   }
 };
 
+template <>
+struct Helper<cus> {
+  // Encodes "n" elements of type Variant stored in "in" into destination
+  // "out", which is usually the TensorProto::tensor_content.
+  template <typename Destination>
+  static void Encode(TensorBuffer* in, int64 n, Destination* out) {
+    EncodeVariantList(in->base<const Variant>(), n,
+                      port::NewStringListEncoder(out));
+  }
+
+  // Decodes "n" elements of type Variant from "in" and constructs a
+  // buffer out of it. Returns nullptr if the decoding fails. "in" is
+  // usually the TensorProto::tensor_content.
+  template <typename Source>
+  static TensorBuffer* Decode(Allocator* a, const Source& in, int64 n) {
+    auto* buf = new Buffer<Variant>(a, n);
+    Variant* ps = buf->template base<Variant>();
+    if (ps == nullptr ||
+        !DecodeVariantList(port::NewStringListDecoder(in), ps, n)) {
+      buf->Unref();
+      return nullptr;
+    }
+    return buf;
+  }
+
+  // Returns the estimated memory usage of "n" elements of type T
+  // stored in buffer "in".
+  static int64 TotalBytes(TensorBuffer* in, int n) {
+    return n * sizeof(Variant);
+  }
+};
+
+
 template <typename T>
 struct ProtoHelper {};
 
@@ -450,6 +483,16 @@ struct ProtoHelper<qint32> {
 template <>
 struct ProtoHelper<bfloat16> {
   static void Fill(const bfloat16* data, size_t n, TensorProto* proto) {
+    proto->mutable_half_val()->Reserve(n);
+    for (size_t i = 0; i < n; ++i) {
+      proto->mutable_half_val()->AddAlreadyReserved(data[i].value);
+    }
+  }
+};
+
+template <>
+struct ProtoHelper<cus> {
+  static void Fill(const cus* data, size_t n, TensorProto* proto) {
     proto->mutable_half_val()->Reserve(n);
     for (size_t i = 0; i < n; ++i) {
       proto->mutable_half_val()->AddAlreadyReserved(data[i].value);
@@ -618,6 +661,31 @@ TensorBuffer* FromProtoField<bfloat16>(Allocator* a, const TensorProto& in,
   return buf;
 }
 
+
+template <>
+TensorBuffer* FromProtoField<cus>(Allocator* a, const TensorProto& in,
+                                       int64 n) {
+  CHECK_GT(n, 0);
+  Buffer<cus>* buf = new Buffer<cus>(a, n);
+  uint16* data = buf->template base<uint16>();
+  if (data == nullptr) {
+    buf->Unref();
+    return nullptr;
+  }
+  const int64 in_n = in.half_val().size();
+  auto begin = in.half_val().begin();
+  if (n <= in_n) {
+    std::copy_n(begin, n, data);
+  } else if (in_n > 0) {
+    std::copy_n(begin, in_n, data);
+    const uint16 last = *(data + in_n - 1);
+    std::fill_n(data + in_n, n - in_n, last);
+  } else {
+    std::fill_n(data, n, 0);
+  }
+  return buf;
+}
+
 // Copies T[n] stored in the buffer "in" into the repeated field in
 // "out" corresponding to type T.
 template <typename T>
@@ -753,6 +821,7 @@ bool Tensor::RefCountIsOne() const {
     CASE(quint16, SINGLE_ARG(STMTS))                           \
     CASE(qint16, SINGLE_ARG(STMTS))                            \
     CASE(bfloat16, SINGLE_ARG(STMTS))                          \
+    CASE(cus, SINGLE_ARG(STMTS))                          \
     CASE(Eigen::half, SINGLE_ARG(STMTS))                       \
     CASE(ResourceHandle, SINGLE_ARG(STMTS))                    \
     CASE(Variant, SINGLE_ARG(STMTS))                           \
@@ -1020,6 +1089,10 @@ inline float PrintOneElement(bfloat16 f, bool print_v2) {
   return static_cast<float>(f);
 }
 
+inline float PrintOneElement(cus f, bool print_v2) {
+  return static_cast<float>(f);
+}
+
 // Print from left dim to right dim recursively.
 template <typename T>
 void PrintOneDim(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
@@ -1163,6 +1236,9 @@ string Tensor::SummarizeValue(int64 max_entries, bool print_v2) const {
   switch (dtype()) {
     case DT_BFLOAT16:
       return SummarizeArray<bfloat16>(limit, num_elts, shape_, data, print_v2);
+      break;
+    case DT_CUS:
+      return SummarizeArray<cus>(limit, num_elts, shape_, data, print_v2);
       break;
     case DT_HALF:
       return SummarizeArray<Eigen::half>(limit, num_elts, shape_, data,

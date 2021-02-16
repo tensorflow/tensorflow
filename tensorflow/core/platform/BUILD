@@ -77,6 +77,7 @@ exports_files(
         "cpu_info.h",
         "cuda_libdevice_path.h",
         "bfloat16.h",
+        "cus.h",
         "demangle.h",
         "env.cc",
         "env.h",
@@ -139,6 +140,14 @@ cc_library(
     deps = [
         ":byte_order",
         "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "cus",
+    hdrs = ["cus.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
     ],
 )
 
@@ -806,6 +815,7 @@ cc_library(
     deps = [
         ":platform",
         ":bfloat16",
+        ":cus",
         ":tstring",
     ] + tf_platform_deps("types"),
 )

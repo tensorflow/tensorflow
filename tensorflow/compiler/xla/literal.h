@@ -136,7 +136,8 @@ class LiteralBase {
   template <typename T>
   typename std::enable_if<(std::is_arithmetic<T>::value ||
                            std::is_same<T, Eigen::half>::value ||
-                           std::is_same<T, bfloat16>::value),
+                           std::is_same<T, bfloat16>::value) ||
+                           std::is_same<T, cus>::value,
                           bool>::type
   IsEqualAt(absl::Span<const int64> multi_index, T value) const {
     if (auto as_s64 = GetIntegralAsS64(multi_index)) {

@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/bfloat16.h"
+#include "tensorflow/core/platform/cus.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/numbers.h"
@@ -149,6 +150,10 @@ bool IsIdentityPermutation(absl::Span<const int64> permutation) {
 }
 
 string RoundTripFpToString(tensorflow::bfloat16 value) {
+  return absl::StrFormat("%.4g", static_cast<float>(value));
+}
+
+string RoundTripFpToString(tensorflow::cus value) {
   return absl::StrFormat("%.4g", static_cast<float>(value));
 }
 

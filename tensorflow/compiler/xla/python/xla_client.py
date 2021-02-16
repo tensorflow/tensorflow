@@ -181,6 +181,7 @@ def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
 PrimitiveType = _xla.PrimitiveType
 
 bfloat16 = _xla.bfloat16_dtype()
+cus = _xla.cus_dtype()
 
 XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.PRED: np.dtype('bool'),
@@ -193,6 +194,7 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.U32: np.dtype('uint32'),
     PrimitiveType.U64: np.dtype('uint64'),
     PrimitiveType.BF16: np.dtype(bfloat16),
+    PrimitiveType.BF16: np.dtype(cus),
     PrimitiveType.F16: np.dtype('float16'),
     PrimitiveType.F32: np.dtype('float32'),
     PrimitiveType.F64: np.dtype('float64'),

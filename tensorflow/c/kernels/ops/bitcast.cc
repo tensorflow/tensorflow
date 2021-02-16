@@ -107,12 +107,12 @@ void RegisterBitcastOp() {
   TF_OpDefinitionBuilderAddOutput(op_builder, "output: type");
   TF_OpDefinitionBuilderAddAttr(
       op_builder,
-      "T: {bfloat16, half, float, double, int64, int32, uint8, uint16, "
+      "T: {bfloat16, cus, half, float, double, int64, int32, uint8, uint16, "
       "uint32, uint64, int8, int16, complex64, complex128, qint8, quint8, "
       "qint16, quint16, qint32}");
   TF_OpDefinitionBuilderAddAttr(
       op_builder,
-      "type: {bfloat16, half, float, double, int64, int32, uint8, uint16, "
+      "type: {bfloat16, cus, half, float, double, int64, int32, uint8, uint16, "
       "uint32, uint64, int8, int16, complex64, complex128, qint8, quint8, "
       "qint16, quint16, qint32}");
   TF_OpDefinitionBuilderSetShapeInferenceFunction(op_builder,

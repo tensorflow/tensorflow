@@ -518,6 +518,7 @@ bool IsNumericType(const DataType dtype) {
       CHECK_NOTNULL((new gtl::FlatSet<DataType>{
           // Floating point.
           DT_BFLOAT16,
+          DT_CUS,
           DT_HALF,
           DT_FLOAT,
           DT_DOUBLE,

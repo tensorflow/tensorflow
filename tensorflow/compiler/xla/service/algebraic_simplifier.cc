@@ -159,6 +159,8 @@ bool IsAllFpConstantPowerOf2(const HloInstruction* op) {
     switch (c->shape().element_type()) {
       case BF16:
         return static_cast<double>(c->literal().GetFirstElement<bfloat16>());
+      case CUS:
+        return static_cast<double>(c->literal().GetFirstElement<cus>());
       case F16:
         return static_cast<double>(c->literal().GetFirstElement<Eigen::half>());
       case F32:
@@ -573,6 +575,8 @@ float GetConstantValue(HloInstruction* inst) {
   switch (inst->shape().element_type()) {
     case BF16:
       return static_cast<float>(inst->literal().GetFirstElement<bfloat16>());
+    case CUS:
+      return static_cast<float>(inst->literal().GetFirstElement<cus>());
     case F32:
       return inst->literal().GetFirstElement<float>();
     default:

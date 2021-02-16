@@ -21,7 +21,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 CastFunctorType GetCpuCastFromHalf(DataType dst_dtype) {
-  CURRY_TYPES3(CAST_CASE, CPUDevice, Eigen::half);
+  CURRY_TYPES3_NO_CUS(CAST_CASE, CPUDevice, Eigen::half);
   return nullptr;
 }
 

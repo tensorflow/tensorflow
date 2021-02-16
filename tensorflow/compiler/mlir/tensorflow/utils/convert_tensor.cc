@@ -96,6 +96,16 @@ ElementsAttr ConvertBf16Tensor(const Tensor& input_tensor,
       /*isSplatBuffer=*/type.getNumElements() == 1);
 }
 
+// todo(chenhao: not sure if this is right)
+ElementsAttr ConvertCusTensor(const Tensor& input_tensor,
+                               RankedTensorType type) {
+  auto buffer = llvm::makeArrayRef(static_cast<char*>(input_tensor.data()),
+                                   input_tensor.TotalBytes());
+  return mlir::DenseElementsAttr::getFromRawBuffer(
+      type, buffer,
+      /*isSplatBuffer=*/type.getNumElements() == 1);
+}
+
 ElementsAttr ConvertHalfTensor(const Tensor& tensor, RankedTensorType type) {
   auto buffer = llvm::makeArrayRef(static_cast<char*>(tensor.data()),
                                    tensor.TotalBytes());
@@ -152,6 +162,8 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
     // match its storage type.
     case DT_BFLOAT16:
       return ConvertBf16Tensor(input_tensor, type);
+    case DT_CUS:
+      return ConvertCusTensor(input_tensor, type);
     case DT_HALF:
       return ConvertHalfTensor(input_tensor, type);
 

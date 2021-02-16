@@ -359,6 +359,7 @@ inline bool IsDtypeTrainable(DataType dtype) {
     case DT_COMPLEX128:
     case DT_RESOURCE:
     case DT_VARIANT:
+    case DT_CUS:
       return true;
     default:
       return false;

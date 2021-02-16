@@ -116,7 +116,12 @@ static xla::XlaOp FloorDivImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
                                xla::XlaOp y, const BCast& broadcast_helper) {
   std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
   if (DataTypeIsFloating(dtype)) {
-    if (dtype == DataType::DT_BFLOAT16) {
+    if (dtype == DataType::DT_CUS) {
+      return xla::ConvertElementType(
+          xla::Floor(xla::Div(xla::ConvertElementType(x, xla::F32),
+                              xla::ConvertElementType(y, xla::F32))),
+          xla::CUS);
+    } else if (dtype == DataType::DT_BFLOAT16) {
       // The result of a BF16 division may produce the Ceil of what was
       // computed by F32 division, so avoid end user confusion by doing the
       // intermediate divide in F32.

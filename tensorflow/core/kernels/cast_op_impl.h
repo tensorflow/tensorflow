@@ -49,9 +49,14 @@ CAST_FUNCTORS(Eigen::ThreadPoolDevice);
   CURRY_TYPES3_NO_HALF(FN, arg0, arg1)       \
   FN(arg0, arg1, Eigen::half);
 
-#define CURRY_TYPES3(FN, arg0, arg1)   \
+#define CURRY_TYPES3_NO_CUS(FN, arg0, arg1)   \
   CURRY_TYPES3_NO_BF16(FN, arg0, arg1) \
   FN(arg0, arg1, bfloat16);
+
+#define CURRY_TYPES3(FN, arg0, arg1)   \
+  CURRY_TYPES3_NO_BF16(FN, arg0, arg1) \
+  FN(arg0, arg1, bfloat16);            \
+  FN(arg0, arg1, cus);                   
 
 #define CAST_CASE(DEVICE, IN, OUT)                                        \
   if (DataTypeToEnum<OUT>::value == dst_dtype) {                          \
@@ -96,6 +101,8 @@ CastFunctorType GetCpuCastFromComplex128(DataType dst_dtype);
 
 CastFunctorType GetCpuCastFromBfloat(DataType dst_dtype);
 
+CastFunctorType GetCpuCastFromCus(DataType dst_dtype);
+
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 // Same, for GPU.
@@ -128,6 +135,8 @@ CastFunctorType GetGpuCastFromComplex64(DataType dst_dtype);
 CastFunctorType GetGpuCastFromComplex128(DataType dst_dtype);
 
 CastFunctorType GetGpuCastFromBfloat(DataType dst_dtype);
+
+CastFunctorType GetGpuCastFromCus(DataType dst_dtype);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

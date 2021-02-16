@@ -46,6 +46,8 @@ message TensorProto {
   // have some pointless zero padding for each value here.
   repeated int32 half_val = 13 [packed = true];
 
+  // DT_CUS todo(chenhao)
+
   // DT_FLOAT.
   repeated float float_val = 5 [packed = true];
 

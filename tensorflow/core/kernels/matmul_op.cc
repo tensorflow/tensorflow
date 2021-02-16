@@ -217,6 +217,7 @@ bool GetCublasAutotuneComputationType(const DataType& dtype,
         *compute_type = ComputationType::kF16;
       }
       return false;
+    case DT_CUS:
     case DT_FLOAT:
       *compute_type = ComputationType::kF32;
       return true;

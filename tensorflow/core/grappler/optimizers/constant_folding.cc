@@ -1123,6 +1123,9 @@ Status CreateConstantTensorAttrValue(DataType type, double value,
     case DT_HALF:
       t->add_half_val(static_cast<Eigen::half>(value).x);
       break;
+    case DT_CUS:
+      t->add_half_val(static_cast<cus>(value).value);
+      break;
     case DT_BFLOAT16:
       t->add_half_val(static_cast<bfloat16>(value).value);
       break;

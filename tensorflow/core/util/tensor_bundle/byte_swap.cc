@@ -76,6 +76,7 @@ Status ByteSwapTensor(Tensor* t) {
     case DT_INT32:
     case DT_QINT32:
     case DT_UINT32:
+    case DT_CUS:
       bytes_per_elem = 4;
       break;
 

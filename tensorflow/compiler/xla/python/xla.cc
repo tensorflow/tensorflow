@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
 #include "tensorflow/compiler/xla/python/bfloat16.h"
+#include "tensorflow/compiler/xla/python/cus.h"
 #include "tensorflow/compiler/xla/python/dlpack.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/ops.h"
@@ -254,6 +255,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("U64", U64)
       .value("F16", F16)
       .value("BF16", BF16)
+      .value("CUS", CUS)
       .value("F32", F32)
       .value("F64", F64)
       .value("C64", C64)
@@ -263,6 +265,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("TOKEN", TOKEN);
 
   m.def("bfloat16_dtype", Bfloat16Dtype);
+  m.def("cus_dtype", CusDtype);
 
   // Shapes
   py::class_<Shape> shape_class(m, "Shape");

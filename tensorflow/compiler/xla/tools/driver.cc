@@ -94,13 +94,14 @@ enum PrimitiveType {
   F32,
   F64,
   C64,
-  C128
+  C128,
+  CUS
 };
 
 const std::vector<std::string>& primitive_strings() {
   static auto vec = new std::vector<std::string>(
       {"s16", "s32", "s64", "u8", "u16", "u32", "u64", "f16", "bf16", "f32",
-       "f64", "c64", "c128"});
+       "f64", "c64", "c128", "cus"});
   return *vec;
 }
 
@@ -380,6 +381,7 @@ void Fill(void* buffer, const ArrayShape& shape) {
     case BF16:
     case C64:
     case C128:
+    case CUS:
       ExitWithMsg("Unsupported type: " + ToString(shape.type));
   }
 }
@@ -425,6 +427,7 @@ void Display(const void* buffer, const ArrayShape& shape) {
     case BF16:
     case C64:
     case C128:
+    case CUS:
       ExitWithMsg("Unsupported type: " + ToString(shape.type));
   }
 }

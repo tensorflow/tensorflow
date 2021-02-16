@@ -512,6 +512,9 @@ class SparseSegmentReductionOpBase : public OpKernel {
     if (input.dtype() == DT_BFLOAT16) {
       temp = tensorflow::Tensor(DT_FLOAT, output_shape);
     }
+    if (input.dtype() == DT_CUS) {
+      temp = tensorflow::Tensor(DT_FLOAT, output_shape);
+    }
     auto temp_flat = temp.flat_outer_dims<float>();
 
     int64 start = 0, end = 1;

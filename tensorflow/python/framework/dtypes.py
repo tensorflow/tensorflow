@@ -26,10 +26,12 @@ from tensorflow.core.framework import types_pb2
 # pylint: disable=invalid-import-order,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python import _pywrap_bfloat16
+from tensorflow.python import _pywrap_cus
 from tensorflow.python import _dtypes
 from tensorflow.python.util.tf_export import tf_export
 
 _np_bfloat16 = _pywrap_bfloat16.TF_bfloat16_type()
+_np_cus = _pywrap_cus.TF_cus()
 
 
 # pylint: disable=slots-on-old-class
@@ -43,6 +45,7 @@ class DType(_dtypes.DType):
   * `tf.float32`: 32-bit single-precision floating-point.
   * `tf.float64`: 64-bit double-precision floating-point.
   * `tf.bfloat16`: 16-bit truncated floating-point.
+  * `tf.cus`: customized data type
   * `tf.complex64`: 64-bit single-precision complex.
   * `tf.complex128`: 128-bit double-precision complex.
   * `tf.int8`: 8-bit signed integer.
@@ -127,6 +130,8 @@ class DType(_dtypes.DType):
       except:
         if self.base_dtype == bfloat16:
           return _np_bfloat16(float.fromhex("-0x1.FEp127"))
+        elif self.base_dtype == cus:
+          return _np_cus(float.fromhex("-0x1.FEp127"))
         raise TypeError("Cannot find minimum value of %s." % self)
 
   @property
@@ -151,6 +156,8 @@ class DType(_dtypes.DType):
       except:
         if self.base_dtype == bfloat16:
           return _np_bfloat16(float.fromhex("0x1.FEp127"))
+        elif self.base_dtype == cus:
+          return _np_cus(float.fromhex("0x1.FEp127"))
         raise TypeError("Cannot find maximum value of %s." % self)
 
   @property
@@ -288,6 +295,8 @@ resource_ref = DType(types_pb2.DT_RESOURCE_REF)
 variant_ref = DType(types_pb2.DT_VARIANT_REF)
 bfloat16 = DType(types_pb2.DT_BFLOAT16)
 tf_export("dtypes.bfloat16", "bfloat16").export_constant(__name__, "bfloat16")
+cus = DType(types_pb2.DT_CUS)
+tf_export("dtypes.cus", "cus").export_constant(__name__, "cus")
 float16_ref = DType(types_pb2.DT_HALF_REF)
 half_ref = float16_ref
 float32_ref = DType(types_pb2.DT_FLOAT_REF)
@@ -311,6 +320,7 @@ qint16_ref = DType(types_pb2.DT_QINT16_REF)
 quint16_ref = DType(types_pb2.DT_QUINT16_REF)
 qint32_ref = DType(types_pb2.DT_QINT32_REF)
 bfloat16_ref = DType(types_pb2.DT_BFLOAT16_REF)
+cus_ref = DType(types_pb2.DT_CUS_REF)
 
 # Maintain an intern table so that we don't have to create a large
 # number of small objects.
@@ -336,6 +346,7 @@ _INTERN_TABLE = {
     types_pb2.DT_QUINT16: quint16,
     types_pb2.DT_QINT32: qint32,
     types_pb2.DT_BFLOAT16: bfloat16,
+    types_pb2.DT_CUS: cus, 
     types_pb2.DT_RESOURCE: resource,
     types_pb2.DT_VARIANT: variant,
     types_pb2.DT_HALF_REF: float16_ref,
@@ -359,6 +370,7 @@ _INTERN_TABLE = {
     types_pb2.DT_QUINT16_REF: quint16_ref,
     types_pb2.DT_QINT32_REF: qint32_ref,
     types_pb2.DT_BFLOAT16_REF: bfloat16_ref,
+    types_pb2.DT_CUS_REF: cus_ref,
     types_pb2.DT_RESOURCE_REF: resource_ref,
     types_pb2.DT_VARIANT_REF: variant_ref,
 }
@@ -386,6 +398,7 @@ _TYPE_TO_STRING = {
     types_pb2.DT_QUINT16: "quint16",
     types_pb2.DT_QINT32: "qint32",
     types_pb2.DT_BFLOAT16: "bfloat16",
+    types_pb2.DT_CUS: "cus",
     types_pb2.DT_RESOURCE: "resource",
     types_pb2.DT_VARIANT: "variant",
     types_pb2.DT_HALF_REF: "float16_ref",
@@ -409,6 +422,7 @@ _TYPE_TO_STRING = {
     types_pb2.DT_QUINT16_REF: "quint16_ref",
     types_pb2.DT_QINT32_REF: "qint32_ref",
     types_pb2.DT_BFLOAT16_REF: "bfloat16_ref",
+    types_pb2.DT_CUS_REF: "cus_ref",
     types_pb2.DT_RESOURCE_REF: "resource_ref",
     types_pb2.DT_VARIANT_REF: "variant_ref",
 }
@@ -465,6 +479,7 @@ _NP_TO_TF = {
     _np_quint16: quint16,
     _np_qint32: qint32,
     _np_bfloat16: bfloat16,
+    _np_cus: cus,
 }
 
 # Map (some) NumPy platform dtypes to TF ones using their fixed-width
@@ -531,6 +546,8 @@ _TF_TO_NP = {
         _np_qint32,
     types_pb2.DT_BFLOAT16:
         _np_bfloat16,
+    types_pb2.DT_CUS:
+        _np_cus,
 
     # Ref types
     types_pb2.DT_HALF_REF:
@@ -575,6 +592,8 @@ _TF_TO_NP = {
         _np_qint32,
     types_pb2.DT_BFLOAT16_REF:
         _np_bfloat16,
+    types_pb2.DT_CUS_REF:
+        _np_cus,
 }
 
 _QUANTIZED_DTYPES_NO_REF = frozenset([qint8, quint8, qint16, quint16, qint32])

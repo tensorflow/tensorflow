@@ -119,6 +119,8 @@ class AlphaNum {
       : piece_(digits_, DoubleToBuffer(f, digits_)) {}
   AlphaNum(bfloat16 bf)  // NOLINT(runtime/explicit)
       : piece_(digits_, FloatToBuffer(static_cast<float>(bf), digits_)) {}
+  AlphaNum(cus c)  // NOLINT(runtime/explicit)
+      : piece_(digits_, FloatToBuffer(static_cast<float>(c), digits_)) {}
 
   AlphaNum(Hex hex);               // NOLINT(runtime/explicit)
 

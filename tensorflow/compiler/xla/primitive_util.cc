@@ -32,6 +32,8 @@ int SignificandWidth(PrimitiveType type) {
       return std::numeric_limits<double>::digits;
     case BF16:
       return kBFloat16MantissaBits + 1;
+    case CUS:
+      return std::numeric_limits<float>::digits;
     case F16:
       return 11;
     default:

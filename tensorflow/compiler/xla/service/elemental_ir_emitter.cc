@@ -207,11 +207,30 @@ StatusOr<llvm::Value*> EmitF32ToBF16(llvm::Value* f32_value,
   return b->CreateBitCast(truncated, b->getInt16Ty());
 }
 
+// todo(chenhao) dynamic cus
+StatusOr<llvm::Value*> EmitF32ToCus(llvm::Value* f32_value,
+                                     llvm::IRBuilder<>* b) {
+  // TF_ASSIGN_OR_RETURN(
+  //     auto reduced_precision,
+  //     EmitReducePrecisionIR(
+  //         /*src_ty=*/F32, f32_value,
+  //         /*dest_exponent_bits=*/primitive_util::kBFloat16ExponentBits,
+  //         /*dest_mantissa_bits=*/primitive_util::kBFloat16MantissaBits, b));
+  // auto as_int32 = b->CreateBitCast(reduced_precision, b->getInt32Ty());
+  // auto shifted = b->CreateLShr(as_int32, 16);
+  // auto truncated = b->CreateTrunc(shifted, b->getInt16Ty());
+  return b->CreateBitCast(f32_value, b->getInt32Ty()); //todo(chenhao)
+}
+
 llvm::Value* EmitBF16ToF32(llvm::Value* bf16_value, llvm::IRBuilder<>* b) {
   auto as_int16 = b->CreateBitCast(bf16_value, b->getInt16Ty());
   auto as_int32 = b->CreateZExt(as_int16, b->getInt32Ty());
   auto shifted = b->CreateShl(as_int32, 16);
   return b->CreateBitCast(shifted, b->getFloatTy());
+}
+
+llvm::Value* EmitCusToF32(llvm::Value* cus_value, llvm::IRBuilder<>* b) {
+  return b->CreateBitCast(cus_value, b->getFloatTy());
 }
 
 llvm::Value* EmitIntegralToFloating(llvm::Value* integer_value,
@@ -381,6 +400,14 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
           return operand_value;
         }
       }
+      if (from_type == CUS) {
+        TF_RET_CHECK(to_type != CUS);
+        operand_value = EmitCusToF32(operand_value, b_);
+        from_type = F32;
+        if (from_type == to_type) {
+          return operand_value;
+        }
+      }
       if (primitive_util::IsComplexType(to_type)) {
         PrimitiveType to_component_type =
             primitive_util::ComplexComponentType(to_type);
@@ -401,6 +428,15 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
               operand_value, llvm_ir::PrimitiveTypeToIrType(F32, module_));
         }
         return EmitF32ToBF16(operand_value, b_);
+      }
+      if (to_type == CUS) {
+        // Cast to F32 first. Other floating point formats are not supported by
+        // EmitReducePrecisionIR.
+        if (from_type != F32) {
+          operand_value = b_->CreateFPCast(
+              operand_value, llvm_ir::PrimitiveTypeToIrType(F32, module_));
+        }
+        return EmitF32ToCus(operand_value, b_);
       }
       if (to_type == PRED) {
         return b_->CreateZExt(

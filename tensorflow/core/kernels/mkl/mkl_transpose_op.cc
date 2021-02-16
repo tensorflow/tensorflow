@@ -244,6 +244,7 @@ Status MklConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
       case DT_BFLOAT16:
         return MKLTransposeND<bfloat16>(ctx, in, out, perm);
         break;
+      // todo(chenhao) might need to support cus later
       // TODO(nhasabni): support other types such as INT8.
       default:
         break;

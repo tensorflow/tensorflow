@@ -56,6 +56,7 @@ class DequantizeOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("mode", &mode_string));
     OP_REQUIRES(
         ctx,
+        // todo(chenhao) might need to modify here in the future
         (ctx->output_type(0) == DT_FLOAT || ctx->output_type(0) == DT_BFLOAT16),
         errors::InvalidArgument("Output type must be bfloat16 or float,"
                                 " is '" +

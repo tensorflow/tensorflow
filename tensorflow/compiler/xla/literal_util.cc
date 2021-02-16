@@ -93,14 +93,29 @@ Literal ConvertType(LiteralSlice literal) {
   return ConvertType<bfloat16, float>(bf16_literal);
 }
 
+/* static */ Literal LiteralUtil::ConvertCusToF32(
+    const LiteralSlice& cus_literal) {
+  return ConvertType<cus, float>(cus_literal);
+}
+
 /* static */ Literal LiteralUtil::ConvertBF16ToF64(
     const LiteralSlice& bf16_literal) {
   return ConvertType<bfloat16, double>(bf16_literal);
 }
 
+/* static */ Literal LiteralUtil::ConvertCusToF64(
+    const LiteralSlice& cus_literal) {
+  return ConvertType<cus, double>(cus_literal);
+}
+
 /* static */ Literal LiteralUtil::ConvertF32ToBF16(
     const LiteralSlice& f32_literal) {
   return ConvertType<float, bfloat16>(f32_literal);
+}
+
+/* static */ Literal LiteralUtil::ConvertF32ToCus(
+    const LiteralSlice& f32_literal) {
+  return ConvertType<float, cus>(f32_literal);
 }
 
 /* static */ Literal LiteralUtil::ConvertF32ToF64(
@@ -111,6 +126,11 @@ Literal ConvertType(LiteralSlice literal) {
 /* static */ Literal LiteralUtil::ConvertF64ToBF16(
     const LiteralSlice& f64_literal) {
   return ConvertType<double, bfloat16>(f64_literal);
+}
+
+/* static */ Literal LiteralUtil::ConvertF64ToCus(
+    const LiteralSlice& f64_literal) {
+  return ConvertType<double, cus>(f64_literal);
 }
 
 /* static */ Literal LiteralUtil::ConvertF64ToF32(
@@ -144,6 +164,8 @@ Literal ConvertType(LiteralSlice literal) {
       return LiteralUtil::CreateR0<half>(static_cast<half>(0.0f));
     case BF16:
       return LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(0.0f));
+    case CUS:
+      return LiteralUtil::CreateR0<cus>(static_cast<cus>(0.0f));
     case F32:
       return LiteralUtil::CreateR0<float>(0);
     case F64:
@@ -185,6 +207,8 @@ Literal ConvertType(LiteralSlice literal) {
       return LiteralUtil::CreateR0<half>(static_cast<half>(1.0f));
     case BF16:
       return LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(1.0f));
+    case CUS:
+      return LiteralUtil::CreateR0<cus>(static_cast<cus>(1.0f));
     case F32:
       return LiteralUtil::CreateR0<float>(1);
     case F64:
@@ -240,6 +264,9 @@ Literal ConvertType(LiteralSlice literal) {
     case BF16:
       return LiteralUtil::CreateR0<bfloat16>(
           static_cast<bfloat16>(-std::numeric_limits<float>::infinity()));
+    case CUS:
+      return LiteralUtil::CreateR0<cus>(
+          static_cast<cus>(-std::numeric_limits<float>::infinity()));
     case TUPLE:
       LOG(FATAL) << "tuple element type has no minimum value";
     case OPAQUE_TYPE:
@@ -281,6 +308,9 @@ Literal ConvertType(LiteralSlice literal) {
     case BF16:
       return LiteralUtil::CreateR0<bfloat16>(
           static_cast<bfloat16>(std::numeric_limits<float>::infinity()));
+    case CUS:
+      return LiteralUtil::CreateR0<cus>(
+          static_cast<cus>(std::numeric_limits<float>::infinity()));
     case TUPLE:
       LOG(FATAL) << "tuple element type has no maximum value";
     case OPAQUE_TYPE:
@@ -299,6 +329,9 @@ Literal ConvertType(LiteralSlice literal) {
     case BF16:
       return LiteralUtil::CreateR0<bfloat16>(
           static_cast<bfloat16>(std::numeric_limits<float>::quiet_NaN()));
+    case CUS:
+      return LiteralUtil::CreateR0<cus>(
+          static_cast<cus>(std::numeric_limits<float>::quiet_NaN()));
     case F32:
       return LiteralUtil::CreateR0<float>(
           std::numeric_limits<float>::quiet_NaN());
@@ -439,6 +472,9 @@ Literal ConvertType(LiteralSlice literal) {
     case U16:
       return LiteralUtil::CreateR0<uint16>(literal.GetFirstElement<uint16>());
     // 32 bit types.
+    case CUS:
+      return LiteralUtil::CreateR0<cus>(
+          literal.GetFirstElement<cus>());
     case F32:
       return LiteralUtil::CreateR0<float>(literal.GetFirstElement<float>());
     case S32:

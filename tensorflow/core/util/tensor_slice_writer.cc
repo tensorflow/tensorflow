@@ -169,6 +169,7 @@ size_t TensorSliceWriter::MaxBytesPerElement(DataType dt) {
     case DT_INVALID:
     case DT_STRING:
     case DT_BFLOAT16:
+    case DT_CUS:
     default:
       LOG(FATAL) << "MaxBytesPerElement not implemented for dtype: " << dt;
   }

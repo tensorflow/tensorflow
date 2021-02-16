@@ -285,6 +285,7 @@ class RemoteFusedGraphExecuteUtils {
   // a logic running in the remote processor possibly be in a separate binary
   // which may not link tensorflow libraries.  To deal with this situation,
   // remote fused graph needs to overwrite the tensor data by a byte array.
+  // todo(chenhao) not important for now, might need to consider later
   static Status CopyByteArrayToTensor(const void* src_ptr, const int src_size,
                                       Tensor* tensor);
 

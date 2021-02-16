@@ -80,6 +80,7 @@ limitations under the License.
 #define TF_CALL_quint8(m) m(::tensorflow::quint8)
 #define TF_CALL_qint32(m) m(::tensorflow::qint32)
 #define TF_CALL_bfloat16(m) m(::tensorflow::bfloat16)
+#define TF_CALL_cus(m) m(::tensorflow::cus)
 #define TF_CALL_qint16(m) m(::tensorflow::qint16)
 
 #define TF_CALL_quint16(m) m(::tensorflow::quint16)
@@ -112,6 +113,7 @@ limitations under the License.
 #define TF_CALL_quint8(m) m(::tensorflow::quint8)
 #define TF_CALL_qint32(m) m(::tensorflow::qint32)
 #define TF_CALL_bfloat16(m)
+#define TF_CALL_bfloat16(m) 
 #define TF_CALL_qint16(m) m(::tensorflow::qint16)
 
 #define TF_CALL_quint16(m) m(::tensorflow::quint16)
@@ -143,6 +145,7 @@ limitations under the License.
 #define TF_CALL_quint8(m)
 #define TF_CALL_qint32(m)
 #define TF_CALL_bfloat16(m)
+#define TF_CALL_cus(m)
 #define TF_CALL_qint16(m)
 
 #define TF_CALL_quint16(m)
@@ -161,7 +164,7 @@ limitations under the License.
   TF_CALL_INTEGRAL_TYPES_NO_INT32(m) TF_CALL_int32(m)
 
 #define TF_CALL_FLOAT_TYPES(m) \
-  TF_CALL_half(m) TF_CALL_bfloat16(m) TF_CALL_float(m) TF_CALL_double(m)
+  TF_CALL_half(m) TF_CALL_bfloat16(m) TF_CALL_cus(m) TF_CALL_float(m) TF_CALL_double(m)
 
 #define TF_CALL_REAL_NUMBER_TYPES(m) \
   TF_CALL_INTEGRAL_TYPES(m) TF_CALL_FLOAT_TYPES(m)
@@ -170,7 +173,7 @@ limitations under the License.
   TF_CALL_INTEGRAL_TYPES(m) TF_CALL_half(m) TF_CALL_float(m) TF_CALL_double(m)
 
 #define TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m)                            \
-  TF_CALL_half(m) TF_CALL_bfloat16(m) TF_CALL_float(m) TF_CALL_double(m) \
+  TF_CALL_half(m) TF_CALL_bfloat16(m) TF_CALL_cus(m) TF_CALL_float(m) TF_CALL_double(m) \
       TF_CALL_INTEGRAL_TYPES_NO_INT32(m)
 
 #define TF_CALL_COMPLEX_TYPES(m) TF_CALL_complex64(m) TF_CALL_complex128(m)
