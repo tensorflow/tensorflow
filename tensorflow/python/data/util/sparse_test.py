@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 from absl.testing import parameterized
 
 from tensorflow.python.data.kernel_tests import test_base
@@ -36,49 +38,384 @@ from tensorflow.python.platform import test
 # sure they are not executed before the (eager- or graph-mode) test environment
 # has been set up.
 #
+
+def _test_any_sparse_combinations():
+
+  cases = [
+      ("CASE_0", lambda: (), False),
+      ("CASE_1", lambda: (ops.Tensor), False),
+      ("CASE_2", lambda: (((ops.Tensor))), False),
+      ("CASE_3", lambda: (ops.Tensor, ops.Tensor), False),
+      ("CASE_4", lambda: (ops.Tensor, sparse_tensor.SparseTensor), True),
+      ("CASE_5", lambda: (sparse_tensor.SparseTensor, sparse_tensor.SparseTensor), True),
+      ("CASE_6", lambda: (((sparse_tensor.SparseTensor))), True)
+  ]
+  def reduce_fn(x, y):
+    name, classes_fn, expected = y
+    return x + combinations.combine(
+        classes_fn=combinations.NamedObject(
+            "classes_fn.{}".format(name), classes_fn
+        ),
+        expected=combinations.NamedObject(
+            "expected.{}".format(name), expected
+        )
+    )
+
+  return functools.reduce(reduce_fn, cases, [])
+
+def _test_as_dense_shapes_combinations():
+
+  cases = [
+      (
+          "CASE_0",
+          lambda: (),
+          lambda: (),
+          lambda: ()
+      ),
+      (
+          "CASE_1",
+          lambda: tensor_shape.TensorShape([]),
+          lambda: ops.Tensor,
+          lambda: tensor_shape.TensorShape([])
+      ),
+      (
+          "CASE_2",
+          lambda: tensor_shape.TensorShape([]),
+          lambda: sparse_tensor.SparseTensor,
+          lambda: tensor_shape.unknown_shape()
+      ),
+      (
+          "CASE_3",
+          lambda: (tensor_shape.TensorShape([])),
+          lambda: (ops.Tensor),
+          lambda: (tensor_shape.TensorShape([]))
+      ),
+      (
+          "CASE_4",
+          lambda: (tensor_shape.TensorShape([])),
+          lambda: (sparse_tensor.SparseTensor),
+          lambda: (tensor_shape.unknown_shape())
+      ),
+      (
+          "CASE_5",
+          lambda: (tensor_shape.TensorShape([]), ()),
+          lambda: (ops.Tensor, ()),
+          lambda: (tensor_shape.TensorShape([]), ())
+      ),
+      (
+          "CASE_6",
+          lambda: ((), tensor_shape.TensorShape([])),
+          lambda: ((), ops.Tensor),
+          lambda: ((), tensor_shape.TensorShape([]))
+      ),
+      (
+          "CASE_7",
+          lambda: (tensor_shape.TensorShape([]), ()),
+          lambda: (sparse_tensor.SparseTensor, ()),
+          lambda: (tensor_shape.unknown_shape(), ())
+      ),
+      (
+          "CASE_8",
+          lambda: ((), tensor_shape.TensorShape([])),
+          lambda: ((), sparse_tensor.SparseTensor),
+          lambda: ((), tensor_shape.unknown_shape())
+      ),
+      (
+          "CASE_9",
+          lambda: (tensor_shape.TensorShape([]), (),
+                   tensor_shape.TensorShape([])),
+          lambda: (ops.Tensor, (), ops.Tensor),
+          lambda: (tensor_shape.TensorShape([]), (),
+                   tensor_shape.TensorShape([]))
+      ),
+      (
+          "CASE_10",
+          lambda: (tensor_shape.TensorShape([]), (),
+                   tensor_shape.TensorShape([])),
+          lambda: (sparse_tensor.SparseTensor, (),
+                   sparse_tensor.SparseTensor),
+          lambda: (tensor_shape.unknown_shape(), (),
+                   tensor_shape.unknown_shape())
+      ),
+      (
+          "CASE_11",
+          lambda: ((), tensor_shape.TensorShape([]), ()),
+          lambda: ((), ops.Tensor, ()),
+          lambda: ((), tensor_shape.TensorShape([]), ())
+      ),
+      (
+          "CASE_12",
+          lambda: ((), tensor_shape.TensorShape([]), ()),
+          lambda: ((), sparse_tensor.SparseTensor, ()),
+          lambda: ((), tensor_shape.unknown_shape(), ())
+      )
+  ]
+  def reduce_fn(x, y):
+    name, types_fn, classes_fn, expected_fn = y
+    return x + combinations.combine(
+        types_fn=combinations.NamedObject(
+            "types_fn.{}".format(name), types_fn
+        ),
+        classes_fn=combinations.NamedObject(
+            "classes_fn.{}".format(name), classes_fn
+        ),
+        expected_fn=combinations.NamedObject(
+            "expected_fn.{}".format(name), expected_fn
+        )
+    )
+
+  return functools.reduce(reduce_fn, cases, [])
+
+
+def _test_as_dense_types_combinations():
+  cases = [
+      (
+          "CASE_0",
+          lambda: (),
+          lambda: (),
+          lambda: ()
+      ),
+      (
+          "CASE_1",
+          lambda: dtypes.int32,
+          lambda: ops.Tensor,
+          lambda: dtypes.int32
+      ),
+      (
+          "CASE_2",
+          lambda: dtypes.int32,
+          lambda: sparse_tensor.SparseTensor,
+          lambda: dtypes.variant
+      ),
+      (
+          "CASE_3",
+          lambda: (dtypes.int32),
+          lambda: (ops.Tensor),
+          lambda: (dtypes.int32)
+      ),
+      (
+          "CASE_4",
+          lambda: (dtypes.int32),
+          lambda: (sparse_tensor.SparseTensor),
+          lambda: (dtypes.variant)
+      ),
+      (
+          "CASE_5",
+          lambda: (dtypes.int32, ()),
+          lambda: (ops.Tensor, ()),
+          lambda: (dtypes.int32, ())
+      ),
+      (
+          "CASE_6",
+          lambda: ((), dtypes.int32),
+          lambda: ((), ops.Tensor),
+          lambda: ((), dtypes.int32)
+      ),
+      (
+          "CASE_7",
+          lambda: (dtypes.int32, ()),
+          lambda: (sparse_tensor.SparseTensor, ()),
+          lambda: (dtypes.variant, ())
+      ),
+      (
+          "CASE_8",
+          lambda: ((), dtypes.int32),
+          lambda: ((), sparse_tensor.SparseTensor),
+          lambda: ((), dtypes.variant)
+      ),
+      (
+          "CASE_9",
+          lambda: (dtypes.int32, (), dtypes.int32),
+          lambda: (ops.Tensor, (), ops.Tensor),
+          lambda: (dtypes.int32, (), dtypes.int32)
+      ),
+      (
+          "CASE_10",
+          lambda: (dtypes.int32, (), dtypes.int32),
+          lambda: (sparse_tensor.SparseTensor, (),
+                   sparse_tensor.SparseTensor),
+          lambda: (dtypes.variant, (), dtypes.variant)
+      ),
+      (
+          "CASE_11",
+          lambda: ((), dtypes.int32, ()),
+          lambda: ((), ops.Tensor, ()),
+          lambda: ((), dtypes.int32, ())
+      ),
+      (
+          "CASE_12",
+          lambda: ((), dtypes.int32, ()),
+          lambda: ((), sparse_tensor.SparseTensor, ()),
+          lambda: ((), dtypes.variant, ())
+      ),
+  ]
+  def reduce_fn(x, y):
+    name, types_fn, classes_fn, expected_fn = y
+    return x + combinations.combine(
+        types_fn=combinations.NamedObject(
+            "types_fn.{}".format(name), types_fn
+        ),
+        classes_fn=combinations.NamedObject(
+            "classes_fn.{}".format(name), classes_fn
+        ),
+        expected_fn=combinations.NamedObject(
+            "expected_fn.{}".format(name), expected_fn
+        )
+    )
+
+  return functools.reduce(reduce_fn, cases, [])
+
+def _test_get_classes_combinations():
+  cases = [
+      (
+          "CASE_0",
+          lambda: (),
+          lambda: ()
+      ),
+      (
+          "CASE_1",
+          lambda: sparse_tensor.SparseTensor(
+              indices=[[0]], values=[1], dense_shape=[1]),
+          lambda: sparse_tensor.SparseTensor
+      ),
+      (
+          "CASE_2",
+          lambda: constant_op.constant([1]),
+          lambda: ops.Tensor
+      ),
+      (
+          "CASE_3",
+          lambda: (sparse_tensor.SparseTensor(
+              indices=[[0]], values=[1], dense_shape=[1])),
+          lambda: (sparse_tensor.SparseTensor)
+      ),
+      (
+          "CASE_4",
+          lambda: (constant_op.constant([1])),
+          lambda: (ops.Tensor)
+      ),
+      (
+          "CASE_5",
+          lambda: (sparse_tensor.SparseTensor(
+              indices=[[0]], values=[1], dense_shape=[1]), ()),
+          lambda: (sparse_tensor.SparseTensor, ())
+      ),
+      (
+          "CASE_6",
+          lambda: ((), sparse_tensor.SparseTensor(
+              indices=[[0]], values=[1], dense_shape=[1])),
+          lambda: ((), sparse_tensor.SparseTensor)
+      ),
+      (
+          "CASE_7",
+          lambda: (constant_op.constant([1]), ()),
+          lambda: (ops.Tensor, ())
+      ),
+      (
+          "CASE_8",
+          lambda: ((), constant_op.constant([1])),
+          lambda: ((), ops.Tensor)
+      ),
+      (
+          "CASE_9",
+          lambda: (sparse_tensor.SparseTensor(
+              indices=[[0]], values=[1], dense_shape=[1]),
+                   (), constant_op.constant([1])),
+          lambda: (sparse_tensor.SparseTensor, (), ops.Tensor)
+      ),
+      (
+          "CASE_10",
+          lambda: ((), sparse_tensor.SparseTensor(
+              indices=[[0]], values=[1], dense_shape=[1]), ()),
+          lambda: ((), sparse_tensor.SparseTensor, ())
+      ),
+      (
+          "CASE_11",
+          lambda: ((), constant_op.constant([1]), ()),
+          lambda: ((), ops.Tensor, ())
+      ),
+  ]
+  def reduce_fn(x, y):
+    name, classes_fn, expected_fn = y
+    return x + combinations.combine(
+        classes_fn=combinations.NamedObject(
+            "classes_fn.{}".format(name), classes_fn
+        ),
+        expected_fn=combinations.NamedObject(
+            "expected_fn.{}".format(name), expected_fn
+        )
+    )
+
+  return functools.reduce(reduce_fn, cases, [])
+
+
+def _test_serialize_deserialize_combinations():
+  cases = [
+      ("CASE_0", lambda: ()),
+      ("CASE_1", lambda: sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=[1], dense_shape=[1, 1])),
+      ("CASE_2", lambda: sparse_tensor.SparseTensor(
+          indices=[[3, 4]], values=[-1], dense_shape=[4, 5])),
+      ("CASE_3", lambda: sparse_tensor.SparseTensor(
+          indices=[[0, 0], [3, 4]], values=[1, -1],
+          dense_shape=[4, 5])),
+      ("CASE_4", lambda: (sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=[1], dense_shape=[1, 1]))),
+      ("CASE_5", lambda: (sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=[1], dense_shape=[1, 1]), ())),
+      ("CASE_6", lambda: ((), sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=[1], dense_shape=[1, 1])))
+  ]
+  def reduce_fn(x, y):
+    name, input_fn = y
+    return x + combinations.combine(
+        input_fn=combinations.NamedObject(
+            "input_fn.{}".format(name), input_fn
+        )
+    )
+
+  return functools.reduce(reduce_fn, cases, [])
+
+
+def _test_serialize_many_deserialize_combinations():
+  cases = [
+      ("CASE_0", lambda: ()),
+      ("CASE_1", lambda: sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=[1], dense_shape=[1, 1])),
+      ("CASE_2", lambda: sparse_tensor.SparseTensor(
+          indices=[[3, 4]], values=[-1], dense_shape=[4, 5])),
+      ("CASE_3", lambda: sparse_tensor.SparseTensor(
+          indices=[[0, 0], [3, 4]], values=[1, -1],
+          dense_shape=[4, 5])),
+      ("CASE_4", lambda: (sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=[1], dense_shape=[1, 1]))),
+      ("CASE_5", lambda: (sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=[1], dense_shape=[1, 1]), ())),
+      ("CASE_6", lambda: ((), sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=[1], dense_shape=[1, 1])))
+  ]
+  def reduce_fn(x, y):
+    name, input_fn = y
+    return x + combinations.combine(
+        input_fn=combinations.NamedObject(
+            "input_fn.{}".format(name), input_fn
+        )
+    )
+
+  return functools.reduce(reduce_fn, cases, [])
+
+
 class SparseTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(test_case_fn=[
-              combinations.NamedObject("Case_0", lambda: {
-                  "classes": (),
-                  "expected": False
-              }),
-              combinations.NamedObject("Case_1", lambda: {
-                  "classes": (ops.Tensor),
-                  "expected": False
-              }),
-              combinations.NamedObject("Case_2", lambda: {
-                  "classes": (((ops.Tensor))),
-                  "expected": False
-              }),
-              combinations.NamedObject("Case_3", lambda: {
-                  "classes": (ops.Tensor, ops.Tensor),
-                  "expected": False
-              }),
-              combinations.NamedObject("Case_4", lambda: {
-                  "classes": (ops.Tensor, sparse_tensor.SparseTensor),
-                  "expected": True
-              }),
-              combinations.NamedObject("Case_5", lambda: {
-                  "classes": (sparse_tensor.SparseTensor,
-                              sparse_tensor.SparseTensor),
-                  "expected": True
-              }),
-              combinations.NamedObject("Case_6", lambda: {
-                  "classes": (((sparse_tensor.SparseTensor))),
-                  "expected": True
-              }),
-          ])
+          _test_any_sparse_combinations()
       )
   )
-  def testAnySparse(self, test_case_fn):
-    test_case_fn = test_case_fn._obj  # pylint: disable=protected-access
-    test_case = test_case_fn()
-    classes = test_case["classes"]
-    expected = test_case["expected"]
+  def testAnySparse(self, classes_fn, expected):
+    classes = classes_fn._obj() # pylint: disable=protected-access
+    expected = expected._obj # pylint: disable=protected-access
     self.assertEqual(sparse.any_sparse(classes), expected)
 
   def assertShapesEqual(self, a, b):
@@ -92,238 +429,36 @@ class SparseTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(test_case_fn=[
-              combinations.NamedObject("Case_0", lambda: {
-                  "types": (),
-                  "classes": (),
-                  "expected": ()
-              }),
-              combinations.NamedObject("Case_1", lambda: {
-                  "types": tensor_shape.TensorShape([]),
-                  "classes": ops.Tensor,
-                  "expected": tensor_shape.TensorShape([])
-              }),
-              combinations.NamedObject("Case_2", lambda: {
-                  "types": tensor_shape.TensorShape([]),
-                  "classes": sparse_tensor.SparseTensor,
-                  "expected": tensor_shape.unknown_shape()
-              }),
-              combinations.NamedObject("Case_3", lambda: {
-                  "types": (tensor_shape.TensorShape([])),
-                  "classes": (ops.Tensor),
-                  "expected": (tensor_shape.TensorShape([]))
-              }),
-              combinations.NamedObject("Case_4", lambda: {
-                  "types": (tensor_shape.TensorShape([])),
-                  "classes": (sparse_tensor.SparseTensor),
-                  "expected": (tensor_shape.unknown_shape())
-              }),
-              combinations.NamedObject("Case_5", lambda: {
-                  "types": (tensor_shape.TensorShape([]), ()),
-                  "classes": (ops.Tensor, ()),
-                  "expected": (tensor_shape.TensorShape([]), ())
-              }),
-              combinations.NamedObject("Case_6", lambda: {
-                  "types": ((), tensor_shape.TensorShape([])),
-                  "classes": ((), ops.Tensor),
-                  "expected": ((), tensor_shape.TensorShape([]))
-              }),
-              combinations.NamedObject("Case_7", lambda: {
-                  "types": (tensor_shape.TensorShape([]), ()),
-                  "classes": (sparse_tensor.SparseTensor, ()),
-                  "expected": (tensor_shape.unknown_shape(), ())
-              }),
-              combinations.NamedObject("Case_8", lambda: {
-                  "types": ((), tensor_shape.TensorShape([])),
-                  "classes": ((), sparse_tensor.SparseTensor),
-                  "expected": ((), tensor_shape.unknown_shape())
-              }),
-              combinations.NamedObject("Case_9", lambda: {
-                  "types": (tensor_shape.TensorShape([]), (),
-                            tensor_shape.TensorShape([])),
-                  "classes": (ops.Tensor, (), ops.Tensor),
-                  "expected": (tensor_shape.TensorShape([]), (),
-                               tensor_shape.TensorShape([]))
-              }),
-              combinations.NamedObject("Case_10", lambda: {
-                  "types": (tensor_shape.TensorShape([]), (),
-                            tensor_shape.TensorShape([])),
-                  "classes": (sparse_tensor.SparseTensor, (),
-                              sparse_tensor.SparseTensor),
-                  "expected": (tensor_shape.unknown_shape(), (),
-                               tensor_shape.unknown_shape())
-              }),
-              combinations.NamedObject("Case_11", lambda: {
-                  "types": ((), tensor_shape.TensorShape([]), ()),
-                  "classes": ((), ops.Tensor, ()),
-                  "expected": ((), tensor_shape.TensorShape([]), ())
-              }),
-              combinations.NamedObject("Case_12", lambda: {
-                  "types": ((), tensor_shape.TensorShape([]), ()),
-                  "classes": ((), sparse_tensor.SparseTensor, ()),
-                  "expected": ((), tensor_shape.unknown_shape(), ())
-              }),
-          ])
+          _test_as_dense_shapes_combinations()
       )
   )
-  def testAsDenseShapes(self, test_case_fn):
-    test_case_fn = test_case_fn._obj  # pylint: disable=protected-access
-    test_case = test_case_fn()
-    types = test_case["types"]
-    classes = test_case["classes"]
-    expected = test_case["expected"]
+  def testAsDenseShapes(self, types_fn, classes_fn, expected_fn):
+    types = types_fn._obj() # pylint: disable=protected-access
+    classes = classes_fn._obj() # pylint: disable=protected-access
+    expected = expected_fn._obj() # pylint: disable=protected-access
     self.assertShapesEqual(sparse.as_dense_shapes(types, classes), expected)
 
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(test_case_fn=[
-              combinations.NamedObject("Case_0", lambda: {
-                  "types": (),
-                  "classes": (),
-                  "expected": ()
-              }),
-              combinations.NamedObject("Case_1", lambda: {
-                  "types": dtypes.int32,
-                  "classes": ops.Tensor,
-                  "expected": dtypes.int32
-              }),
-              combinations.NamedObject("Case_2", lambda: {
-                  "types": dtypes.int32,
-                  "classes": sparse_tensor.SparseTensor,
-                  "expected": dtypes.variant
-              }),
-              combinations.NamedObject("Case_3", lambda: {
-                  "types": (dtypes.int32),
-                  "classes": (ops.Tensor),
-                  "expected": (dtypes.int32)
-              }),
-              combinations.NamedObject("Case_4", lambda: {
-                  "types": (dtypes.int32),
-                  "classes": (sparse_tensor.SparseTensor),
-                  "expected": (dtypes.variant)
-              }),
-              combinations.NamedObject("Case_5", lambda: {
-                  "types": (dtypes.int32, ()),
-                  "classes": (ops.Tensor, ()),
-                  "expected": (dtypes.int32, ())
-              }),
-              combinations.NamedObject("Case_6", lambda: {
-                  "types": ((), dtypes.int32),
-                  "classes": ((), ops.Tensor),
-                  "expected": ((), dtypes.int32)
-              }),
-              combinations.NamedObject("Case_7", lambda: {
-                  "types": (dtypes.int32, ()),
-                  "classes": (sparse_tensor.SparseTensor, ()),
-                  "expected": (dtypes.variant, ())
-              }),
-              combinations.NamedObject("Case_8", lambda: {
-                  "types": ((), dtypes.int32),
-                  "classes": ((), sparse_tensor.SparseTensor),
-                  "expected": ((), dtypes.variant)
-              }),
-              combinations.NamedObject("Case_9", lambda: {
-                  "types": (dtypes.int32, (), dtypes.int32),
-                  "classes": (ops.Tensor, (), ops.Tensor),
-                  "expected": (dtypes.int32, (), dtypes.int32)
-              }),
-              combinations.NamedObject("Case_10", lambda: {
-                  "types": (dtypes.int32, (), dtypes.int32),
-                  "classes": (sparse_tensor.SparseTensor, (),
-                              sparse_tensor.SparseTensor),
-                  "expected": (dtypes.variant, (), dtypes.variant)
-              }),
-              combinations.NamedObject("Case_11", lambda: {
-                  "types": ((), dtypes.int32, ()),
-                  "classes": ((), ops.Tensor, ()),
-                  "expected": ((), dtypes.int32, ())
-              }),
-              combinations.NamedObject("Case_12", lambda: {
-                  "types": ((), dtypes.int32, ()),
-                  "classes": ((), sparse_tensor.SparseTensor, ()),
-                  "expected": ((), dtypes.variant, ())
-              }),
-          ])
+          _test_as_dense_types_combinations()
       )
   )
-  def testAsDenseTypes(self, test_case_fn):
-    test_case_fn = test_case_fn._obj  # pylint: disable=protected-access
-    test_case = test_case_fn()
-    types = test_case["types"]
-    classes = test_case["classes"]
-    expected = test_case["expected"]
+  def testAsDenseTypes(self, types_fn, classes_fn, expected_fn):
+    types = types_fn._obj() # pylint: disable=protected-access
+    classes = classes_fn._obj() # pylint: disable=protected-access
+    expected = expected_fn._obj() # pylint: disable=protected-access
     self.assertEqual(sparse.as_dense_types(types, classes), expected)
 
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(test_case_fn=[
-              combinations.NamedObject("Case_0", lambda: {
-                  "classes": (),
-                  "expected": ()
-              }),
-              combinations.NamedObject("Case_1", lambda: {
-                  "classes": sparse_tensor.SparseTensor(
-                      indices=[[0]], values=[1], dense_shape=[1]
-                  ),
-                  "expected": sparse_tensor.SparseTensor
-              }),
-              combinations.NamedObject("Case_2", lambda: {
-                  "classes": constant_op.constant([1]),
-                  "expected": ops.Tensor
-              }),
-              combinations.NamedObject("Case_3", lambda: {
-                  "classes": (sparse_tensor.SparseTensor(
-                      indices=[[0]], values=[1], dense_shape=[1])),
-                  "expected": (sparse_tensor.SparseTensor)
-              }),
-              combinations.NamedObject("Case_4", lambda: {
-                  "classes": (constant_op.constant([1])),
-                  "expected": (ops.Tensor)
-              }),
-              combinations.NamedObject("Case_5", lambda: {
-                  "classes": (sparse_tensor.SparseTensor(
-                      indices=[[0]], values=[1], dense_shape=[1]), ()),
-                  "expected": (sparse_tensor.SparseTensor, ())
-              }),
-              combinations.NamedObject("Case_6", lambda: {
-                  "classes": ((), sparse_tensor.SparseTensor(
-                      indices=[[0]], values=[1], dense_shape=[1])),
-                  "expected": ((), sparse_tensor.SparseTensor)
-              }),
-              combinations.NamedObject("Case_7", lambda: {
-                  "classes": (constant_op.constant([1]), ()),
-                  "expected": (ops.Tensor, ())
-              }),
-              combinations.NamedObject("Case_8", lambda: {
-                  "classes": ((), constant_op.constant([1])),
-                  "expected": ((), ops.Tensor)
-              }),
-              combinations.NamedObject("Case_9", lambda: {
-                  "classes": (
-                      sparse_tensor.SparseTensor(
-                          indices=[[0]], values=[1], dense_shape=[1]),
-                      (), constant_op.constant([1])),
-                  "expected": (sparse_tensor.SparseTensor, (), ops.Tensor)
-              }),
-              combinations.NamedObject("Case_10", lambda: {
-                  "classes": ((), sparse_tensor.SparseTensor(
-                      indices=[[0]], values=[1], dense_shape=[1]), ()),
-                  "expected": ((), sparse_tensor.SparseTensor, ())
-              }),
-              combinations.NamedObject("Case_11", lambda: {
-                  "classes": ((), constant_op.constant([1]), ()),
-                  "expected": ((), ops.Tensor, ())
-              }),
-          ])
+          _test_get_classes_combinations()
       )
   )
-  def testGetClasses(self, test_case_fn):
-    test_case_fn = test_case_fn._obj  # pylint: disable=protected-access
-    test_case = test_case_fn()
-    classes = test_case["classes"]
-    expected = test_case["expected"]
+  def testGetClasses(self, classes_fn, expected_fn):
+    classes = classes_fn._obj() # pylint: disable=protected-access
+    expected = expected_fn._obj() # pylint: disable=protected-access
     self.assertEqual(sparse.get_classes(classes), expected)
 
   def assertSparseValuesEqual(self, a, b):
@@ -340,40 +475,11 @@ class SparseTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(
           test_base.graph_only_combinations(),
-          combinations.combine(test_case_fn=[
-              combinations.NamedObject(
-                  "Case_0", lambda: ()
-              ),
-              combinations.NamedObject(
-                  "Case_1", lambda: sparse_tensor.SparseTensor(
-                      indices=[[0, 0]], values=[1], dense_shape=[1, 1])
-              ),
-              combinations.NamedObject(
-                  "Case_2", lambda: sparse_tensor.SparseTensor(
-                      indices=[[3, 4]], values=[-1], dense_shape=[4, 5])
-              ),
-              combinations.NamedObject(
-                  "Case_3", lambda: sparse_tensor.SparseTensor(
-                      indices=[[0, 0], [3, 4]], values=[1, -1],
-                      dense_shape=[4, 5])
-              ),
-              combinations.NamedObject(
-                  "Case_4", lambda: (sparse_tensor.SparseTensor(
-                      indices=[[0, 0]], values=[1], dense_shape=[1, 1]))
-              ),
-              combinations.NamedObject(
-                  "Case_5", lambda: (sparse_tensor.SparseTensor(
-                      indices=[[0, 0]], values=[1], dense_shape=[1, 1]), ())
-              ),
-              combinations.NamedObject(
-                  "Case_6", lambda: ((), sparse_tensor.SparseTensor(
-                      indices=[[0, 0]], values=[1], dense_shape=[1, 1]))),
-          ])
+          _test_serialize_deserialize_combinations()
       )
   )
-  def testSerializeDeserialize(self, test_case_fn):
-    test_case_fn = test_case_fn._obj  # pylint: disable=protected-access
-    test_case = test_case_fn()
+  def testSerializeDeserialize(self, input_fn):
+    test_case = input_fn._obj() # pylint: disable=protected-access
     classes = sparse.get_classes(test_case)
     shapes = nest.map_structure(lambda _: tensor_shape.TensorShape(None),
                                 classes)
@@ -388,41 +494,11 @@ class SparseTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(
           test_base.graph_only_combinations(),
-          combinations.combine(test_case_fn=[
-              combinations.NamedObject(
-                  "Case_0", lambda: ()
-              ),
-              combinations.NamedObject(
-                  "Case_1", lambda: sparse_tensor.SparseTensor(
-                      indices=[[0, 0]], values=[1], dense_shape=[1, 1])
-              ),
-              combinations.NamedObject(
-                  "Case_2", lambda: sparse_tensor.SparseTensor(
-                      indices=[[3, 4]], values=[-1], dense_shape=[4, 5])
-              ),
-              combinations.NamedObject(
-                  "Case_3", lambda: sparse_tensor.SparseTensor(
-                      indices=[[0, 0], [3, 4]], values=[1, -1],
-                      dense_shape=[4, 5])
-              ),
-              combinations.NamedObject(
-                  "Case_4", lambda: (sparse_tensor.SparseTensor(
-                      indices=[[0, 0]], values=[1], dense_shape=[1, 1]))
-              ),
-              combinations.NamedObject(
-                  "Case_5", lambda: (sparse_tensor.SparseTensor(
-                      indices=[[0, 0]], values=[1], dense_shape=[1, 1]), ())
-              ),
-              combinations.NamedObject(
-                  "Case_6", lambda: ((), sparse_tensor.SparseTensor(
-                      indices=[[0, 0]], values=[1], dense_shape=[1, 1]))
-              ),
-          ])
+          _test_serialize_many_deserialize_combinations()
       )
   )
-  def testSerializeManyDeserialize(self, test_case_fn):
-    test_case_fn = test_case_fn._obj  # pylint: disable=protected-access
-    test_case = test_case_fn()
+  def testSerializeManyDeserialize(self, input_fn):
+    test_case = input_fn._obj() # pylint: disable=protected-access
     classes = sparse.get_classes(test_case)
     shapes = nest.map_structure(lambda _: tensor_shape.TensorShape(None),
                                 classes)

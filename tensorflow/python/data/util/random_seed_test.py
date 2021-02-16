@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 from absl.testing import parameterized
 
 from tensorflow.python.data.kernel_tests import test_base
@@ -33,82 +35,96 @@ from tensorflow.python.platform import test
 # NOTE(vikoth18): Arguments of parameterized tests are lifted into lambdas to make
 # sure they are not executed before the (eager- or graph-mode) test environment
 # has been set up.
-#
+
+def _test_random_seed_combinations():
+
+  cases = [
+    # Each test case is a tuple with input to get_seed:
+    # (input_graph_seed, input_op_seed)
+    # and output from get_seed:
+    # (output_graph_seed, output_op_seed)
+      (
+          "CASE_0",
+          lambda: (None, None),
+          lambda: (0, 0),
+      ),
+      (
+          "CASE_1",
+          lambda: (None, 1),
+          lambda: (random_seed.DEFAULT_GRAPH_SEED, 1)
+      ),
+      (
+          "CASE_2",
+          lambda: (1, 1),
+          lambda: (1, 1)
+      ),
+      (
+          # Avoid nondeterministic (0, 0) output
+          "CASE_3",
+          lambda: (0, 0),
+          lambda: (0, 2**31 - 1)
+      ),
+      (
+          # Don't wrap to (0, 0) either
+          "CASE_4",
+          lambda: (2**31 - 1, 0),
+          lambda: (0, 2**31 - 1)
+      ),
+      (
+          # Wrapping for the other argument
+          "CASE_5",
+          lambda: (0, 2**31 - 1),
+          lambda: (0, 2**31 - 1)
+      ),
+      (
+          # Once more, with tensor-valued arguments
+          "CASE_6",
+          lambda: (None, constant_op.constant(1, dtype=dtypes.int64, name='one')),
+          lambda: (random_seed.DEFAULT_GRAPH_SEED, 1)
+      ),
+      (
+          "CASE_7",
+          lambda: (1, constant_op.constant(1, dtype=dtypes.int64, name='one')),
+          lambda: (1, 1)
+      ),
+      (
+          "CASE_8",
+          lambda: (0, constant_op.constant(0, dtype=dtypes.int64, name='zero')),
+          lambda: (0, 2**31 - 1)  # Avoid nondeterministic (0, 0) output
+      ),
+      (
+          "CASE_9",
+          lambda: (2**31 - 1, constant_op.constant(0, dtype=dtypes.int64, name='zero')),
+          lambda: (0, 2**31 - 1)  # Don't wrap to (0, 0) either
+      ),
+      (
+          "CASE_10",
+          lambda: (0, constant_op.constant(2**31 - 1, dtype=dtypes.int64, name='intmax')),
+          lambda: (0, 2**31 - 1)  # Wrapping for the other argument
+      )
+  ]
+  def reduce_fn(x, y):
+    name, input_fn, output_fn = y
+    return x + combinations.combine(
+        input_fn=combinations.NamedObject(
+            "input_fn.{}".format(name), input_fn),
+        output_fn=combinations.NamedObject(
+            "output_fn.{}".format(name), output_fn)
+    )
+
+  return functools.reduce(reduce_fn, cases, [])
+
 class RandomSeedTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(test_case_fn=[
-              # Each test case is a tuple with input to get_seed:
-              # (input_graph_seed, input_op_seed)
-              # and output from get_seed:
-              # (output_graph_seed, output_op_seed)
-              combinations.NamedObject(
-                  "Case_0",
-                  lambda: ((None, None), (0, 0))
-              ),
-              combinations.NamedObject(
-                  "Case_1",
-                  lambda: ((None, 1), (random_seed.DEFAULT_GRAPH_SEED, 1)),
-              ),
-              combinations.NamedObject(
-                  "Case_2",
-                  lambda: ((1, 1), (1, 1)),
-              ),
-              combinations.NamedObject(
-                  "Case_3",
-                  # Avoid nondeterministic (0, 0) output
-                  lambda: ((0, 0), (0, 2**31 - 1)),
-              ),
-              combinations.NamedObject(
-                  "Case_4",
-                  # Don't wrap to (0, 0) either
-                  lambda: ((2**31 - 1, 0), (0, 2**31 - 1)),
-              ),
-              combinations.NamedObject(
-                  "Case_5",
-                  # Wrapping for the other argument
-                  lambda: ((0, 2**31 - 1), (0, 2**31 - 1)),
-              ),
-              combinations.NamedObject(
-                  "Case_6",
-                  # Once more, with tensor-valued arguments
-                  lambda: ((None, constant_op.constant(
-                      1, dtype=dtypes.int64, name='one')),
-                           (random_seed.DEFAULT_GRAPH_SEED, 1)),
-              ),
-              combinations.NamedObject(
-                  "Case_7",
-                  lambda: ((1, constant_op.constant(1, dtype=dtypes.int64, name='one')),
-                           (1, 1)),
-              ),
-              combinations.NamedObject(
-                  "Case_8",
-                  lambda: ((0, constant_op.constant(
-                      0, dtype=dtypes.int64, name='zero')),
-                           (0, 2**31 - 1)),  # Avoid nondeterministic (0, 0) output
-              ),
-              combinations.NamedObject(
-                  "Case_9",
-                  lambda: ((2**31 - 1, constant_op.constant(
-                      0, dtype=dtypes.int64, name='zero')),
-                           (0, 2**31 - 1)),  # Don't wrap to (0, 0) either
-              ),
-              combinations.NamedObject(
-                  "Case_10",
-                  lambda: ((0, constant_op.constant(
-                      2**31 - 1, dtype=dtypes.int64, name='intmax')),
-                           (0, 2**31 - 1)),  # Wrapping for the other argument
-              )
-          ])
+          _test_random_seed_combinations()
       )
   )
-  def testRandomSeed(self, test_case_fn):
-    test_case_fn = test_case_fn._obj  # pylint: disable=protected-access
-    test_case = test_case_fn()
-    tinput, toutput = test_case[0], test_case[1]
+  def testRandomSeed(self, input_fn, output_fn):
 
+    tinput, toutput = input_fn._obj(), output_fn._obj() # pylint: disable=protected-access
     def check(tinput, toutput):
       random_seed.set_random_seed(tinput[0])
       g_seed, op_seed = data_random_seed.get_seed(tinput[1])
