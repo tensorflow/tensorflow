@@ -2057,7 +2057,11 @@ bool NNAPIDelegateKernel::Validate(
              NNAPIValidationFailureType::kUnsupportedOperandRank,
              "Input rank should be less than 4", &val_ctx);
 
-      if (context->tensors[node->inputs->data[0]].type == kTfLiteUInt8 &&
+      const auto& input_type = context->tensors[node->inputs->data[0]].type;
+      EXPECT_INPUT_TYPE_IN(input_type, kTfLiteFloat16, kTfLiteFloat32,
+                           kTfLiteUInt8, kTfLiteInt8);
+
+      if (input_type == kTfLiteUInt8 &&
           android_sdk_version < kMinSdkVersionForNNAPI12) {
         auto first_param = context->tensors[node->inputs->data[0]].params;
         for (int i = 1; i < node->inputs->size; i++) {
