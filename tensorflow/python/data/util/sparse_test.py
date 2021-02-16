@@ -82,7 +82,7 @@ def _test_as_dense_shapes_combinations():
           "CASE_2",
           lambda: tensor_shape.TensorShape([]),
           lambda: sparse_tensor.SparseTensor,
-          lambda: tensor_shape.unknown_shape()
+          lambda: tensor_shape.unknown_shape() # pylint: disable=unnecessary-lambda
       ),
       (
           "CASE_3",
@@ -94,7 +94,7 @@ def _test_as_dense_shapes_combinations():
           "CASE_4",
           lambda: (tensor_shape.TensorShape([])),
           lambda: (sparse_tensor.SparseTensor),
-          lambda: (tensor_shape.unknown_shape())
+          lambda: (tensor_shape.unknown_shape()) # pylint: disable=unnecessary-lambda
       ),
       (
           "CASE_5",

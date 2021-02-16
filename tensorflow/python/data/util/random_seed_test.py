@@ -38,10 +38,10 @@ from tensorflow.python.platform import test
 def _test_random_seed_combinations():
 
   cases = [
-    # Each test case is a tuple with input to get_seed:
-    # (input_graph_seed, input_op_seed)
-    # and output from get_seed:
-    # (output_graph_seed, output_op_seed)
+      # Each test case is a tuple with input to get_seed:
+      # (input_graph_seed, input_op_seed)
+      # and output from get_seed:
+      # (output_graph_seed, output_op_seed)
       (
           "CASE_0",
           lambda: (None, None),

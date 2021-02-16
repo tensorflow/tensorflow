@@ -536,7 +536,7 @@ def _test_convert_legacy_structure_combinations():
           {
               "a": tensor_spec.TensorSpec([], dtypes.float32),
               "b": (sparse_tensor.SparseTensorSpec(
-                      [2, 2], dtypes.int32),
+                  [2, 2], dtypes.int32),
                     tensor_spec.TensorSpec([], dtypes.string))
           }
       )
@@ -1135,7 +1135,8 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
           _test_batch_combinations()
       )
   )
-  def testBatch(self, element_structure, batch_size, expected_batched_structure):
+  def testBatch(self, element_structure, batch_size,
+                expected_batched_structure):
     element_structure = element_structure._obj
     batch_size = batch_size._obj
     expected_batched_structure = expected_batched_structure._obj
