@@ -1274,7 +1274,7 @@ PjRtStreamExecutorBuffer::GetBufferWithHold(ScopedHold::Type type) {
   absl::MutexLock lock(&mu_);
   ScopedHold hold(this, type);
   AcquireHoldLocked(&hold);
-  if (type == ScopedHold::kDonation && !hold.status().ok()) {
+  if (type == ScopedHold::kDonation && !hold.ok()) {
     donation_semaphore_.Release(1);
   }
   return hold;
