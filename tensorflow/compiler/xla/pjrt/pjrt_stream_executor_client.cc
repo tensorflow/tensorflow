@@ -1274,7 +1274,7 @@ PjRtStreamExecutorBuffer::GetBufferWithHold(ScopedHold::Type type) {
   absl::MutexLock lock(&mu_);
   ScopedHold hold(this, type);
   AcquireHoldLocked(&hold);
-  if (type == ScopedHold::kDonation && !hold.status().ok()) {
+  if (type == ScopedHold::kDonation && !hold.ok()) {
     donation_semaphore_.Release(1);
   }
   return hold;
@@ -2029,12 +2029,16 @@ PjRtStreamExecutorExecutable::Execute(
     const int partition = addressable_device_logical_ids_[i].partition;
     auto& statusor = results[i];
     if (!statusor.ok()) {
-      return AppendStatus(
-          statusor.status(),
-          absl::StrFormat("while running replica %d and partition %d of a "
-                          "replicated computation (other "
-                          "replicas may have failed as well).",
-                          replica, partition));
+      if (num_addressable_devices == 1) {
+        return statusor.status();
+      } else {
+        return AppendStatus(
+            statusor.status(),
+            absl::StrFormat("while running replica %d and partition %d of a "
+                            "replicated computation (other "
+                            "replicas may have failed as well).",
+                            replica, partition));
+      }
     }
     wrapped_results[i] = std::move(statusor.ValueOrDie());
   }

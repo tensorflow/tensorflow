@@ -350,7 +350,6 @@ void BuildPmapSubmodule(pybind11::module& m) {
   py::class_<Chunked> chunked(pmap_lib, "Chunked");
   chunked.def(py::init<std::vector<int>>())
       .def_readonly("chunks", &Chunked::chunks)
-      .def_readonly("num_chunks", &Chunked::chunks)
       .def("__repr__",
            [](const Chunked& chuncked) {
              return absl::StrCat("Chunked(",

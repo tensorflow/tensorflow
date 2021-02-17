@@ -72,6 +72,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(llvm::Module* module) {
 xla::StatusOr<std::string> EmitToBinary(mlir::ModuleOp module) {
   // Translate the module.
   llvm::LLVMContext llvm_context;
+  mlir::registerLLVMDialectTranslation(*module->getContext());
   std::unique_ptr<llvm::Module> llvm_module =
       mlir::translateModuleToLLVMIR(module, llvm_context);
 

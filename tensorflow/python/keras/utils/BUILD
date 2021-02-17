@@ -9,6 +9,7 @@ package(
     default_visibility = [
         "//tensorflow/python/feature_column:__pkg__",
         "//tensorflow/python/keras:__subpackages__",
+        "//tensorflow/tools/pip_package:__pkg__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -40,7 +41,6 @@ py_library(
         ":control_flow_util",
         ":engine_utils",
         ":generic_utils",
-        ":kpl_test_utils",
         ":layer_utils",
         ":multi_gpu_utils",
         ":np_utils",
@@ -59,7 +59,10 @@ py_library(
     name = "kpl_test_utils",
     srcs = ["kpl_test_utils.py"],
     srcs_version = "PY3",
-    deps = [],
+    deps = [
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras/layers/preprocessing:string_lookup",
+    ],
 )
 
 py_library(

@@ -340,7 +340,7 @@ class FunctionalOpsTest(test.TestCase):
         lambda elem_, input_: (a, b), elems, initializer=(0., 0.))
     loss = l0 + array_ops.stop_gradient(l1)
     grad = gradients_impl.gradients(ys=[loss], xs=[a, b])
-    with self.test_session() as sess:
+    with self.test_session():
       self.evaluate(variables.global_variables_initializer())
       self.evaluate(grad)
 

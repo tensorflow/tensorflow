@@ -3961,6 +3961,7 @@ tf_cc_test(
     deps = [
         ":algebraic_simplifier",
         ":computation_layout",
+        ":dynamic_padder",
         ":hlo",
         ":hlo_parser",
         ":layout_assignment",

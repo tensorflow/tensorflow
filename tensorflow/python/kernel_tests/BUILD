@@ -3337,7 +3337,6 @@ cuda_py_test(
     shard_count = 30,
     tags = [
         "no_cuda11",
-        "no_cuda_asan",  # b/179030928
     ],
     deps = [
         "//tensorflow/python:client_testlib",

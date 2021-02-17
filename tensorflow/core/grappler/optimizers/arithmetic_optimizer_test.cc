@@ -106,6 +106,146 @@ TEST_F(ArithmeticOptimizerTest, NoOp) {
   VerifyGraphsMatch(item.graph, output, __LINE__);
 }
 
+TEST_F(ArithmeticOptimizerTest, ReplaceMulWithBroadcastByTile) {
+  for (bool reverse : {true}) {
+    // Graph from b/176172427
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output input =
+        ops::Placeholder(s.WithOpName("input"), DT_FLOAT,
+                         ops::Placeholder::Shape({1, 44, 1, 96, 1, 64}));
+    Output ones = ops::Const(s.WithOpName("ones"), 1.0f, {1, 1, 2, 1, 2, 1});
+    Output multiply;
+    if (reverse) {
+      multiply = ops::Mul(s.WithOpName("mul"), input, ones);
+    } else {
+      multiply = ops::Mul(s.WithOpName("mul"), ones, input);
+    }
+    Output output = ops::Identity(s.WithOpName("output"), multiply);
+
+    GrapplerItem item;
+    item.fetch = {"output"};
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+    auto tensor =
+        GenerateRandomTensor<DT_FLOAT>(TensorShape({1, 44, 1, 96, 1, 64}));
+    auto expected = EvaluateNodes(item.graph, item.fetch, {{"input", tensor}});
+    ASSERT_EQ(expected.size(), 1);
+
+    GraphDef g;
+    ArithmeticOptimizer optimizer;
+    EnableOnlyReplaceMulWithBroadcastByTile(&optimizer);
+    OptimizeTwiceAndPrune(&optimizer, &item, &g);
+    EXPECT_EQ(g.node_size(), 4);
+
+    ASSERT_EQ(CountOpNodes(g, "Mul"), 0);
+    ASSERT_EQ(CountOpNodes(g, "Tile"), 1);
+
+    NodeMap node_map(&g);
+    const string p = "ArithmeticOptimizer/ReplaceMulWithBroadcastByTile";
+    const NodeDef* tile = node_map.GetNode(absl::StrCat(p, "_", "Tile_mul"));
+    ASSERT_NE(tile, nullptr);
+    EXPECT_EQ(tile->op(), "Tile");
+    ASSERT_EQ(tile->input_size(), 2);
+    EXPECT_EQ(tile->input(0), "input");
+    EXPECT_EQ(tile->input(1), absl::StrCat(p, "_", "Const_mul"));
+    EXPECT_EQ(tile->attr().at("T").type(), DT_FLOAT);
+    EXPECT_EQ(tile->attr().at("Tmultiples").type(), DT_INT32);
+
+    auto result = EvaluateNodes(g, item.fetch, {{"input", tensor}});
+    ASSERT_EQ(result.size(), 1);
+    test::ExpectTensorNear<float>(result[0], expected[0], 1e-6);
+  }
+}
+
+TEST_F(ArithmeticOptimizerTest, ReplaceMulWithBroadcastByTileNoBroadcast) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output input =
+      ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({1, 2, 1}));
+  Output ones = ops::Const(s.WithOpName("ones"), 1.0f, {1, 2, 1});
+  Output multiply = ops::Mul(s.WithOpName("multiply"), input, ones);
+  Output output = ops::Identity(s.WithOpName("output"), multiply);
+
+  GrapplerItem item;
+  item.fetch = {"output"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensor = GenerateRandomTensor<DT_FLOAT>(TensorShape({1, 2, 1}));
+  auto expected =
+      EvaluateNodes(item.graph, item.fetch, {{"Placeholder", tensor}});
+  ASSERT_EQ(expected.size(), 1);
+
+  GraphDef g;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyReplaceMulWithBroadcastByTile(&optimizer);
+  OptimizeTwiceAndPrune(&optimizer, &item, &g);
+  EXPECT_EQ(g.node_size(), 4);
+
+  VerifyGraphsMatch(item.graph, g, __LINE__);
+
+  auto result = EvaluateNodes(g, item.fetch, {{"Placeholder", tensor}});
+  ASSERT_EQ(result.size(), 1);
+  test::ExpectTensorNear<float>(result[0], expected[0], 1e-6);
+}
+
+TEST_F(ArithmeticOptimizerTest, ReplaceMulWithBroadcastByTileNotConst) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output input1 = ops::Placeholder(s.WithOpName("input1"), DT_FLOAT,
+                                   ops::Placeholder::Shape({1, 1, 1}));
+  Output input2 = ops::Placeholder(s.WithOpName("input2"), DT_FLOAT,
+                                   ops::Placeholder::Shape({1, 2, 1}));
+  Output multiply = ops::Mul(s.WithOpName("multiply"), input1, input2);
+  Output output = ops::Identity(s.WithOpName("output"), multiply);
+
+  GrapplerItem item;
+  item.fetch = {"output"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensor1 = GenerateRandomTensor<DT_FLOAT>(TensorShape({1, 1, 1}));
+  auto tensor2 = GenerateRandomTensor<DT_FLOAT>(TensorShape({1, 2, 1}));
+  auto expected = EvaluateNodes(item.graph, item.fetch,
+                                {{"input1", tensor1}, {"input2", tensor2}});
+  ASSERT_EQ(expected.size(), 1);
+
+  GraphDef g;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyReplaceMulWithBroadcastByTile(&optimizer);
+  OptimizeTwiceAndPrune(&optimizer, &item, &g);
+  EXPECT_EQ(g.node_size(), 4);
+
+  VerifyGraphsMatch(item.graph, g, __LINE__);
+
+  auto result = EvaluateNodes(item.graph, item.fetch,
+                              {{"input1", tensor1}, {"input2", tensor2}});
+  ASSERT_EQ(result.size(), 1);
+  test::ExpectTensorNear<float>(result[0], expected[0], 1e-6);
+}
+
+TEST_F(ArithmeticOptimizerTest, ReplaceMulWithBroadcastByTileNotOnes) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output input =
+      ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({1, 1, 1}));
+  Output ones = ops::Const(s.WithOpName("ones"), 2.0f, {1, 2, 1});
+  Output multiply = ops::Mul(s.WithOpName("multiply"), input, ones);
+  Output output = ops::Identity(s.WithOpName("output"), multiply);
+
+  GrapplerItem item;
+  item.fetch = {"output"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensor = GenerateRandomTensor<DT_FLOAT>(TensorShape({1, 1, 1}));
+  auto expected =
+      EvaluateNodes(item.graph, item.fetch, {{"Placeholder", tensor}});
+  ASSERT_EQ(expected.size(), 1);
+
+  GraphDef g;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyReplaceMulWithBroadcastByTile(&optimizer);
+  OptimizeTwiceAndPrune(&optimizer, &item, &g);
+  EXPECT_EQ(g.node_size(), 4);
+
+  VerifyGraphsMatch(item.graph, g, __LINE__);
+
+  auto result = EvaluateNodes(g, item.fetch, {{"Placeholder", tensor}});
+  ASSERT_EQ(result.size(), 1);
+  test::ExpectTensorNear<float>(result[0], expected[0], 1e-6);
+}
+
 TEST_F(ArithmeticOptimizerTest, ReplaceMulWithSquare) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});

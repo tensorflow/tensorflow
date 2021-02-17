@@ -68,6 +68,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -1332,10 +1333,10 @@ LogicalResult SpaceToBatchNDOp::inferReturnTypes(
 
   // The rest of the dimension sizes can be calculated when block_shape and
   // paddings arguments are constant.
-  ElementsAttr block_shape_attr;
-  ElementsAttr paddings_attr;
-  if (matchPattern(block_shape_val, m_Constant(&block_shape_attr)) &&
-      matchPattern(paddings_val, m_Constant(&paddings_attr))) {
+  DenseIntElementsAttr block_shape_attr;
+  DenseIntElementsAttr paddings_attr;
+  if (GetValueAsConstant(block_shape_val, block_shape_attr) &&
+      GetValueAsConstant(paddings_val, paddings_attr)) {
     int64_t return_batch = input_shape[0];
     for (uint64_t i = 0; i < block_rank; ++i) {
       // Propagate dynamic dimension.
@@ -1347,10 +1348,10 @@ LogicalResult SpaceToBatchNDOp::inferReturnTypes(
         continue;
       }
       int64_t paddings_sum =
-          paddings_attr.getValue({i, 0}).cast<IntegerAttr>().getInt() +
-          paddings_attr.getValue({i, 1}).cast<IntegerAttr>().getInt();
+          paddings_attr.getValue<APInt>({i, 0}).getSExtValue() +
+          paddings_attr.getValue<APInt>({i, 1}).getSExtValue();
       int64_t block_shape_i =
-          block_shape_attr.getValue({i}).cast<IntegerAttr>().getInt();
+          block_shape_attr.getValue<APInt>({i}).getSExtValue();
       return_batch *= block_shape_i;
       return_shape[1 + i] = (paddings_sum + input_shape[i + 1]) / block_shape_i;
     }

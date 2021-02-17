@@ -3494,6 +3494,10 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
   let hasOptions = 1;
 }
 
+// If there is a change in supporting more types in the TFLite cast op kernel,
+// the While loop outline pass should be updated since it inserts cast op(s)
+// after the TF -> TFL legalization pass is done.
+// LINT.IfChange
 def TFL_CastOp : TFL_Op<"cast", [
     NoSideEffect,
     SameOperandsAndResultShape,
@@ -3516,6 +3520,7 @@ def TFL_CastOp : TFL_Op<"cast", [
 
   let hasFolder = 1;
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/transforms/while_loop_outline.cc)
 
 def TFL_MirrorPadOp: TFL_Op<"mirror_pad", [
                      NoSideEffect, TFL_OperandHasRank<1, 2>]> {

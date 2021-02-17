@@ -109,25 +109,55 @@ void AffineQuantize(int scale_multiplier, const int32_t zero_point,
   }
 }
 
-TfLiteStatus EvalHifimini(TfLiteContext* context, TfLiteNode* node) {
+#endif  // defined(HIFIMINI)
+
+TfLiteStatus EvalXtensa(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
+#if defined(HIFIMINI)
   auto* op_data = static_cast<OpData*>(node->user_data);
+#elif defined(FUSION_F1)
+  auto* op_data = static_cast<OpDataQuantizeReference*>(node->user_data);
+#endif
 
   const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
   TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
 
   if (output->type == kTfLiteInt8 && input->type == kTfLiteInt16) {
+#if defined(HIFIMINI)
     AffineQuantize(op_data->scale_multiplier, op_data->zero_point,
                    tflite::micro::GetTensorShape(input),
                    tflite::micro::GetTensorData<int16_t>(input),
                    tflite::micro::GetTensorShape(output),
                    tflite::micro::GetTensorData<int8_t>(output));
+#elif defined(FUSION_F1)
+    int size = ElementCount(*input->dims);
+    TF_LITE_ENSURE_EQ(
+        context,
+        xa_nn_elm_quantize_asym16s_asym8s(
+            tflite::micro::GetTensorData<int8_t>(output),
+            tflite::micro::GetTensorData<int16_t>(input),
+            op_data->input_zero_point, op_data->quantization_params.zero_point,
+            op_data->requantize_output_shift,
+            op_data->requantize_output_multiplier, size),
+        0);
+#else
+    static_assert(false, "Unsupported xtensa architecture.");
+#endif
   } else if (output->type == kTfLiteInt32 && input->type == kTfLiteInt16) {
     int size = ElementCount(*input->dims);
+
+    // This ifdef is only needed because the hifimini code is not following the
+    // convention of the rest of the codebase. Ideally we would be using the
+    // same structs as much as possible and reduce the need for such ifdefs.
+#if defined(HIFIMINI)
+    int32_t zero_point = op_data->zero_point;
+#elif defined(FUSION_F1)
+    int32_t zero_point = op_data->quantization_params.zero_point;
+#endif
     reference_ops::Requantize(tflite::micro::GetTensorData<int16_t>(input),
                               size, op_data->requantize_output_multiplier,
                               op_data->requantize_output_shift,
-                              op_data->input_zero_point, op_data->zero_point,
+                              op_data->input_zero_point, zero_point,
                               tflite::micro::GetTensorData<int32_t>(output));
   } else {
     TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
@@ -137,7 +167,6 @@ TfLiteStatus EvalHifimini(TfLiteContext* context, TfLiteNode* node) {
   }
   return kTfLiteOk;
 }
-#endif  // defined(HIFIMINI)
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
@@ -179,8 +208,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-#if defined(HIFIMINI)
-  return EvalHifimini(context, node);
+#if defined(HIFIMINI) || defined(FUSION_F1)
+  return EvalXtensa(context, node);
 #else
   return EvalQuantizeReference(context, node);
 #endif

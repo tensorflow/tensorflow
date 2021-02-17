@@ -698,6 +698,7 @@ cc_library(
         ":decompose_resource_ops_inc_gen",
         ":tensorflow",
         ":tensorflow_types",
+        "//tensorflow/core:framework",
         "@llvm-project//mlir:IR",
     ],
 )

@@ -92,6 +92,220 @@ Status SpmdPartitioningVisitor::HandleDot(HloInstruction* hlo) {
 
 namespace {
 
+void UpdateDDNums(DotDimensionNumbers* new_ddnums, int64 reshaped_dim,
+                  bool lhs) {
+  auto update_dims =
+      [&reshaped_dim](tensorflow::protobuf::RepeatedField<int64>* dims) {
+        for (int64 i = 0; i < dims->size(); ++i) {
+          auto dim = dims->at(i);
+          if (reshaped_dim <= dim) {
+            dims->Set(i, dim + 1);
+          }
+        }
+        if (absl::c_linear_search(*dims, reshaped_dim)) {
+          dims->Add(reshaped_dim);
+        }
+      };
+
+  if (lhs) {
+    update_dims(new_ddnums->mutable_lhs_contracting_dimensions());
+    update_dims(new_ddnums->mutable_lhs_batch_dimensions());
+  } else {  // rhs
+    update_dims(new_ddnums->mutable_rhs_contracting_dimensions());
+    update_dims(new_ddnums->mutable_rhs_batch_dimensions());
+  }
+}
+
+Window GenNewWindow(const HloInstruction* original_dot,
+                    const HloInstruction* dot_lhs,
+                    const HloInstruction* dot_rhs, int64 lhs_concat_dim,
+                    int64 rhs_concat_dim, bool windowed_at_contracting_dims,
+                    bool windowed_at_batch_dims) {
+  auto new_window = original_dot->window();
+  const ConvolutionDimensionNumbers& conv_dnums =
+      original_dot->convolution_dimension_numbers();
+  if (lhs_concat_dim != -1) {
+    for (int64 i = 0; i < conv_dnums.input_spatial_dimensions_size(); ++i) {
+      if (conv_dnums.input_spatial_dimensions(i) == lhs_concat_dim) {
+        auto wd = new_window.mutable_dimensions(i);
+        auto lhs_size = dot_lhs->shape().dimensions(lhs_concat_dim + 1);
+        if (windowed_at_contracting_dims) {
+          wd->set_size(lhs_size);
+        }
+        if (windowed_at_batch_dims) {
+          wd->set_size(lhs_size);
+          wd->set_padding_low(0);
+          wd->set_padding_high(0);
+          wd->set_stride(std::max<int64>(1, lhs_size - 1));
+          wd->set_window_dilation(1);
+          wd->set_base_dilation(lhs_size);
+          wd->set_window_reversal(false);
+        }
+      }
+    }
+  }
+  if (rhs_concat_dim != -1) {
+    for (int64 i = 0; i < conv_dnums.kernel_spatial_dimensions_size(); ++i) {
+      if (conv_dnums.kernel_spatial_dimensions(i) == rhs_concat_dim &&
+          !windowed_at_contracting_dims && !windowed_at_batch_dims &&
+          lhs_concat_dim == -1) {
+        auto wd = new_window.mutable_dimensions(i);
+        auto rhs_size = dot_rhs->shape().dimensions(rhs_concat_dim + 1);
+        wd->set_size(rhs_size);
+        wd->set_padding_low(rhs_size - 1);
+        wd->set_padding_high(rhs_size - 1);
+      }
+    }
+  }
+  // Add the extra dimension to window.
+  WindowDimension* new_dim = new_window.add_dimensions();
+  if (windowed_at_contracting_dims) {
+    new_dim->set_size(2);
+    new_dim->set_padding_low(0);
+    new_dim->set_padding_high(0);
+    new_dim->set_stride(1);
+    new_dim->set_window_dilation(1);
+    new_dim->set_base_dilation(1);
+    new_dim->set_window_reversal(false);
+  } else if (windowed_at_batch_dims) {
+    new_dim->set_size(2);
+    new_dim->set_padding_low(0);
+    new_dim->set_padding_high(0);
+    new_dim->set_stride(1);  // std::max<int64>(1, 2 - 1)
+    new_dim->set_window_dilation(1);
+    new_dim->set_base_dilation(2);
+    new_dim->set_window_reversal(false);
+  } else {
+    if (lhs_concat_dim != -1) {
+      new_dim->set_size(1);
+      new_dim->set_padding_low(0);
+      new_dim->set_padding_high(0);
+      new_dim->set_stride(1);
+      new_dim->set_window_dilation(1);
+      new_dim->set_base_dilation(1);
+      new_dim->set_window_reversal(false);
+    }
+    if (rhs_concat_dim != -1) {
+      new_dim->set_size(2);          // rhs_size
+      new_dim->set_padding_low(1);   // rhs_size - 1
+      new_dim->set_padding_high(1);  // rhs_size - 1
+      new_dim->set_stride(1);
+      new_dim->set_window_dilation(1);
+      new_dim->set_base_dilation(1);
+      new_dim->set_window_reversal(true);
+    }
+  }
+
+  VLOG(2) << "new_window: " << new_window.ShortDebugString();
+  return new_window;
+}
+
+ConvolutionDimensionNumbers GenNewConvDNums(
+    const HloInstruction* original_dot, const HloInstruction* dot_lhs,
+    const HloInstruction* dot_rhs, int64 lhs_concat_dim, int64 rhs_concat_dim,
+    bool windowed_at_contracting_dims, bool windowed_at_batch_dims,
+    const std::vector<int64>& lhs_to_output_indices,
+    const std::vector<int64>& rhs_to_output_indices,
+    const Shape& new_dot_shape) {
+  // Generate the new conv dimension numbers.
+  const ConvolutionDimensionNumbers& dnums =
+      original_dot->convolution_dimension_numbers();
+  // Handle the LHS dimension numbers.
+  int64 input_batch_dimension = dnums.input_batch_dimension();
+  int64 input_feature_dimension = dnums.input_feature_dimension();
+  std::vector<int64> input_spatial_dimensions(
+      dnums.input_spatial_dimensions().begin(),
+      dnums.input_spatial_dimensions().end());
+  if (lhs_concat_dim != -1) {
+    if (lhs_concat_dim <= input_batch_dimension) {
+      input_batch_dimension++;
+    }
+    if (lhs_concat_dim <= input_feature_dimension) {
+      input_feature_dimension++;
+    }
+    for (int64 i = 0; i < input_spatial_dimensions.size(); ++i) {
+      if (lhs_concat_dim <= input_spatial_dimensions[i]) {
+        input_spatial_dimensions[i]++;
+      }
+    }
+    input_spatial_dimensions.push_back(lhs_concat_dim);
+  }
+  if (rhs_concat_dim != -1 && !windowed_at_contracting_dims &&
+      !windowed_at_batch_dims) {
+    input_spatial_dimensions.push_back(dot_lhs->shape().dimensions_size() - 1);
+  }
+  // Handle the RHS dimension numbers.
+  int64 kernel_input_feature_dimension = dnums.kernel_input_feature_dimension();
+  int64 kernel_output_feature_dimension =
+      dnums.kernel_output_feature_dimension();
+  std::vector<int64> kernel_spatial_dimensions(
+      dnums.kernel_spatial_dimensions().begin(),
+      dnums.kernel_spatial_dimensions().end());
+  if (rhs_concat_dim != -1) {
+    if (rhs_concat_dim <= kernel_input_feature_dimension) {
+      kernel_input_feature_dimension++;
+    }
+    if (rhs_concat_dim <= kernel_output_feature_dimension) {
+      kernel_output_feature_dimension++;
+    }
+    for (int64 i = 0; i < kernel_spatial_dimensions.size(); ++i) {
+      if (rhs_concat_dim <= kernel_spatial_dimensions[i]) {
+        kernel_spatial_dimensions[i]++;
+      }
+    }
+    kernel_spatial_dimensions.push_back(rhs_concat_dim);
+  }
+  if (lhs_concat_dim != -1 && !windowed_at_contracting_dims &&
+      !windowed_at_batch_dims) {
+    kernel_spatial_dimensions.push_back(dot_rhs->shape().dimensions_size() - 1);
+  }
+  // Handle the Output dimension numbers.
+  int64 output_batch_dimension = dnums.output_batch_dimension();
+  int64 output_feature_dimension = dnums.output_feature_dimension();
+  std::vector<int64> output_spatial_dimensions(
+      dnums.output_spatial_dimensions().begin(),
+      dnums.output_spatial_dimensions().end());
+  if (!windowed_at_contracting_dims) {
+    auto output_slice_dim = lhs_concat_dim != -1
+                                ? lhs_to_output_indices[lhs_concat_dim]
+                                : rhs_to_output_indices[rhs_concat_dim];
+    if (output_slice_dim <= output_batch_dimension) {
+      output_batch_dimension++;
+    }
+    if (output_slice_dim <= output_feature_dimension) {
+      output_feature_dimension++;
+    }
+    for (int64 i = 0; i < output_spatial_dimensions.size(); ++i) {
+      if (output_slice_dim <= output_spatial_dimensions[i]) {
+        output_spatial_dimensions[i]++;
+      }
+    }
+    output_spatial_dimensions.push_back(output_slice_dim);
+  } else {
+    output_spatial_dimensions.push_back(new_dot_shape.dimensions_size() - 1);
+  }
+  // Construct the new dot dimension numbers.
+  ConvolutionDimensionNumbers new_dnums;
+  new_dnums.set_input_batch_dimension(input_batch_dimension);
+  new_dnums.set_input_feature_dimension(input_feature_dimension);
+  for (auto dim : input_spatial_dimensions) {
+    new_dnums.add_input_spatial_dimensions(dim);
+  }
+  new_dnums.set_kernel_input_feature_dimension(kernel_input_feature_dimension);
+  new_dnums.set_kernel_output_feature_dimension(
+      kernel_output_feature_dimension);
+  for (auto dim : kernel_spatial_dimensions) {
+    new_dnums.add_kernel_spatial_dimensions(dim);
+  }
+  new_dnums.set_output_batch_dimension(output_batch_dimension);
+  new_dnums.set_output_feature_dimension(output_feature_dimension);
+  for (auto dim : output_spatial_dimensions) {
+    new_dnums.add_output_spatial_dimensions(dim);
+  }
+
+  return new_dnums;
+}
+
 StatusOr<HloInstruction*> PartitionBaseCase(
     PartitionedHlo lhs, PartitionedHlo rhs, const Shape& output_base_shape,
     const HloSharding& output_sharding, const DotConvDimsMapping& dims_mapping,
@@ -356,54 +570,8 @@ StatusOr<HloInstruction*> PartitionBaseCase(
       cw_data_partition_id = body_b.AddInstruction(
           HloInstruction::CreateBinary(i->shape(), HloOpcode::kRemainder,
                                        cw_data_partition_id, partition_count));
-      auto ccw_dot_lhs = l;
-      auto ccw_dot_rhs = r;
-      auto cw_dot_lhs = windowing_operand == 0 ? extra_inout : l;
-      auto cw_dot_rhs = windowing_operand == 0 ? r : extra_inout;
-      if (windowed_at_contracting_dims || windowed_at_batch_dims ||
-          operands_sharded_at_contracting_dims) {
-        // Slice the matching operand according to the partitioned dimensions on
-        // the windowed operand or the output.
-        auto slice_operand = matching_operand == 0 ? l : r;
 
-        // We do this by treating the matching operand as replicated, and
-        // resharding it to match the windowed operand or the output.
-        auto gen_slice =
-            [&](HloInstruction* data_partition_id) -> HloInstruction* {
-          slice_operand->set_sharding(HloSharding::Replicate());
-          auto state = lhs.state();
-          state.b = &body_b;
-          state.partition_id = data_partition_id;
-          state.reshard_cache->per_hlo_cache.erase(slice_operand);
-          const HloSharding* slice_sharding;
-          if (operands_sharded_at_contracting_dims) {
-            slice_sharding = windowing_operand == 0
-                                 ? &*output_sharding_transposed_to_match_rhs
-                                 : &*output_sharding_transposed_to_match_lhs;
-          } else {
-            slice_sharding = windowing_operand == 0
-                                 ? &*lhs_sharding_transposed_to_match_rhs
-                                 : &*rhs_sharding_transposed_to_match_lhs;
-          }
-          auto slice =
-              PartitionedHlo(slice_operand, slice_operand->shape(), state)
-                  .Reshard(*slice_sharding)
-                  .hlo();
-          slice_operand->clear_sharding();
-          return slice;
-        };
-
-        auto ccw_slice = gen_slice(ccw_data_partition_id);
-        auto cw_slice = gen_slice(cw_data_partition_id);
-        if (matching_operand == 0) {
-          ccw_dot_lhs = ccw_slice;
-          cw_dot_lhs = cw_slice;
-        } else {
-          ccw_dot_rhs = ccw_slice;
-          cw_dot_rhs = cw_slice;
-        }
-      }
-
+      // Calculate concat dim.
       const HloSharding* slice_sharding;
       if (operands_sharded_at_contracting_dims) {
         slice_sharding = windowing_operand == 0
@@ -451,27 +619,249 @@ StatusOr<HloInstruction*> PartitionBaseCase(
         }
       }
 
-      auto dot_lhs = ccw_dot_lhs;
-      auto dot_rhs = ccw_dot_rhs;
-      if (lhs_concat_dim != -1) {
+      DotDimensionNumbers new_ddnums;
+      if (original_hlo->opcode() == HloOpcode::kDot) {
+        new_ddnums = original_hlo->dot_dimension_numbers();
+      }
+
+      auto dot_lhs = l;
+      auto dot_rhs = r;
+      auto original_dot_lhs = l;
+      auto original_dot_rhs = r;
+      if (windowed_at_contracting_dims || windowed_at_batch_dims ||
+          operands_sharded_at_contracting_dims) {
+        // Slice the matching operand according to the partitioned dimensions
+        // on the windowed operand or the output.
+        auto slice_operand = matching_operand == 0 ? l : r;
+
+        // Pad the sharding dim first (then the concat dim) for correctness.
+        auto sharding_dim_size =
+            slice_operand->shape().dimensions(slice_sharding_dim);
+        if (sharding_dim_size % num_partitions != 0) {
+          slice_operand = PadBaseShapeBeforeUnevenTiledSharding(
+              slice_operand, *slice_sharding, &body_b);
+        }
+
+        // We do this by treating the matching operand as replicated, and
+        // resharding it to match the windowed operand or the output.
+        auto gen_slice = [&](HloInstruction* data_partition_id,
+                             bool ccw) -> HloInstruction* {
+          std::vector<int64> new_dims;
+          for (int64 i = 0; i < slice_operand->shape().dimensions_size(); ++i) {
+            if (i == slice_sharding_dim) {
+              new_dims.push_back(1);
+            }
+            new_dims.push_back(slice_operand->shape().dimensions(i));
+          }
+          auto reshaped_slice_operand =
+              body_b.AddInstruction(HloInstruction::CreateReshape(
+                  ShapeUtil::MakeShape(slice_operand->shape().element_type(),
+                                       new_dims),
+                  slice_operand));
+          auto min = body_b.AddInstruction(
+              HloInstruction::CreateConstant(LiteralUtil::MinValue(
+                  reshaped_slice_operand->shape().element_type())));
+          std::vector<int64> min_padding(
+              reshaped_slice_operand->shape().rank());
+          auto padded_slice_operand = reshaped_slice_operand;
+          auto padded_shape = padded_slice_operand->shape();
+          int64 padding_dim = slice_sharding_dim;
+          padded_shape.set_dimensions(padding_dim, 2);
+          if (ccw) {
+            // ccw pad high
+            PaddingConfig ccw_pad_config =
+                window_util::MakeSymmetricPadding(min_padding);
+            ccw_pad_config.mutable_dimensions(padding_dim)
+                ->set_edge_padding_low(0);
+            ccw_pad_config.mutable_dimensions(padding_dim)
+                ->set_edge_padding_high(1);
+            padded_slice_operand =
+                body_b.AddInstruction(HloInstruction::CreatePad(
+                    padded_shape, padded_slice_operand, min, ccw_pad_config));
+          } else {
+            // cw pad low
+            PaddingConfig cw_pad_config =
+                window_util::MakeSymmetricPadding(min_padding);
+            cw_pad_config.mutable_dimensions(padding_dim)
+                ->set_edge_padding_low(1);
+            cw_pad_config.mutable_dimensions(padding_dim)
+                ->set_edge_padding_high(0);
+            padded_slice_operand =
+                body_b.AddInstruction(HloInstruction::CreatePad(
+                    padded_shape, padded_slice_operand, min, cw_pad_config));
+          }
+
+          padded_slice_operand->set_sharding(HloSharding::Replicate());
+          auto state = lhs.state();
+          state.b = &body_b;
+          state.partition_id = data_partition_id;
+          state.reshard_cache->per_hlo_cache.erase(padded_slice_operand);
+          auto padded_slice_sharding = hlo_sharding_util::ReshapeSharding(
+              slice_operand->shape(), reshaped_slice_operand->shape(),
+              *slice_sharding);
+          auto padded_slice =
+              PartitionedHlo(padded_slice_operand,
+                             padded_slice_operand->shape(), state)
+                  .Reshard(*padded_slice_sharding)
+                  .hlo();
+          padded_slice_operand->clear_sharding();
+          return padded_slice;
+        };
+
+        auto ccw_slice = gen_slice(ccw_data_partition_id, true);
+        auto cw_slice = gen_slice(cw_data_partition_id, false);
+        auto slice = body_b.AddInstruction(HloInstruction::CreateBinary(
+            ccw_slice->shape(), HloOpcode::kMaximum, ccw_slice, cw_slice));
+        // Reshape. The reshaped slice will not be used to produce the final
+        // result, but used as a hint for the shape inference.
+        std::vector<int64> reshaped_slice_dims;
+        for (int64 i = 0; i < slice->shape().dimensions_size(); ++i) {
+          auto dim_size = slice->shape().dimensions(i);
+          if (i == (slice_sharding_dim + 1)) {
+            reshaped_slice_dims.push_back(dim_size * 2);
+          } else if (i != slice_sharding_dim) {
+            reshaped_slice_dims.push_back(dim_size);
+          }
+        }
+        auto reshaped_slice =
+            body_b.AddInstruction(HloInstruction::CreateReshape(
+                ShapeUtil::MakeShape(slice->shape().element_type(),
+                                     reshaped_slice_dims),
+                slice));
+
+        if (matching_operand == 0) {
+          dot_lhs = slice;
+          original_dot_lhs = reshaped_slice;
+          if (original_hlo->opcode() == HloOpcode::kDot) {
+            UpdateDDNums(&new_ddnums, slice_sharding_dim, true);
+          }
+        } else {
+          dot_rhs = slice;
+          original_dot_rhs = reshaped_slice;
+          if (original_hlo->opcode() == HloOpcode::kDot) {
+            UpdateDDNums(&new_ddnums, slice_sharding_dim, false);
+          }
+        }
+      }
+
+      auto ccw_dot_lhs = l;
+      auto ccw_dot_rhs = r;
+      auto cw_dot_lhs = windowing_operand == 0 ? extra_inout : l;
+      auto cw_dot_rhs = windowing_operand == 0 ? r : extra_inout;
+      if (lhs_concat_dim != -1 && matching_operand != 0) {
         auto lhs_concat_shape = ccw_dot_lhs->shape();
         lhs_concat_shape.set_dimensions(
             lhs_concat_dim,
             ccw_dot_lhs->shape().dimensions(lhs_concat_dim) * 2);
         dot_lhs = body_b.AddInstruction(HloInstruction::CreateConcatenate(
             lhs_concat_shape, {ccw_dot_lhs, cw_dot_lhs}, lhs_concat_dim));
+        original_dot_lhs = dot_lhs;
+
+        // Reshape
+        std::vector<int64> reshaped_dims(dot_lhs->shape().dimensions().begin(),
+                                         dot_lhs->shape().dimensions().end());
+        reshaped_dims[lhs_concat_dim] /= 2;
+        reshaped_dims.insert(reshaped_dims.begin() + lhs_concat_dim, 2);
+        dot_lhs = body_b.AddInstruction(HloInstruction::CreateReshape(
+            ShapeUtil::MakeShape(dot_lhs->shape().element_type(),
+                                 reshaped_dims),
+            dot_lhs));
+
+        if (original_hlo->opcode() == HloOpcode::kDot) {
+          UpdateDDNums(&new_ddnums, lhs_concat_dim, true);
+        }
       }
-      if (rhs_concat_dim != -1) {
+      if (rhs_concat_dim != -1 && matching_operand != 1) {
         auto rhs_concat_shape = ccw_dot_rhs->shape();
         rhs_concat_shape.set_dimensions(
             rhs_concat_dim,
             ccw_dot_rhs->shape().dimensions(rhs_concat_dim) * 2);
         dot_rhs = body_b.AddInstruction(HloInstruction::CreateConcatenate(
             rhs_concat_shape, {ccw_dot_rhs, cw_dot_rhs}, rhs_concat_dim));
+        original_dot_rhs = dot_rhs;
+
+        // Reshape
+        std::vector<int64> reshaped_dims(dot_rhs->shape().dimensions().begin(),
+                                         dot_rhs->shape().dimensions().end());
+        reshaped_dims[rhs_concat_dim] /= 2;
+        reshaped_dims.insert(reshaped_dims.begin() + rhs_concat_dim, 2);
+        dot_rhs = body_b.AddInstruction(HloInstruction::CreateReshape(
+            ShapeUtil::MakeShape(dot_rhs->shape().element_type(),
+                                 reshaped_dims),
+            dot_rhs));
+
+        if (original_hlo->opcode() == HloOpcode::kDot) {
+          UpdateDDNums(&new_ddnums, rhs_concat_dim, false);
+        }
       }
 
-      TF_ASSIGN_OR_RETURN(
-          auto dot, create_sharded_dot(dot_lhs, dot_rhs, &body_b, conv_window));
+      // The generated original dot will not be used.
+      TF_ASSIGN_OR_RETURN(auto original_dot,
+                          create_sharded_dot(original_dot_lhs, original_dot_rhs,
+                                             &body_b, conv_window));
+      VLOG(2) << original_dot->ToString();
+
+      // Generate the correct shape of the new dot/conv.
+      auto original_sharded_dot_shape = original_dot->shape();
+      auto new_dot_shape = original_sharded_dot_shape;
+      std::vector<int64> new_dims(new_dot_shape.dimensions().begin(),
+                                  new_dot_shape.dimensions().end());
+      if (!windowed_at_contracting_dims) {
+        auto slice_dim = lhs_concat_dim != -1
+                             ? lhs_to_output_indices[lhs_concat_dim]
+                             : rhs_to_output_indices[rhs_concat_dim];
+        new_dims[slice_dim] /= 2;
+        new_dims.insert(new_dims.begin() + slice_dim, 2);
+      } else {
+        new_dims.push_back(1);
+      }
+      new_dot_shape =
+          ShapeUtil::MakeShape(original_hlo->shape().element_type(), new_dims);
+
+      HloInstruction* dot;
+      if (original_hlo->opcode() == HloOpcode::kDot) {
+        dot = body_b.AddInstruction(HloInstruction::CreateDot(
+            new_dot_shape, dot_lhs, dot_rhs, new_ddnums,
+            original_hlo->precision_config()));
+      } else {
+        if (!windowed_at_contracting_dims && !windowed_at_batch_dims) {
+          if (lhs_concat_dim != -1) {
+            std::vector<int64> new_dims(dot_rhs->shape().dimensions().begin(),
+                                        dot_rhs->shape().dimensions().end());
+            new_dims.push_back(1);
+            dot_rhs = body_b.AddInstruction(HloInstruction::CreateReshape(
+                ShapeUtil::MakeShape(dot_rhs->shape().element_type(), new_dims),
+                dot_rhs));
+          }
+          if (rhs_concat_dim != -1) {
+            std::vector<int64> new_dims(dot_lhs->shape().dimensions().begin(),
+                                        dot_lhs->shape().dimensions().end());
+            new_dims.push_back(1);
+            dot_lhs = body_b.AddInstruction(HloInstruction::CreateReshape(
+                ShapeUtil::MakeShape(dot_lhs->shape().element_type(), new_dims),
+                dot_lhs));
+          }
+        }
+
+        dot = body_b.AddInstruction(HloInstruction::CreateConvolve(
+            new_dot_shape, dot_lhs, dot_rhs,
+            original_dot->feature_group_count(),
+            original_dot->batch_group_count(),
+            GenNewWindow(original_dot, dot_lhs, dot_rhs, lhs_concat_dim,
+                         rhs_concat_dim, windowed_at_contracting_dims,
+                         windowed_at_batch_dims),
+            GenNewConvDNums(original_dot, dot_lhs, dot_rhs, lhs_concat_dim,
+                            rhs_concat_dim, windowed_at_contracting_dims,
+                            windowed_at_batch_dims, lhs_to_output_indices,
+                            rhs_to_output_indices, new_dot_shape),
+            original_dot->precision_config()));
+      }
+      VLOG(2) << dot->ToString();
+
+      // Reshape to the original sharded dot shape.
+      dot = body_b.AddInstruction(
+          HloInstruction::CreateReshape(original_sharded_dot_shape, dot));
+
       if (windowed_at_contracting_dims) {
         // Accumulate the partial output to the result buffer.
         o = body_b.AddInstruction(
