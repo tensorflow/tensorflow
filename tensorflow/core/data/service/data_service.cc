@@ -236,6 +236,28 @@ Status DataServiceDispatcherClient::EnsureInitialized() {
   args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, true);
   auto channel = grpc::CreateCustomChannel(address_, credentials, args);
   stub_ = DispatcherService::NewStub(channel);
+  GetVersionRequest req;
+  GetVersionResponse resp;
+  TF_RETURN_IF_ERROR(grpc_util::Retry(
+      [&] {
+        grpc::ClientContext ctx;
+        grpc::Status s = stub_->GetVersion(&ctx, req, &resp);
+        if (!s.ok()) {
+          return grpc_util::WrapError("Failed to get dispatcher version", s);
+        }
+        return Status::OK();
+      },
+      "checking service version",
+      /*deadline_micros=*/kint64max));
+  if (resp.version() != kDataServiceVersion) {
+    return errors::FailedPrecondition(
+        "Version mismatch with tf.data service server. The server is running "
+        "version ",
+        resp.version(), ", while the client is running version ",
+        kDataServiceVersion,
+        ". Please ensure that the client and server side are running the "
+        "same version of TensorFlow.");
+  }
   return Status::OK();
 }
 
