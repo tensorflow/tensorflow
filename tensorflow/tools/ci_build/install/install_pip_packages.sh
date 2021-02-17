@@ -86,7 +86,6 @@ pip3 install lazy-object-proxy==1.4.3
 # pylint tests require the following version. pylint==1.6.4 hangs erratically,
 # thus using the updated version of 2.5.3 only for python3 as python2 is EOL
 # and this version is not available.
-pip2 install pylint==1.6.4
 pip3 install pylint==2.6.2
 
 # pycodestyle tests require the following:
