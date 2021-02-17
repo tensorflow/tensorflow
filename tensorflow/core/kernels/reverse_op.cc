@@ -312,6 +312,7 @@ class ReverseV2Op : public OpKernel {
                           ReverseV2Op<CPUDevice, T, int64>)
 TF_CALL_POD_TYPES(REGISTER_KERNELS);
 TF_CALL_tstring(REGISTER_KERNELS);
+TF_CALL_bfloat16(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
