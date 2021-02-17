@@ -1201,6 +1201,9 @@ class ClusterCoordinator(object):
     assert remote_value.fetch() == 3
     ```
 
+    NOTE: A known limitation is `tf.data.Options` is ignored in dataset created
+    by `create_per_worker_dataset`.
+
     Args:
       dataset_fn: The dataset function that returns a dataset. This is to be
         executed on the workers.
