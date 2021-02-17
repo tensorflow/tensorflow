@@ -1596,3 +1596,71 @@ func @DontConvertConstSelectMixed(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) ->
   // CHECK: %1 = "tfl.select_v2"(%cst, %arg0, %arg1) : (tensor<2xi1>, tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   // CHECK: return %0, %1
 }
+
+// CHECK-LABEL: RemoveSoftmaxBeforeArgmax
+func @RemoveSoftmaxBeforeArgmax(%arg0: tensor<16x1024xf32>) -> tensor<16xi32> {
+  %cst = constant dense<-1> : tensor<1xi32>
+  %0 = "tfl.softmax"(%arg0) {beta = 1.000000e+00 : f32} : (tensor<16x1024xf32>) -> tensor<16x1024xf32>
+  %1 = "tfl.arg_max"(%0, %cst) : (tensor<16x1024xf32>, tensor<1xi32>) -> tensor<16xi32>
+  return %1 : tensor<16xi32>
+  // CHECK: %[[CST:.*]] = constant dense<-1> : tensor<1xi32>
+  // CHECK: %[[ARG_MAX:.*]] = "tfl.arg_max"(%arg0, %[[CST]]) : (tensor<16x1024xf32>, tensor<1xi32>) -> tensor<16xi32>
+  // CHECK: return %[[ARG_MAX]] : tensor<16xi32>
+}
+
+// CHECK-LABEL: RemoveSoftmaxBeforeArgmin
+func @RemoveSoftmaxBeforeArgmin(%arg0: tensor<16x1024xf32>) -> tensor<16xi32> {
+  %cst = constant dense<-1> : tensor<1xi32>
+  %0 = "tfl.softmax"(%arg0) {beta = 1.000000e+00 : f32} : (tensor<16x1024xf32>) -> tensor<16x1024xf32>
+  %1 = "tfl.arg_min"(%0, %cst) : (tensor<16x1024xf32>, tensor<1xi32>) -> tensor<16xi32>
+  return %1 : tensor<16xi32>
+  // CHECK: %[[CST:.*]] = constant dense<-1> : tensor<1xi32>
+  // CHECK: %[[ARG_MIN:.*]] = "tfl.arg_min"(%arg0, %[[CST]]) : (tensor<16x1024xf32>, tensor<1xi32>) -> tensor<16xi32>
+  // CHECK: return %[[ARG_MIN]] : tensor<16xi32>
+}
+
+// CHECK-LABEL: RemoveLogSoftmaxBeforeArgmax
+func @RemoveLogSoftmaxBeforeArgmax(%arg0: tensor<16x1024xf32>) -> tensor<16xi32> {
+  %cst = constant dense<-1> : tensor<1xi32>
+  %0 = "tfl.log_softmax"(%arg0) {beta = 1.000000e+00 : f32} : (tensor<16x1024xf32>) -> tensor<16x1024xf32>
+  %1 = "tfl.arg_max"(%0, %cst) : (tensor<16x1024xf32>, tensor<1xi32>) -> tensor<16xi32>
+  return %1 : tensor<16xi32>
+  // CHECK: %[[CST:.*]] = constant dense<-1> : tensor<1xi32>
+  // CHECK: %[[ARG_MAX:.*]] = "tfl.arg_max"(%arg0, %[[CST]]) : (tensor<16x1024xf32>, tensor<1xi32>) -> tensor<16xi32>
+  // CHECK: return %[[ARG_MAX]] : tensor<16xi32>
+}
+
+// CHECK-LABEL: RemoveLogSoftmaxBeforeArgmin
+func @RemoveLogSoftmaxBeforeArgmin(%arg0: tensor<16x1024xf32>) -> tensor<16xi32> {
+  %cst = constant dense<-1> : tensor<1xi32>
+  %0 = "tfl.log_softmax"(%arg0) {beta = 1.000000e+00 : f32} : (tensor<16x1024xf32>) -> tensor<16x1024xf32>
+  %1 = "tfl.arg_min"(%0, %cst) : (tensor<16x1024xf32>, tensor<1xi32>) -> tensor<16xi32>
+  return %1 : tensor<16xi32>
+  // CHECK: %[[CST:.*]] = constant dense<-1> : tensor<1xi32>
+  // CHECK: %[[ARG_MIN:.*]] = "tfl.arg_min"(%arg0, %[[CST]]) : (tensor<16x1024xf32>, tensor<1xi32>) -> tensor<16xi32>
+  // CHECK: return %[[ARG_MIN]] : tensor<16xi32>
+}
+
+// CHECK-LABEL: DontRemoveSoftmaxNegativeBetaBeforeArgmax
+func @DontRemoveSoftmaxNegativeBetaBeforeArgmax(%arg0: tensor<16x1024xf32>) -> tensor<16xi32> {
+  %cst = constant dense<-1> : tensor<1xi32>
+  %0 = "tfl.softmax"(%arg0) {beta = -1.000000e+00 : f32} : (tensor<16x1024xf32>) -> tensor<16x1024xf32>
+  %1 = "tfl.arg_max"(%0, %cst) : (tensor<16x1024xf32>, tensor<1xi32>) -> tensor<16xi32>
+  return %1 : tensor<16xi32>
+  // CHECK: %[[CST:.*]] = constant dense<-1> : tensor<1xi32>
+  // CHECK: %[[SOFTMAX:.*]] = "tfl.softmax"(%arg0) {beta = -1.000000e+00 : f32} : (tensor<16x1024xf32>) -> tensor<16x1024xf32>
+  // CHECK: %[[ARG_MAX:.*]] = "tfl.arg_max"(%[[SOFTMAX]], %[[CST]]) : (tensor<16x1024xf32>, tensor<1xi32>) -> tensor<16xi32>
+  // CHECK: return %[[ARG_MAX]] : tensor<16xi32>
+}
+
+// CHECK-LABEL: DontRemoveSoftmaxNonLastAxisBeforeArgmax
+func @DontRemoveSoftmaxNonLastAxisBeforeArgmax(%arg0: tensor<16x1024xf32>) -> tensor<16xi32> {
+  %cst = constant dense<0> : tensor<1xi32>
+  %0 = "tfl.softmax"(%arg0) {beta = 1.000000e+00 : f32} : (tensor<16x1024xf32>) -> tensor<16x1024xf32>
+  %1 = "tfl.arg_max"(%0, %cst) : (tensor<16x1024xf32>, tensor<1xi32>) -> tensor<16xi32>
+  return %1 : tensor<16xi32>
+  // CHECK: %[[CST:.*]] = constant dense<0> : tensor<1xi32>
+  // CHECK: %[[SOFTMAX:.*]] = "tfl.softmax"(%arg0) {beta = 1.000000e+00 : f32} : (tensor<16x1024xf32>) -> tensor<16x1024xf32>
+  // CHECK: %[[ARG_MAX:.*]] = "tfl.arg_max"(%[[SOFTMAX]], %[[CST]]) : (tensor<16x1024xf32>, tensor<1xi32>) -> tensor<16xi32>
+  // CHECK: return %[[ARG_MAX]] : tensor<16xi32>
+}

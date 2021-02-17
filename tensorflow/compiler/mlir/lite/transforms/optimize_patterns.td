@@ -715,3 +715,20 @@ foreach SelectOp = [TFL_SelectOp, TFL_SelectV2Op] in {
      (IsTailOfShape $constant, $input1),
      (AllElementsAreBool<"false"> $constant)]>;
 }
+
+// Remove (log-)softmax before arg-minmax as (log-)softmax is monotonic.
+foreach ArgMinMaxOp = [TFL_ArgMinOp, TFL_ArgMaxOp] in {
+  def RemoveSoftmaxOpBefore#ArgMinMaxOp : Pat<
+    (ArgMinMaxOp (TFL_SoftmaxOp:$softmax $logits, TFL_FloatNonNegative:$beta),
+                 (ConstantOp:$const_axes I32ElementsAttr:$axes)),
+    (ArgMinMaxOp $logits, $const_axes),
+    [(HasOneUse $softmax),
+     (AxesIsLastDimension $axes, $logits)]>;
+
+  def RemoveLogSoftmaxOpBefore#ArgMinMaxOp : Pat<
+    (ArgMinMaxOp (TFL_LogSoftmaxOp:$log_softmax $logits),
+                 (ConstantOp:$const_axes I32ElementsAttr:$axes)),
+    (ArgMinMaxOp $logits, $const_axes),
+    [(HasOneUse $log_softmax),
+     (AxesIsLastDimension $axes, $logits)]>;
+}
