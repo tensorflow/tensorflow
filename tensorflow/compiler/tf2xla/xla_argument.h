@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_ARGUMENT_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_ARGUMENT_H_
 
+#include <optional>
+
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
@@ -74,6 +76,9 @@ struct XlaArgument {
   // The value of the argument, if it is a compile-time constant. Must be a
   // host-memory tensor.
   Tensor constant_value;
+
+  // The upper bounds of the value.
+  absl::optional<Tensor> value_bound;
 
   // The name of this argument, used for debugging.
   string name;

@@ -1159,6 +1159,10 @@ Status XlaCompiler::BuildArguments(
               xla::Reshape(arg_handles[i], arg.DimensionSizes()), arg.type);
         } else {
           arg_expression = XlaExpression::XlaOp(arg_handles[i], arg.type);
+          if (arg.value_bound) {
+            // Propagate upper bound to arg_expression.
+            arg_expression.set_value_bound(arg.value_bound.value());
+          }
         }
         break;
       case XlaCompiler::Argument::kTensorList: {
