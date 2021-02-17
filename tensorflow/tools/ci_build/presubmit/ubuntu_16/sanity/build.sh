@@ -29,6 +29,7 @@ function install_pylint () {
   # maybe extract out to a common?
   sudo python3.8 -m pip install setuptools --upgrade
   sudo python3.8 -m pip install pylint==2.6.2
+  sudo python3.8 -m pip install astroid==2.5
 }
 
 function run_sanity_checks () {
