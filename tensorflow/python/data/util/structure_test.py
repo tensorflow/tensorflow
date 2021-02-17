@@ -757,7 +757,6 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
   )
   def testFlatStructure(self, value_fn, expected_structure,
                         expected_types, expected_shapes):
-    value_fn = value_fn._obj
     expected_structure = expected_structure._obj
     expected_types = expected_types._obj
     expected_shapes = expected_shapes._obj
@@ -783,9 +782,9 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testIsCompatibleWithStructure(self, original_value_fn,
                                     compatible_values_fn,
                                     incompatible_values_fn):
-    original_value = original_value_fn._obj()
-    compatible_values = compatible_values_fn._obj()
-    incompatible_values = incompatible_values_fn._obj()
+    original_value = original_value_fn()
+    compatible_values = compatible_values_fn()
+    incompatible_values = incompatible_values_fn()
 
     s = structure.type_spec_from_value(original_value)
     for compatible_value in compatible_values:
@@ -806,8 +805,6 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testStructureFromValueEquality(self, value1_fn, value2_fn,
                                      not_equal_value_fns):
     # pylint: disable=g-generic-assert
-    value1_fn = value1_fn._obj
-    value2_fn = value2_fn._obj
     not_equal_value_fns = not_equal_value_fns._obj
     s1 = structure.type_spec_from_value(value1_fn())
     s2 = structure.type_spec_from_value(value2_fn())
@@ -845,9 +842,6 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
       )
   )
   def testHash(self, value1_fn, value2_fn, value3_fn):
-    value1_fn = value1_fn._obj
-    value2_fn = value2_fn._obj
-    value3_fn = value3_fn._obj
     s1 = structure.type_spec_from_value(value1_fn())
     s2 = structure.type_spec_from_value(value2_fn())
     s3 = structure.type_spec_from_value(value3_fn())
@@ -864,7 +858,7 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
       )
   )
   def testRoundTripConversion(self, value_fn):
-    value = value_fn._obj()
+    value = value_fn()
     s = structure.type_spec_from_value(value)
 
     def maybe_stack_ta(v):
@@ -1166,8 +1160,6 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
       )
   )
   def testToBatchedTensorList(self, value_fn, element_0_fn):
-    value_fn = value_fn._obj
-    element_0_fn = element_0_fn._obj
     batched_value = value_fn()
     s = structure.type_spec_from_value(batched_value)
     batched_tensor_list = structure.to_batched_tensor_list(s, batched_value)

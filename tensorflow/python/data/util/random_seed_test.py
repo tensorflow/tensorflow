@@ -123,7 +123,7 @@ class RandomSeedTest(test_base.DatasetTestBase, parameterized.TestCase):
   )
   def testRandomSeed(self, input_fn, output_fn):
 
-    tinput, toutput = input_fn._obj(), output_fn._obj() # pylint: disable=protected-access
+    tinput, toutput = input_fn(), output_fn() # pylint: disable=protected-access
     random_seed.set_random_seed(tinput[0])
     g_seed, op_seed = data_random_seed.get_seed(tinput[1])
     g_seed = self.evaluate(g_seed)

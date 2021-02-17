@@ -414,7 +414,7 @@ class SparseTest(test_base.DatasetTestBase, parameterized.TestCase):
       )
   )
   def testAnySparse(self, classes_fn, expected):
-    classes = classes_fn._obj() # pylint: disable=protected-access
+    classes = classes_fn()
     expected = expected._obj # pylint: disable=protected-access
     self.assertEqual(sparse.any_sparse(classes), expected)
 
@@ -433,9 +433,9 @@ class SparseTest(test_base.DatasetTestBase, parameterized.TestCase):
       )
   )
   def testAsDenseShapes(self, types_fn, classes_fn, expected_fn):
-    types = types_fn._obj() # pylint: disable=protected-access
-    classes = classes_fn._obj() # pylint: disable=protected-access
-    expected = expected_fn._obj() # pylint: disable=protected-access
+    types = types_fn()
+    classes = classes_fn()
+    expected = expected_fn()
     self.assertShapesEqual(sparse.as_dense_shapes(types, classes), expected)
 
   @combinations.generate(
@@ -445,9 +445,9 @@ class SparseTest(test_base.DatasetTestBase, parameterized.TestCase):
       )
   )
   def testAsDenseTypes(self, types_fn, classes_fn, expected_fn):
-    types = types_fn._obj() # pylint: disable=protected-access
-    classes = classes_fn._obj() # pylint: disable=protected-access
-    expected = expected_fn._obj() # pylint: disable=protected-access
+    types = types_fn()
+    classes = classes_fn()
+    expected = expected_fn()
     self.assertEqual(sparse.as_dense_types(types, classes), expected)
 
   @combinations.generate(
@@ -457,8 +457,8 @@ class SparseTest(test_base.DatasetTestBase, parameterized.TestCase):
       )
   )
   def testGetClasses(self, classes_fn, expected_fn):
-    classes = classes_fn._obj() # pylint: disable=protected-access
-    expected = expected_fn._obj() # pylint: disable=protected-access
+    classes = classes_fn()
+    expected = expected_fn()
     self.assertEqual(sparse.get_classes(classes), expected)
 
   def assertSparseValuesEqual(self, a, b):
@@ -479,7 +479,7 @@ class SparseTest(test_base.DatasetTestBase, parameterized.TestCase):
       )
   )
   def testSerializeDeserialize(self, input_fn):
-    test_case = input_fn._obj() # pylint: disable=protected-access
+    test_case = input_fn()
     classes = sparse.get_classes(test_case)
     shapes = nest.map_structure(lambda _: tensor_shape.TensorShape(None),
                                 classes)
@@ -498,7 +498,7 @@ class SparseTest(test_base.DatasetTestBase, parameterized.TestCase):
       )
   )
   def testSerializeManyDeserialize(self, input_fn):
-    test_case = input_fn._obj() # pylint: disable=protected-access
+    test_case = input_fn()
     classes = sparse.get_classes(test_case)
     shapes = nest.map_structure(lambda _: tensor_shape.TensorShape(None),
                                 classes)
