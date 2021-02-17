@@ -43,61 +43,61 @@ def _test_random_seed_combinations():
       # and output from get_seed:
       # (output_graph_seed, output_op_seed)
       (
-          "CASE_0",
+          "TestCase_0",
           lambda: (None, None),
           lambda: (0, 0),
       ),
       (
-          "CASE_1",
+          "TestCase_1",
           lambda: (None, 1),
           lambda: (random_seed.DEFAULT_GRAPH_SEED, 1)
       ),
       (
-          "CASE_2",
+          "TestCase_2",
           lambda: (1, 1),
           lambda: (1, 1)
       ),
       (
           # Avoid nondeterministic (0, 0) output
-          "CASE_3",
+          "TestCase_3",
           lambda: (0, 0),
           lambda: (0, 2**31 - 1)
       ),
       (
           # Don't wrap to (0, 0) either
-          "CASE_4",
+          "TestCase_4",
           lambda: (2**31 - 1, 0),
           lambda: (0, 2**31 - 1)
       ),
       (
           # Wrapping for the other argument
-          "CASE_5",
+          "TestCase_5",
           lambda: (0, 2**31 - 1),
           lambda: (0, 2**31 - 1)
       ),
       (
           # Once more, with tensor-valued arguments
-          "CASE_6",
+          "TestCase_6",
           lambda: (None, constant_op.constant(1, dtype=dtypes.int64, name='one')),
           lambda: (random_seed.DEFAULT_GRAPH_SEED, 1)
       ),
       (
-          "CASE_7",
+          "TestCase_7",
           lambda: (1, constant_op.constant(1, dtype=dtypes.int64, name='one')),
           lambda: (1, 1)
       ),
       (
-          "CASE_8",
+          "TestCase_8",
           lambda: (0, constant_op.constant(0, dtype=dtypes.int64, name='zero')),
           lambda: (0, 2**31 - 1)  # Avoid nondeterministic (0, 0) output
       ),
       (
-          "CASE_9",
+          "TestCase_9",
           lambda: (2**31 - 1, constant_op.constant(0, dtype=dtypes.int64, name='zero')),
           lambda: (0, 2**31 - 1)  # Don't wrap to (0, 0) either
       ),
       (
-          "CASE_10",
+          "TestCase_10",
           lambda: (0, constant_op.constant(2**31 - 1, dtype=dtypes.int64, name='intmax')),
           lambda: (0, 2**31 - 1)  # Wrapping for the other argument
       )
