@@ -6227,6 +6227,7 @@ filegroup(
         "stateless_random_gamma_op.cc",
         "stateless_random_ops.cc",
         "stateless_random_ops_v2.cc",
+        "string_format_op.cc",
         "string_join_op.cc",
         "string_length_op.cc",
         "string_lower_op.cc",
