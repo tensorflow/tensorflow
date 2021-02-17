@@ -760,7 +760,10 @@ Status XlaCompiler::CompileFunction(
     if (absl::holds_alternative<xla::Shape>(args[i].shape)) {
       xla::Shape xla_shape = absl::get<xla::Shape>(args[i].shape);
       TensorShape tensor_shape;
-      if (XLAShapeToTensorShape(xla_shape, &tensor_shape).ok()) {
+      // If xla_shape is dynamic, prevent constant folding by not setting
+      // output_shapes.
+      if (XLAShapeToTensorShape(xla_shape, &tensor_shape).ok() &&
+          xla_shape.is_static()) {
         fbody->arg_nodes[i]->ClearAttr("_output_shapes");
         fbody->arg_nodes[i]->AddAttr("_output_shapes",
                                      std::vector<TensorShape>{tensor_shape});
@@ -1283,7 +1286,9 @@ Status XlaCompiler::CompileGraph(
       [this](const NameAttrList& function, const FunctionBody** fbody) {
         return FindFunctionBody(function, fbody);
       },
-      graph.get(), local_flib_def_.get()));
+      graph.get(), local_flib_def_.get(),
+      pflr_->GetFunctionLibraryDefinition()));
+
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "XlaCompiler::CompileGraph: "
             << DumpGraphToFile(absl::StrCat("xla_compile_graph_", name), *graph,

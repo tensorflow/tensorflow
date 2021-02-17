@@ -23,6 +23,11 @@ message GetElementRequest {
   oneof optional_round_index {
     int64 round_index = 3;
   }
+  // Whether the previous round was skipped. This information is needed by the
+  // worker to recover after restarts.
+  bool skipped_previous_round = 4;
+  // Whether to skip the round if data isn't ready fast enough.
+  bool allow_skip = 5;
 }
 
 message GetElementResponse {
@@ -30,6 +35,8 @@ message GetElementResponse {
   CompressedElement compressed_element = 3;
   // Boolean to indicate whether the iterator has been exhausted.
   bool end_of_sequence = 2;
+  // Indicates whether the round was skipped.
+  bool skip_task = 4;
 }
 
 // Named GetWorkerTasks to avoid conflicting with GetTasks in dispatcher.proto

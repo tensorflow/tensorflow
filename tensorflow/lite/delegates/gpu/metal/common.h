@@ -50,6 +50,12 @@ MTLPixelFormat DataTypeToRGBAPixelFormat(DataType type, bool normalized = false)
 void WriteDataToTexture2D(id<MTLTexture> texture, id<MTLDevice> device, const void* data);
 void ReadDataFromTexture2D(id<MTLTexture> texture, id<MTLDevice> device, void* data);
 
+void WriteDataToTexture3D(id<MTLTexture> texture, id<MTLDevice> device, const void* data);
+void ReadDataFromTexture3D(id<MTLTexture> texture, id<MTLDevice> device, void* data);
+
+void WriteDataToTexture2DArray(id<MTLTexture> texture, id<MTLDevice> device, const void* data);
+void ReadDataFromTexture2DArray(id<MTLTexture> texture, id<MTLDevice> device, void* data);
+
 }  // namespace metal
 }  // namespace gpu
 }  // namespace tflite

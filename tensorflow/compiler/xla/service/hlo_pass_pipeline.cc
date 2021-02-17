@@ -105,8 +105,8 @@ void SetInstructionMetadata(HloModule& module) {
       if (instruction->metadata().creation_pass_id() == 0) {
         instruction->set_creation_pass_id(*pass_id);
       }
-      if (instruction->metadata().op_name().empty()) {
-        instruction->set_metadata_op_name(absl::StrCat("DUMMY_", *pass_id));
+      if (instruction->metadata().logical_creation_pass_id() == 0) {
+        instruction->set_logical_creation_pass_id(*pass_id);
       }
     }
   }
@@ -180,7 +180,7 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
     RecordPassEndMetadata(*hlo, pass_name, pass_changed);
     changed |= pass_changed;
     if (pass_changed) {
-      VLOG(3) << "  Pass caused changes" << pass->name();
+      VLOG(3) << "  Pass caused changes " << pass->name();
     }
     TF_RETURN_IF_ERROR(RunInvariantCheckers(hlo, pass_name));
     if (!pass->IsPassPipeline()) {

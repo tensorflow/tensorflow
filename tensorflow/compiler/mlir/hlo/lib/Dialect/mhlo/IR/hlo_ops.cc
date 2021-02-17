@@ -976,6 +976,10 @@ OpFoldResult ComplexOp::fold(ArrayRef<Attribute> operands) {
   return {};
 }
 
+//===----------------------------------------------------------------------===//
+// ImagOp
+//===----------------------------------------------------------------------===//
+
 namespace {
 Type CreateRealType(Type type) {
   auto element_ty = getElementTypeOrSelf(type);
@@ -1008,6 +1012,33 @@ OpFoldResult ImagOp::fold(ArrayRef<Attribute> operands) {
 
   return {};
 }
+
+//===----------------------------------------------------------------------===//
+// IsFiniteOp
+//===----------------------------------------------------------------------===//
+
+TensorType getSameShapeTensorType(TensorType tensor_type, Type element_type) {
+  if (auto ranked_tensor_ty = tensor_type.dyn_cast<RankedTensorType>()) {
+    return RankedTensorType::get(ranked_tensor_ty.getShape(), element_type);
+  }
+  if (auto unranked_tensor_ty = tensor_type.dyn_cast<UnrankedTensorType>()) {
+    return UnrankedTensorType::get(element_type);
+  }
+  llvm_unreachable("unhandled type");
+}
+
+LogicalResult IsFiniteOp::inferReturnTypes(
+    MLIRContext* ctx, Optional<Location>, ValueRange operands, DictionaryAttr,
+    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  auto arg_ty = operands.front().getType().cast<TensorType>();
+  Builder b(ctx);
+  inferredReturnTypes.push_back(getSameShapeTensorType(arg_ty, b.getI1Type()));
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// RealOp
+//===----------------------------------------------------------------------===//
 
 LogicalResult RealOp::inferReturnTypes(
     MLIRContext*, Optional<Location>, ValueRange operands, DictionaryAttr,
@@ -1280,6 +1311,40 @@ class DynamicReshapeOpNotActuallyDynamic
 };
 
 // Canonicalizes
+// %0 = some_op(%tensor)
+// %1 = "mhlo.dynamic_reshape"(%0, %shape)
+//      (tensor<?xT>, tensor<1xindex>) -> tensor<?xT>
+// ... uses of %1.
+//
+// into
+//
+// ... uses of %0.
+// This canonicalization is only correct if the input is correct!
+// TODO(b/178779691): Use a more sophisticated canonicalization that preserves
+// errors in input, and still allows us to get rid of redundant reshapes.
+class RemoveRedundantRank1DynamicReshape
+    : public OpRewritePattern<DynamicReshapeOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(DynamicReshapeOp op,
+                                PatternRewriter& rewriter) const override {
+    auto type = op.result().getType().dyn_cast<RankedTensorType>();
+    if (!type || type.getRank() != 1 || type.hasStaticShape()) {
+      return rewriter.notifyMatchFailure(
+          op, "requires rank 1 shape tensor with dynamic dimension");
+    }
+    auto operand_type = op.operand().getType().dyn_cast<RankedTensorType>();
+    if (!operand_type || operand_type.getRank() != 1 ||
+        operand_type.hasStaticShape()) {
+      return rewriter.notifyMatchFailure(
+          op, "requires rank 1 shape tensor with dynamic dimension");
+    }
+    rewriter.replaceOp(op, {op.operand()});
+    return success();
+  }
+};
+
+// Canonicalizes
 // %0 = "mhlo.dynamic_reshape"(%tensor, %shape)
 // %1 = same_operands_and_result_shape_op(%tensor)
 // %2 = "mhlo.dynamic_reshape"(%1, %shape)
@@ -1323,6 +1388,7 @@ void DynamicReshapeOp::getCanonicalizationPatterns(
       DynamicReshapeOpSameShapeOpResult,
       RemoveRedundantDynamicBroadcast,
       RemoveRedundantDynamicReshape,
+      RemoveRedundantRank1DynamicReshape,
       ShapeOfDynamicReshape
     >(context);
   // clang-format on

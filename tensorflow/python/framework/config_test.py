@@ -251,7 +251,7 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
   @test_util.run_gpu_only
   @reset_eager
   def testJit(self):
-    self.assertEqual(config.get_optimizer_jit(), False)
+    self.assertEqual(config.get_optimizer_jit(), '')
 
     # the following function should cause Op fusion to occur. However, there is
     # unfortunately no straightforward way to ensure this. We will just have to
@@ -267,17 +267,13 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
 
     self.evaluate(fun(a, b))
 
-    config.set_optimizer_jit(True)
-    self.assertEqual(config.get_optimizer_jit(), True)
-    self.assertEqual(config.get_optimizer_jit(),
-                     context.context().optimizer_jit)
+    config.set_optimizer_jit('autoclustering')
+    self.assertEqual(config.get_optimizer_jit(), 'autoclustering')
 
     self.evaluate(fun(a, b))
 
-    config.set_optimizer_jit(False)
-    self.assertEqual(config.get_optimizer_jit(), False)
-    self.assertEqual(config.get_optimizer_jit(),
-                     context.context().optimizer_jit)
+    config.set_optimizer_jit('')
+    self.assertEqual(config.get_optimizer_jit(), '')
 
     self.evaluate(fun(a, b))
 

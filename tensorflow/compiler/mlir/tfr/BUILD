@@ -254,7 +254,6 @@ tf_py_test(
     ],
     deps = [
         "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
-        "//tensorflow/python:is_mlir_bridge_test_false",
         "//tensorflow/python/eager:def_function",
     ],
 )
@@ -266,7 +265,7 @@ cc_library(
     deps = [
         ":tfr_decompose_ctx",
         "//tensorflow/core:lib",
-        "//tensorflow/core/common_runtime/eager:core",
+        "//tensorflow/core/common_runtime/eager:core_no_xla",
         "//tensorflow/core/common_runtime/eager:eager_op_rewrite_registry",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/strings",

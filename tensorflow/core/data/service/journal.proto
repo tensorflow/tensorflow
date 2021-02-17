@@ -15,6 +15,8 @@ message Update {
     ProduceSplitUpdate produce_split = 8;
     AcquireJobClientUpdate acquire_job_client = 6;
     ReleaseJobClientUpdate release_job_client = 7;
+    CreatePendingTaskUpdate create_pending_task = 9;
+    ClientHeartbeatUpdate client_heartbeat = 10;
     CreateTaskUpdate create_task = 3;
     FinishTaskUpdate finish_task = 4;
   }
@@ -65,6 +67,27 @@ message ReleaseJobClientUpdate {
   // The time when the client was released, measured in microseconds since the
   // epoch.
   int64 time_micros = 2;
+}
+
+// Indicates that a client failed to block before reaching the target round.
+message TaskRejected {
+  // A new target round to try adding the task in.
+  int64 new_target_round = 1;
+}
+
+// Updates dispatcher state based on a client heartbeat.
+message ClientHeartbeatUpdate {
+  int64 job_client_id = 1;
+  bool task_accepted = 2;
+  TaskRejected task_rejected = 3;
+}
+
+message CreatePendingTaskUpdate {
+  int64 task_id = 1;
+  int64 job_id = 2;
+  string worker_address = 3;
+  string transfer_address = 4;
+  int64 starting_round = 5;
 }
 
 message CreateTaskUpdate {

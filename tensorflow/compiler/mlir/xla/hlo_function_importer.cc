@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/algorithm/container.h"
 #include "absl/types/optional.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -310,8 +311,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       return new_operation;
     }
     case HloOpcode::kCollectivePermute: {
-      attributes.push_back(
-          ConvertSourceTargetPairs(instruction->source_target_pairs()));
+      attributes.push_back(ConvertSourceTargetPairs(
+          instruction->source_target_pairs(), builder_));
       MakeAndReturn(CollectivePermuteOp);
     }
     case HloOpcode::kCustomCall: {
@@ -379,14 +380,29 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kInfeed: {
       attributes.push_back(builder_->getNamedAttr(
-          "infeed_config", mlir::StringAttr::get(instruction->infeed_config(),
-                                                 builder_->getContext())));
+          "infeed_config",
+          mlir::StringAttr::get(builder_->getContext(),
+                                instruction->infeed_config())));
+      // TODO(kramm): Support tuples and tokens.
+      if (instruction->shape().IsArray()) {
+        const xla::Layout l = instruction->shape().layout();
+        absl::Span<const int64> minor_to_major = l.minor_to_major();
+        std::vector<mlir::Attribute> v;
+        for (int64 i : minor_to_major) {
+          v.push_back(builder_->getI32IntegerAttr(i));
+        }
+        llvm::ArrayRef<mlir::Attribute> array_ref(v);
+        mlir::ArrayAttr layout = builder_->getArrayAttr(array_ref);
+        attributes.push_back(builder_->getNamedAttr("layout", layout));
+      }
+
       MakeAndReturn(InfeedOp);
     }
     case HloOpcode::kOutfeed: {
       attributes.push_back(builder_->getNamedAttr(
-          "outfeed_config", mlir::StringAttr::get(instruction->outfeed_config(),
-                                                  builder_->getContext())));
+          "outfeed_config",
+          mlir::StringAttr::get(builder_->getContext(),
+                                instruction->outfeed_config())));
       MakeAndReturn(OutfeedOp);
     }
     case HloOpcode::kPad: {
@@ -538,7 +554,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     case HloOpcode::kAllReduce: {
       auto all_reduce = Cast<HloAllReduceInstruction>(instruction);
       attributes.push_back(
-          ConvertReplicaGroups(all_reduce->replica_groups(), *builder_));
+          ConvertReplicaGroups(all_reduce->replica_groups(), builder_));
       attributes.push_back(ConvertChannelHandle(all_reduce->channel_id()));
       auto all_reduce_op = func_builder->create<mlir::mhlo::AllReduceOp>(
           loc, result_type, operands, attributes);
@@ -920,40 +936,45 @@ mlir::NamedAttribute HloFunctionImporter::ConvertPadding(
 
 mlir::NamedAttribute HloFunctionImporter::ConvertSourceTargetPairs(
     const std::vector<std::pair<tensorflow::int64, tensorflow::int64>>&
-        source_target_pairs) {
+        source_target_pairs,
+    mlir::Builder* builder) {
   std::vector<int64_t> attr(source_target_pairs.size() * 2);
   for (auto p : llvm::enumerate(source_target_pairs)) {
     attr[2 * p.index()] = p.value().first;
     attr[2 * p.index() + 1] = p.value().second;
   }
   auto type = mlir::RankedTensorType::get(
-      {static_cast<int64_t>(attr.size() / 2), 2}, builder_->getIntegerType(64));
-  return builder_->getNamedAttr("source_target_pairs",
-                                DenseIntElementsAttr::get(type, attr));
+      {static_cast<int64_t>(attr.size() / 2), 2}, builder->getIntegerType(64));
+  return builder->getNamedAttr("source_target_pairs",
+                               DenseIntElementsAttr::get(type, attr));
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertReplicaGroups(
-    const std::vector<ReplicaGroup>& replica_groups, mlir::Builder builder) {
-  int64_t num_groups = replica_groups.size();
-  int64_t group_size =
-      num_groups == 0 ? 0 : replica_groups[0].replica_ids_size();
-  std::vector<int64_t> attr(num_groups * group_size);
-  int flat_index = 0;
-  for (const auto& group : replica_groups) {
-    assert(group_size == group.replica_ids_size());
-    for (int i = 0; i < group_size; ++i)
-      attr[flat_index++] = group.replica_ids(i);
+    const std::vector<ReplicaGroup>& replica_groups, mlir::Builder* builder) {
+  const int64_t num_groups = replica_groups.size();
+  // Replica groups in HLO can be non-uniform in size, for example:
+  // replica_groups={{0},{1,2},{3}}. Since we are representing them as a 2D
+  // tensor, pad the smaller sized replica groups with -1.
+  const int64_t group_size = absl::c_accumulate(
+      replica_groups, int64_t(0), [](int64_t current, const ReplicaGroup& g) {
+        return std::max<int64_t>(current, g.replica_ids_size());
+      });
+  // Initialize all elements to -1 to support non-uniform replica groups.
+  std::vector<int64_t> attr(num_groups * group_size, -1);
+  for (int i = 0; i < num_groups; ++i) {
+    int index = i * group_size;
+    for (const int64& id : replica_groups[i].replica_ids()) attr[index++] = id;
   }
   auto type = mlir::RankedTensorType::get({num_groups, group_size},
-                                          builder.getIntegerType(64));
-  return builder.getNamedAttr("replica_groups",
-                              DenseIntElementsAttr::get(type, attr));
+                                          builder->getIntegerType(64));
+  return builder->getNamedAttr("replica_groups",
+                               DenseIntElementsAttr::get(type, attr));
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertChannelHandle(
     absl::optional<tensorflow::int64> channel_id) {
   xla::ChannelHandle channel_handle;
-  if (channel_id.has_value()) channel_handle.set_handle(channel_id.value());
+  if (channel_id) channel_handle.set_handle(*channel_id);
   return ConvertChannelHandle(channel_handle);
 }
 

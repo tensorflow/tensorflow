@@ -27,7 +27,6 @@ import enum
 import functools
 import os
 import re
-import sys
 import threading
 import time
 import weakref
@@ -896,7 +895,6 @@ class Cluster(object):
     self.workers = [
         Worker(i, w, self) for i, w in enumerate(worker_device_strings)
     ]
-    self._strategy = strategy
 
   def stop(self):
     """Stop worker, worker preemption threads, and the closure queue."""
@@ -934,13 +932,11 @@ class Cluster(object):
     Returns:
       A `RemoteValue` object.
     """
-    self._strategy.extended._being_scheduled = True  # pylint: disable=protected-access
     closure = Closure(
         function,
         self._closure_queue._cancellation_mgr,  # pylint: disable=protected-access
         args=args,
         kwargs=kwargs)
-    self._strategy.extended._being_scheduled = False  # pylint: disable=protected-access
     self._closure_queue.put(closure)
     return closure.output_remote_value
 
@@ -1009,6 +1005,14 @@ class ClusterCoordinator(object):
   are subject to changes.
   """
 
+  def __new__(cls, strategy):
+    # `ClusterCoordinator` is kept as a single instance to a given `Strategy`.
+    # TODO(rchao): Needs a lock for thread-safety
+    if strategy._cluster_coordinator is None:
+      strategy._cluster_coordinator = super(
+          ClusterCoordinator, cls).__new__(cls)
+    return strategy._cluster_coordinator
+
   def __init__(self, strategy):
     """Initialization of a `ClusterCoordinator` instance.
 
@@ -1027,7 +1031,7 @@ class ClusterCoordinator(object):
           "`tf.distribute.experimental.coordinator.ClusterCoordinator` "
           "currently.")
     self._strategy = strategy
-    self._strategy.extended._used_with_coordinator = True
+    self.strategy.extended._used_with_coordinator = True
     self._cluster = Cluster(strategy)
 
   def __del__(self):
@@ -1104,7 +1108,10 @@ class ClusterCoordinator(object):
     # Slot variables are usually created during function tracing time; thus
     # `schedule` needs to be called within the `strategy.scope()`.
     with self.strategy.scope():
-      return self._cluster.schedule(fn, args=args, kwargs=kwargs)
+      self.strategy.extended._being_scheduled = True  # pylint: disable=protected-access
+      remote_value = self._cluster.schedule(fn, args=args, kwargs=kwargs)
+      self.strategy.extended._being_scheduled = False  # pylint: disable=protected-access
+      return remote_value
 
   def join(self):
     """Blocks until all the scheduled functions have finished execution.
@@ -1289,20 +1296,6 @@ class ClusterCoordinator(object):
 
     # TODO(yuefengz): we should fetch values in a batch.
     return nest.map_structure(_maybe_fetch, val)
-
-
-# pylint: disable=missing-function-docstring
-@contextlib.contextmanager
-def handle_parameter_server_failure():
-  try:
-    yield
-  except errors.UnavailableError as e:  # pylint: disable=broad-except
-    restart_exit_code = os.environ.get("TF_CLIENT_NON_FATAL_RESTART_EXIT_CODE",
-                                       None)
-    if restart_exit_code is not None:
-      sys.exit(int(restart_exit_code))
-    else:
-      raise
 
 
 class _PerWorkerDistributedDataset(object):

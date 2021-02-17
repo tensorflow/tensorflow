@@ -206,6 +206,8 @@ absl::Status TensorDescriptor::PerformSelector(
     return PerformWriteSelector(gpu_info, args, result);
   } else if (selector == "WriteLinear") {
     return PerformWriteLinearSelector(gpu_info, args, result);
+  } else if (selector == "Write2D") {
+    return PerformWrite2DSelector(gpu_info, args, result);
   } else if (selector == "GetAddress") {
     return PerformGetAddressSelector(args, result);
   } else if (selector == "GetPtrWithSliceOffset") {
@@ -313,6 +315,21 @@ absl::Status TensorDescriptor::PerformWriteLinearSelector(
   return absl::OkStatus();
 }
 
+absl::Status TensorDescriptor::PerformWrite2DSelector(
+    const GpuInfo& gpu_info, const std::vector<std::string>& args,
+    std::string* result) const {
+  if (storage_type != TensorStorageType::TEXTURE_2D) {
+    return absl::InvalidArgumentError(
+        "Write2D selector can be used only with 2d "
+        "storages(TEXTURE_2D)");
+  }
+  if (args.size() != 3) {
+    return absl::NotFoundError("Unrecognized Write2D selector");
+  }
+  *result = Write(gpu_info, args[0], {args[1], args[2]});
+  return absl::OkStatus();
+}
+
 std::string TensorDescriptor::Read(
     const GpuInfo& gpu_info, DataType read_as_type,
     const std::vector<std::string>& coords) const {
@@ -393,7 +410,7 @@ std::string TensorDescriptor::Read(
         return absl::StrCat(read_as, "(image_buffer, ", coords[0], ")");
       } else if (gpu_info.IsApiMetal()) {
         std::string result =
-            absl::Substitute("image_buffer.read($0))", coords[0]);
+            absl::Substitute("image_buffer.read(uint($0))", coords[0]);
         if (need_conversion) {
           result = metal_type + "(" + result + ")";
         }

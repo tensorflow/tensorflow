@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_ALL_REDUCE_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_ALL_REDUCE_THUNK_H_
 
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
@@ -31,24 +32,17 @@ struct NcclAllReduceConfig {
   ReductionKind reduction_kind;
 };
 
-NcclAllReduceConfig GetNcclAllReduceConfig(const HloInstruction* hlo,
-                                           int64 replica_count);
-
 // Thunk that performs a NCCL-based All-Reduce among CUDA GPU-based replicas.
 class NcclAllReduceThunk : public NcclCollectiveThunk {
  public:
-  struct Buffer {
-    int64 element_count;
-    BufferAllocation::Slice source_buffer;
-    BufferAllocation::Slice destination_buffer;
-  };
-
-  NcclAllReduceThunk(ThunkInfo thunk_info, NcclAllReduceConfig config,
-                     std::vector<Buffer> buffers);
+  NcclAllReduceThunk(ThunkInfo thunk_info, mlir::lmhlo::AllReduceOp op,
+                     int64 replica_count, std::vector<Buffer> buffers);
 
   // Returns whether the given instruction can be lowered to a nccl all-reduce
   // call.
-  static bool CanImplement(const HloInstruction* hlo);
+  static bool CanImplement(mlir::lmhlo::AllReduceOp op);
+
+  static const char* GetName() { return "AllReduce"; }
 
  protected:
   Status RunNcclCollective(const ExecuteParams& params,

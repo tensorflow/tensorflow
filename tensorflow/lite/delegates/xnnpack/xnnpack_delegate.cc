@@ -1353,7 +1353,7 @@ class Subgraph {
     }
     const TfLiteTensor& bias_tensor = tensors[bias_tensor_id];
     TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
-        logging_context, filter_tensor, node->inputs->data[2], node_index));
+        logging_context, bias_tensor, node->inputs->data[2], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, bias_tensor, 1,
                                            node->inputs->data[2]));
     if (quasi_static_tensors.count(node->inputs->data[2]) == 0) {
@@ -1586,7 +1586,7 @@ class Subgraph {
     }
     const TfLiteTensor& bias_tensor = tensors[bias_tensor_id];
     TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
-        logging_context, filter_tensor, node->inputs->data[2], node_index));
+        logging_context, bias_tensor, node->inputs->data[2], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, bias_tensor, 1,
                                            node->inputs->data[2]));
     if (quasi_static_tensors.count(node->inputs->data[2]) == 0) {
@@ -2043,7 +2043,7 @@ class Subgraph {
 
     const TfLiteTensor& bias_tensor = tensors[node->inputs->data[2]];
     TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
-        logging_context, filter_tensor, node->inputs->data[2], node_index));
+        logging_context, bias_tensor, node->inputs->data[2], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, bias_tensor, 1,
                                            node->inputs->data[2]));
     if (quasi_static_tensors.count(node->inputs->data[2]) == 0) {

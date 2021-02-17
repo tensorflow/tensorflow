@@ -1,4 +1,5 @@
 // RUN: tf-opt %s -tfl-prepare-quantize -tfl-test-quantize-signed -tfl-test-post-training-quantize | FileCheck %s
+// RUN: tf-opt %s -tfl-prepare-quantize -tfl-test-quantize-signed -tfl-test-post-training-quantize -tfl-test-legacy-float-scale | FileCheck --check-prefix=Legacy %s
 
 // CHECK-LABEL: QuantizeLstmCellInput
 func @QuantizeLstmCellInput(%arg0: tensor<1x28x28xf32>) -> tensor<1x28x20xf32> {
@@ -112,7 +113,7 @@ func @QuantizeWithoutNorm(%arg0: tensor<1x5xf32>) -> tensor<*xf32> attributes {t
 // CHECK-SAME: %[[input_9]], %[[input_10]], %[[input_11]], %[[input_12]], %[[input_13]], %[[input_14]], %[[input_15]], %[[input_16]], %[[input_17]], %[[input_18]], %[[input_19]]
 // CHECK-SAME: effective_hidden_scale_intermediate = tensor<!quant.uniform<i8:f32, 0.0039215686274509803:-1>>
 
-// CHECK: "tfl.quantize"(%[[lstm]]) {qtype = tensor<*x!quant.uniform<i8:f32, 0.015686274509803921:-1>>}
+// CHECK: "tfl.quantize"(%[[lstm]]) {qtype = tensor<*x!quant.uniform<i8:f32, 0.015686274509803921:-1>>, volatile}
 }
 
 // CHECK-LABEL: QuantizeLstmCifg
@@ -194,7 +195,7 @@ func @QuantizeLstmCifg(%arg0: tensor<1x5xf32>) -> tensor<*xf32> attributes {tf.e
 // CHECK-SAME: input_to_forget_intermediate = tensor<!quant.uniform<i16<-32767:32767>:f32, 4.8829615161595508E-4>>
 // CHECK-SAME: input_to_output_intermediate = tensor<!quant.uniform<i16<-32767:32767>:f32, 3.0518509475997192E-5>>
 
-// CHECK: "tfl.quantize"(%[[lstm]]) {qtype = tensor<*x!quant.uniform<i8:f32, 0.015686274509803921:-1>>}
+// CHECK: "tfl.quantize"(%[[lstm]]) {qtype = tensor<*x!quant.uniform<i8:f32, 0.015686274509803921:-1>>, volatile}
 }
 
 // CHECK-LABEL: QuantizeUnidirectionalLstmFull
@@ -285,7 +286,7 @@ func @QuantizeUnidirectionalLstmFull(%arg0: tensor<1x5xf32>) -> tensor<*xf32> at
 // CHECK-SAME: input_to_input_intermediate = tensor<!quant.uniform<i16<-32767:32767>:f32, 9.7659230323191015E-4>>
 // CHECK-SAME: input_to_output_intermediate = tensor<!quant.uniform<i16<-32767:32767>:f32, 3.0518509475997192E-5>>
 
-// CHECK: "tfl.quantize"(%[[lstm]]) {qtype = tensor<*x!quant.uniform<i8:f32, 0.015686274509803921:-1>>}
+// CHECK: "tfl.quantize"(%[[lstm]]) {qtype = tensor<*x!quant.uniform<i8:f32, 0.015686274509803921:-1>>, volatile}
 }
 
 // CHECK-LABEL: QuantizeLstmFull
@@ -377,7 +378,7 @@ func @QuantizeLstmFull(%arg0: tensor<1x5xf32>) -> tensor<*xf32> attributes {tf.e
 // CHECK-SAME: input_to_input_intermediate = tensor<!quant.uniform<i16<-32767:32767>:f32, 9.7659230323191015E-4>>
 // CHECK-SAME: input_to_output_intermediate = tensor<!quant.uniform<i16<-32767:32767>:f32, 3.0518509475997192E-5>>
 
-// CHECK: "tfl.quantize"(%[[lstm]]) {qtype = tensor<*x!quant.uniform<i8:f32, 0.015686274509803921:-1>>}
+// CHECK: "tfl.quantize"(%[[lstm]]) {qtype = tensor<*x!quant.uniform<i8:f32, 0.015686274509803921:-1>>, volatile}
 }
 
 // CHECK-LABEL: QuantizeSVDF
@@ -398,7 +399,18 @@ func @QuantizeSVDF(%arg0: tensor<1x3xf32>) -> tensor<1x2xf32>  {
 // CHECK-DAG: %[[input_3:.*]] = "tfl.dequantize"({{.*}}) : (tensor<2x!quant.uniform<i32:f32, 1.3900876031311922E-5>>)
 // CHECK-DAG: %[[input_4:.*]] = "tfl.dequantize"({{.*}}) : (tensor<1x4x!quant.uniform<i16<-32767:32767>:f32, 0.0037514108011770368>>)
 // CHECK: %[[svdf:.*]] = "tfl.svdf"(%[[input_0]], %[[input_1]], %[[input_2]], %[[input_3]], %[[input_4]])
-// CHECK: %[[q:.*]] = "tfl.quantize"(%[[svdf]]) {qtype = tensor<1x2x!quant.uniform<i8:f32, 0.12954867493872549:-128>>}
+// CHECK: %[[q:.*]] = "tfl.quantize"(%[[svdf]]) {qtype = tensor<1x2x!quant.uniform<i8:f32, 0.12954867493872549:-128>>, volatile}
 // CHECK: %[[dq:.*]] = "tfl.dequantize"(%11)
 // CHECK: return %[[dq]]
+}
+
+// Legacy-LABEL: QuantizeSmallRange
+func @QuantizeSmallRange(%arg0: tensor<1x2xf32>) -> tensor<1x2xf32>  {
+  %0 = "quant.stats"(%arg0) {layerStats = dense<[-1.0, 1.0]> : tensor<2xf32>} : (tensor<1x2xf32>) -> tensor<1x2xf32>
+  %1 = "tfl.pseudo_const"() {value = dense<[[-1.27e-7, 1.27e-7], [-1.0e-8, 1.0e-8]]> : tensor<2x2xf32>} : () -> tensor<2x2xf32>
+  %2 = "tfl.pseudo_const"() {value = dense<[1.0, 2.0]> : tensor<2xf32>} : () -> tensor<2xf32>
+  %3 = "tfl.fully_connected"(%0, %1, %2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<1x2xf32>
+  %4 = "quant.stats"(%3) {layerStats = dense<[-2.0, 2.0]> : tensor<2xf32>} : (tensor<1x2xf32>) -> tensor<1x2xf32>
+  return %4 : tensor<1x2xf32>
+// Legacy: "tfl.quantize"(%[[weight:.*]]) {qtype = tensor<2x2x!quant.uniform<i8<-127:127>:f32, 9.9999999999999995E-7>>
 }

@@ -752,7 +752,7 @@ ParseResult ParseEnterOp(OpAsmParser &parser, OperationState &result) {
       return failure();
   }
   bool has_constant = succeeded(parser.parseOptionalKeyword("constant"));
-  result.addAttribute("is_constant", BoolAttr::get(has_constant, context));
+  result.addAttribute("is_constant", BoolAttr::get(context, has_constant));
 
   SmallVector<Type, 1> types;
   if (parser.parseColonTypeList(types)) return failure();

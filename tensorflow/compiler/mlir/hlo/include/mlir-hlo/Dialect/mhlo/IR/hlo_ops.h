@@ -81,6 +81,9 @@ LogicalResult deriveShapeFromFirstOperand(
     OpBuilder *builder, Operation *op,
     SmallVectorImpl<Value> *reifiedReturnShapes);
 
+// Type derivation function that returns a tensor type with a new element type.
+TensorType getSameShapeTensorType(TensorType tensor_type, Type element_type);
+
 }  // end namespace mhlo
 }  // end namespace mlir
 

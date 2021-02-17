@@ -468,10 +468,11 @@ class OptimizeSessionInitializerPattern
       // ops have no other uses or have one NoOp only, they can be simply
       // erased.
       auto &operations = init_func_op.front().getOperations();
-      if ((operations.size() == 1 && operations.front().isKnownTerminator()) ||
+      if ((operations.size() == 1 &&
+           operations.front().hasTrait<OpTrait::IsTerminator>()) ||
           (operations.size() == 2 &&
            dyn_cast<mlir::TF::NoOp>(operations.front()) &&
-           operations.back().isKnownTerminator())) {
+           operations.back().hasTrait<OpTrait::IsTerminator>())) {
         to_remove.push_back(init_func_op);
       } else {
         to_keep.push_back(sym_ref);

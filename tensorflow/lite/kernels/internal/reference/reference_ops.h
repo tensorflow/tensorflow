@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/add.h"
 #include "tensorflow/lite/kernels/internal/reference/add_n.h"
 #include "tensorflow/lite/kernels/internal/reference/arg_min_max.h"
+#include "tensorflow/lite/kernels/internal/reference/batch_matmul.h"
 #include "tensorflow/lite/kernels/internal/reference/batch_to_space_nd.h"
 #include "tensorflow/lite/kernels/internal/reference/binary_function.h"
 #include "tensorflow/lite/kernels/internal/reference/cast.h"
@@ -45,12 +46,14 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/depth_to_space.h"
 #include "tensorflow/lite/kernels/internal/reference/dequantize.h"
 #include "tensorflow/lite/kernels/internal/reference/div.h"
+#include "tensorflow/lite/kernels/internal/reference/elu.h"
 #include "tensorflow/lite/kernels/internal/reference/exp.h"
 #include "tensorflow/lite/kernels/internal/reference/fill.h"
 #include "tensorflow/lite/kernels/internal/reference/floor.h"
 #include "tensorflow/lite/kernels/internal/reference/floor_div.h"
 #include "tensorflow/lite/kernels/internal/reference/floor_mod.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
+#include "tensorflow/lite/kernels/internal/reference/gather.h"
 #include "tensorflow/lite/kernels/internal/reference/hard_swish.h"
 #include "tensorflow/lite/kernels/internal/reference/l2normalization.h"
 #include "tensorflow/lite/kernels/internal/reference/leaky_relu.h"
@@ -74,6 +77,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/string_comparisons.h"
 #include "tensorflow/lite/kernels/internal/reference/sub.h"
 #include "tensorflow/lite/kernels/internal/reference/tanh.h"
+#include "tensorflow/lite/kernels/internal/reference/transpose.h"
 #include "tensorflow/lite/kernels/internal/reference/transpose_conv.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -81,15 +85,6 @@ limitations under the License.
 namespace tflite {
 
 namespace reference_ops {
-
-inline void Elu(const RuntimeShape& input_shape, const float* input_data,
-                const RuntimeShape& output_shape, float* output_data) {
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-  for (int i = 0; i < flat_size; ++i) {
-    const float val = input_data[i];
-    output_data[i] = val < 0.0f ? std::expm1(val) : val;
-  }
-}
 
 template <typename T>
 inline void Relu(const RuntimeShape& input_shape, const T* input_data,
@@ -1060,43 +1055,6 @@ inline void FakeQuant(const tflite::FakeQuantParams& op_params,
                     output_data, flat_size);
 }
 
-template <typename T, typename CoordsT = int32>
-inline void Gather(const tflite::GatherParams& op_params,
-                   const RuntimeShape& input_shape, const T* input_data,
-                   const RuntimeShape& coords_shape, const CoordsT* coords_data,
-                   const RuntimeShape& output_shape, T* output_data) {
-  ruy::profiler::ScopeLabel label("Gather");
-  int axis = op_params.axis;
-  if (axis < 0) {
-    axis += input_shape.DimensionsCount();
-  }
-  TFLITE_DCHECK_GE(axis, 0);
-  TFLITE_DCHECK_LT(axis, input_shape.DimensionsCount());
-  const int axis_size = input_shape.Dims(axis);
-  const int coords_count = coords_shape.FlatSize();
-
-  int outer_size = 1;
-  for (int i = 0; i < axis; ++i) {
-    outer_size *= input_shape.Dims(i);
-  }
-
-  int inner_size = 1;
-  for (int i = axis + 1; i < input_shape.DimensionsCount(); ++i) {
-    inner_size *= input_shape.Dims(i);
-  }
-
-  for (int outer = 0; outer < outer_size; ++outer) {
-    for (int i = 0; i < coords_count; ++i) {
-      TFLITE_DCHECK_GE(coords_data[i], 0);
-      TFLITE_DCHECK_LT(coords_data[i], axis_size);
-      std::memcpy(
-          output_data + (outer * coords_count + i) * inner_size,
-          input_data + (outer * axis_size + coords_data[i]) * inner_size,
-          sizeof(T) * inner_size);
-    }
-  }
-}
-
 // Common subroutine for both `GatherNd` and `GatherNdString`.
 struct GatherNdHelperResult {
   int n_slices;
@@ -1519,89 +1477,6 @@ inline void ArgMax(const RuntimeShape& input1_shape, const T1* input1_data,
                    const RuntimeShape& output_shape, T2* output_data) {
   // Drop shape of second input: not needed.
   ArgMax(input1_shape, input1_data, input2_data, output_shape, output_data);
-}
-
-template <typename T, int N>
-void TransposeImpl(const TransposeParams& params,
-                   const RuntimeShape& unextended_input_shape,
-                   const T* input_data,
-                   const RuntimeShape& unextended_output_shape,
-                   T* output_data) {
-  const int unextended_input_size = unextended_input_shape.DimensionsCount();
-  const int unextended_output_size = unextended_output_shape.DimensionsCount();
-  TFLITE_DCHECK_LE(unextended_input_size, N);
-  TFLITE_DCHECK_LE(unextended_output_size, N);
-  TFLITE_DCHECK_EQ(unextended_output_size, params.perm_count);
-  const int input_ext_size = N - unextended_input_size;
-  const int output_ext_size = N - unextended_output_size;
-  NdArrayDesc<N> input_desc;
-  NdArrayDesc<N> output_desc;
-  CopyDimsToDesc(RuntimeShape::ExtendedShape(N, unextended_input_shape),
-                 &input_desc);
-  CopyDimsToDesc(RuntimeShape::ExtendedShape(N, unextended_output_shape),
-                 &output_desc);
-
-  // The perm data is extended to match the output, each index incremented by
-  // the amount of front padding of the input shape.
-  int extended_perm[N];
-  for (int i = 0; i < N; ++i) {
-    extended_perm[i] = i < output_ext_size
-                           ? i
-                           : params.perm[i - output_ext_size] + input_ext_size;
-  }
-
-  // Permutes the input shape so we don't need to permute the indexes inside
-  // the loop. Check to make sure output_dims is matching input_dims.
-  NdArrayDesc<N> perm_input_desc;
-  for (int k = 0; k < N; ++k) {
-    TFLITE_DCHECK_EQ(input_desc.extents[extended_perm[k]],
-                     output_desc.extents[k]);
-    perm_input_desc.extents[k] = input_desc.extents[extended_perm[k]];
-    perm_input_desc.strides[k] = input_desc.strides[extended_perm[k]];
-  }
-
-  // Naive transpose loop (iterate on output index and compute input index).
-  auto tranpose_func = [&](int indexes[N]) {
-    output_data[SubscriptToIndex(output_desc, indexes)] =
-        input_data[SubscriptToIndex(perm_input_desc, indexes)];
-  };
-  NDOpsHelper<N>(output_desc, tranpose_func);
-}
-
-template <typename T, int N = 5>
-void Transpose(const TransposeParams& params,
-               const RuntimeShape& unextended_input_shape, const T* input_data,
-               const RuntimeShape& unextended_output_shape, T* output_data) {
-  // Transpose kernel only does rearranging values not numeric evaluations on
-  // each cell. It's safe to implement per size of scalar type and this trick
-  // keeps the total code size in a reasonable range.
-  switch (sizeof(T)) {
-    case 1:
-      TransposeImpl<int8_t, N>(params, unextended_input_shape,
-                               reinterpret_cast<const int8_t*>(input_data),
-                               unextended_output_shape,
-                               reinterpret_cast<int8_t*>(output_data));
-      break;
-    case 2:
-      TransposeImpl<int16_t, N>(params, unextended_input_shape,
-                                reinterpret_cast<const int16_t*>(input_data),
-                                unextended_output_shape,
-                                reinterpret_cast<int16_t*>(output_data));
-      break;
-
-    case 4:
-      TransposeImpl<int32_t, N>(params, unextended_input_shape,
-                                reinterpret_cast<const int32_t*>(input_data),
-                                unextended_output_shape,
-                                reinterpret_cast<int32_t*>(output_data));
-      break;
-    case 8:
-      TransposeImpl<int64_t, N>(params, unextended_input_shape,
-                                reinterpret_cast<const int64_t*>(input_data),
-                                unextended_output_shape,
-                                reinterpret_cast<int64_t*>(output_data));
-      break;
-  }
 }
 
 template <typename D, typename T>

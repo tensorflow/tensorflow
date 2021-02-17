@@ -121,6 +121,29 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# copybara:uncomment_begin(google-only)
+# config_setting(
+#     name = "chromiumos_x86_64",
+#     flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
+#     values = {"cpu": "k8"},
+#     visibility = ["//visibility:public"],
+# )
+#
+# config_setting(
+#     name = "chromiumos_arm64",
+#     flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
+#     values = {"cpu": "arm"},
+#     visibility = ["//visibility:public"],
+# )
+#
+# config_setting(
+#     name = "chromiumos_armv7",
+#     flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
+#     values = {"cpu": "armeabi-v7a"},
+#     visibility = ["//visibility:public"],
+# )
+# copybara:uncomment_end
+
 config_setting(
     name = "emscripten",
     values = {"crosstool_top": "//external:android/emscripten"},
@@ -208,6 +231,7 @@ selects.config_setting_group(
         ":macos_x86_64",
         ":macos_arm64",
     ],
+    visibility = ["//visibility:public"],
 )
 
 config_setting(
@@ -584,6 +608,25 @@ selects.config_setting_group(
     ],
 )
 
+# This flag disables all google production dependencies, intended for
+# applications run with non-prod environment.
+# TODO(timshen): Currently this option only disables some dependencies.
+# See b/122528503.
+# copybara:uncomment_begin(google-only)
+# config_setting(
+#     name = "no_prod_deps",
+#     define_values = {"tf_no_prod_deps": "1"},
+# )
+#
+# config_setting(
+#     name = "no_prod_deps_cuda",
+#     define_values = {
+#         "tf_no_prod_deps": "1",
+#         "GOOGLE_CUDA_COMPILER": "clang",
+#     },
+# )
+# copybara:uncomment_end
+
 config_setting(
     name = "lite_protos_legacy",
     define_values = {"TENSORFLOW_PROTOS": "lite"},
@@ -616,6 +659,14 @@ selects.config_setting_group(
         ":mobile",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# config_setting(
+#     name = "portable_proto_force_third_party",
+#     define_values = {"PORTABLE_PROTO_TRANSITION_MODE": "third_party"},
+#     visibility = ["//visibility:public"],
+# )
+# copybara:uncomment_end
 
 # 'enable_registration_v2' opts-in to a different implementation of op and
 # kernel registration - REGISTER_OP, REGISTER_KERNEL_BUILDER, etc.
@@ -651,6 +702,7 @@ config_setting(
 package_group(
     name = "internal",
     packages = [
+        "//learning/brain/keras/...",
         "//learning/brain/mlir/...",
         "//learning/lib/ami/simple_ml/...",
         "//tensorflow/...",
@@ -688,6 +740,7 @@ bzl_library(
         "//tensorflow/core/platform/default:cuda_build_defs_bzl",
         "//third_party/mkl:build_defs_bzl",
         "//third_party/mkl_dnn:build_defs_bzl",
+        "@bazel_skylib//lib:new_sets",
         "@bazel_skylib//rules:common_settings",
         "@local_config_cuda//cuda:build_defs_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",

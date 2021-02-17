@@ -68,7 +68,7 @@ TEST_P(AutotuneSetting, MapParallelizationTest) {
 
   GraphDef output;
   TF_ASSERT_OK(OptimizeWithMapParallelization(item, &output, autotune));
-  EXPECT_EQ(graph_utils::ContainsNodeWithOp("ParallelMapDataset", output),
+  EXPECT_EQ(graph_utils::ContainsNodeWithOp("ParallelMapDatasetV2", output),
             autotune);
   EXPECT_EQ(graph_utils::ContainsGraphNodeWithName("map", output), !autotune);
 }
@@ -99,7 +99,7 @@ TEST_P(FromFunctionDef, MapParallelizationTest) {
 
   GraphDef output;
   TF_ASSERT_OK(OptimizeWithMapParallelization(item, &output, true));
-  EXPECT_EQ(graph_utils::ContainsNodeWithOp("ParallelMapDataset", output),
+  EXPECT_EQ(graph_utils::ContainsNodeWithOp("ParallelMapDatasetV2", output),
             !from_function_def);
   EXPECT_EQ(graph_utils::ContainsGraphNodeWithName("map", output),
             from_function_def);
@@ -131,7 +131,7 @@ TEST(ParallelizeAssert, MapParallelizationTest) {
 
   GraphDef output;
   TF_ASSERT_OK(OptimizeWithMapParallelization(item, &output, true));
-  EXPECT_TRUE(graph_utils::ContainsNodeWithOp("ParallelMapDataset", output));
+  EXPECT_TRUE(graph_utils::ContainsNodeWithOp("ParallelMapDatasetV2", output));
   EXPECT_TRUE(graph_utils::ContainsGraphNodeWithName("map1", output));
   EXPECT_FALSE(graph_utils::ContainsGraphNodeWithName("map2", output));
 }

@@ -28,9 +28,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/profiling_info.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tuning_type.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_device.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
 
@@ -77,6 +77,11 @@ class InferenceContext {
       const CreateInferenceInfo& create_info, GraphFloat32* graph,
       id<MTLDevice> device_id);
 
+  // Updates MTLBuffer handles in MetalSpatialTensors and kernels that use this
+  // tensors.
+  void UpdatePreallocatedTensors(
+      const std::map<ValueId, id<MTLBuffer>>& preallocated);
+
   /// Inserts all GPU compute tasks into the command encoder.
   /// @param inputOutputBuffers Must be created and passed into the method
   /// with pairs ID:buffer
@@ -84,9 +89,7 @@ class InferenceContext {
   /// resources must be created
   ///             with the same device which has been used in
   ///             compileModelWithDevice() method.
-  void EncodeWithEncoder(
-      id<MTLComputeCommandEncoder> command_encoder,
-      const std::map<ValueId, id<MTLBuffer>>& in_out_buffers);
+  void EncodeWithEncoder(id<MTLComputeCommandEncoder> command_encoder);
 
   /// Inserts all GPU compute tasks into the command buffer. For every task will
   /// be used separate
@@ -97,9 +100,7 @@ class InferenceContext {
   /// resources must be created
   ///             with the same device which has been used in
   ///             compileModelWithDevice() method.
-  void EncodeWithCommandBuffer(
-      id<MTLCommandBuffer> command_buffer,
-      const std::map<ValueId, id<MTLBuffer>>& in_out_buffers);
+  void EncodeWithCommandBuffer(id<MTLCommandBuffer> command_buffer);
 
   /// Adds all GPU compute tasks to the command queue. For every task will be
   /// used separate
@@ -111,28 +112,40 @@ class InferenceContext {
   /// resources must be created
   ///             with the same device which has been used in
   ///             compileModelWithDevice() method.
-  void EncodeWithCommandQueue(
-      id<MTLCommandQueue> command_queue,
-      const std::map<ValueId, id<MTLBuffer>>& in_out_buffers, int flush_period);
+  void EncodeWithCommandQueue(id<MTLCommandQueue> command_queue,
+                              int flush_period);
+
+  void Profile(id<MTLDevice> device, ProfilingInfo* result);
 
  private:
+  enum class TensorMemoryType {
+    kStrongShape,
+    kBuffer,
+    kVariable,
+    kConst,
+    kPreallocated
+  };
   absl::Status Compile(const GraphFloat32& graph, const GpuInfo& gpu_info,
-                       CalculationsPrecision precision);
+                       ModelHints hints);
 
   void ReserveGraphTensors(const CreateInferenceInfo& create_info,
-                           const GpuInfo& gpu_info, const GraphFloat32& graph);
+                           const GpuInfo& gpu_info, const GraphFloat32& graph,
+                           const std::set<ValueId>& preallocated_ids);
 
   absl::Status CompileOperations(MetalDevice* device);
 
   absl::Status Merge();
-  absl::Status AllocateTensors(MetalDevice* device);
+  absl::Status AllocateTensors(MetalDevice* device,
+                               const std::set<ValueId>& preallocated_ids);
+  absl::Status AllocateMemoryForConstTensors(MetalDevice* device);
   absl::Status AllocateMemoryForBuffers(MetalDevice* device);
+  absl::Status AllocateMemoryForStrongShapes(MetalDevice* device);
   void BindTensorsToOperations();
   absl::Status UpdateParams(const GpuInfo& gpu_info);
   MetalSpatialTensor* GetTensor(ValueId tensor_id);
-  void GetUsages(std::map<ValueId, int2>* usages);
-  void UpdatePreallocatedTensors(
-      const std::map<ValueId, id<MTLBuffer>>& preallocated);
+  void GetUsages(const std::function<bool(ValueId)>& functor,
+                 std::map<ValueId, int2>* usages);
+  TensorMemoryType GetTensorMemoryType(ValueId id);
   absl::Status Tune(TuningType tuning_type, MetalDevice* device);
 
   struct DummyTensor {
@@ -197,11 +210,17 @@ class InferenceContext {
   CalculationsPrecision precision_;
   std::map<ValueId, MetalSpatialTensor> preallocated_tensors_;
 
+  std::map<ValueId, TensorDescriptor> const_tensors_descs_;
+  std::map<ValueId, MetalSpatialTensor> const_tensors_;
+
   std::map<ValueId, int> graph_ids_to_shared_buffer_tensors_;
   std::vector<id<MTLBuffer>> shared_buffers_;
   std::vector<MetalSpatialTensor>
       shared_buffer_tensors_;  // use references to memory
                                // from _sharedBuffers
+
+  std::map<ValueId, MetalSpatialTensor> strong_shape_tensors_;
+  std::map<ValueId, ValueId> graph_ids_to_strong_shape_tensors_;
 };
 
 // Runs specific transforms for the graph.

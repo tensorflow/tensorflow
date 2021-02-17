@@ -3282,10 +3282,10 @@ def _indexed_case_verify_and_canonicalize_args(branch_fns, default,
     branch_fns: validated list of callables for each branch (default last).
   """
   if not isinstance(branch_index, ops.Tensor):
-    raise TypeError("branch_index must a Tensor, got {}".format(
+    raise TypeError("branch_index must be a Tensor, got {}".format(
         type(branch_index)))
   if not branch_index.dtype.is_integer:
-    raise TypeError("branch_index must an integer Tensor, got {}".format(
+    raise TypeError("branch_index must be an integer Tensor, got {}".format(
         branch_index.dtype))
 
   if not branch_fns:

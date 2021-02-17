@@ -47,7 +47,7 @@ void TestReluFloat(const int* input_dims_data, const float* input_data,
   const TfLiteRegistration registration = ops::micro::Register_RELU();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array,
-                             /*builtin_data=*/nullptr, micro_test::reporter);
+                             /*builtin_data=*/nullptr);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
@@ -80,7 +80,7 @@ void TestRelu6Float(const int* input_dims_data, const float* input_data,
   const TfLiteRegistration registration = ops::micro::Register_RELU6();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array,
-                             /*builtin_data=*/nullptr, micro_test::reporter);
+                             /*builtin_data=*/nullptr);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
@@ -118,7 +118,7 @@ void TestReluUint8(const int* input_dims_data, const float* input_data,
   const TfLiteRegistration registration = ops::micro::Register_RELU();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array,
-                             /*builtin_data=*/nullptr, micro_test::reporter);
+                             /*builtin_data=*/nullptr);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
@@ -159,7 +159,7 @@ void TestRelu6Uint8(const int* input_dims_data, const float* input_data,
   const TfLiteRegistration registration = ops::micro::Register_RELU6();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array,
-                             /*builtin_data=*/nullptr, micro_test::reporter);
+                             /*builtin_data=*/nullptr);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
@@ -199,7 +199,7 @@ void TestReluInt8(const int* input_dims_data, const float* input_data,
   const TfLiteRegistration registration = ops::micro::Register_RELU();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array,
-                             /*builtin_data=*/nullptr, micro_test::reporter);
+                             /*builtin_data=*/nullptr);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
@@ -239,7 +239,7 @@ void TestRelu6Int8(const int* input_dims_data, const float* input_data,
   const TfLiteRegistration registration = ops::micro::Register_RELU6();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array,
-                             /*builtin_data=*/nullptr, micro_test::reporter);
+                             /*builtin_data=*/nullptr);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());

@@ -24,8 +24,6 @@ import numpy as np
 
 from tensorflow.python import keras
 
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -34,7 +32,6 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.layers.preprocessing import category_encoding
-from tensorflow.python.keras.layers.preprocessing import category_encoding_v1
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -42,10 +39,7 @@ from tensorflow.python.platform import test
 
 
 def get_layer_class():
-  if context.executing_eagerly():
-    return category_encoding.CategoryEncoding
-  else:
-    return category_encoding_v1.CategoryEncoding
+  return category_encoding.CategoryEncoding
 
 
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
@@ -62,11 +56,11 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     #  [X, X, X, 2]]
     expected_indices = [[0, 1], [0, 2], [0, 3], [1, 0], [1, 3]]
     expected_values = [1, 1, 1, 1, 2]
-    max_tokens = 6
+    num_tokens = 6
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = get_layer_class()(
-        max_tokens=max_tokens, output_mode=category_encoding.COUNT, sparse=True)
+        num_tokens=num_tokens, output_mode=category_encoding.COUNT, sparse=True)
     int_data = layer(input_data)
 
     model = keras.Model(inputs=input_data, outputs=int_data)
@@ -76,7 +70,7 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
 
     # Assert sparse output is same as dense output.
     layer = get_layer_class()(
-        max_tokens=max_tokens,
+        num_tokens=num_tokens,
         output_mode=category_encoding.COUNT,
         sparse=False)
     int_data = layer(input_data)
@@ -94,13 +88,13 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     expected_output = [[0, 1, 1, 1, 0, 0],
                        [0, 1, 0, 1, 0, 0]]
     # pyformat: enable
-    max_tokens = 6
-    expected_output_shape = [None, max_tokens]
+    num_tokens = 6
+    expected_output_shape = [None, num_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int64, sparse=True)
 
     layer = get_layer_class()(
-        max_tokens=max_tokens, output_mode=category_encoding.BINARY)
+        num_tokens=num_tokens, output_mode=category_encoding.BINARY)
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
 
@@ -118,14 +112,14 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     expected_output = [[0, .1, .2, .3, .4, 0],
                        [0, .4, 0, .1, .5, 0]]
     # pyformat: enable
-    max_tokens = 6
-    expected_output_shape = [None, max_tokens]
+    num_tokens = 6
+    expected_output_shape = [None, num_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int64, sparse=True)
     weight_data = keras.Input(shape=(None,), dtype=dtypes.float32, sparse=True)
 
     layer = get_layer_class()(
-        max_tokens=max_tokens, output_mode=category_encoding.COUNT)
+        num_tokens=num_tokens, output_mode=category_encoding.COUNT)
     int_data = layer(input_data, count_weights=weight_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
 
@@ -148,10 +142,10 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     #  [1, X, X, X]]
     expected_indices = [[0, 0], [1, 2], [2, 1], [3, 0]]
     expected_values = [1, 1, 2, 1]
-    max_tokens = 6
+    num_tokens = 6
 
     layer = get_layer_class()(
-        max_tokens=max_tokens, output_mode=category_encoding.COUNT, sparse=True)
+        num_tokens=num_tokens, output_mode=category_encoding.COUNT, sparse=True)
     int_data = layer(input_data)
 
     model = keras.Model(inputs=input_data, outputs=int_data)
@@ -161,7 +155,7 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
 
     # Assert sparse output is same as dense output.
     layer = get_layer_class()(
-        max_tokens=max_tokens,
+        num_tokens=num_tokens,
         output_mode=category_encoding.COUNT,
         sparse=False)
     int_data = layer(input_data)
@@ -187,10 +181,10 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     #  [1, X, X, X]]
     expected_indices = [[0, 0], [1, 2], [2, 1], [3, 0]]
     expected_values = [.1, .2, .7, .2]
-    max_tokens = 6
+    num_tokens = 6
 
     layer = get_layer_class()(
-        max_tokens=max_tokens, output_mode=category_encoding.COUNT, sparse=True)
+        num_tokens=num_tokens, output_mode=category_encoding.COUNT, sparse=True)
     int_data = layer(input_data, count_weights=weight_data)
 
     model = keras.Model(inputs=[input_data, weight_data], outputs=int_data)
@@ -205,13 +199,13 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     expected_output = [[0, 1, 1, 1, 0, 0],
                        [0, 1, 0, 1, 0, 0]]
     # pyformat: enable
-    max_tokens = 6
-    expected_output_shape = [None, max_tokens]
+    num_tokens = 6
+    expected_output_shape = [None, num_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32, ragged=True)
 
     layer = get_layer_class()(
-        max_tokens=max_tokens, output_mode=category_encoding.BINARY)
+        num_tokens=num_tokens, output_mode=category_encoding.BINARY)
     int_data = layer(input_data)
 
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
@@ -228,11 +222,11 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     #  [X, X, X, 2]]
     expected_indices = [[0, 1], [0, 2], [0, 3], [1, 3]]
     expected_values = [1, 1, 1, 2]
-    max_tokens = 6
+    num_tokens = 6
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32, ragged=True)
     layer = get_layer_class()(
-        max_tokens=max_tokens, output_mode=category_encoding.COUNT, sparse=True)
+        num_tokens=num_tokens, output_mode=category_encoding.COUNT, sparse=True)
     int_data = layer(input_data)
 
     model = keras.Model(inputs=input_data, outputs=int_data)
@@ -242,7 +236,7 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
 
     # Assert sparse output is same as dense output.
     layer = get_layer_class()(
-        max_tokens=max_tokens,
+        num_tokens=num_tokens,
         output_mode=category_encoding.COUNT,
         sparse=False)
     int_data = layer(input_data)
@@ -255,12 +249,11 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
   def test_sparse_output_and_dense_layer(self):
     input_array = constant_op.constant([[1, 2, 3], [3, 3, 0]])
 
-    max_tokens = 4
+    num_tokens = 4
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     encoding_layer = get_layer_class()(
-        max_tokens=max_tokens, output_mode=category_encoding.COUNT,
-        sparse=True)
+        num_tokens=num_tokens, output_mode=category_encoding.COUNT, sparse=True)
     int_data = encoding_layer(input_data)
     dense_layer = keras.layers.Dense(units=1)
     output_data = dense_layer(int_data)
@@ -270,160 +263,47 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
 
   def test_dense_oov_input(self):
     input_array = constant_op.constant([[0, 1, 2], [2, 3, 1]])
-    max_tokens = 3
-    expected_output_shape = [None, max_tokens]
-    encoder_layer = get_layer_class()(max_tokens)
+    num_tokens = 3
+    expected_output_shape = [None, num_tokens]
+    encoder_layer = get_layer_class()(num_tokens)
     input_data = keras.Input(shape=(3,), dtype=dtypes.int32)
     int_data = encoder_layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
     model = keras.Model(inputs=input_data, outputs=int_data)
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        ".*must be in the range 0 <= values < max_tokens.*"):
+        ".*must be in the range 0 <= values < num_tokens.*"):
       _ = model.predict(input_array, steps=1)
 
   def test_dense_negative(self):
     input_array = constant_op.constant([[1, 2, 0], [2, 2, -1]])
-    max_tokens = 3
-    expected_output_shape = [None, max_tokens]
-    encoder_layer = get_layer_class()(max_tokens)
+    num_tokens = 3
+    expected_output_shape = [None, num_tokens]
+    encoder_layer = get_layer_class()(num_tokens)
     input_data = keras.Input(shape=(3,), dtype=dtypes.int32)
     int_data = encoder_layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
     model = keras.Model(inputs=input_data, outputs=int_data)
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        ".*must be in the range 0 <= values < max_tokens.*"):
+        ".*must be in the range 0 <= values < num_tokens.*"):
       _ = model.predict(input_array, steps=1)
 
-
-@keras_parameterized.run_all_keras_modes
-class CategoryEncodingAdaptTest(keras_parameterized.TestCase,
-                                preprocessing_test_utils.PreprocessingLayerTest
-                               ):
-
-  def test_sparse_adapt(self):
-    vocab_data = sparse_ops.from_dense(
-        np.array([[1, 1, 0, 1, 1, 2, 2, 0, 2, 3, 3, 0, 4]], dtype=np.int64))
-    vocab_dataset = dataset_ops.Dataset.from_tensors(vocab_data)
-    input_array = sparse_ops.from_dense(
-        np.array([[1, 2, 3, 0], [0, 3, 1, 0]], dtype=np.int64))
-
-    # pyformat: disable
-    expected_output = [[0, 1, 1, 1, 0],
-                       [0, 1, 0, 1, 0]]
-    # pyformat: enable
-    max_tokens = 5
-    expected_output_shape = [None, max_tokens]
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.int64, sparse=True)
-    layer = get_layer_class()(
-        max_tokens=None, output_mode=category_encoding.BINARY)
-    layer.adapt(vocab_dataset)
-    int_data = layer(input_data)
-    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
-
-    model = keras.Model(inputs=input_data, outputs=int_data)
-    output_dataset = model.predict(input_array, steps=1)
-    self.assertAllEqual(expected_output, output_dataset)
-
-  def test_ragged_adapt(self):
-    vocab_data = ragged_factory_ops.constant(
-        np.array([[1, 1, 0, 1, 1], [2, 2], [0, 2, 3], [0, 4]]))
-    vocab_dataset = dataset_ops.Dataset.from_tensors(vocab_data)
-    input_array = ragged_factory_ops.constant([[1, 2, 3], [3, 1]])
-
-    # pyformat: disable
-    expected_output = [[0, 1, 1, 1, 0],
-                       [0, 1, 0, 1, 0]]
-    # pyformat: enable
-    max_tokens = 5
-    expected_output_shape = [None, max_tokens]
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.int32, ragged=True)
-
-    layer = get_layer_class()(
-        max_tokens=None, output_mode=category_encoding.BINARY)
-    layer.adapt(vocab_dataset)
-    int_data = layer(input_data)
-
-    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
-
-    model = keras.Model(inputs=input_data, outputs=int_data)
-    output_dataset = model.predict(input_array, steps=1)
-    self.assertAllEqual(expected_output, output_dataset)
-
-  def test_hard_maximum_set_state_variables_after_build(self):
-    state_variables = {category_encoding._NUM_ELEMENTS_NAME: 5}
-    input_array = np.array([[1, 2, 3, 1], [0, 3, 1, 0]])
-
-    # pyformat: disable
-    expected_output = [[0, 1, 1, 1, 0],
-                       [1, 1, 0, 1, 0]]
-    # pyformat: enable
-    max_tokens = 5
-    expected_output_shape = [None, max_tokens]
+  def test_legacy_max_tokens_arg(self):
+    input_array = np.array([[1, 2, 3, 1]])
+    expected_output = [[0, 1, 1, 1, 0, 0]]
+    num_tokens = 6
+    expected_output_shape = [None, num_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = get_layer_class()(
-        max_tokens=max_tokens, output_mode=category_encoding.BINARY)
-    int_data = layer(input_data)
-    layer._set_state_variables(state_variables)
-    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
-
-    model = keras.Model(inputs=input_data, outputs=int_data)
-    output_dataset = model.predict(input_array)
-    self.assertAllEqual(expected_output, output_dataset)
-
-  def test_soft_maximum_set_state_after_build(self):
-    input_array = np.array([[1, 2, 3, 1], [0, 3, 1, 0]])
-
-    # pyformat: disable
-    expected_output = [[0, 1, 1, 1, 0],
-                       [1, 1, 0, 1, 0]]
-    # pyformat: enable
-    max_tokens = 5
-    expected_output_shape = [None, max_tokens]
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    layer = get_layer_class()(
-        max_tokens=None, output_mode=category_encoding.BINARY)
-    layer.build(input_data.shape)
-    layer.set_num_elements(max_tokens)
+        max_tokens=num_tokens, output_mode=category_encoding.BINARY)
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
 
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
-
-  def test_set_weights_fails_on_wrong_size_weights(self):
-    tfidf_data = [.05, .5, .25, .2, .125]
-    layer = get_layer_class()(max_tokens=6, output_mode=category_encoding.TFIDF)
-
-    with self.assertRaisesRegex(ValueError, ".*Layer weight shape.*"):
-      layer.set_weights([np.array(tfidf_data)])
-
-  def test_set_num_elements_after_call_fails(self):
-    input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    layer = get_layer_class()(
-        max_tokens=None, output_mode=category_encoding.BINARY)
-    layer.adapt([1, 2])
-    _ = layer(input_data)
-    with self.assertRaisesRegex(
-        RuntimeError, ".*'max_tokens' arg must be set to None."):
-      layer.set_num_elements(5)
-
-  def test_set_state_variables_after_call_fails(self):
-    state_variables = {category_encoding._NUM_ELEMENTS_NAME: 5}
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    layer = get_layer_class()(
-        max_tokens=None, output_mode=category_encoding.BINARY)
-    layer.adapt([1, 2])
-    _ = layer(input_data)
-    with self.assertRaisesRegex(RuntimeError, "Cannot update states.*"):
-      layer._set_state_variables(state_variables)
 
 
 @keras_parameterized.run_all_keras_modes
@@ -432,19 +312,19 @@ class CategoryEncodingOutputTest(keras_parameterized.TestCase,
                                  preprocessing_test_utils.PreprocessingLayerTest
                                 ):
 
-  def test_binary_output_hard_maximum(self):
+  def test_binary_output(self):
     input_array = np.array([[1, 2, 3, 1], [0, 3, 1, 0]])
 
     # pyformat: disable
     expected_output = [[0, 1, 1, 1, 0, 0],
                        [1, 1, 0, 1, 0, 0]]
     # pyformat: enable
-    max_tokens = 6
-    expected_output_shape = [None, max_tokens]
+    num_tokens = 6
+    expected_output_shape = [None, num_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
     layer = get_layer_class()(
-        max_tokens=max_tokens, output_mode=category_encoding.BINARY)
+        num_tokens=num_tokens, output_mode=category_encoding.BINARY)
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
 
@@ -452,114 +332,24 @@ class CategoryEncodingOutputTest(keras_parameterized.TestCase,
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 
-  def test_binary_output_soft_maximum(self):
-    input_array = np.array([[1, 2, 3, 1], [0, 3, 1, 0]])
-
-    # pyformat: disable
-    expected_output = [[0, 1, 1, 1, 0],
-                       [1, 1, 0, 1, 0]]
-    # pyformat: enable
-    max_tokens = 5
-    expected_output_shape = [None, max_tokens]
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    layer = get_layer_class()(
-        max_tokens=None, output_mode=category_encoding.BINARY)
-    layer.set_num_elements(max_tokens)
-    int_data = layer(input_data)
-    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
-
-    model = keras.Model(inputs=input_data, outputs=int_data)
-    output_dataset = model.predict(input_array)
-    self.assertAllEqual(expected_output, output_dataset)
-
-  def test_count_output_hard_maximum(self):
+  def test_count_output(self):
     input_array = np.array([[1, 2, 3, 1], [0, 3, 1, 0]])
 
     # pyformat: disable
     expected_output = [[0, 2, 1, 1, 0, 0],
                        [2, 1, 0, 1, 0, 0]]
     # pyformat: enable
-    max_tokens = 6
-    expected_output_shape = [None, max_tokens]
+    num_tokens = 6
+    expected_output_shape = [None, num_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    layer = get_layer_class()(max_tokens=6, output_mode=category_encoding.COUNT)
+    layer = get_layer_class()(num_tokens=6, output_mode=category_encoding.COUNT)
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
 
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
-
-  def test_count_output_soft_maximum(self):
-    input_array = np.array([[1, 2, 3, 1], [0, 3, 1, 0]])
-
-    # pyformat: disable
-    expected_output = [[0, 2, 1, 1, 0],
-                       [2, 1, 0, 1, 0]]
-    # pyformat: enable
-    max_tokens = 5
-    expected_output_shape = [None, max_tokens]
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    layer = get_layer_class()(
-        max_tokens=None, output_mode=category_encoding.COUNT)
-    layer.set_num_elements(max_tokens)
-    int_data = layer(input_data)
-    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
-
-    model = keras.Model(inputs=input_data, outputs=int_data)
-    output_dataset = model.predict(input_array)
-    self.assertAllEqual(expected_output, output_dataset)
-
-  def test_tfidf_output_hard_maximum(self):
-    tfidf_data = [.05, .5, .25, .2, .125]
-    input_array = np.array([[1, 2, 3, 1], [0, 4, 1, 0]])
-
-    # pyformat: disable
-    # pylint: disable=bad-whitespace
-    expected_output = [[ 0,  1, .25, .2,    0, 0],
-                       [.1, .5,   0,  0, .125, 0]]
-    # pylint: enable=bad-whitespace
-    # pyformat: enable
-    max_tokens = 6
-    expected_output_shape = [None, max_tokens]
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    layer = get_layer_class()(max_tokens=6, output_mode=category_encoding.TFIDF)
-    layer.set_tfidf_data(tfidf_data)
-    int_data = layer(input_data)
-    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
-
-    model = keras.Model(inputs=input_data, outputs=int_data)
-    output_dataset = model.predict(input_array)
-    self.assertAllClose(expected_output, output_dataset)
-
-  def test_tfidf_output_soft_maximum(self):
-    tfidf_data = [.05, .5, .25, .2, .125]
-    input_array = np.array([[1, 2, 3, 1], [0, 4, 1, 0]])
-
-    # pyformat: disable
-    # pylint: disable=bad-whitespace
-    expected_output = [[ 0,  1, .25, .2,    0],
-                       [.1, .5,   0,  0, .125]]
-    # pylint: enable=bad-whitespace
-    # pyformat: enable
-    max_tokens = 5
-    expected_output_shape = [None, max_tokens]
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    layer = get_layer_class()(
-        max_tokens=None, output_mode=category_encoding.TFIDF)
-    layer.set_num_elements(max_tokens)
-    layer.set_tfidf_data(tfidf_data)
-    int_data = layer(input_data)
-    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
-
-    model = keras.Model(inputs=input_data, outputs=int_data)
-    output_dataset = model.predict(input_array)
-    self.assertAllClose(expected_output, output_dataset)
 
 
 class CategoryEncodingModelBuildingTest(
@@ -568,43 +358,23 @@ class CategoryEncodingModelBuildingTest(
 
   @parameterized.named_parameters(
       {
-          "testcase_name": "count_hard_max",
-          "max_tokens": 5,
+          "testcase_name": "count_output",
+          "num_tokens": 5,
           "output_mode": category_encoding.COUNT
       }, {
-          "testcase_name": "count_soft_max",
-          "max_tokens": None,
-          "output_mode": category_encoding.COUNT
-      }, {
-          "testcase_name": "binary_hard_max",
-          "max_tokens": 5,
+          "testcase_name": "binary_output",
+          "num_tokens": 5,
           "output_mode": category_encoding.BINARY
-      }, {
-          "testcase_name": "binary_soft_max",
-          "max_tokens": None,
-          "output_mode": category_encoding.BINARY
-      }, {
-          "testcase_name": "tfidf_hard_max",
-          "max_tokens": 5,
-          "output_mode": category_encoding.TFIDF
-      }, {
-          "testcase_name": "tfidf_soft_max",
-          "max_tokens": None,
-          "output_mode": category_encoding.TFIDF
       })
-  def test_end_to_end_bagged_modeling(self, output_mode, max_tokens):
-    tfidf_data = np.array([.03, .5, .25, .2, .125])
+  def test_end_to_end_bagged_modeling(self, output_mode, num_tokens):
     input_array = np.array([[1, 2, 3, 1], [0, 3, 1, 0]])
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    layer = get_layer_class()(max_tokens=max_tokens, output_mode=output_mode)
+    layer = get_layer_class()(num_tokens=num_tokens, output_mode=output_mode)
 
     weights = []
-    if max_tokens is None:
+    if num_tokens is None:
       layer.set_num_elements(5)
-    if output_mode == category_encoding.TFIDF:
-      weights.append(tfidf_data)
-
     layer.set_weights(weights)
 
     int_data = layer(input_data)
@@ -612,161 +382,6 @@ class CategoryEncodingModelBuildingTest(
     output_data = core.Dense(64)(float_data)
     model = keras.Model(inputs=input_data, outputs=output_data)
     _ = model.predict(input_array)
-
-
-@keras_parameterized.run_all_keras_modes
-class CategoryEncodingCombinerTest(
-    keras_parameterized.TestCase,
-    preprocessing_test_utils.PreprocessingLayerTest):
-
-  def compare_idf_accumulators(self, a, b, msg=None):
-    if a is None or b is None:
-      self.assertAllEqual(a, b, msg=msg)
-
-    self.assertAllEqual(a.data, b.data, msg=msg)
-
-    if a.per_doc_count_dict is not None:
-
-      def per_doc_counts(accumulator):
-        count_values = [
-            count_dict["count"]
-            for count_dict in accumulator.per_doc_count_dict.values()
-        ]
-        return dict(zip(accumulator.per_doc_count_dict.keys(), count_values))
-
-      self.assertAllEqual(per_doc_counts(a), per_doc_counts(b), msg=msg)
-
-  compare_accumulators = compare_idf_accumulators
-
-  def update_accumulator(self, accumulator, data):
-    accumulator.data[1] = data["num_documents"]
-    accumulator.data[0] = data["max_element"]
-
-    if "document_counts" in data:
-      create_dict = lambda x: {"count": x, "last_doc_id": -1}
-      idf_dict = {}
-      for i, count in enumerate(data["document_counts"]):
-        if count > 0:
-          idf_dict[i] = create_dict(count)
-
-      accumulator.per_doc_count_dict.update(idf_dict)
-
-    return accumulator
-
-  def test_combiner_api_compatibility_int_mode(self):
-    data = np.array([[1, 2, 3, 4], [1, 2, 3, 0]])
-    combiner = category_encoding._CategoryEncodingCombiner(compute_idf=False)
-    expected_accumulator_output = {
-        "max_element": np.array(4),
-        "num_documents": np.array(2),
-    }
-    expected_extract_output = {
-        "num_elements": np.array(5),
-    }
-    expected_accumulator = combiner._create_accumulator()
-    expected_accumulator = self.update_accumulator(expected_accumulator,
-                                                   expected_accumulator_output)
-    self.validate_accumulator_serialize_and_deserialize(combiner, data,
-                                                        expected_accumulator)
-    self.validate_accumulator_uniqueness(combiner, data)
-    self.validate_accumulator_extract(combiner, data, expected_extract_output)
-
-  def test_combiner_api_compatibility_tfidf_mode(self):
-    data = np.array([[1, 2, 3, 4], [1, 2, 3, 0]])
-    combiner = category_encoding._CategoryEncodingCombiner(compute_idf=True)
-    expected_accumulator_output = {
-        "max_element": np.array(4),
-        "document_counts": np.array([1, 2, 2, 2, 1]),
-        "num_documents": np.array(2),
-    }
-    expected_extract_output = {
-        "num_elements": np.array(5),
-        "idf": np.array([0.693147, 0.510826, 0.510826, 0.510826, 0.693147]),
-    }
-
-    expected_accumulator = combiner._create_accumulator()
-    expected_accumulator = self.update_accumulator(expected_accumulator,
-                                                   expected_accumulator_output)
-    self.validate_accumulator_serialize_and_deserialize(combiner, data,
-                                                        expected_accumulator)
-    self.validate_accumulator_uniqueness(combiner, data)
-    self.validate_accumulator_extract(combiner, data, expected_extract_output)
-
-  # TODO(askerryryan): Add tests confirming equivalence to behavior of
-  # existing tf.keras.preprocessing.text.Tokenizer.
-  @parameterized.named_parameters(
-      {
-          "testcase_name": "no_top_k",
-          "data": np.array([[1, 2], [4, 2], [3], [4, 2]]),
-          "expected_accumulator_output": {
-              "max_element": np.array(4),
-              "document_counts": np.array([0, 1, 3, 1, 2]),
-              "num_documents": np.array(4),
-          },
-          "expected_extract_output": {
-              "num_elements":
-                  np.array(5),
-              "idf":
-                  np.array([1.609438, 1.098612, 0.693147, 1.098612, 0.847298]),
-          },
-      }, {
-          "testcase_name": "single_element_per_row",
-          "data": np.array([[1], [2], [4], [2], [3]]),
-          "expected_accumulator_output": {
-              "max_element": np.array(4),
-              "document_counts": np.array([0, 1, 2, 1, 1]),
-              "num_documents": np.array(5),
-          },
-          "expected_extract_output": {
-              "num_elements":
-                  np.array(5),
-              "idf":
-                  np.array([1.791759, 1.252763, 0.980829, 1.252763, 1.252763]),
-          },
-      })
-  def test_combiner_computation(self,
-                                data,
-                                expected_accumulator_output,
-                                expected_extract_output,
-                                compute_idf=True):
-    combiner = category_encoding._CategoryEncodingCombiner(
-        compute_idf=compute_idf)
-    expected_accumulator = combiner._create_accumulator()
-    expected_accumulator = self.update_accumulator(expected_accumulator,
-                                                   expected_accumulator_output)
-    self.validate_accumulator_computation(combiner, data, expected_accumulator)
-    self.validate_accumulator_extract(combiner, data, expected_extract_output)
-
-  def test_1d_data(self):
-    data = [1, 2, 3]
-    cls = get_layer_class()
-    layer = cls()
-    layer.adapt(data)
-    output = layer(data)
-    self.assertListEqual(output.shape.as_list(), [3, 4])
-
-  def test_no_adapt_exception(self):
-    cls = get_layer_class()
-    layer = cls()
-    with self.assertRaisesRegex(
-        RuntimeError, r".*you need to call.*"):
-      _ = layer([1, 2, 3])
-
-  def test_saving_loading(self):
-    cls = get_layer_class()
-    encoder = cls()
-    encoder.adapt([1, 2, 3])
-    model = keras.Sequential([encoder])
-    model.save("/tmp/model", save_format="tf")
-    loaded_model = keras.models.load_model("/tmp/model")
-    self.assertAllClose(model.predict([[1]]), loaded_model.predict([[1]]))
-
-  def test_serialize(self):
-    cls = get_layer_class()
-    encoder = cls()
-    encoder.adapt([1, 2, 3])
-    model = keras.Sequential([encoder])
-    _ = keras.models.clone_model(model)
 
 
 if __name__ == "__main__":

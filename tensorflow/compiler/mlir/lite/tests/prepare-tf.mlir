@@ -596,6 +596,16 @@ func @broadcast_to_i32_low_dim(%input: tensor<3xi32>, %shape: tensor<2xi32>) -> 
 // CHECK:  return [[MUL]] : tensor<3x3xi32>
 }
 
+func @broadcast_to_i16_low_dim(%input: tensor<3xi16>, %shape: tensor<2xi32>) -> tensor<3x3xi16> {
+  %0 = "tf.BroadcastTo"(%input, %shape) : (tensor<3xi16>, tensor<2xi32>) -> tensor<3x3xi16>
+  return %0: tensor<3x3xi16>
+
+// CHECK-LABEL: broadcast_to_i16_low_dim
+// CHECK:  [[CST:%.*]] = constant dense<1> : tensor<3x3xi16>
+// CHECK:  [[MUL:%.*]] = "tf.Mul"(%arg0, [[CST]]) : (tensor<3xi16>, tensor<3x3xi16>) -> tensor<3x3xi16>
+// CHECK:  return [[MUL]] : tensor<3x3xi16>
+}
+
 func @broadcast_to_low_dim_with_unknown_shape(%arg0: tensor<3xf32>, %arg1: tensor<*xi32>) -> tensor<3x3xf32> {
   %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<3xf32>, tensor<*xi32>) -> tensor<3x3xf32>
   return %0: tensor<3x3xf32>

@@ -248,7 +248,7 @@ TF::_XlaHostComputeMlirOp CreateHostCompute(
 
 void MarkOutsideCompiled(Operation* op) {
   op->setAttr(kXlaOutsideCompilationAttr,
-              StringAttr::get("temp", op->getContext()));
+              StringAttr::get(op->getContext(), "temp"));
 }
 
 // Move outside compiled ops in `src` to to `insertion_point` in host
@@ -494,8 +494,8 @@ void TPUExtractOutsideCompilation::runOnOperation() {
   module.walk([&](tf_device::ClusterOp tpu_cluster) {
     if (HasOutsideCompilationNested(tpu_cluster.getOperation())) {
       std::string host_device;
-      tensorflow::GetHostDeviceOutsideComputation(devices, tpu_cluster,
-                                                  &host_device);
+      (void)tensorflow::GetHostDeviceOutsideComputation(devices, tpu_cluster,
+                                                        &host_device);
       CreateParallelExecuteForOutsideCompilation(module, tpu_cluster,
                                                  host_device);
     }

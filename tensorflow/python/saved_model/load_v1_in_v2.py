@@ -136,7 +136,9 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     signature_functions = {}
     for signature_key, signature_def in meta_graph_def.signature_def.items():
       if signature_def.inputs:
-        original_input_names, input_specs = zip(*signature_def.inputs.items())
+        input_items = sorted(
+            signature_def.inputs.items(), key=lambda item: item[1].name)
+        original_input_names, input_specs = zip(*input_items)
       else:
         original_input_names = []
         input_specs = []

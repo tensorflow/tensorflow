@@ -18,11 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-
 import numpy as np
 
-from tensorflow.python.framework import constant_op
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -32,48 +30,33 @@ from tensorflow.python.ops.numpy_ops import np_math_ops  # pylint: disable=unuse
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
-t2a = np_arrays.tensor_to_ndarray
-
 
 class ArrayTest(test.TestCase):
 
   def testDtype(self):
-    a = t2a(array_ops.zeros(shape=[1, 2], dtype=dtypes.int64))
-    self.assertIs(a.dtype.type, np.int64)
-    self.assertAllEqual(0, a.dtype.type(0))
+    a = array_ops.zeros(shape=[1, 2], dtype=dtypes.int64)
+    self.assertIs(a.dtype.as_numpy_dtype, np.int64)
+    np_dt = a.dtype.as_numpy_dtype
+    self.assertAllEqual(0, np_dt(0))
 
   def testAstype(self):
-    a = t2a(ops.convert_to_tensor(value=1.1,
-                                  dtype=dtypes.float32)).astype(np.int32)
-    self.assertIs(a.dtype.type, np.int32)
+    a = ops.convert_to_tensor(value=1.1, dtype=dtypes.float32).astype(np.int32)
+    self.assertIs(a.dtype.as_numpy_dtype, np.int32)
     self.assertAllEqual(1, a)
-    a = t2a(ops.convert_to_tensor(value=[0.0, 1.1],
-                                  dtype=dtypes.float32)).astype(np.bool_)
-    self.assertIs(a.dtype.type, np.bool_)
+    a = ops.convert_to_tensor(value=[0.0, 1.1], dtype=dtypes.float32).astype(
+        np.bool_)
+    self.assertIs(a.dtype.as_numpy_dtype, np.bool_)
     self.assertAllEqual([False, True], a)
 
-  def testConstructor(self):
-    t = constant_op.constant([[1], [1]])
-    a = np_arrays.ndarray(shape=(2, 1), buffer=t)
-    self.assertAllEqual(t, a)
-    self.assertEqual(dtypes.float64, a.dtype)
-
-    a = np_arrays.ndarray(shape=(2, 1), dtype=dtypes.int32, buffer=t)
-    self.assertAllEqual(t, a)
-    self.assertEqual(dtypes.int32, a.dtype)
-
-    with self.assertRaises(ValueError):  # bad shape
-      _ = np_arrays.ndarray((2, 2), buffer=t)
-
   def testNeg(self):
-    a = t2a(ops.convert_to_tensor(value=[1.0, 2.0]))
-    self.assertAllEqual([-1.0, -2.0], -a)
+    a = ops.convert_to_tensor(value=[1.0, 2.0])
+    self.assertAllEqual([-1.0, -2.0], -a)  # pylint: disable=invalid-unary-operand-type
 
   def _testBinOp(self, a, b, out, f, types=None):
-    a = t2a(ops.convert_to_tensor(value=a, dtype=np.int32))
-    b = t2a(ops.convert_to_tensor(value=b, dtype=np.int32))
+    a = ops.convert_to_tensor(value=a, dtype=np.int32)
+    b = ops.convert_to_tensor(value=b, dtype=np.int32)
     if not isinstance(out, np_arrays.ndarray):
-      out = t2a(ops.convert_to_tensor(value=out, dtype=np.int32))
+      out = ops.convert_to_tensor(value=out, dtype=np.int32)
     if types is None:
       types = [[np.int32, np.int32, np.int32], [np.int64, np.int32, np.int64],
                [np.int32, np.int64, np.int64],
@@ -84,7 +67,7 @@ class ArrayTest(test.TestCase):
                [np.float32, np.float64, np.float64]]
     for a_type, b_type, out_type in types:
       o = f(a.astype(a_type), b.astype(b_type))
-      self.assertIs(o.dtype.type, out_type)
+      self.assertIs(o.dtype.as_numpy_dtype, out_type)
       out = out.astype(out_type)
       if np.issubdtype(out_type, np.inexact):
         self.assertAllClose(out, o)
@@ -126,19 +109,20 @@ class ArrayTest(test.TestCase):
 
   def testTruediv(self):
     self._testBinOp([3, 5], [2, 4],
-                    t2a(ops.convert_to_tensor(value=[1.5, 1.25])),
+                    ops.convert_to_tensor(value=[1.5, 1.25]),
                     lambda a, b: a.__truediv__(b),
                     types=self._truediv_types)
 
   def testRtruediv(self):
     self._testBinOp([3, 5], [2, 4],
-                    t2a(ops.convert_to_tensor(value=[1.5, 1.25])),
+                    ops.convert_to_tensor(value=[1.5, 1.25]),
                     lambda a, b: b.__rtruediv__(a),
                     types=self._truediv_types)
 
   def _testCmp(self, a, b, out, f):
-    a = t2a(ops.convert_to_tensor(value=a, dtype=np.int32))
-    b = t2a(ops.convert_to_tensor(value=b, dtype=np.int32))
+    a = ops.convert_to_tensor(value=a, dtype=np.int32)
+    b = ops.convert_to_tensor(value=b, dtype=np.int32)
+
     types = [[np.int32, np.int32], [np.int64, np.int32], [np.int32, np.int64],
              [np.float32, np.int32], [np.int32, np.float32],
              [np.float32, np.float32], [np.float64, np.float32],
@@ -173,32 +157,41 @@ class ArrayTest(test.TestCase):
 
   def testInt(self):
     v = 10
-    u = int(t2a(ops.convert_to_tensor(value=v)))
+    u = int(ops.convert_to_tensor(value=v))
     self.assertIsInstance(u, int)
     self.assertAllEqual(v, u)
 
   def testFloat(self):
     v = 21.32
-    u = float(t2a(ops.convert_to_tensor(value=v)))
+    u = float(ops.convert_to_tensor(value=v))
     self.assertIsInstance(u, float)
     self.assertAllClose(v, u)
 
   def testBool(self):
-    b = bool(t2a(ops.convert_to_tensor(value=10)))
+    b = bool(ops.convert_to_tensor(value=10))
     self.assertIsInstance(b, bool)
     self.assertTrue(b)
-    self.assertFalse(bool(t2a(ops.convert_to_tensor(value=0))))
-    self.assertTrue(bool(t2a(ops.convert_to_tensor(value=0.1))))
-    self.assertFalse(bool(t2a(ops.convert_to_tensor(value=0.0))))
+    self.assertFalse(bool(ops.convert_to_tensor(value=0)))
+    self.assertTrue(bool(ops.convert_to_tensor(value=0.1)))
+    self.assertFalse(bool(ops.convert_to_tensor(value=0.0)))
 
   def testHash(self):
-    a = t2a(ops.convert_to_tensor(value=10))
-    self.assertNotIsInstance(a, collections.Hashable)
-    with self.assertRaisesWithPredicateMatch(TypeError, r'unhashable type'):
+    a = ops.convert_to_tensor(value=10)
+    def eager():
       hash(a)
+    def graph():
+      @def_function.function
+      def f(x):
+        hash(x)
+      f(a)
+    for f in [eager, graph]:
+      with self.assertRaisesRegexp(
+          TypeError,
+          r'Tensor is unhashable. Instead, use tensor.ref\(\) as the key.'):
+        f()
 
   def testFromToCompositeTensor(self):
-    tensors = [t2a(ops.convert_to_tensor(0.1)), t2a(ops.convert_to_tensor(0.2))]
+    tensors = [ops.convert_to_tensor(0.1), ops.convert_to_tensor(0.2)]
 
     flattened = nest.flatten(tensors, expand_composites=True)
     # Each ndarray contains only one tensor, so the flattened output should be
@@ -216,6 +209,10 @@ class ArrayTest(test.TestCase):
 
 
 if __name__ == '__main__':
-  # TODO(wangpeng): Test in graph mode as well.
+  # TODO(wangpeng): Test in graph mode as well. Also test in V2 (the requirement
+  # for setting _USE_EQUALITY points to V2 behavior not being on).
   ops.enable_eager_execution()
+  ops.Tensor._USE_EQUALITY = True
+  ops.enable_numpy_style_type_promotion()
+  np_math_ops.enable_numpy_methods_on_tensor()
   test.main()

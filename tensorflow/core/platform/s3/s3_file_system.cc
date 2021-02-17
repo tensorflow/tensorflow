@@ -1195,6 +1195,6 @@ Status S3FileSystem::HasAtomicMove(const string& path, bool* has_atomic_move) {
   return Status::OK();
 }
 
-REGISTER_FILE_SYSTEM("s3", RetryingS3FileSystem);
+REGISTER_LEGACY_FILE_SYSTEM("s3", RetryingS3FileSystem);
 
 }  // namespace tensorflow

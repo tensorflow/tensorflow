@@ -1,4 +1,7 @@
-// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo %s -o - | FILECHECK_OPTS="" FileCheck %s
+// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo -hlo-import-all-computations %s -o - | FileCheck %s
+// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo %s -o - | FileCheck %s -check-prefix=NO_DEAD_FUNCTION
+
+// NO_DEAD_FUNCTION-NOT: @test
 
 HloModule main
 

@@ -235,6 +235,9 @@ struct VulkanInfo {
   uint32_t max_image_dimension_2d;
   uint32_t max_image_array_layers;
 
+  uint32_t subgroup_size = 0;
+  bool supports_subgroup_arithmetic = false;
+
   std::vector<std::string> extensions;
   int max_compute_work_group_size_x;
   int max_compute_work_group_size_y;

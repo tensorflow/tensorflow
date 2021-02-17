@@ -275,6 +275,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
         "//tensorflow/compiler/mlir/xla:type_to_shape",
         "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -463,6 +464,10 @@ tf_cuda_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/compiler/mlir/xla:hlo_utils",
+        "//tensorflow/compiler/mlir/xla:type_to_shape",
+        "//tensorflow/compiler/mlir/xla:attribute_exporter",
+        "@llvm-project//mlir:IR",
     ] + if_cuda([
         "//tensorflow/stream_executor/cuda:cuda_activation",
         "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
@@ -509,6 +514,10 @@ tf_cuda_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/compiler/mlir/hlo:lhlo",
+        "//tensorflow/compiler/mlir/xla:hlo_utils",
+        "//tensorflow/compiler/mlir/xla:type_to_shape",
+        "//tensorflow/compiler/mlir/xla:attribute_exporter",
     ] + if_nccl([
         ":virtual_nccl",
         ":virtual_nccl_utils",
@@ -549,6 +558,10 @@ tf_cuda_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/compiler/mlir/hlo:lhlo",
+        "//tensorflow/compiler/mlir/xla:hlo_utils",
+        "//tensorflow/compiler/mlir/xla:type_to_shape",
+        "//tensorflow/compiler/mlir/xla:attribute_exporter",
     ] + if_nccl([
         ":virtual_nccl",
         ":virtual_nccl_utils",
@@ -589,6 +602,10 @@ tf_cuda_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/compiler/mlir/hlo:lhlo",
+        "//tensorflow/compiler/mlir/xla:hlo_utils",
+        "//tensorflow/compiler/mlir/xla:type_to_shape",
+        "//tensorflow/compiler/mlir/xla:attribute_exporter",
     ] + if_nccl([
         ":virtual_nccl",
         ":virtual_nccl_utils",
@@ -663,35 +680,6 @@ alias(
 )
 
 cc_library(
-    name = "gpu_debug_info_manager",
-    srcs = [
-        "gpu_debug_info_manager.cc",
-    ],
-    hdrs = [
-        "gpu_debug_info_manager.h",
-    ],
-    deps = [
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/compiler/xla/service:hlo_proto_util",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/container:flat_hash_map",
-    ],
-)
-
-tf_cc_test(
-    name = "gpu_debug_info_manager_test",
-    srcs = ["gpu_debug_info_manager_test.cc"],
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":gpu_debug_info_manager",
-        "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-    ],
-)
-
-cc_library(
     name = "gpu_executable",
     srcs = [
         "collective_permute_thunk.cc",
@@ -712,7 +700,6 @@ cc_library(
         "sequential_thunk.cc",
         "thunk_schedule.cc",
         "triangular_solve_thunk.cc",
-        "tuple_thunk.cc",
         "while_thunk.cc",
     ] + if_cuda_is_configured([
         "cholesky_thunk.cc",
@@ -736,7 +723,6 @@ cc_library(
         "sequential_thunk.h",
         "thunk_schedule.h",
         "triangular_solve_thunk.h",
-        "tuple_thunk.h",
         "while_thunk.h",
     ] + if_cuda_is_configured([
         "cholesky_thunk.h",
@@ -749,7 +735,6 @@ cc_library(
         ":cudnn_batchnorm_runner",
         ":gpu_constants",
         ":gpu_conv_runner",
-        ":gpu_debug_info_manager",
         ":gpu_executable_run_options",
         ":gpu_types",
         ":hlo_execution_profiler",
@@ -781,6 +766,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:logical_buffer",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
+        "//tensorflow/compiler/xla/service:xla_debug_info_manager",
         "//tensorflow/compiler/xla/service/llvm_ir:buffer_assignment_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -830,6 +816,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
@@ -993,6 +980,7 @@ cc_library(
         ":backend_configs_cc",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -1113,6 +1101,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_reachability",
         "//tensorflow/compiler/xla/service/llvm_ir:fused_ir_emitter",
@@ -1209,6 +1198,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
+        "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service/llvm_ir:fused_ir_emitter",
         "//tensorflow/core:lib",
@@ -1416,6 +1406,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
         "//tensorflow/compiler/xla/service:all_gather_decomposer",
         "//tensorflow/compiler/xla/service:all_reduce_combiner",
+        "//tensorflow/compiler/xla/service:all_to_all_decomposer",
         "//tensorflow/compiler/xla/service:batchnorm_expander",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:call_inliner",

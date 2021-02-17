@@ -435,6 +435,7 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
     self._extended = ParameterServerStrategyV2Extended(self, cluster_resolver,
                                                        variable_partitioner)
     self._verify_args_and_config(cluster_resolver)
+    self._cluster_coordinator = None
     logging.info(
         "`tf.distribute.experimental.ParameterServerStrategy` is initialized "
         "with cluster_spec: %s", cluster_resolver.cluster_spec())
@@ -444,6 +445,7 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
     super(ParameterServerStrategyV2, self).__init__(self._extended)
     distribute_lib.distribution_strategy_gauge.get_cell("V2").set(
         "ParameterServerStrategy")
+    self._should_use_with_coordinator = True
 
   def _connect_to_cluster(self, coordinator_name):
     if coordinator_name in ["worker", "ps"]:

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 
+#include "tensorflow/c/eager/tfe_cancellation_manager_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_internal.h"
@@ -79,9 +80,15 @@ class DeviceThread {
   // Requests that the worker thread execute the specified operation. Blocks
   // until the previously pending operation (a StartExecute without a Join) has
   // finished, if any.
+  //
+  // `cancellation_manager` must live until after `Join` finishes and pending
+  // `is_async` operations finish. In addition to allowing the caller to cancel
+  // the operation, its `StartCancel` method will be called if op execution
+  // fails on any device in order to cancel the others.
   void StartExecute(TFE_Context* context, const char* operation_name,
                     std::vector<TFE_TensorHandle*> inputs,
-                    const TFE_OpAttrs* attributes, int expected_max_outputs);
+                    const TFE_OpAttrs* attributes, int expected_max_outputs,
+                    CancellationManager& cancellation_manager);
   // Block until the previous `StartExecute` operation has executed. Forwards
   // the status from `TFE_Execute` and returns outputs if the status is OK.
   std::vector<TensorHandlePtr> Join(TF_Status* status);
@@ -113,13 +120,16 @@ class DeviceThread {
   tensorflow::condition_variable finished_join_;
 
   // Temporary state between `StartExecute` and `Join`.
-  //   Inputs
+  //
+  //   Inputs; pointers are to objects not owned by the DeviceThread, but which
+  //   are expected to live at least until `Join` finishes:
   TFE_Context* context_ TF_GUARDED_BY(execution_mutex_);
   const char* operation_name_ TF_GUARDED_BY(execution_mutex_);
   std::vector<TFE_TensorHandle*> op_inputs_ TF_GUARDED_BY(execution_mutex_);
   const TFE_OpAttrs* attributes_ TF_GUARDED_BY(execution_mutex_);
   int expected_max_outputs_ TF_GUARDED_BY(execution_mutex_);
-  //   Outputs
+  CancellationManager* cancellation_manager_ TF_GUARDED_BY(execution_mutex_);
+  //   Outputs:
   std::vector<TensorHandlePtr> op_outputs_ TF_GUARDED_BY(execution_mutex_);
   // TF_Status is an incomplete type and so can't be stack allocated. To avoid
   // unnecessary allocations each Execute call, we keep one heap-allocated
@@ -166,7 +176,8 @@ void DeviceThread::StartExecute(TFE_Context* context,
                                 const char* operation_name,
                                 std::vector<TFE_TensorHandle*> inputs,
                                 const TFE_OpAttrs* attributes,
-                                int expected_max_outputs) {
+                                int expected_max_outputs,
+                                CancellationManager& cancellation_manager) {
   {
     tensorflow::mutex_lock l(execution_mutex_);
     while (execution_state_ != ExecutionState::kIdle) {
@@ -179,6 +190,7 @@ void DeviceThread::StartExecute(TFE_Context* context,
     op_inputs_ = inputs;
     attributes_ = attributes;
     expected_max_outputs_ = expected_max_outputs;
+    cancellation_manager_ = &cancellation_manager;
     execution_state_ = ExecutionState::kReadyToExecute;
   }
   start_execute_.notify_one();
@@ -198,6 +210,7 @@ std::vector<TensorHandlePtr> DeviceThread::Join(TF_Status* status) {
       // the bad `status`) start with an OK status.
       TF_SetStatus(status_.get(), TF_OK, "");
     }
+    cancellation_manager_ = nullptr;
     execution_state_ = ExecutionState::kIdle;
     result = std::move(op_outputs_);
   }
@@ -228,9 +241,13 @@ void DeviceThread::Execute(TFE_Context* context, const char* operation_name,
   }
   std::vector<TFE_TensorHandle*> unwrapped_results(expected_max_outputs);
   int real_num_outputs = expected_max_outputs;
+  TFE_OpSetCancellationManager(op_.get(), wrap(cancellation_manager_), status);
   if (TF_GetCode(status) != TF_OK) return;
   TFE_Execute(op_.get(), unwrapped_results.data(), &real_num_outputs, status);
-  if (TF_GetCode(status) != TF_OK) return;
+  if (TF_GetCode(status) != TF_OK) {
+    cancellation_manager_->StartCancel();
+    return;
+  }
   unwrapped_results.resize(real_num_outputs);
   outputs->reserve(real_num_outputs);
   for (TFE_TensorHandle* unwrapped_result : unwrapped_results) {
@@ -240,7 +257,8 @@ void DeviceThread::Execute(TFE_Context* context, const char* operation_name,
 
 ParallelDevice::ParallelDevice(const std::vector<std::string>& devices,
                                const bool is_async)
-    : underlying_devices_(devices) {
+    : underlying_devices_(devices),
+      default_cancellation_manager_(absl::make_unique<CancellationManager>()) {
   device_threads_.reserve(devices.size());
   for (int device_index = 0; device_index < devices.size(); ++device_index) {
     device_threads_.emplace_back(
@@ -265,55 +283,6 @@ std::unique_ptr<ParallelTensor> ParallelDevice::CopyToParallelDevice(
                                            status);
 }
 
-std::unique_ptr<ParallelTensor> ParallelDevice::Vector(
-    TFE_Context* context, TF_Status* status,
-    absl::Span<const int32_t> values) const {
-  // TODO(allenl): We could cache DeviceIDs (keyed by context).
-  std::vector<TensorHandlePtr> components;
-  components.reserve(underlying_devices_.size());
-
-  if (values.size() != num_underlying_devices()) {
-    TF_SetStatus(
-        status, TF_INVALID_ARGUMENT,
-        "Number of values did not match number of underlying devices.");
-    return nullptr;
-  }
-
-  for (int device_index = 0; device_index < num_underlying_devices();
-       ++device_index) {
-    int32_t* device_value = new int32_t;
-    *device_value = values[device_index];
-    std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> tensor(
-        TF_NewTensor(
-            TF_INT32, /*dims=*/nullptr, /*num_dims=*/0, device_value,
-            sizeof(int32_t),
-            [](void* data, size_t, void* arg) {
-              delete reinterpret_cast<int32_t*>(data);
-            },
-            nullptr),
-        TF_DeleteTensor);
-    // TODO(allenl): Here and when executing regular operations, we could hold
-    // on to one TFE_Op per device and just call TFE_ResetOp to avoid parsing
-    // device names repeatedly.
-    OpPtr const_op(TFE_NewOp(context, "Const", status));
-    if (TF_GetCode(status) != TF_OK) return nullptr;
-    TFE_OpSetDevice(const_op.get(), underlying_devices_[device_index].c_str(),
-                    status);
-    if (TF_GetCode(status) != TF_OK) return nullptr;
-    TFE_OpSetAttrTensor(const_op.get(), "value", tensor.get(), status);
-    if (TF_GetCode(status) != TF_OK) return nullptr;
-    TFE_OpSetAttrType(const_op.get(), "dtype", TF_INT32);
-    TFE_TensorHandle* device_handle;
-    int num_outputs = 1;
-    TFE_Execute(const_op.get(), &device_handle, &num_outputs, status);
-    if (TF_GetCode(status) != TF_OK) return nullptr;
-    components.emplace_back(device_handle);
-    if (TF_GetCode(status) != TF_OK) return nullptr;
-  }
-  return ParallelTensor::FromTensorHandles(*this, std::move(components),
-                                           status);
-}
-
 std::unique_ptr<ParallelTensor> ParallelDevice::DeviceIDs(
     TFE_Context* context, TF_Status* status) const {
   std::vector<int32_t> ids;
@@ -321,7 +290,7 @@ std::unique_ptr<ParallelTensor> ParallelDevice::DeviceIDs(
   for (int i = 0; i < num_underlying_devices(); ++i) {
     ids.push_back(i);
   }
-  return Vector(context, status, ids);
+  return ScalarsFromSequence<int32_t>(ids, context, status);
 }
 
 absl::optional<std::vector<std::unique_ptr<ParallelTensor>>>
@@ -331,21 +300,27 @@ ParallelDevice::Execute(TFE_Context* context,
                         const TFE_OpAttrs* attributes, int expected_max_outputs,
                         TF_Status* status) const {
   std::vector<PartialTensorShape> expected_output_shapes(expected_max_outputs);
-  return Execute(context, inputs, operation_name, attributes,
-                 expected_output_shapes, status);
+  StartExecute(context, inputs, operation_name, attributes,
+               expected_max_outputs, *default_cancellation_manager_);
+  auto result = Join(expected_output_shapes, status);
+  if (TF_GetCode(status) != TF_OK) {
+    std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> await_status(
+        TF_NewStatus(), TF_DeleteStatus);
+    // Wait until all pending nodes have completed since they may have a
+    // reference to default_cancellation_manager_. We ignore the status return
+    // since we already have a bad status to propagate.
+    TFE_ContextAsyncWait(context, await_status.get());
+    // Reset the cancellation manager on a bad status. Otherwise we'll cancel
+    // all future operations.
+    default_cancellation_manager_ = absl::make_unique<CancellationManager>();
+  }
+  return result;
 }
 
-absl::optional<std::vector<std::unique_ptr<ParallelTensor>>>
-ParallelDevice::Execute(
+void ParallelDevice::StartExecute(
     TFE_Context* context, const std::vector<ParallelTensor*>& inputs,
     const char* operation_name, const TFE_OpAttrs* attributes,
-    const std::vector<PartialTensorShape>& expected_output_shapes,
-    TF_Status* status) const {
-  absl::optional<std::vector<std::unique_ptr<ParallelTensor>>> result;
-  // Compute per-device per-output tensors
-  std::vector<std::vector<TensorHandlePtr>> per_device_output_tensors;
-  per_device_output_tensors.reserve(underlying_devices_.size());
-  int first_op_output_count = 0;
+    int expected_max_outputs, CancellationManager& cancellation_manager) const {
   for (int device_index = 0; device_index < underlying_devices_.size();
        ++device_index) {
     DeviceThread* device_thread = device_threads_[device_index].get();
@@ -357,8 +332,19 @@ ParallelDevice::Execute(
     }
     device_thread->StartExecute(context, operation_name,
                                 std::move(device_inputs), attributes,
-                                expected_output_shapes.size());
+                                expected_max_outputs, cancellation_manager);
   }
+}
+
+absl::optional<std::vector<std::unique_ptr<ParallelTensor>>>
+ParallelDevice::Join(
+    const std::vector<PartialTensorShape>& expected_output_shapes,
+    TF_Status* status) const {
+  absl::optional<std::vector<std::unique_ptr<ParallelTensor>>> result;
+  // Compute per-device per-output tensors
+  std::vector<std::vector<TensorHandlePtr>> per_device_output_tensors;
+  per_device_output_tensors.reserve(underlying_devices_.size());
+  int first_op_output_count = 0;
   StatusPtr first_bad_status(nullptr);
   for (int device_index = 0; device_index < underlying_devices_.size();
        ++device_index) {
@@ -367,7 +353,11 @@ ParallelDevice::Execute(
     // We will run every Join even if there are bad statuses in case the user
     // wants to recover and continue running ops on the parallel device (which
     // would otherwise deadlock).
-    if (TF_GetCode(status) != TF_OK && first_bad_status == nullptr) {
+    if (TF_GetCode(status) != TF_OK &&
+        (first_bad_status == nullptr
+         // Prefer propagating non-cancellation related statuses to avoid
+         // shadowing the original failure.
+         || TF_GetCode(first_bad_status.get()) == TF_CANCELLED)) {
       first_bad_status.reset(TF_NewStatus());
       TF_SetStatus(first_bad_status.get(), TF_GetCode(status),
                    TF_Message(status));

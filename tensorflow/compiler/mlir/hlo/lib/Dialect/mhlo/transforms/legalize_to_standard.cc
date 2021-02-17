@@ -201,7 +201,7 @@ void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
 void LegalizeToStandardPass::runOnFunction() {
   OwningRewritePatternList patterns;
   mlir::mhlo::PopulateMhloToStdPatterns(&patterns, &getContext());
-  applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
 }
 
 }  // end namespace mhlo

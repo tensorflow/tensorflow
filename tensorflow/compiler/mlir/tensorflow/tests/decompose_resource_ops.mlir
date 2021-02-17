@@ -489,6 +489,16 @@ func @decompose_resource_scatter_update_op(%indices : tensor<2x?xi32>, %updates:
 
 // -----
 
+// CHECK-LABEL: @do_not_decompose_scalar_update
+func @do_not_decompose_scalar_update(%resource : tensor<*x!tf.resource>, %indices : tensor<?xi32>, %updates: tensor<i32>) {
+  // CHECK: ResourceScatterUpdate
+  // CHECK-NOT: TensorScatterUpdate
+  "tf.ResourceScatterUpdate"(%resource, %indices, %updates) {device = ""} : (tensor<*x!tf.resource>, tensor<?xi32>, tensor<i32>) -> ()
+  return
+}
+
+// -----
+
 // Tests that tf.VariableShape operation is decomposed.
 
 // CHECK-LABEL: @decompose_variable_shape_i32
@@ -557,4 +567,18 @@ func @decompose_resource_apply_proximal_adagrad_op(%lr: tensor<f32>, %l1: tensor
   "tf.ResourceApplyProximalAdagrad"(%var, %accum, %lr, %l1, %l2, %grad) {use_locking = false} : (tensor<*x!tf.resource<tensor<4xf32>>>, tensor<*x!tf.resource<tensor<4xf32>>>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<4xf32>) -> ()
 
   return
+}
+
+// -----
+
+// Test that tf.RngReadAndSkip op is decomposed.
+// CHECK-LABEL: func @decompose_rng_read_and_skip_op
+func @decompose_rng_read_and_skip_op(%resource: tensor<!tf.resource<tensor<3xi64>>>) -> tensor<3xi64> {
+  // We rely on the TensorFlow StatefulRandomOpsTest to check it is lowered
+  // correctly.
+  // CHECK-NOT: tf.RngReadAndSkip
+  %alg = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %delta = "tf.Const"() {value = dense<10> : tensor<ui64>} : () -> tensor<ui64>
+  %0 = "tf.RngReadAndSkip"(%resource, %alg, %delta) : (tensor<!tf.resource<tensor<3xi64>>>, tensor<i32>, tensor<ui64>) -> tensor<3xi64>
+  return %0 : tensor<3xi64>
 }

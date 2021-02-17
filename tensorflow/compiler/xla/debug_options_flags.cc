@@ -40,6 +40,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_asm_extra_flags("");
   opts.set_xla_eliminate_hlo_implicit_broadcast(true);
   opts.set_xla_dump_hlo_as_html(false);
+  opts.set_xla_dump_fusion_visualization(false);
   opts.set_xla_dump_include_timestamp(true);
   opts.set_xla_dump_max_hlo_modules(-1);
   opts.set_xla_dump_module_metadata(false);
@@ -483,6 +484,15 @@ static void AllocateFlags() {
       "directory specified by --xla_dump_to). This is not implemented by "
       "default; you need to add a plugin which calls "
       "RegisterGraphToURLRenderer()."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_dump_fusion_visualization",
+      bool_setter_for(&DebugOptions::set_xla_dump_fusion_visualization),
+      flag_values->xla_dump_fusion_visualization(),
+      "Tries to generate HLO fusion visualization as an HTML page to the "
+      "directory specified by --xla_dump_to). This is not implemented by "
+      "default; you need to add a plugin which calls "
+      "RegisterGraphToURLRenderer(). Generates a file per computation. "
+      "Currently only implemented for the GPU backend."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_dump_hlo_snapshots",
       bool_setter_for(&DebugOptions::set_xla_dump_hlo_snapshots),

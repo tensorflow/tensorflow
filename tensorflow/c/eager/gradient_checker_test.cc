@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/ops/math_ops.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -96,6 +97,11 @@ class GradientCheckerTest
       ASSERT_EQ(errors::OK, s.code()) << s.error_message();
       ctx_.reset(ctx_raw);
     }
+
+    // Computing numerical gradients with TensorFloat-32 is numerically
+    // unstable. Some forward pass tests also fail with TensorFloat-32 due to
+    // low tolerances
+    enable_tensor_float_32_execution(false);
   }
 
   AbstractContextPtr ctx_;

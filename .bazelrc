@@ -157,8 +157,8 @@ build:monolithic --define framework_shared_object=false
 build --define framework_shared_object=true
 
 # For workaround https://github.com/bazelbuild/bazel/issues/8772 with Bazel >= 0.29.1
-build --java_toolchain=//third_party/toolchains/java:tf_java_toolchain
-build --host_java_toolchain=//third_party/toolchains/java:tf_java_toolchain
+build --java_toolchain=@org_tensorflow//third_party/toolchains/java:tf_java_toolchain
+build --host_java_toolchain=@org_tensorflow//third_party/toolchains/java:tf_java_toolchain
 
 # Please note that MKL on MacOS or windows is still not supported.
 # If you would like to use a local MKL instead of downloading, please set the
@@ -421,9 +421,9 @@ build:rbe_linux --linkopt=-lm
 build:rbe_linux --host_linkopt=-lm
 
 build:rbe_cpu_linux --config=rbe_linux
-build:rbe_cpu_linux --host_crosstool_top="//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010:toolchain"
-build:rbe_cpu_linux --crosstool_top="//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010:toolchain"
-build:rbe_cpu_linux --extra_toolchains="//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010:cc-toolchain-k8"
+build:rbe_cpu_linux --host_crosstool_top="@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010:toolchain"
+build:rbe_cpu_linux --crosstool_top="@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010:toolchain"
+build:rbe_cpu_linux --extra_toolchains="@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010:cc-toolchain-k8"
 build:rbe_cpu_linux --extra_execution_platforms="@ubuntu16.04-manylinux2010-py3_config_platform//:platform"
 build:rbe_cpu_linux --extra_execution_platforms="@ubuntu16.04-manylinux2010-py3_config_platform//:platform"
 build:rbe_cpu_linux --host_platform="@ubuntu16.04-manylinux2010-py3_config_platform//:platform"
@@ -585,7 +585,7 @@ build:release_cpu_linux --config=release_common
 build:release_cpu_linux --config=avx_linux
 # We use the same toolchain for CPU/GPU packages.
 # Did not add this to the defaults in case this changes.
-build:release_cpu_linux --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain
+build:release_cpu_linux --crosstool_top=@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain
 
 build:release_cpu_macos --config=release_common
 build:release_cpu_macos --config=avx_linux
@@ -605,7 +605,7 @@ build:release_gpu_common --action_env=GCC_HOST_COMPILER_PATH="/usr/bin/gcc-5"
 
 build:release_gpu_linux --config=release_gpu_common
 build:release_gpu_linux --config=avx_linux
-build:release_gpu_linux --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda11:toolchain
+build:release_gpu_linux --crosstool_top=@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda11:toolchain
 build:release_windows_common --config=release_common
 build:release_windows_common --define=no_tensorflow_py_deps=true
 build:release_windows_common --announce_rc
@@ -634,7 +634,7 @@ build:asan --copt -fno-omit-frame-pointer
 build:asan --linkopt -fsanitize=address
 
 # Memory sanitizer
-# CC=clang bazel build --config asan
+# CC=clang bazel build --config msan
 build:msan --strip=never
 build:msan --copt -fsanitize=memory
 build:msan --copt -DADDRESS_SANITIZER
@@ -644,7 +644,7 @@ build:msan --copt -fno-omit-frame-pointer
 build:msan --linkopt -fsanitize=memory
 
 # Undefined Behavior Sanitizer
-# CC=clang bazel build --config asan
+# CC=clang bazel build --config ubsan
 build:ubsan --strip=never
 build:ubsan --copt -fsanitize=undefined
 build:ubsan --copt -g

@@ -254,12 +254,6 @@ float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToCompute(
           cost_analysis_.per_second_rate(HloCostAnalysis::kTranscendentalsKey));
 }
 
-float MemorySpaceAssignmentCostAnalysis::
-    GetInstructionElapsedDueToMemorySlowdown(int64 bytes) const {
-  return bytes /
-         cost_analysis_.per_second_rate(HloCostAnalysis::kBytesAccessedKey);
-}
-
 float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToMemory(
     const HloInstruction& instruction,
     absl::optional<int64> operand_in_alternate_mem,

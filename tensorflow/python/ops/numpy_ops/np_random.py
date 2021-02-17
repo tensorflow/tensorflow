@@ -73,7 +73,7 @@ def standard_normal(size=None):
   elif np_utils.isscalar(size):
     size = (size,)
   dtype = np_dtypes.default_float_type()
-  return np_utils.tensor_to_ndarray(random_ops.random_normal(size, dtype=dtype))
+  return random_ops.random_normal(size, dtype=dtype)
 
 
 @np_utils.np_doc('random.uniform')
@@ -83,9 +83,8 @@ def uniform(low=0.0, high=1.0, size=None):
   high = np_array_ops.asarray(high, dtype=dtype)
   if size is None:
     size = array_ops.broadcast_dynamic_shape(low.shape, high.shape)
-  return np_utils.tensor_to_ndarray(
-      random_ops.random_uniform(
-          shape=size, minval=low, maxval=high, dtype=dtype))
+  return random_ops.random_uniform(
+      shape=size, minval=low, maxval=high, dtype=dtype)
 
 
 @np_utils.np_doc('random.poisson')
@@ -94,8 +93,7 @@ def poisson(lam=1.0, size=None):
     size = ()
   elif np_utils.isscalar(size):
     size = (size,)
-  return np_utils.tensor_to_ndarray(
-      random_ops.random_poisson(shape=size, lam=lam, dtype=np_dtypes.int_))
+  return random_ops.random_poisson(shape=size, lam=lam, dtype=np_dtypes.int_)
 
 
 @np_utils.np_doc('random.random')
@@ -121,6 +119,5 @@ def randint(low, high=None, size=None, dtype=onp.int):  # pylint: disable=missin
   dtype = np_utils.result_type(dtype)
   if dtype not in (onp.int32, onp.int64):
     raise ValueError('Only np.int32 or np.int64 types are supported')
-  return np_utils.tensor_to_ndarray(
-      random_ops.random_uniform(
-          shape=size, minval=low, maxval=high, dtype=dtype))
+  return random_ops.random_uniform(
+      shape=size, minval=low, maxval=high, dtype=dtype)

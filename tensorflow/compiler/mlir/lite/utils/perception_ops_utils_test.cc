@@ -66,7 +66,7 @@ ArrayAttr createInt32Array(mlir::Builder* builder, mlir::MLIRContext* context,
   for (int32_t value : values) {
     ret.push_back(builder->getI32IntegerAttr(value));
   }
-  return ArrayAttr::get(ret, context);
+  return ArrayAttr::get(context, ret);
 }
 
 template <int N>
@@ -76,7 +76,7 @@ ArrayAttr createInt64Array(mlir::Builder* builder, mlir::MLIRContext* context,
   for (int64_t value : values) {
     ret.push_back(builder->getI64IntegerAttr(value));
   }
-  return ArrayAttr::get(ret, context);
+  return ArrayAttr::get(context, ret);
 }
 
 mlir::TF::FuncAttr createMaxUnpoolingAttr(mlir::MLIRContext* context,
@@ -86,7 +86,7 @@ mlir::TF::FuncAttr createMaxUnpoolingAttr(mlir::MLIRContext* context,
   SmallVector<::mlir::NamedAttribute, 3> fields;
 
   auto padding_id = ::mlir::Identifier::get("padding", context);
-  fields.emplace_back(padding_id, StringAttr::get(padding, context));
+  fields.emplace_back(padding_id, StringAttr::get(context, padding));
 
   auto pool_size_id = ::mlir::Identifier::get("pool_size", context);
   fields.emplace_back(pool_size_id, pool_size);
@@ -94,7 +94,7 @@ mlir::TF::FuncAttr createMaxUnpoolingAttr(mlir::MLIRContext* context,
   auto strides_id = ::mlir::Identifier::get("strides", context);
   fields.emplace_back(strides_id, strides);
 
-  DictionaryAttr dict = DictionaryAttr::get(fields, context);
+  DictionaryAttr dict = DictionaryAttr::get(context, fields);
   return TF::FuncAttr::get(context, "MaxUnpooling2D", dict);
 }
 

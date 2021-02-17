@@ -114,7 +114,7 @@ bool ShapeAttr::hasStaticShape() const {
 
 FuncAttr FuncAttr::get(mlir::MLIRContext* context, llvm::StringRef name,
                        DictionaryAttr attr) {
-  auto symbol = SymbolRefAttr::get(name, context);
+  auto symbol = SymbolRefAttr::get(context, name);
   return Base::get(context, symbol, attr);
 }
 

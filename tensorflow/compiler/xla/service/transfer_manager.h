@@ -203,10 +203,10 @@ class TransferManager {
                                          const LiteralSlice& literal) = 0;
 
   // Transfers the given literal from the Outfeed interface of the device,
-  // using the given executor.
+  // using the given executor. The shape and layout are determined by the
+  // shape and layout of `literal`.
   virtual Status TransferLiteralFromOutfeed(
-      se::StreamExecutor* executor, const Shape& literal_shape,
-      MutableBorrowingLiteral literal) = 0;
+      se::StreamExecutor* executor, MutableBorrowingLiteral literal) = 0;
 
   // Resets the devices associated with this transfer manager.
   virtual Status ResetDevices(

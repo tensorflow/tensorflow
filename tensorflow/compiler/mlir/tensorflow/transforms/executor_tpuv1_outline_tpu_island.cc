@@ -70,7 +70,7 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
   ModuleOp outlined_module = ModuleOp::create(getOperation().getLoc());
   outlined_module->setAttrs(getOperation()->getAttrDictionary());
   outlined_module->setAttr(SymbolTable::getSymbolAttrName(),
-                           StringAttr::get(kNestedModule, ctx));
+                           StringAttr::get(ctx, kNestedModule));
   symbol_table.insert(outlined_module);
   SymbolTable outlined_symbol_table(outlined_module);
 

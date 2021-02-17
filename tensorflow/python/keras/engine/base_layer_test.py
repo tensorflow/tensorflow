@@ -974,7 +974,7 @@ class SymbolicSupportTest(keras_parameterized.TestCase):
 
     tmp_dir = self.get_temp_dir()
     writer = summary_ops_v2.create_file_writer_v2(tmp_dir)
-    with writer.as_default(), summary_ops_v2.record_if(True):
+    with writer.as_default(step=1), summary_ops_v2.record_if(True):
       my_layer = MyLayer()
       x = array_ops.ones((10, 10))
 

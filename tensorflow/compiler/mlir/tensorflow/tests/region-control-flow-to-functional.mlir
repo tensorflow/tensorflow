@@ -168,6 +168,50 @@ func @testIf2Result(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
 
 // -----
 
+// Do not skip extern incompatible cast for trivial transform.
+
+func private @testIf1Then(tensor<*xf32>) -> tensor<*xf32>
+func private @testIf1Else(tensor<*xf32>) -> tensor<*xf32>
+func @testIfExternIncompatibleCastTrivialTransform(%arg0: tensor<i1>, %arg1: tensor<2xi64>) -> tensor<2xf32> {
+  // CHECK: %[[CAST:.*]] = "tf.Cast"(%arg1) {Truncate = false} : (tensor<2xi64>) -> tensor<*xf32>
+  // CHECK: "tf.If"(%arg0, %[[CAST]]) {else_branch = @testIf1Else, {{.+}} then_branch = @testIf1Then}
+  %1 = "tf.Cast"(%arg1) {Truncate = false} : (tensor<2xi64>) -> tensor<*xf32>
+  %0 = "tf.IfRegion"(%arg0) ( {
+    %2 = call @testIf1Then(%1) : (tensor<*xf32>) -> tensor<*xf32>
+    "tf.Yield"(%2) : (tensor<*xf32>) -> ()
+  },  {
+    %2 = call @testIf1Else(%1) : (tensor<*xf32>) -> tensor<*xf32>
+    "tf.Yield"(%2) : (tensor<*xf32>) -> ()
+  }) {is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+// Do not skip incompatible cast for trivial transform.
+
+// CHECK: func private @tf.IfRegion_else(%arg0: tensor<2xi64>) -> tensor<*xf32>
+// CHECK-NEXT:    "tf.Cast"
+// CHECK: func private @tf.IfRegion_then(%arg0: tensor<2xi64>) -> tensor<*xf32>
+// CHECK-NEXT:    "tf.Cast"
+func private @testIf1Then(tensor<*xf32>) -> tensor<*xf32>
+func private @testIf1Else(tensor<*xf32>) -> tensor<*xf32>
+func @testIfIncompatibleCastTrivialTransform(%arg0: tensor<i1>, %arg1: tensor<2xi64>) -> tensor<2xf32> {
+  // CHECK: "tf.If"(%arg0, %arg1) {else_branch = @tf.IfRegion_else{{.+}}then_branch = @tf.IfRegion_then}
+  %0 = "tf.IfRegion"(%arg0) ( {
+    %1 = "tf.Cast"(%arg1) {Truncate = false} : (tensor<2xi64>) -> tensor<*xf32>
+    %2 = call @testIf1Then(%1) : (tensor<*xf32>) -> tensor<*xf32>
+    "tf.Yield"(%2) : (tensor<*xf32>) -> ()
+  },  {
+    %1 = "tf.Cast"(%arg1) {Truncate = false} : (tensor<2xi64>) -> tensor<*xf32>
+    %2 = call @testIf1Else(%1) : (tensor<*xf32>) -> tensor<*xf32>
+    "tf.Yield"(%2) : (tensor<*xf32>) -> ()
+  }) {is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
 // No inputs, some outputs for IfRegion
 // CHECK: func private @tf.IfRegion_else() -> tensor<2xf32>
 // CHECK-NEXT:    constant dense<1.000000e+00>
@@ -554,6 +598,37 @@ func @testWhileRegionTrivialMultipleCasts(%arg0 : tensor<*xf32>, %arg1 : tensor<
   ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
   // CHECK: return [[Result]]#0
   return %0#0 : tensor<*xf32>
+}
+
+// -----
+
+// Almost trivially transformable with incompatible cast
+// CHECK: func private @tf.WhileRegion_body
+// CHECK-NEXT:    "tf.Cast"
+// CHECK: func private @tf.WhileRegion_cond
+// CHECK-NEXT:    "tf.Cast"
+// CHECK-LABEL: testWhileRegionIncompatibleCast
+func private @while_cond(%arg0 : tensor<4xf32>, %arg1 : tensor<i32>) -> tensor<i1>
+func private @while_body(%arg0 : tensor<4xf32>, %arg1 : tensor<i32>) -> (tensor<4xi64>, tensor<i32>)
+func @testWhileRegionIncompatibleCast(%arg0 : tensor<*xi64>, %arg1 : tensor<i32>) -> tensor<*xi64> {
+  // CHECK: [[Result:%.*]]:2 = "tf.While"(%arg0, %arg1) {body = @tf.WhileRegion_body, cond = @tf.WhileRegion_cond
+  %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
+    {
+      ^bb0(%carg0: tensor<*xi64>, %carg1: tensor<i32>):
+        %cond_cast = "tf.Cast"(%carg0) : (tensor<*xi64>) -> tensor<4xf32>
+        %cond = call @while_cond(%cond_cast, %carg1) : (tensor<4xf32>, tensor<i32>) -> tensor<i1>
+        "tf.Yield"(%cond) : (tensor<i1>) -> ()
+    },
+    {
+      // loop body
+      ^bb0(%barg0: tensor<*xi64>, %barg1: tensor<i32>):
+        %bdy_cast = "tf.Cast"(%barg0) : (tensor<*xi64>) -> tensor<4xf32>
+        %bdy:2 = call @while_body(%bdy_cast, %barg1) : (tensor<4xf32>, tensor<i32>) -> (tensor<4xi64>, tensor<i32>)
+        "tf.Yield"(%bdy#0, %bdy#1) : (tensor<4xi64>, tensor<i32>) -> ()
+    }
+  ) { is_stateless = false } : (tensor<*xi64>, tensor<i32>) -> (tensor<*xi64>, tensor<i32>)
+  // CHECK: return [[Result]]#0
+  return %0#0 : tensor<*xi64>
 }
 
 // -----

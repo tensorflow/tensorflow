@@ -9,6 +9,7 @@ package(
     default_visibility = [
         "//tensorflow/python/feature_column:__pkg__",
         "//tensorflow/python/keras:__subpackages__",
+        "//tensorflow/tools/pip_package:__pkg__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -52,6 +53,16 @@ py_library(
     srcs = ["control_flow_util.py"],
     srcs_version = "PY3",
     deps = [],
+)
+
+py_library(
+    name = "kpl_test_utils",
+    srcs = ["kpl_test_utils.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras/layers/preprocessing:string_lookup",
+    ],
 )
 
 py_library(
@@ -245,6 +256,30 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "dataset_creator",
+    srcs = [
+        "dataset_creator.py",
+    ],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow/tools/pip_package:__pkg__"],
+    deps = [
+        "//tensorflow/python:util",
+    ],
+)
+
+tf_py_test(
+    name = "dataset_creator_test",
+    srcs = ["dataset_creator_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":dataset_creator",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/layers:core",
     ],
 )
 
@@ -447,5 +482,25 @@ tf_py_test(
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "losses_utils_test",
+    size = "small",
+    srcs = ["losses_utils_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
+        "//tensorflow/python/ops/ragged:ragged_array_ops",
+        "//tensorflow/python/ops/ragged:ragged_concat_ops",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
     ],
 )

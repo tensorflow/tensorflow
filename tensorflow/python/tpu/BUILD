@@ -79,6 +79,7 @@ tpu_py_test(
     size = "medium",
     srcs = ["async_checkpoint_test.py"],
     disable_experimental = True,
+    disable_mlir_bridge = False,
     deps = [
         ":async_checkpoint",
         ":tpu_estimator",
@@ -712,3 +713,12 @@ tf_proto_library(
     ],
     visibility = ["//visibility:public"],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "tensor_tracer_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":tensor_tracer_proto"],
+# )
+# copybara:uncomment_end

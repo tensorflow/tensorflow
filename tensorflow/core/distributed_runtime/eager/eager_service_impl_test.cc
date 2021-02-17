@@ -954,8 +954,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
       /*composite_devices=*/{}, /*input_resource_dtypes_and_shapes=*/{},
       /*runner=*/nullptr,
       /*collective_executor=*/nullptr, local_device, fdef_.signature().name(),
-      /*outputs_on_op_device=*/false,
-      [ctx](const int64 step_id) { return ctx->CreateRendezvous(step_id); },
+      /*outputs_on_op_device=*/false, ctx->RendezvousCreator(),
       [=]() { return op_id; }));
 
   // Instantiate MatMulFunction on remote_device.
@@ -1003,8 +1002,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
       /*composite_devices=*/{}, /*input_resource_dtypes_and_shapes=*/{},
       /*runner=*/nullptr,
       /*collective_executor=*/nullptr, local_device, fdef_.signature().name(),
-      /*outputs_on_op_device=*/false,
-      [ctx](const int64 step_id) { return ctx->CreateRendezvous(step_id); },
+      /*outputs_on_op_device=*/false, ctx->RendezvousCreator(),
       [=]() { return op_id; }));
 
   // Instantiate MatMulFunction on remote_device.

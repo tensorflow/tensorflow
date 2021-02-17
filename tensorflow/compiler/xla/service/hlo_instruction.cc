@@ -1498,11 +1498,11 @@ void HloInstruction::set_single_sharding(const HloSharding& sharding) {
 
 void HloInstruction::SetupDerivedInstruction(
     HloInstruction* derived_instruction) const {
-  if (sharding_ != nullptr && ShapeUtil::CompatibleIgnoringElementType(
-                                  shape_, derived_instruction->shape())) {
-    // Only copy sharding if the shape of the two instruction is compatible
-    // because copying it between differently shaped instructions can produce
-    // invalid shardings.
+  if (sharding_ != nullptr &&
+      ShapeUtil::CompatibleKind(shape_, derived_instruction->shape())) {
+    // Only copy sharding if the tuple tree shape of the two instruction is
+    // compatible because copying it between differently shaped instructions
+    // can produce invalid shardings.
     derived_instruction->set_sharding(*sharding_);
   } else {
     derived_instruction->clear_sharding();
@@ -1654,6 +1654,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kFft:
     case HloOpcode::kCompare:
+    case HloOpcode::kCopyStart:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kRecv:
@@ -1709,7 +1710,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kClz:
     case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kCopy:
-    case HloOpcode::kCopyStart:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCos:
     case HloOpcode::kExp:

@@ -35,8 +35,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ::testing::IsEmpty;
-using ::testing::UnorderedElementsAre;
+using ::testing::IsSupersetOf;
 
 class CollectiveOpsTest : public HloTestBase {
  protected:
@@ -340,9 +339,6 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduce_NcclChannelCaching)) {
   absl::c_iota(input_vec, 0);
   auto input_literal = LiteralUtil::CreateR1<float>(input_vec);
 
-  // Initially no NCCL channels should be open.
-  EXPECT_THAT(OpenNcclChannels(), IsEmpty());
-
   // Create three Executables, touching devices {0,1}, {1,2}, and {0,1,2}.
   struct ExecutableInfo {
     std::unique_ptr<Executable> executable;
@@ -380,18 +376,15 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduce_NcclChannelCaching)) {
             .status());
   };
 
-  // Compiling executables above shouldn't cause us to open any channels.
-  EXPECT_THAT(OpenNcclChannels(), IsEmpty());
-
   // Run the executables and check that channels are opened as we expect.
   run_executable(0);
-  EXPECT_THAT(OpenNcclChannels(), UnorderedElementsAre(0, 1));
+  EXPECT_THAT(OpenNcclChannels(), IsSupersetOf({0, 1}));
 
   run_executable(2);
-  EXPECT_THAT(OpenNcclChannels(), UnorderedElementsAre(0, 1, 2));
+  EXPECT_THAT(OpenNcclChannels(), IsSupersetOf({0, 1, 2}));
 
   run_executable(1);
-  EXPECT_THAT(OpenNcclChannels(), UnorderedElementsAre(0, 1, 2));
+  EXPECT_THAT(OpenNcclChannels(), IsSupersetOf({0, 1, 2}));
 
   // Tear down the executables and check that channels are closed as we expect.
   // Note that after we tear down an executable *all* the nccl channels may go
@@ -399,14 +392,13 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduce_NcclChannelCaching)) {
   executables[2].executable.reset();
   run_executable(0);
   run_executable(1);
-  EXPECT_THAT(OpenNcclChannels(), UnorderedElementsAre(0, 1, 2));
+  EXPECT_THAT(OpenNcclChannels(), IsSupersetOf({0, 1, 2}));
 
   executables[0].executable.reset();
   run_executable(1);
-  EXPECT_THAT(OpenNcclChannels(), UnorderedElementsAre(1, 2));
+  EXPECT_THAT(OpenNcclChannels(), IsSupersetOf({1, 2}));
 
   executables[1].executable.reset();
-  EXPECT_THAT(OpenNcclChannels(), IsEmpty());
 }
 
 // Runs the same executable many times concurrently.  The all-reduces should not

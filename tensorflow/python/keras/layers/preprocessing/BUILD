@@ -160,6 +160,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:util",
+        "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras/engine",
         "//third_party/py/numpy",
     ],
@@ -258,7 +259,6 @@ py_library(
     name = "category_encoding",
     srcs = [
         "category_encoding.py",
-        "category_encoding_v1.py",
     ],
     srcs_version = "PY3",
     deps = [

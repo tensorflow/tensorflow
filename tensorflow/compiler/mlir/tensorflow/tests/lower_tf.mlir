@@ -233,6 +233,18 @@ func @rsqrt_grad_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<
   return %0 : tensor<*xf32>
 }
 
+// CHECK-LABEL: func @sqrt_grad_unranked
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<*xcomplex<f32>>, %[[ARG1:.*]]: tensor<*xcomplex<f32>>)
+func @sqrt_grad_unranked(%arg0: tensor<*xcomplex<f32>>, %arg1: tensor<*xcomplex<f32>>) -> tensor<*xcomplex<f32>> {
+  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<(5.000000e-01,0.000000e+00)> : tensor<complex<f32>>} : () -> tensor<complex<f32>>
+  // CHECK: %[[MUL:.*]] = "tf.Mul"(%arg1, %[[CST]]) : (tensor<*xcomplex<f32>>, tensor<complex<f32>>) -> tensor<*xcomplex<f32>>
+  // CHECK: %[[RET:.*]] = "tf.Div"(%[[MUL]], %arg0) : (tensor<*xcomplex<f32>>, tensor<*xcomplex<f32>>) -> tensor<*xcomplex<f32>>
+
+  %0 = "tf.SqrtGrad"(%arg0, %arg1) : (tensor<*xcomplex<f32>>, tensor<*xcomplex<f32>>) -> tensor<*xcomplex<f32>>
+  // CHECK: return %[[RET]]
+  return %0 : tensor<*xcomplex<f32>>
+}
+
 // %input has 1 batch dimension then 2 block dimensions then 1 remainder
 // dimension.
 // CHECK-LABEL: fourdim_space_to_batch_nd
@@ -776,6 +788,21 @@ func @round_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   // CHECK-DAG: [[ADD:%.+]] = "tf.AddV2"([[FLOOR]], [[ONE]])
   // CHECK-DAG: [[SELECT:%.+]] = "tf.Select"([[CMP]], [[FLOOR]], [[ADD]])
   %0 = "tf.Round"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+
+  // CHECK: return [[SELECT]]
+  return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @rint_dynamic
+func @rint_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK-DAG: [[FLOOR:%.+]] = "tf.Floor"(%arg0)
+  // CHECK-DAG: [[SUB:%.+]] = "tf.Sub"(%arg0, [[FLOOR]])
+  // CHECK-DAG: [[HALF:%.+]] = "tf.Const"() {value = dense<5.000000e-01> : tensor<f32>}
+  // CHECK-DAG: [[CMP:%.+]] = "tf.Less"([[SUB]], [[HALF]])
+  // CHECK-DAG: [[ONE:%.+]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
+  // CHECK-DAG: [[ADD:%.+]] = "tf.AddV2"([[FLOOR]], [[ONE]])
+  // CHECK-DAG: [[SELECT:%.+]] = "tf.Select"([[CMP]], [[FLOOR]], [[ADD]])
+  %0 = "tf.Rint"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
 
   // CHECK: return [[SELECT]]
   return %0 : tensor<?xf32>
