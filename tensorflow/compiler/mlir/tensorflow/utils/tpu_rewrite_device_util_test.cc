@@ -744,7 +744,7 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailBadDeviceName) {
   cluster->setAttr(kDeviceAssignmentAttr, builder.getArrayAttr({}));
 
   mlir::TF::RuntimeDevices runtime_devices;
-  GetDevicesFromOp(*module_ref, &runtime_devices);
+  (void)GetDevicesFromOp(*module_ref, &runtime_devices);
   std::string host_device;
   EXPECT_TRUE(mlir::failed(
       GetHostDeviceOutsideComputation(runtime_devices, cluster, &host_device)));
@@ -799,7 +799,7 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceNotReplicated) {
   cluster->setAttr(kDeviceAssignmentAttr, builder.getArrayAttr({}));
 
   mlir::TF::RuntimeDevices runtime_devices;
-  GetDevicesFromOp(*module_ref, &runtime_devices);
+  (void)GetDevicesFromOp(*module_ref, &runtime_devices);
   std::string host_device;
   EXPECT_TRUE(mlir::succeeded(
       GetHostDeviceOutsideComputation(runtime_devices, cluster, &host_device)));

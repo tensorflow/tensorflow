@@ -112,7 +112,7 @@ class BetaTest(test.TestCase):
     x = [.5, .5]
     dist = beta_lib.Beta(a, b)
     pdf = dist.prob(x)
-    self.assertAllClose([1., 3. / 2], self.evaluate(pdf))
+    self.assertAllClose([1., 3. / 2], self.evaluate(pdf), rtol=1e-5, atol=1e-5)
     self.assertEqual((2,), pdf.get_shape())
 
   def testPdfTwoBatchesNontrivialX(self):
@@ -121,7 +121,7 @@ class BetaTest(test.TestCase):
     x = [.3, .7]
     dist = beta_lib.Beta(a, b)
     pdf = dist.prob(x)
-    self.assertAllClose([1, 63. / 50], self.evaluate(pdf))
+    self.assertAllClose([1, 63. / 50], self.evaluate(pdf), rtol=1e-5, atol=1e-5)
     self.assertEqual((2,), pdf.get_shape())
 
   def testPdfUniformZeroBatch(self):
@@ -140,7 +140,10 @@ class BetaTest(test.TestCase):
     x = [[.5, .5], [.3, .7]]
     dist = beta_lib.Beta(a, b)
     pdf = dist.prob(x)
-    self.assertAllClose([[1., 3. / 2], [1., 63. / 50]], self.evaluate(pdf))
+    self.assertAllClose([[1., 3. / 2], [1., 63. / 50]],
+                        self.evaluate(pdf),
+                        rtol=1e-5,
+                        atol=1e-5)
     self.assertEqual((2, 2), pdf.get_shape())
 
   def testPdfAlphaStretchedInBroadcastWhenLowerRank(self):
@@ -148,7 +151,10 @@ class BetaTest(test.TestCase):
     b = [1., 2]
     x = [[.5, .5], [.2, .8]]
     pdf = beta_lib.Beta(a, b).prob(x)
-    self.assertAllClose([[1., 3. / 2], [1., 24. / 25]], self.evaluate(pdf))
+    self.assertAllClose([[1., 3. / 2], [1., 24. / 25]],
+                        self.evaluate(pdf),
+                        rtol=1e-5,
+                        atol=1e-5)
     self.assertEqual((2, 2), pdf.get_shape())
 
   def testPdfXStretchedInBroadcastWhenSameRank(self):
@@ -156,7 +162,10 @@ class BetaTest(test.TestCase):
     b = [[1., 2], [2., 3]]
     x = [[.5, .5]]
     pdf = beta_lib.Beta(a, b).prob(x)
-    self.assertAllClose([[1., 3. / 2], [3. / 2, 15. / 8]], self.evaluate(pdf))
+    self.assertAllClose([[1., 3. / 2], [3. / 2, 15. / 8]],
+                        self.evaluate(pdf),
+                        rtol=1e-5,
+                        atol=1e-5)
     self.assertEqual((2, 2), pdf.get_shape())
 
   def testPdfXStretchedInBroadcastWhenLowerRank(self):
@@ -164,7 +173,10 @@ class BetaTest(test.TestCase):
     b = [[1., 2], [2., 3]]
     x = [.5, .5]
     pdf = beta_lib.Beta(a, b).prob(x)
-    self.assertAllClose([[1., 3. / 2], [3. / 2, 15. / 8]], self.evaluate(pdf))
+    self.assertAllClose([[1., 3. / 2], [3. / 2, 15. / 8]],
+                        self.evaluate(pdf),
+                        rtol=1e-5,
+                        atol=1e-5)
     self.assertEqual((2, 2), pdf.get_shape())
 
   def testLogPdfOnBoundaryIsFiniteWhenAlphaIsOne(self):

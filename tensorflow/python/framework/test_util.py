@@ -2273,7 +2273,7 @@ class TensorFlowTestCase(googletest.TestCase):
 
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
-  def session(self, graph=None, config=None, use_gpu=False, force_gpu=False):
+  def session(self, graph=None, config=None, use_gpu=True, force_gpu=False):
     """A context manager for a TensorFlow Session for use in executing tests.
 
     Note that this will set this session and the graph as global defaults.
@@ -2289,7 +2289,7 @@ class TensorFlowTestCase(googletest.TestCase):
     ``` python
     class MyOperatorTest(test_util.TensorFlowTestCase):
       def testMyOperator(self):
-        with self.session(use_gpu=True):
+        with self.session():
           valid_input = [1.0, 2.0, 3.0, 4.0, 5.0]
           result = MyOperator(valid_input).eval()
           self.assertEqual(result, [1.0, 2.0, 3.0, 5.0, 8.0]
@@ -2320,7 +2320,7 @@ class TensorFlowTestCase(googletest.TestCase):
   def cached_session(self,
                      graph=None,
                      config=None,
-                     use_gpu=False,
+                     use_gpu=True,
                      force_gpu=False):
     """Returns a TensorFlow Session for use in executing tests.
 
@@ -2339,7 +2339,7 @@ class TensorFlowTestCase(googletest.TestCase):
     ```python
     class MyOperatorTest(test_util.TensorFlowTestCase):
       def testMyOperator(self):
-        with self.cached_session(use_gpu=True) as sess:
+        with self.cached_session() as sess:
           valid_input = [1.0, 2.0, 3.0, 4.0, 5.0]
           result = MyOperator(valid_input).eval()
           self.assertEqual(result, [1.0, 2.0, 3.0, 5.0, 8.0]
@@ -2374,7 +2374,7 @@ class TensorFlowTestCase(googletest.TestCase):
   def test_session(self,
                    graph=None,
                    config=None,
-                   use_gpu=False,
+                   use_gpu=True,
                    force_gpu=False):
     """Use cached_session instead."""
     if self.id().endswith(".test_session"):

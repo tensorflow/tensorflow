@@ -315,11 +315,20 @@ def add_function_callback(function_callback):
 
   The callback function has the signature:
 
-    `def function_callback(function):`
+    `def function_callback(function, name, graph, inputs, outputs):`
 
-  wherein `function` is the just-created _EagerDefinedFunction.
-  The callback is invoked immediately after a new `_EagerDefinedFunction`
-  is created. The return value(s) of the callback function (if any) is ignored.
+  where:
+  - `function`: _EagerDefinedFunction being created before finalizing the graph.
+      Do not modify the function directly but instead modify the graph.
+  - `name`: name of the function.
+  - `graph`: Graph of the function.
+  - `inputs`: `tuple` of tensors used as inputs to the function.
+  - `outputs`: `tuple` of tensors used as outputs from the function.
+
+  The callback is at the top of the `_EagerDefinedFunction` construction, giving
+  callback an opportunity to make the last edits to the graph. Do not make
+  changes to `graph, inputs`, and `outputs` manually, but, instead, set the
+  `graph` as the default then define ops.
 
   Repeated registration of the same callback function is idempotent.
   After a callback is added, it can be removed with the
@@ -427,9 +436,12 @@ class _EagerDefinedFunction(object):
       name: str, the name for the created function.
       graph: Graph, the graph containing the operations in the function
       inputs: the tensors in the graph to be used as inputs to the function
-      outputs: the tensors in the graph which will be outputs to the function
+      outputs: the tensors in the graph which will be outputs from the function
       attrs: dict mapping names of attributes to their AttrValue values
     """
+    for function_callback in _function_callbacks:
+      function_callback(self, name, graph, tuple(inputs), tuple(outputs))
+
     input_ops = set(arg.op for arg in inputs)
     operations = [op for op in graph.get_operations() if op not in input_ops]
 
@@ -493,9 +505,6 @@ class _EagerDefinedFunction(object):
     self._grad_func = None
     self.graph = graph
     self._stateful_ops = tuple(op for op in operations if op._is_stateful)  # pylint: disable=protected-access
-
-    for function_callback in _function_callbacks:
-      function_callback(self)
 
   def add_to_graph(self, g=None):
     """Add the function to the current context or a graph, if supplied.
@@ -1522,11 +1531,6 @@ class ConcreteFunction(object):
     self._func_graph = func_graph
     self._captured_inputs = self._func_graph.external_captures
     self._captured_closures = self._func_graph.deferred_external_captures
-    structured_outputs = self._func_graph.structured_outputs
-    self._ndarrays_list = (
-        isinstance(structured_outputs, (list, tuple)) and structured_outputs and
-        all(isinstance(o, np_arrays.ndarray) for o in structured_outputs))
-    self._ndarray_singleton = isinstance(structured_outputs, np_arrays.ndarray)
 
     # function_spec defines the structured signature.
     self._set_function_spec(function_spec)
@@ -2175,12 +2179,6 @@ class ConcreteFunction(object):
     # TODO(jlchu): call C++ version in function.cc when speed is improved
     if self._func_graph.structured_outputs is None:
       return result
-
-    if result:
-      if self._ndarrays_list:
-        return [np_arrays.tensor_to_ndarray(o) for o in result]
-      elif self._ndarray_singleton:
-        return np_arrays.tensor_to_ndarray(result[0])
 
     # Replace outputs with results, skipping over any 'None' values.
     outputs_list = nest.flatten(
@@ -2900,8 +2898,17 @@ class FunctionCache(object):
         _FunctionGarbageCollector(self.arg_relaxed_specs)]
 
   def all_values(self):
-    """A set of all `ConcreteFunction` instances held by this cache."""
-    return set(self.primary.values()) | set(self.arg_relaxed.values())
+    """A list of all `ConcreteFunction` instances held by this cache."""
+    # We need to simultaneously make sure our returned concrete functions are
+    # unique *and* make sure they are returned in a deterministic order for
+    # serialization.
+    #
+    # TODO(b/174215821): It's likely that we ultimately would just prefer to
+    # choose the most specific concrete function shape given a set of
+    # arguments. If and when that is implemented, this logic can be revisited.
+    primary_functions = set(self.primary.values())
+    return list(self.primary.values()) + [
+        v for v in self.arg_relaxed.values() if v not in primary_functions]
 
 
 class Function(object):

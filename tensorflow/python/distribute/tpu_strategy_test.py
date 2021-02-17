@@ -393,6 +393,43 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     train_step()
     self.assertEqual(2.0, v.numpy())
 
+  def test_cluster_conditional_with_dynamic_shape(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+
+    @def_function.function
+    def train_step():
+
+      def shape_list(tensor):
+        shape = tensor.shape.as_list()
+
+        non_static_indexes = []
+        for (index, dim) in enumerate(shape):
+          if dim is None:
+            non_static_indexes.append(index)
+
+        if not non_static_indexes:
+          return shape
+
+        dynamic_shape = array_ops.shape(input=tensor)
+        for index in non_static_indexes:
+          shape[index] = dynamic_shape[index]
+
+        return shape
+
+      def step_fn(condition):
+        where = array_ops.where(condition)
+        if array_ops.shape(where)[0] > 0:
+          tensor_shape = shape_list(where)
+          d1 = tensor_shape[0]
+          d2 = tensor_shape[1]
+          where = array_ops.reshape(where, [d1, d2])
+        return where
+
+      return strategy.run(step_fn, args=([True, False, True],))
+
+    outputs = strategy.experimental_local_results(train_step())
+    self.assertAllEqual(outputs[0].numpy(), [[0], [2]])
+
   def test_cluster_in_graph_and_while_body_fn(self, enable_packed_var):
     strategy = get_tpu_strategy(enable_packed_var)
 
@@ -634,6 +671,26 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
                         results[0].backing_device)
     self.assertAllEqual("/job:localhost/replica:0/task:0/device:TPU:1",
                         results[1].backing_device)
+
+  def test_run_passing_and_returning_nones(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+
+    @def_function.function
+    def train_step():
+
+      def computation(x):
+        return x
+
+      # Note that this input None is nested.
+      outputs = strategy.experimental_local_results(
+          strategy.run(computation, args=([1, [2, None]],)))
+      return outputs
+
+    results = train_step()
+
+    self.assertAllEqual(1, results[0][0].values[0])
+    self.assertAllEqual(2, results[0][1][0].values[0])
+    self.assertIsNone(results[0][1][1])
 
   def test_composite_input_output(self, enable_packed_var):
     strategy = get_tpu_strategy(enable_packed_var)

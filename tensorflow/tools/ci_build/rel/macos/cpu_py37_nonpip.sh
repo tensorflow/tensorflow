@@ -24,7 +24,7 @@ export DEVELOPER_DIR=/Applications/Xcode_11.3.app/Contents/Developer
 sudo xcode-select -s "${DEVELOPER_DIR}"
 
 # Set up and install MacOS pip dependencies.
-setup_venv_macos python3.6
+setup_venv_macos python3.7
 
 # Run configure.
 export TF_NEED_CUDA=0

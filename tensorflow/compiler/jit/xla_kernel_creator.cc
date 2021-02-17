@@ -103,8 +103,15 @@ static Status CreateXlaKernel(FunctionLibraryRuntime* flr,
   if (flr->config_proto()) {
     config_proto = *flr->config_proto();
   }
-  MlirBridgeRolloutPolicy policy =
-      GetMlirBridgeRolloutPolicy(*fbody->graph, config_proto);
+  // There is no easy way to check if we have uninitialized resource args here
+  // so we assume there are uninitialized resource args. This means that we
+  // might run the compilability checker in cases where we don't need to (when
+  // MLIR bridge is run later). Note that this is just temporary until
+  // b/171732021 gets fixed.
+  // We should also revisit if this check provides any value, otherwise we
+  // should remove it.
+  MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
+      *fbody->graph, config_proto, /*uses_uninitialized_resource_args=*/true);
   if (policy != MlirBridgeRolloutPolicy::kEnabledByUser) {
     RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_nodes_map;
     if (!IsCompilable(flr, node_def, &uncompilable_nodes_map)) {

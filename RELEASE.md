@@ -32,6 +32,9 @@
         examples in the same step.
     *   tf.data service supports custom data transfer protocols (other than
         gRPC).
+    *   `tf.data.Dataset.batch()` now supports `num_parallel_calls` argument,
+        which can be used to indicate that multiple input batches should be
+        computed in parallel.
 
 ## Bug Fixes and Other Changes
 
@@ -78,6 +81,8 @@
         *   Removed deprecated `Interpreter::UseNNAPI(bool)` C++ API.
             *   Use `NnApiDelegate()` and related delegate configuration methods
                 directly.
+        *  Replaced the model cache key for models computation algorithm with
+           one guaranteed to be stable across runs.
     *  16 bits quantization
         *   Added int16x8 support for ABS, REDUCE_MAX and REDUCE_MIN operators.
         *   Additional tests and fixes for ADD and SUB operators.
@@ -103,6 +108,8 @@
     * Added `tf.config.experimental.get_memory_info`, returning a dict with the
       current and peak memory usage. Deprecated 
       `tf.config.experimental.get_memory_usage` in favor of this new function.
+    *   Extended `tf.config.experimental.enable_tensor_float_32_execution` to
+        control Tensor-Float-32 evaluation in RNNs.
 
 *   `tf.summary`:
   *   New `tf.summary.graph` allows manual write of TensorFlow graph

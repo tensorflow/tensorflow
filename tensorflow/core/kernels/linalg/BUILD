@@ -35,6 +35,7 @@ package_group(
 # Export a few files for use on Android.
 exports_files([
     "cholesky_op.cc",
+    "determinant_op.cc",
     "einsum_op_impl_half.cc",
     "einsum_op_impl_bfloat16.cc",
     "einsum_op_impl_int32.cc",

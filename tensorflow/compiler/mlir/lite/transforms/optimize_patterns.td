@@ -367,8 +367,6 @@ def OperandsBroadcastToOutputType : Constraint<CPred<
 def IsTailOfShape : Constraint<CPred<
   "TFL::IsTailOfShape($0.getType(), $1.getType())">>;
 
-def HaveSameType : Constraint<CPred<"$0.getType(), $1.getType()">>;
-
 // Pattern for skipping Tile if it is mainly for broadcasting and the
 // Op is already supporting broadcasting.
 multiclass FuseTileBroadcastIntoFollowingBinary<dag BinaryOp> {
@@ -640,8 +638,8 @@ def HasTwoUse : Constraint<CPred<
   "std::distance($0.use_begin(), $0.use_end()) == 2">>;
 def AxesIsLastDimension : Constraint<CPred<
   "$0.cast<DenseIntElementsAttr>().getNumElements() == 1 && "
-  "$0.cast<DenseIntElementsAttr>().getValue<APInt>({0}) == "
-  "$1.getType().cast<ShapedType>().getRank() - 1">>;
+  "($0.cast<DenseIntElementsAttr>().getValue<APInt>({0}) == "
+  "$1.getType().cast<ShapedType>().getRank() - 1 || $0.cast<DenseIntElementsAttr>().getValue<int32_t>({0}) == -1)">>;
 
 // Convert exp(x)/sum(exp(x)) into softmax.
 def OptimizeToSoftmax : Pat<
@@ -668,3 +666,69 @@ def FoldNormalizationIntoSoftmax : Pat<
    (AxesIsLastDimension $axes, $max_input),
    (HasOneUse $sub),
    (HasOneUse $max)]>;
+
+def HaveSameType : Constraint<CPred<"($0.getType() == $1.getType())">>;
+
+class AllElementsAreF32<string val> : Constraint<CPred<
+  "($0.isa<DenseElementsAttr>() && "
+   "$0.cast<DenseElementsAttr>().getType().cast<ShapedType>().getElementType().isF32() && "
+   "std::all_of($0.cast<DenseElementsAttr>().getValues<float>().begin(), "
+               "$0.cast<DenseElementsAttr>().getValues<float>().end(), "
+               "[](float v){ return v == " #val# ";}))">>;
+
+// Optimize X*1 to X
+def OptimizeMul1ToIdentity : Pat<
+  (TFL_MulOp $input,
+             (ConstantOp $constant),
+             TFL_AF_None),
+  (replaceWithValue $input),
+  [(HaveSameType $input, $constant),
+   (AllElementsAreF32<"1.0f"> $constant)]>;
+
+class AllElementsAreBool<string val> : Constraint<CPred<
+  "($0.isa<DenseElementsAttr>() && "
+   "$0.cast<DenseElementsAttr>().getType().cast<ShapedType>().getElementType().isInteger(1) && "
+   "std::all_of($0.cast<DenseElementsAttr>().getValues<bool>().begin(), "
+               "$0.cast<DenseElementsAttr>().getValues<bool>().end(), "
+               "[](bool v){ return v == " #val# ";}))">>;
+
+// Remove select operators when the result is known in advance.
+foreach SelectOp = [TFL_SelectOp, TFL_SelectV2Op] in {
+  // select(true_tensor, A, B) -> A
+  def Optimize#SelectOp#True : Pat<
+    (SelectOp (ConstantOp $constant),
+               $input1,
+               $input2),
+    (replaceWithValue $input1),
+    [(HaveSameType $input1, $input2),
+     (IsTailOfShape $input1, $constant),
+     (IsTailOfShape $constant, $input1),
+     (AllElementsAreBool<"true"> $constant)]>;
+  // select(false_tensor, A, B) -> B
+  def Optimize#SelectOp#False : Pat<
+    (SelectOp (ConstantOp $constant),
+               $input1,
+               $input2),
+    (replaceWithValue $input2),
+    [(HaveSameType $input1, $input2),
+     (IsTailOfShape $input1, $constant),
+     (IsTailOfShape $constant, $input1),
+     (AllElementsAreBool<"false"> $constant)]>;
+}
+
+// Remove (log-)softmax before arg-minmax as (log-)softmax is monotonic.
+foreach ArgMinMaxOp = [TFL_ArgMinOp, TFL_ArgMaxOp] in {
+  def RemoveSoftmaxOpBefore#ArgMinMaxOp : Pat<
+    (ArgMinMaxOp (TFL_SoftmaxOp:$softmax $logits, TFL_FloatNonNegative:$beta),
+                 (ConstantOp:$const_axes I32ElementsAttr:$axes)),
+    (ArgMinMaxOp $logits, $const_axes),
+    [(HasOneUse $softmax),
+     (AxesIsLastDimension $axes, $logits)]>;
+
+  def RemoveLogSoftmaxOpBefore#ArgMinMaxOp : Pat<
+    (ArgMinMaxOp (TFL_LogSoftmaxOp:$log_softmax $logits),
+                 (ConstantOp:$const_axes I32ElementsAttr:$axes)),
+    (ArgMinMaxOp $logits, $const_axes),
+    [(HasOneUse $log_softmax),
+     (AxesIsLastDimension $axes, $logits)]>;
+}

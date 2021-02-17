@@ -45,8 +45,8 @@ class HloRematerialization : public HloModulePass {
   // Helper struct that communicates the before / after sizes for the
   // rematerialization process.
   struct RematerializationSizes {
-    int64 before_bytes;
-    int64 after_bytes;
+    int64 before_bytes = -1;
+    int64 after_bytes = -1;
   };
 
   // Mode in which the rematerialization algorithm should be run.

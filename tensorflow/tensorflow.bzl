@@ -45,6 +45,7 @@ load(
     "if_mkl_open_source_only",
     "if_mkldnn_threadpool",
 )
+load("@bazel_skylib//lib:new_sets.bzl", "sets")
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 
 # version for the shared libraries, can
@@ -1765,15 +1766,19 @@ def tf_custom_op_library_additional_deps_impl():
 # and the tf_collected_deps of the dependencies of this target.
 def _collect_deps_aspect_impl(target, ctx):
     direct, transitive = [], []
+    all_deps = []
     if hasattr(ctx.rule.attr, "deps"):
-        for dep in ctx.rule.attr.deps:
-            direct.append(dep.label)
-            if hasattr(dep, "tf_collected_deps"):
-                transitive.append(dep.tf_collected_deps)
+        all_deps += ctx.rule.attr.deps
+    if hasattr(ctx.rule.attr, "data"):
+        all_deps += ctx.rule.attr.data
+    for dep in all_deps:
+        direct.append(dep.label)
+        if hasattr(dep, "tf_collected_deps"):
+            transitive.append(dep.tf_collected_deps)
     return struct(tf_collected_deps = depset(direct = direct, transitive = transitive))
 
 collect_deps_aspect = aspect(
-    attr_aspects = ["deps"],
+    attr_aspects = ["deps", "data"],
     implementation = _collect_deps_aspect_impl,
 )
 
@@ -1781,22 +1786,29 @@ def _dep_label(dep):
     label = dep.label
     return label.package + ":" + label.name
 
-# This rule checks that the transitive dependencies of targets listed
-# in the 'deps' attribute don't depend on the targets listed in
-# the 'disallowed_deps' attribute.
+# This rule checks that transitive dependencies don't depend on the targets
+# listed in the 'disallowed_deps' attribute, but do depend on the targets listed
+# in the 'required_deps' attribute. Dependencies considered are targets in the
+# 'deps' attribute or the 'data' attribute.
 def _check_deps_impl(ctx):
+    required_deps = ctx.attr.required_deps
     disallowed_deps = ctx.attr.disallowed_deps
     for input_dep in ctx.attr.deps:
         if not hasattr(input_dep, "tf_collected_deps"):
             continue
-        for dep in input_dep.tf_collected_deps.to_list():
-            for disallowed_dep in disallowed_deps:
-                if dep == disallowed_dep.label:
-                    fail(
-                        _dep_label(input_dep) + " cannot depend on " + _dep_label(
-                            disallowed_dep,
-                        ),
-                    )
+        collected_deps = sets.make(input_dep.tf_collected_deps.to_list())
+        for disallowed_dep in disallowed_deps:
+            if sets.contains(collected_deps, disallowed_dep.label):
+                fail(
+                    _dep_label(input_dep) + " cannot depend on " +
+                    _dep_label(disallowed_dep),
+                )
+        for required_dep in required_deps:
+            if not sets.contains(collected_deps, required_dep.label):
+                fail(
+                    _dep_label(input_dep) + " must depend on " +
+                    _dep_label(required_dep),
+                )
     return struct()
 
 check_deps = rule(
@@ -1808,7 +1820,11 @@ check_deps = rule(
             allow_files = True,
         ),
         "disallowed_deps": attr.label_list(
-            mandatory = True,
+            default = [],
+            allow_files = True,
+        ),
+        "required_deps": attr.label_list(
+            default = [],
             allow_files = True,
         ),
     },

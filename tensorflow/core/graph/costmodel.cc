@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/graph/costmodel.h"
 
+#include <algorithm>
 #include <vector>
+
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
@@ -479,11 +481,12 @@ void CostModel::AddToCostGraphDef(const Graph* graph,
                                   CostGraphDef* cost_graph) const {
   std::vector<const Edge*> inputs;
   std::vector<const Edge*> control_inputs;
+  int offset = cost_graph->node_size();
   for (const Node* n : graph->nodes()) {
     CostGraphDef::Node* cnode = cost_graph->add_node();
     cnode->set_name(n->name());
     cnode->set_device(n->assigned_device_name());
-    cnode->set_id(Id(n));
+    cnode->set_id(GlobalId(n, offset));
 
     inputs.clear();
     inputs.resize(n->num_inputs(), nullptr);
@@ -502,7 +505,7 @@ void CostModel::AddToCostGraphDef(const Graph* graph,
 
     for (const Edge* e : inputs) {
       CostGraphDef::Node::InputInfo* input_info = cnode->add_input_info();
-      input_info->set_preceding_node(Id(e->src()));
+      input_info->set_preceding_node(GlobalId(e->src(), offset));
       input_info->set_preceding_port(e->src_output());
     }
 
@@ -528,7 +531,7 @@ void CostModel::AddToCostGraphDef(const Graph* graph,
     }
 
     for (const Edge* e : control_inputs) {
-      cnode->add_control_input(Id(e->src()));
+      cnode->add_control_input(GlobalId(e->src(), offset));
     }
 
     cnode->set_temporary_memory_size(TempMemorySize(n).value());

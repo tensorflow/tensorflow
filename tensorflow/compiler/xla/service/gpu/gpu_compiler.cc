@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/all_gather_decomposer.h"
 #include "tensorflow/compiler/xla/service/all_reduce_combiner.h"
+#include "tensorflow/compiler/xla/service/all_to_all_decomposer.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
@@ -157,6 +158,7 @@ Status GpuCompiler::OptimizeHloModule(
         [](const HloAllGatherInstruction& ag) {
           return !NcclAllGatherThunk::CanImplement(&ag);
         });
+    pipeline.AddPass<AllToAllDecomposer>();
 
     pipeline.AddPass<OperandUpcaster>();
 
@@ -518,9 +520,9 @@ GpuCompiler::RunHloPassesAndBufferAssignement(
 
   std::unique_ptr<StreamAssignment> stream_assignment =
       AssignStreams(*hlo_module);
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<GpuHloSchedule> hlo_schedule,
-      GpuHloSchedule::Build(*hlo_module, *stream_assignment, pointer_size_));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<GpuHloSchedule> hlo_schedule,
+                      GpuHloSchedule::Build(hlo_module.get(),
+                                            *stream_assignment, pointer_size_));
 
   auto buffer_size_bytes_function =
       [this](const BufferValue& buffer_value) -> int64 {
@@ -563,7 +565,7 @@ static Status CompileModuleToLlvmIrImpl(
       AssignStreams(*hlo_module);
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<GpuHloSchedule> hlo_schedule,
-      GpuHloSchedule::Build(*hlo_module, *stream_assignment, pointer_size));
+      GpuHloSchedule::Build(hlo_module, *stream_assignment, pointer_size));
 
   auto buffer_size_bytes_function =
       [pointer_size](const BufferValue& buffer_value) -> int64 {
@@ -792,7 +794,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
   }
 
   llvm::SplitModule(
-      std::move(llvm_module),
+      *llvm_module.get(),
       std::max<unsigned>(
           1, std::min<unsigned>(thread_pool->NumThreads(), num_functions)),
       [&](std::unique_ptr<llvm::Module> module) {
@@ -804,30 +806,30 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
       llvm_modules.size());
   tensorflow::BlockingCounter counter(llvm_modules.size());
   for (int i = 0; i < llvm_modules.size(); i++) {
-    thread_pool->Schedule([&compile_results, compile_single_module, i,
-                           &llvm_modules, &counter] {
-      llvm::Module* original_module = llvm_modules[i].get();
-      llvm::LLVMContext context;
-      std::string buffer;
-      llvm::raw_string_ostream error(buffer);
+    thread_pool->Schedule(
+        [&compile_results, compile_single_module, i, &llvm_modules, &counter] {
+          llvm::Module* original_module = llvm_modules[i].get();
+          llvm::LLVMContext context;
+          std::string buffer;
+          llvm::raw_string_ostream error(buffer);
 
-      std::unique_ptr<llvm::Module> new_llvm_module;
-      // Switch to a new context by dumping and re-parsing LLVM IR. Each thread
-      // has its own context to avoid race conditions.
-      {
-        std::string ir;
-        {
-          llvm::raw_string_ostream os(ir);
-          original_module->print(os, nullptr);
-        }
-        llvm::SMDiagnostic err;
-        new_llvm_module = llvm::parseAssemblyString(ir, err, context);
-      }
+          std::unique_ptr<llvm::Module> new_llvm_module;
+          // Switch to a new context by dumping and re-parsing LLVM IR. Each
+          // thread has its own context to avoid race conditions.
+          {
+            std::string ir;
+            {
+              llvm::raw_string_ostream os(ir);
+              original_module->print(os, nullptr);
+            }
+            llvm::SMDiagnostic err;
+            new_llvm_module = llvm::parseAssemblyString(ir, err, context);
+          }
 
-      compile_results[i] = compile_single_module(
-          new_llvm_module.get(), /*relocatable=*/true, /*shard_number=*/i);
-      counter.DecrementCount();
-    });
+          compile_results[i] = compile_single_module(
+              new_llvm_module.get(), /*relocatable=*/true, /*shard_number=*/i);
+          counter.DecrementCount();
+        });
   }
   counter.Wait();
 
@@ -1117,11 +1119,8 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
       IrEmitterUnnested::Create(module_config, /*hlo_computation=*/nullptr,
                                 ir_emitter_context));
   ThunkSequence thunk_sequence;
-  for (mlir::Operation& op : entry_function.getBody().front()) {
-    // Omit the terminator.
-    if (&op == &entry_function.getBody().front().back()) {
-      continue;
-    }
+  for (mlir::Operation& op :
+       entry_function.getBody().front().without_terminator()) {
     MlirEmitterInput input;
     input.op = &op;
     TF_RETURN_IF_ERROR(ir_emitter->EmitOp(input));

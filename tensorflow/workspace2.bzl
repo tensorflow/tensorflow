@@ -11,3 +11,7 @@ def workspace():
     # Load tf_repositories() before loading dependencies for other repository so
     # that dependencies like com_google_protobuf won't be overridden.
     tf_repositories()
+
+# Alias so it can be loaded without assigning to a different symbol to prevent
+# shadowing previous loads and trigger a buildifier warning.
+tf_workspace2 = workspace

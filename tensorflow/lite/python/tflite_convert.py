@@ -71,8 +71,8 @@ def _parse_inference_type(value, flag):
   if value == "UINT8" or value == "QUANTIZED_UINT8":
     return dtypes.uint8
   raise ValueError(
-      "Unsupported value for `{}` flag. Expected FLOAT, INT8 or UINT8, instead "
-      "got {}.".format(flag, value))
+      "Unsupported value for `{}` flag. Expected FLOAT, INT8, UINT8, or "
+      "QUANTIZED_UINT8 instead got {}.".format(flag, value))
 
 
 def _get_tflite_converter(flags):

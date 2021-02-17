@@ -196,8 +196,8 @@ def HLO_ImagOp: HLO_UnaryElementwiseOp<"imag",
   let hasFolder = 1;
 }
 
-def HLO_IsFiniteOp: HLO_UnaryElementwiseOp<"is_finite",
-    [NoSideEffect, SameOperandsAndResultShape], HLO_Tensor>,
+def HLO_IsFiniteOp: HLO_UnaryElementwiseOp<"is_finite", [NoSideEffect,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>], HLO_Tensor>,
     BASE_HLO_IsFiniteOp {
   let arguments = (ins HLO_FpTensor:$x);
   let results = (outs HLO_PredTensor:$y);
@@ -401,12 +401,18 @@ def HLO_InfeedOp : HLO_Op<"infeed", []> {
     of the data. Multiple Infeed operations are allowed in a computation, but
     there must be a total order among the Infeed operations.
 
+    Attributes:
+      layout:  Array attribute. Same shape as the output of the infeed, except
+               that every tensor is replaced by a minor_to_major array for the
+               tensor's layout.
+
     See https://www.tensorflow.org/xla/operation_semantics#infeed.
   }];
 
   let arguments = (ins
     HLO_Token:$token,
-    DefaultValuedAttr<StrAttr, "">:$infeed_config
+    DefaultValuedAttr<StrAttr, "">:$infeed_config,
+    OptionalAttr<ArrayAttr>:$layout
   );
   let results = (outs HLO_Tuple);
   let hasCustomHLOConverter = 1;

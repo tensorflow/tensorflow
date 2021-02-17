@@ -166,7 +166,7 @@ class CholeskyOpTest(test.TestCase):
   @test_util.disable_xla("b/123337890")
   def testNotInvertibleCPU(self):
     # The input should be invertible.
-    with self.session(use_gpu=True):
+    with self.session():
       with self.assertRaisesRegex(
           errors_impl.InvalidArgumentError,
           "Cholesky decomposition was not successful. The"

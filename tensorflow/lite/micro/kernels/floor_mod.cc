@@ -12,21 +12,21 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <stddef.h>
-#include <stdint.h>
+
+#include "tensorflow/lite/kernels/internal/reference/floor_mod.h"
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/binary_function.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 // OLD-TODO(b/117523611): We should factor out a binary_op and put binary ops
 // there.
 namespace tflite {
 namespace ops {
-namespace builtin {
+namespace micro {
 namespace floor_mod {
 namespace {
 
@@ -35,29 +35,15 @@ constexpr int kInputTensor1 = 0;
 constexpr int kInputTensor2 = 1;
 constexpr int kOutputTensor = 0;
 
-// Op data for floor_mod op.
-struct OpData {
-  bool requires_broadcast;
-};
-
 // OLD-TODO(b/117912880): Support quantization.
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  auto* data = new OpData;
-  data->requires_broadcast = false;
-  return data;
-}
-
-void Free(TfLiteContext* context, void* buffer) {
-  delete reinterpret_cast<OpData*>(buffer);
+  return nullptr;
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-
-  // Reinterprete the opaque data provided by user.
-  OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
   const TfLiteTensor* input1;
   TF_LITE_ENSURE_OK(context,
@@ -79,17 +65,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
   output->type = type;
 
-  data->requires_broadcast = !HaveSameShapes(input1, input2);
-
-  TfLiteIntArray* output_size = nullptr;
-  if (data->requires_broadcast) {
-    TF_LITE_ENSURE_OK(context, CalculateShapeForBroadcast(
-                                   context, input1, input2, &output_size));
-  } else {
-    output_size = TfLiteIntArrayCopy(input1->dims);
-  }
-
-  return context->ResizeTensor(context, output, output_size);
+  return kTfLiteError;
 }
 
 template <typename T>
@@ -125,8 +101,6 @@ TfLiteStatus EvalImpl(TfLiteContext* context, bool requires_broadcast,
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  OpData* data = reinterpret_cast<OpData*>(node->user_data);
-
   const TfLiteTensor* input1;
   TF_LITE_ENSURE_OK(context,
                     GetInputSafe(context, node, kInputTensor1, &input1));
@@ -137,17 +111,19 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
+  bool requires_broadcast = false;
+
   switch (input1->type) {
     case kTfLiteInt32: {
-      return EvalImpl<int32_t>(context, data->requires_broadcast, input1,
-                               input2, output);
+      return EvalImpl<int32_t>(context, requires_broadcast, input1, input2,
+                               output);
     }
     case kTfLiteInt64: {
-      return EvalImpl<int64_t>(context, data->requires_broadcast, input1,
-                               input2, output);
+      return EvalImpl<int64_t>(context, requires_broadcast, input1, input2,
+                               output);
     }
     case kTfLiteFloat32: {
-      return EvalImpl<float>(context, data->requires_broadcast, input1, input2,
+      return EvalImpl<float>(context, requires_broadcast, input1, input2,
                              output);
     }
     default: {
@@ -161,14 +137,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace
 }  // namespace floor_mod
 
-TfLiteRegistration* Register_FLOOR_MOD() {
-  // Init, Free, Prepare, Eval are satisfying the Interface required by
-  // TfLiteRegistration.
-  static TfLiteRegistration r = {floor_mod::Init, floor_mod::Free,
-                                 floor_mod::Prepare, floor_mod::Eval};
-  return &r;
-}
+TfLiteRegistration* Register_FLOOR_MOD() { return nullptr; }
 
-}  // namespace builtin
+}  // namespace micro
 }  // namespace ops
 }  // namespace tflite

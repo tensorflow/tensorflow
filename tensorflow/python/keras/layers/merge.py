@@ -319,7 +319,7 @@ class Multiply(_Merge):
   def _merge_function(self, inputs):
     output = inputs[0]
     for i in range(1, len(inputs)):
-      output *= inputs[i]
+      output = output * inputs[i]
     return output
 
 

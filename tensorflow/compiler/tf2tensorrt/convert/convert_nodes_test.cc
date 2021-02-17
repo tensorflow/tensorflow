@@ -738,7 +738,8 @@ class ConverterTest : public ::testing::Test {
     converter_ =
         std::move(Converter::Create(TrtPrecisionMode::FP32,
                                     /*use_calibration=*/false, &logger_,
-                                    /*use_implicit_batch=*/true)
+                                    /*use_implicit_batch=*/true,
+                                    /*engine_name=*/"TRTEngineOp_0_0")
                       .ValueOrDie());
     weight_store_ = &converter_->weight_store_;
   }
@@ -928,7 +929,8 @@ TEST_F(ConverterTest, TransposeTensor) {
   TF_EXPECT_OK(converter_->TransposeTensor(
       input_tensor, {0, 3, 1, 2}, &output_tensor, dummy_node_def, "sub3"));
   ExpectTrtDimsEqualsArray({5, 2, 3}, output_tensor->getDimensions());
-  ExpectTrtLayerNames({"dummy_op-sub3"}, converter_->network());
+  ExpectTrtLayerNames({"TRTEngineOp_0_0/dummy_op-sub3:SHUFFLE"},
+                      converter_->network());
 }
 
 void TestPrepareTensorForShape(
@@ -1093,7 +1095,8 @@ TEST_F(ConverterTest, MaybeApplyQuantizationRanges) {
   Logger logger;
   auto int8_converter = Converter::Create(TrtPrecisionMode::INT8,
                                           /*use_calibration=*/true, &logger,
-                                          /*use_implicit_batch=*/true)
+                                          /*use_implicit_batch=*/true,
+                                          /*engine_name=*/"")
                             .ValueOrDie();
   int8_converter->ProvideQuantizationRange(&input, -5.0f, 5.0f);
   int8_converter->ProvideQuantizationRange(&not_infer, -100.0f, 100.0f);
@@ -1287,7 +1290,8 @@ class ConvertGraphDefToEngineTest : public ::testing::Test {
         /*max_workspace_size_bytes=*/64 << 20, input_shapes, &logger_,
         /*allocator=*/nullptr, /*calibrator=*/nullptr, &engine_,
         /*use_calibration=*/false, /*use_implicit_batch=*/true,
-        /*convert_successfully=*/nullptr, /*profiles=*/nullptr);
+        /*convert_successfully=*/nullptr, /*profiles=*/nullptr,
+        "TRTEngineOp_0_0");
   }
 
  protected:
@@ -1373,7 +1377,8 @@ class OpConverterTest : public ::testing::Test {
         std::move(Converter::Create(precision_mode_to_test,
                                     /*use_calibration=*/false, &logger_,
                                     /*use_implicit_batch=*/trt_mode ==
-                                        TrtTestMode::kImplicitBatch)
+                                        TrtTestMode::kImplicitBatch,
+                                    /*engine_name=*/"")
                       .ValueOrDie());
 
     // Reset other related artifacts.
@@ -1470,13 +1475,17 @@ class OpConverterTest : public ::testing::Test {
     if (engine_.get() != nullptr) {
       return errors::Internal("Engine already exists");
     }
-    TrtShapeOptimizationProfile profiles;
+    TrtShapeOptimizationProfile profiles(
+        ProfileStrategy::kImplicitBatchModeCompatible);
     if (!converter_->use_implicit_batch()) {
       // Create a single optimization profile for explicit batch mode
       std::vector<TensorShape> input_shapes;
       TF_RETURN_IF_ERROR(GetShapeFromDataVec(input_data, &input_shapes));
       profiles.AddShape(input_shapes);
-      profiles.InitProfiles();
+      std::vector<PartialTensorShape> input_partial_shapes;
+      TF_RETURN_IF_ERROR(
+          GetNetworkInputShapes(converter_->network(), &input_partial_shapes));
+      profiles.InitProfiles(input_partial_shapes);
     }
     TF_RETURN_IF_ERROR(
         converter_->BuildCudaEngine(&engine_,
@@ -1797,7 +1806,7 @@ class ParameterizedOpConverterTestBase
   //   (including explicit batch dim)
   // - values initial values for the TF tensor
   // - dtype data type of the tensor
-  // - partial_input_shape dimensions which can incude unknown shapes. This can
+  // - partial_input_shape dimensions which can include unknown shapes. This can
   //   be empty, in that case the partial_input_shape will be set automatically
   //   depending on the trt_mode argument. (This argument also includes explicit
   //   batch dim).
@@ -1810,6 +1819,15 @@ class ParameterizedOpConverterTestBase
                      DataType tf_type, const std::vector<T>& values,
                      const std::vector<int32>& partial_input_shape_dims = {},
                      Status add_input_status = Status::OK()) {
+    if (!dims.empty()) {
+      const auto num_elements = std::accumulate(
+          std::begin(dims), std::end(dims), 1, std::multiplies<double>());
+      if (num_elements != values.size()) {
+        LOG(WARNING) << "Expected Test Tensor Shape: " << DebugString(dims)
+                     << ", Received Input Tensor: " << DebugString(values);
+      }
+    }
+
     std::vector<int32> partial_shape;
     if (!partial_input_shape_dims.empty()) {
       partial_shape = partial_input_shape_dims;
@@ -2840,73 +2858,121 @@ NodeDef GetAddNNodeDef(const std::vector<string>& input_names, DataType dtype) {
   return op.operation.node()->def();
 }
 
-template <DataType dtype>
-void TestAddN(OpConverterTest* test) {
-  typedef typename EnumToDataType<dtype>::Type CType;
-  {
-    // All inputs are tensors.
-    test->Reset();
-    DataVec input_data;
-    for (const auto name : {"inp1", "inp2", "inp3"}) {
-      nvinfer1::DataType trt_type;
-      TF_ASSERT_OK(TfTypeToTrtType(dtype, &trt_type));
-      test->AddTestTensor(name, /*dims=*/{1, 2}, /*batch_size=*/2, trt_type);
-      input_data.push_back({name, test->AsTensor<CType>({CType(1), CType(2),
-                                                         CType(3), CType(4)})});
-    }
-    const NodeDef node_def = GetAddNNodeDef({"inp1", "inp2", "inp3"}, dtype);
-    test->RunValidationAndConversion(node_def);
+struct AddNTestParams {
+  std::vector<float> input_values;
+  std::vector<string> input_names;
+  std::vector<int> dimensions;
+  std::vector<float> expected_output;
+  Status status;
+};
 
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(test->GetTensorOrWeights("my_addn", &output));
-    ASSERT_TRUE(output.is_tensor());
-    ExpectTrtDimsEqualsArray({1, 2}, output.tensor()->getDimensions());
+void TestAddN(ParameterizedOpConverterTestBase* test, AddNTestParams& p) {
+  // All inputs are tensors.
+  test->Reset();
+  const NodeDef node_def = GetAddNNodeDef(p.input_names, test->get_tf_type());
 
-    DataVec output_data{{"my_addn", test->ConstructTensor<CType>(4)}};
-    TF_EXPECT_OK(test->BuildAndRun(input_data, &output_data, /*batch_size=*/2));
-    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                ElementsAreArray(CastTestVector<int, CType>({3, 6, 9, 12})));
+  if (p.input_values.size() % p.input_names.size() != 0) {
+    LOG(ERROR) << "The number of input values: `" << p.input_values.size()
+               << "` is not a multiple of the number of inputs: `"
+               << p.input_names.size() << "`";
+    ASSERT_TRUE(false);
   }
-  {
-    // Input contains tensors and weights.
-    test->Reset();
-    DataVec input_data;
-    for (const auto name : {"inp1", "inp2"}) {
-      nvinfer1::DataType trt_type;
-      TF_ASSERT_OK(TfTypeToTrtType(dtype, &trt_type));
-      test->AddTestTensor(name, /*dims=*/{1, 2}, /*batch_size=*/1, trt_type);
-      input_data.push_back({name, test->AsTensor<CType>({CType(1), CType(2)})});
-    }
-    test->AddTestWeights("inp3", /*dims=*/{1, 1, 2},
-                         /*values=*/std::vector<CType>{CType(3), CType(4)});
-    const NodeDef node_def = GetAddNNodeDef({"inp1", "inp2", "inp3"}, dtype);
-    test->RunValidationAndConversion(node_def);
 
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(test->GetTensorOrWeights("my_addn", &output));
-    ASSERT_TRUE(output.is_tensor());
-    ExpectTrtDimsEqualsArray({1, 2}, output.tensor()->getDimensions());
+  DataVec input_data;
+  int input_offset = 0;
+  const int window_size = p.input_values.size() / p.input_names.size();
+  for (const string& name : p.input_names) {
+    std::vector<float>::const_iterator start_pos =
+        p.input_values.begin() + input_offset;
+    std::vector<float>::const_iterator end_pos = start_pos + window_size;
+    std::vector<float> sub_input_val(start_pos, end_pos);
+    input_offset += window_size;
 
-    DataVec output_data{{"my_addn", test->ConstructTensor<CType>(2)}};
-    TF_EXPECT_OK(test->BuildAndRun(input_data, &output_data));
-    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                ElementsAreArray(CastTestVector<int, CType>({5, 8})));
+    test->AddTestTensor(name, p.dimensions, test->get_tf_type(), sub_input_val);
   }
+
+  test->TestOpConverter("my_addn", node_def, p.dimensions,
+                        /*expected_conversion_status=*/p.status,
+                        /*expected_runtime_status=*/p.status,
+                        /*matcher=*/ElementsAreArray(p.expected_output),
+                        /*out_tf_types=*/{test->get_tf_type()});
 }
 
-TEST_F(OpConverterTest, ConvertAddN) {
+TEST_P(OpConverter_FP32_FP16_Test, ConvertAddN) {
   {
     // Weights with batch dim that is not 1.
     Reset();
-    const NodeDef node_def = GetAddNNodeDef({"tensor", "weights"}, DT_FLOAT);
-    AddTestTensor("tensor", /*dims=*/{1, 2}, /*batch_size=*/2);
+    const NodeDef node_def = GetAddNNodeDef({"tensor", "weights"}, tf_type_);
+    AddTestTensor("tensor", /*dims=*/{1, 2});
     AddTestWeights<float>("weights", {2, 1, 2}, {0, 1, 2, 3});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
         "Weights input to AddN is required to have batch dimension 1.");
   }
-  TestAddN<DT_FLOAT>(this);
-  TestAddN<DT_HALF>(this);
+
+  const std::vector<float> common_input = InitTestVector<float>(6);
+
+  std::vector<AddNTestParams> params = {
+      {/*input_values=*/common_input,
+       /*input_names=*/{"inp1", "inp2", "inp3"},
+       /*dimensions=*/{1, 1, 2, 1, 1},
+       /*expected_output=*/{6, 9},
+       /*status=*/Status::OK()},
+      {/*input_values=*/common_input,
+       /*input_names=*/{"inp1", "inp2"},
+       /*dimensions=*/{1, 1, 3, 1, 1},
+       /*expected_output=*/{3, 5, 7},
+       /*status=*/Status::OK()},
+      {/*input_values=*/common_input,
+       /*input_names=*/{"inp1", "inp2", "inp3"},
+       /*dimensions=*/{1, 2, 1, 1},
+       /*expected_output=*/{6, 9},
+       /*status=*/Status::OK()},
+      {/*input_values=*/common_input,
+       /*input_names=*/{"inp1", "inp2"},
+       /*dimensions=*/{1, 1, 3, 1},
+       /*expected_output=*/{3, 5, 7},
+       /*status=*/Status::OK()},
+      {/*input_values=*/common_input,
+       /*input_names=*/{"inp1", "inp2", "inp3"},
+       /*dimensions=*/{1, 2, 1},
+       /*expected_output=*/{6, 9},
+       /*status=*/Status::OK()},
+      {/*input_values=*/common_input,
+       /*input_names=*/{"inp1", "inp2"},
+       /*dimensions=*/{1, 1, 3},
+       /*expected_output=*/{3, 5, 7},
+       /*status=*/Status::OK()},
+      {/*input_value=*/common_input,
+       /*input_names=*/{"inp1", "inp2", "inp3"},
+       /*dimensions=*/{2, 1},
+       /*expected_output=*/{6, 9},
+       /*status=*/Status::OK()},
+      {/*input_values=*/common_input,
+       /*input_names=*/{"inp1", "inp2"},
+       /*dimensions=*/{1, 3},
+       /*expected_output=*/{3, 5, 7},
+       /*status=*/Status::OK()},
+      {/*input_values=*/common_input,
+       /*input_names=*/{"inp1", "inp2", "inp3"},
+       /*dimensions=*/{2},
+       /*expected_output=*/{6, 9},
+       /*status=*/Status::OK()},
+      {/*input_values=*/common_input,
+       /*input_names=*/{"inp1", "inp2"},
+       /*dimensions=*/{3},
+       /*expected_output=*/{3, 5, 7},
+       /*status=*/Status::OK()},
+      {/*input_values=*/common_input,
+       /*input_names=*/{"inp1", "inp2", "inp3", "inp4", "inp5", "inp6"},
+       /*dimensions=*/{1},
+       /*expected_output=*/{15},
+       /*status=*/Status::OK()},
+  };
+
+  for (auto p : params) {
+    TestAddN(this, p);
+  }
 }
 
 TEST_F(OpConverterTest, ConvertQuantize) {

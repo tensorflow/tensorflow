@@ -48,7 +48,6 @@ from tensorflow.python.keras.layers import rnn_cell_wrapper_v2
 from tensorflow.python.keras.layers import wrappers
 from tensorflow.python.keras.layers.preprocessing import category_crossing
 from tensorflow.python.keras.layers.preprocessing import category_encoding
-from tensorflow.python.keras.layers.preprocessing import category_encoding_v1
 from tensorflow.python.keras.layers.preprocessing import discretization
 from tensorflow.python.keras.layers.preprocessing import hashing
 from tensorflow.python.keras.layers.preprocessing import image_preprocessing
@@ -71,12 +70,11 @@ ALL_MODULES = (base_layer, input_layer, advanced_activations, convolutional,
                pooling, image_preprocessing, preprocessing_integer_lookup_v1,
                preprocessing_normalization_v1, preprocessing_string_lookup_v1,
                preprocessing_text_vectorization_v1, recurrent, wrappers,
-               hashing, category_crossing, category_encoding_v1, discretization,
+               hashing, category_crossing, category_encoding, discretization,
                multi_head_attention)
 ALL_V2_MODULES = (rnn_cell_wrapper_v2, normalization_v2, recurrent_v2,
                   preprocessing_integer_lookup, preprocessing_normalization,
-                  preprocessing_string_lookup, preprocessing_text_vectorization,
-                  category_encoding)
+                  preprocessing_string_lookup, preprocessing_text_vectorization)
 # ALL_OBJECTS is meant to be a global mutable. Hence we need to make it
 # thread-local to avoid concurrent mutations.
 LOCAL = threading.local()

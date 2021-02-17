@@ -1614,6 +1614,9 @@ class HloInstruction {
   void set_metadata_op_name(const std::string& name) {
     metadata_.set_op_name(name);
   }
+  void set_logical_creation_pass_id(int64 pass_id) {
+    metadata_.set_logical_creation_pass_id(pass_id);
+  }
   const OpMetadata& metadata() const { return metadata_; }
 
   // Set/get the computation containing this instruction. set_parent should only

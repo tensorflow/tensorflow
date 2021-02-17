@@ -26,6 +26,7 @@ cc_library(
         "-ldl",
     ],
     deps = [
+        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:op_resolver",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",

@@ -15,25 +15,22 @@
 """This is a Python API fuzzer for tf.raw_ops.RaggedCountSparseOutput."""
 import sys
 import atheris_no_libfuzzer as atheris
+from python_fuzzing import FuzzingHelper
 import tensorflow as tf
 
 
 def TestOneInput(input_bytes):
-  """Test randomized integer fuzzing input for tf.raw_ops.RaggedCountSparseOutput."""
-  fdp = atheris.FuzzedDataProvider(input_bytes)
-  random_split_length = fdp.ConsumeIntInRange(0, 500)
-  random_length = fdp.ConsumeIntInRange(501, 1000)
+  """Test randomized integer/float fuzzing input for tf.raw_ops.RaggedCountSparseOutput."""
+  fh = FuzzingHelper(input_bytes)
 
-  splits = fdp.ConsumeIntListInRange(random_split_length, 1, 100000)
-
-  # First value of splits has to be 0.
-  splits.insert(0, 0)
-  # Last value of splits has to be length of the values/weights.
-  splits.append(random_length)
-  values = fdp.ConsumeIntListInRange(random_length, 0, 100000)
-  weights = fdp.ConsumeIntListInRange(random_length, 0, 100000)
-  _, _, _, = tf.raw_ops.RaggedCountSparseOutput(
-            splits=splits, values=values, weights=weights, binary_output=False)
+  splits = fh.get_int_list()
+  values = fh.get_int_or_float_list()
+  weights = fh.get_int_list()
+  try:
+    _, _, _, = tf.raw_ops.RaggedCountSparseOutput(
+        splits=splits, values=values, weights=weights, binary_output=False)
+  except tf.errors.InvalidArgumentError:
+    pass
 
 
 def main():

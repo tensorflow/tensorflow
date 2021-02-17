@@ -53,8 +53,9 @@ TfLiteStatus QuantizeModel(
     return kTfLiteError;
   }
 
-  MLIRContext context;
-  context.getDialectRegistry().insert<mlir::TFL::TensorFlowLiteDialect>();
+  DialectRegistry registry;
+  registry.insert<mlir::TFL::TensorFlowLiteDialect>();
+  MLIRContext context(registry);
   StatusScopedDiagnosticHandler statusHandler(&context,
                                               /*propagate=*/true);
 
@@ -107,9 +108,12 @@ TfLiteStatus QuantizeModel(
 
   // Export the results to the builder
   std::string result;
-  if (tflite::MlirToFlatBufferTranslateFunction(
-          module.get(), &result, /*emit_builtin_tflite_ops=*/true,
-          /*emit_select_tf_ops=*/true, /*emit_custom_ops=*/true)) {
+  tflite::FlatbufferExportOptions options;
+  options.emit_builtin_tflite_ops = true;
+  options.emit_select_tf_ops = true;
+  options.emit_custom_ops = true;
+  if (!tflite::MlirToFlatBufferTranslateFunction(module.get(), options,
+                                                 &result)) {
     error_reporter->Report("Failed to export MLIR to flatbuffer.");
     return kTfLiteError;
   }

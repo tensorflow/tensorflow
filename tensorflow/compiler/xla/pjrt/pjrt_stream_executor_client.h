@@ -105,9 +105,9 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
   std::string DebugString() const override;
 
-  Status TransferToInfeed(const LiteralSlice& literal) const override;
+  Status TransferToInfeed(const LiteralSlice& literal) override;
 
-  Status TransferFromOutfeed(MutableBorrowingLiteral literal) const override;
+  Status TransferFromOutfeed(MutableBorrowingLiteral literal) override;
 
  private:
   const int id_;
@@ -187,7 +187,8 @@ class PjRtStreamExecutorClient : public PjRtClient {
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, const Shape& shape,
       HostBufferSemantics host_buffer_semantics,
-      std::shared_ptr<void> buffer_reference, PjRtDevice* device) override;
+      std::function<void()> on_done_with_host_buffer,
+      PjRtDevice* device) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtDevice* device) override;
@@ -195,6 +196,10 @@ class PjRtStreamExecutorClient : public PjRtClient {
   void MakeCrossHostReceiveBuffers(
       absl::Span<const Shape> shapes, PjRtDevice* device,
       PjRtCrossHostRecvNotifier&& notifier) override;
+
+  StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
+      void* device_ptr, const Shape& shape, PjRtDevice* device,
+      std::function<void()> on_delete_callback) override;
 
   StatusOr<ChannelHandle> CreateChannelHandle() override {
     return client()->CreateChannelHandle();
@@ -362,7 +367,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
         case kDonated:
           return InvalidArgument("Buffer has been donated");
         case kError:
-          return buffer_or_.status();
+          return status_;
         default:
           CHECK(false) << "Unexpected state value " << state_;
       }
@@ -372,8 +377,8 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
     // Access to the underlying device buffer storage. Requires this->ok().
     const std::shared_ptr<TrackedDeviceBuffer>& buffer() const {
       CHECK_EQ(state_, kValid);
-      CHECK_NE(buffer_or_.ValueOrDie(), nullptr);
-      return buffer_or_.ValueOrDie();
+      CHECK_NE(buffer_, nullptr);
+      return buffer_;
     }
     TrackedDeviceBuffer* operator->() const { return buffer().get(); }
     const TrackedDeviceBuffer& operator*() const { return *buffer(); }
@@ -415,9 +420,8 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
 
     // Helper struct that makes it possible to move a ScopedHold through a
     // closure.
-    using ForClosure =
-        std::tuple<PjRtStreamExecutorBuffer*, Type, State,
-                   StatusOr<std::shared_ptr<TrackedDeviceBuffer>>>;
+    using ForClosure = std::tuple<PjRtStreamExecutorBuffer*, Type, State,
+                                  Status, std::shared_ptr<TrackedDeviceBuffer>>;
 
     ScopedHold(PjRtStreamExecutorBuffer* parent, Type type)
         : parent_(parent), type_(type), state_(kUninitialized) {}
@@ -425,15 +429,16 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
         : parent_(std::get<0>(closure_helper)),
           type_(std::get<1>(closure_helper)),
           state_(std::get<2>(closure_helper)),
-          buffer_or_(std::get<3>(closure_helper)) {
+          status_(std::get<3>(closure_helper)),
+          buffer_(std::get<4>(closure_helper)) {
       // Check the buffer is not in an error state.
-      CHECK(buffer_or_.ValueOrDie() != nullptr);
+      CHECK(status_.ok() && buffer_ != nullptr);
     }
 
     // Sets buffer state.
     void SetState(State state) { state_ = state; }
 
-    // Sets buffer_or_. Called by parent_ to initialize the hold.
+    // Sets buffer_ and status_. Called by parent_ to initialize the hold.
     void Acquire(StatusOr<std::shared_ptr<TrackedDeviceBuffer>>&& buffer_or);
     // Releases the contents of *this, so *this can subsequently be
     // deleted without releasing the parent's hold. Should be passed to the
@@ -445,12 +450,13 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
     const Type type_;
 
     // There is an invariant that if ok() then
-    // buffer_or_.ValueOrDie() != nullptr.
+    // buffer_.ValueOrDie() != nullptr.
     State state_;
-    StatusOr<std::shared_ptr<TrackedDeviceBuffer>> buffer_or_;
+    Status status_;
+    std::shared_ptr<TrackedDeviceBuffer> buffer_;
   };
 
-  PjRtStreamExecutorBuffer(Shape on_host_shape, Shape on_device_shape,
+  PjRtStreamExecutorBuffer(Shape on_device_shape,
                            std::shared_ptr<TrackedDeviceBuffer> device_buffer,
                            PjRtClient* client, PjRtDevice* device);
   ~PjRtStreamExecutorBuffer() override;
@@ -460,41 +466,22 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   PjRtStreamExecutorBuffer& operator=(const PjRtStreamExecutorBuffer&) = delete;
   PjRtStreamExecutorBuffer& operator=(PjRtStreamExecutorBuffer&&) = delete;
 
-  const Shape& on_host_shape() const override { return on_host_shape_; }
   const Shape& on_device_shape() const override { return on_device_shape_; }
   PjRtStreamExecutorDevice* device() const override { return device_; }
   PjRtPlatformId platform_id() const { return client_->platform_id(); }
   absl::string_view platform_name() const { return client_->platform_name(); }
   PjRtStreamExecutorClient* client() const override { return client_; }
   bool IsEmptyTuple() const {
-    return on_host_shape_.IsTuple() && on_host_shape_.tuple_shapes_size() == 0;
+    return on_device_shape_.IsTuple() &&
+           on_device_shape_.tuple_shapes_size() == 0;
   }
 
   int64 OnDeviceSizeInBytes() const override;
 
-  // Implement PjRtBuffer::ExternalReferenceHold a wrapped
-  // ScopedHold::kExternalReference.
-  class ScopedHoldAsExternalReference
-      : public PjRtBuffer::ExternalReferenceHold {
-   public:
-    explicit ScopedHoldAsExternalReference(ScopedHold hold)
-        : external_reference_(std::move(hold)) {
-      CHECK(hold.type() == ScopedHold::kExternalReference);
-    }
-
-    ~ScopedHoldAsExternalReference() override = default;
-
-    void* OpaqueDeviceMemoryDataPointer() const override {
-      return external_reference_->device_memory().front().opaque();
-    }
-
-   private:
-    ScopedHold external_reference_;
-  };
-  StatusOr<std::unique_ptr<ExternalReferenceHold>> AcquireExternalReference()
+  StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
       override;
 
-  StatusOr<absl::optional<std::shared_ptr<void>>> ReleaseDeviceMemoryOwnership(
+  StatusOr<std::unique_ptr<ExternalReference>> ReleaseDeviceMemoryOwnership(
       bool wait_for_operations_to_complete) override;
 
   using PjRtBuffer::ToLiteral;
@@ -598,7 +585,6 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
                      std::shared_ptr<TrackedDeviceBuffer> src_device_buffer);
 
   PjRtStreamExecutorClient* const client_;
-  const Shape on_host_shape_;
   const Shape on_device_shape_;
   PjRtStreamExecutorDevice* const device_;
 

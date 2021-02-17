@@ -5,6 +5,7 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
+load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
 load(
     "//third_party/mlir:tblgen.bzl",
     "gentbl",
@@ -431,14 +432,17 @@ cc_library(
         "transforms/generated_legalize_tf.inc",
         "transforms/generated_lower_static_tensor_list.inc",
         "transforms/generated_prepare_tf.inc",
+        "transforms/initialize_variables.cc",
         "transforms/insert_call_once_op.cc",
         "transforms/legalize_tf.cc",
         "transforms/legalize_tf_while.cc",
+        "transforms/legalize_variables.cc",
         "transforms/lower_static_tensor_list.cc",
         "transforms/optimize_functional_ops.cc",
         "transforms/prepare_composite_functions_tf.cc",
         "transforms/prepare_tf.cc",
         "transforms/raise_custom_ops.cc",
+        "transforms/remove_unused_func_args_tensors.cc",
         "transforms/runtime_verify.cc",
         "transforms/split_merged_operands.cc",
         "transforms/trim_functions_tf.cc",
@@ -1009,4 +1013,23 @@ cc_library(
     deps = [
         "@llvm-project//llvm:Support",
     ],
+)
+
+# Python Library to check TensorFlow op compatibility.
+py_library(
+    name = "tensorflow_lite_compatibility_tbl_generated",
+    srcs = [
+        "tensorflow_lite_compatibility_tbl_generated.py",
+    ],
+    srcs_version = "PY3",
+    visibility = internal_visibility_allowlist(),
+)
+
+genrule(
+    name = "tfl_compatibility_tbl_gen",
+    srcs = ["transforms/generated_legalize_tf.inc"],
+    outs = ["tensorflow_lite_compatibility_tbl_generated.py"],
+    cmd = "$(location generate_tfl_compatibility_tbl.sh) $(location transforms/generated_legalize_tf.inc) > \"$@\"",
+    compatible_with = get_compatible_with_cloud(),
+    tools = ["generate_tfl_compatibility_tbl.sh"],
 )

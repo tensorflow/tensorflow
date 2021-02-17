@@ -55,6 +55,7 @@ StatusOr<bool> RunOnComputation(HloComputation* comp, bool for_replicas,
                                 int64 distance_threshold) {
   // We consider estimate the live ranges of all-gathers by comparing their
   // users' distance to the root, e.g., height.
+  bool changed = false;
   absl::flat_hash_map<const HloInstruction*, int64> height;
   auto ordered_hlos = comp->MakeInstructionPostOrder();
   int64 max_height = 0;
@@ -79,7 +80,6 @@ StatusOr<bool> RunOnComputation(HloComputation* comp, bool for_replicas,
   absl::flat_hash_map<const HloInstruction*,
                       std::vector<HloCollectiveInstruction*>>
       operand_to_ag;
-  bool changed = false;
   for (auto hlo : ordered_hlos) {
     auto ag = MayConsiderAsAllGather(hlo, for_replicas);
     if (!ag) {
@@ -90,16 +90,10 @@ StatusOr<bool> RunOnComputation(HloComputation* comp, bool for_replicas,
     bool found = false;
     int64 ag_height = height[ag];
     for (auto& eag : earlier_ags) {
-      auto old_channel_id = ag->channel_id();
-      if (eag->channel_id() && ag->channel_id()) {
-        ag->set_channel_id(eag->channel_id());
-      }
-      if (!eag->Identical(*ag)) {
-        ag->set_channel_id(old_channel_id);
+      if (!eag->IdenticalIgnoringChannelIdValues(*ag)) {
         continue;
       }
       found = true;
-      ag->set_channel_id(old_channel_id);
       if (lowest_user_height(eag) > ag_height + distance_threshold) {
         eag = ag;
         continue;

@@ -197,6 +197,9 @@ PYBIND11_MODULE(tpu_client_extension, m) {
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       .def("execute_on_local_devices", &PyTpuExecutable::ExecuteOnLocalDevices,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
+      .def("execute_sharded_on_local_devices",
+           &PyTpuExecutable::ExecuteShardedOnLocalDevices,
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       // TODO(phawkins): implement traceback support.
       .def_property_readonly("traceback",
                              [](PyTpuExecutable*) { return py::none(); });

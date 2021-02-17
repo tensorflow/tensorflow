@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/PrettyStackTrace.h"
@@ -64,19 +65,20 @@ static bool OpQuantSpecWriter(raw_ostream &os, RecordKeeper &records) {
     Operator op(def);
     for (const auto t : op.getTraits()) {
       if (auto opTrait = llvm::dyn_cast<mlir::tblgen::NativeOpTrait>(&t)) {
-        auto trait = opTrait->getTrait();
-        if (!trait.consume_front("::mlir::OpTrait::quant::")) continue;
+        auto trait_str = opTrait->getTrait();
+        if (!llvm::StringRef{trait_str}.consume_front(
+                "::mlir::OpTrait::quant::"))
+          continue;
 
         OUT(2) << "if (auto tfl = llvm::dyn_cast<" << op.getQualCppClassName()
                << ">(op)) {\n";
         // There is a "FixedResultUniformScale" trait, set the type for result.
-        auto trait_str = opTrait->getTrait().str();
         if (fixed_uniform_trait_regex.match(trait_str, &matches)) {
           OUT(4) << "for (int i = 0, e = op->getNumResults(); i != e; ++i)\n";
           OUT(6) << "spec->restricted_output_params[std::make_pair("
                  << matches[1] << ", " << matches[2]
-                 << ")].push_back(tfl.::mlir::OpTrait::quant::" << trait << "<"
-                 << op.getQualCppClassName()
+                 << ")].push_back(tfl.::mlir::OpTrait::quant::" << trait_str
+                 << "<" << op.getQualCppClassName()
                  << ">::GetResultQuantizedType(i));\n";
           matches.clear();
         }

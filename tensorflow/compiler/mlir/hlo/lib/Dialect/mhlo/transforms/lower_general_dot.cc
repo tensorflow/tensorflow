@@ -182,7 +182,7 @@ struct LegalizeGeneralDotPass
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     mlir::mhlo::PopulateGeneralDotOpLoweringPatterns(&patterns, &getContext());
-    applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
   }
 };
 

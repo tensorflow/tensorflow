@@ -56,7 +56,7 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
       tf_func = rewriter.create<LLVMFuncOp>(rewriter.getUnknownLoc(),
                                             tf_func_name, func_type);
     }
-    return SymbolRefAttr::get(tf_func_name, rewriter.getContext());
+    return SymbolRefAttr::get(rewriter.getContext(), tf_func_name);
   }
 
  protected:

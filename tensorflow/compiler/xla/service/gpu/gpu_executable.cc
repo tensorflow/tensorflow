@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_debug_info_manager.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
@@ -33,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
+#include "tensorflow/compiler/xla/service/xla_debug_info_manager.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -69,12 +69,12 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       entry_computation_profile_index_(params.entry_computation_profile_index),
       constants_(std::move(params.constants)),
       output_info_(std::move(params.output_info)) {
-  GpuDebugInfoManager::Get()->RegisterModule(module_name_, shared_module(),
+  XlaDebugInfoManager::Get()->RegisterModule(module_name_, shared_module(),
                                              debug_buffer_assignment_);
 }
 
 GpuExecutable::~GpuExecutable() {
-  GpuDebugInfoManager::Get()->UnregisterModule(module_name_, shared_module(),
+  XlaDebugInfoManager::Get()->UnregisterModule(module_name_, shared_module(),
                                                debug_buffer_assignment_);
 
   {
@@ -131,9 +131,9 @@ Status GpuExecutable::ExecuteThunks(
     HloExecutionProfile* hlo_execution_profile) {
   TF_RETURN_IF_ERROR(
       CheckCompatibilityWithServiceExecutableRunOptions(run_options));
-  GpuDebugInfoManager::Get()->OnModuleStart(module_name_);
+  XlaDebugInfoManager::Get()->OnModuleStart(module_name_);
   auto cleanup = MakeCleanup(
-      [&]() { GpuDebugInfoManager::Get()->OnModuleStop(module_name_); });
+      [&]() { XlaDebugInfoManager::Get()->OnModuleStop(module_name_); });
 
   se::Stream* main_stream = run_options->stream();
   se::StreamExecutor* executor = main_stream->parent();

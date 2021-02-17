@@ -1393,6 +1393,21 @@ def _cuda_autoconf_impl(repository_ctx):
     else:
         _create_local_cuda_repository(repository_ctx)
 
+# For @bazel_tools//tools/cpp:windows_cc_configure.bzl
+_MSVC_ENVVARS = [
+    "BAZEL_VC",
+    "BAZEL_VC_FULL_VERSION",
+    "BAZEL_VS",
+    "BAZEL_WINSDK_FULL_VERSION",
+    "VS90COMNTOOLS",
+    "VS100COMNTOOLS",
+    "VS110COMNTOOLS",
+    "VS120COMNTOOLS",
+    "VS140COMNTOOLS",
+    "VS150COMNTOOLS",
+    "VS160COMNTOOLS",
+]
+
 _ENVIRONS = [
     _GCC_HOST_COMPILER_PATH,
     _GCC_HOST_COMPILER_PREFIX,
@@ -1410,7 +1425,7 @@ _ENVIRONS = [
     "TMP",
     "TMPDIR",
     "TF_CUDA_PATHS",
-]
+] + _MSVC_ENVVARS
 
 remote_cuda_configure = repository_rule(
     implementation = _create_local_cuda_repository,

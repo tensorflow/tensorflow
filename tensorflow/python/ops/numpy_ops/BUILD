@@ -13,6 +13,7 @@ py_library(
         "__init__.py",
         "np_array_ops.py",
         "np_arrays.py",
+        "np_config.py",
         "np_dtypes.py",
         "np_export.py",
         "np_math_ops.py",
@@ -37,6 +38,17 @@ py_library(
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
         "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "np_dtypes_test",
+    srcs = ["np_dtypes_test.py"],
+    deps = [
+        ":numpy",
+        "//tensorflow/python:platform",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

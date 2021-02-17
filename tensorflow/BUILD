@@ -231,6 +231,7 @@ selects.config_setting_group(
         ":macos_x86_64",
         ":macos_arm64",
     ],
+    visibility = ["//visibility:public"],
 )
 
 config_setting(
@@ -616,6 +617,14 @@ selects.config_setting_group(
 #     name = "no_prod_deps",
 #     define_values = {"tf_no_prod_deps": "1"},
 # )
+#
+# config_setting(
+#     name = "no_prod_deps_cuda",
+#     define_values = {
+#         "tf_no_prod_deps": "1",
+#         "GOOGLE_CUDA_COMPILER": "clang",
+#     },
+# )
 # copybara:uncomment_end
 
 config_setting(
@@ -693,6 +702,7 @@ config_setting(
 package_group(
     name = "internal",
     packages = [
+        "//learning/brain/keras/...",
         "//learning/brain/mlir/...",
         "//learning/lib/ami/simple_ml/...",
         "//tensorflow/...",
@@ -730,6 +740,7 @@ bzl_library(
         "//tensorflow/core/platform/default:cuda_build_defs_bzl",
         "//third_party/mkl:build_defs_bzl",
         "//third_party/mkl_dnn:build_defs_bzl",
+        "@bazel_skylib//lib:new_sets",
         "@bazel_skylib//rules:common_settings",
         "@local_config_cuda//cuda:build_defs_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",

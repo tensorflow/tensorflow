@@ -558,6 +558,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
     ],
     alwayslink = 1,
 )

@@ -477,7 +477,7 @@ void RaiseToTFOpsPass::runOnFunction() {
 
   populateCanonicalizationPatterns(func, patterns);
 
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 }  // namespace
 

@@ -1532,7 +1532,7 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
     const llvm_ir::IrArray::Index& output_index,
     const ShardedVectorType& accumulator_type, HloInstruction* init_value,
     HloInstruction* arg, absl::Span<const int64> dimensions,
-    unsigned element_alignment) {
+    llvm::Align element_alignment) {
   ShardedVector accumulator;
   accumulator.reserve(accumulator_type.size());
   for (auto accumulator_shard_type : accumulator_type) {
@@ -1547,7 +1547,7 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
     auto shard_type = accumulator_shard->getType()->getPointerElementType();
     if (auto vector_type = llvm::dyn_cast<llvm::VectorType>(shard_type)) {
       initial_value =
-          VectorSplat(vector_type->getNumElements(), init_value_ssa);
+          VectorSplat(vector_type->getElementCount(), init_value_ssa);
     } else {
       initial_value = init_value_ssa;
     }
@@ -1608,7 +1608,7 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
 
 void IrEmitter::EmitShardedVectorStore(
     llvm::Value* store_address, const std::vector<llvm::Value*>& value_to_store,
-    const int alignment, const llvm_ir::IrArray& containing_array) {
+    llvm::Align alignment, const llvm_ir::IrArray& containing_array) {
   for (int i = 0; i < value_to_store.size(); i++) {
     auto store_address_typed =
         BitCast(store_address,
@@ -1666,9 +1666,9 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
   bool is_reduction_over_minor_dimension = absl::c_linear_search(
       dimensions, LayoutUtil::Minor(arg->shape().layout(), 0));
 
-  unsigned element_alignment = tensorflow::MathUtil::GCD<unsigned>(
+  llvm::Align element_alignment(tensorflow::MathUtil::GCD<unsigned>(
       ShapeUtil::ByteSizeOfPrimitiveType(reduce->shape().element_type()),
-      MinimumAlignmentForPrimitiveType(reduce->shape().element_type()));
+      MinimumAlignmentForPrimitiveType(reduce->shape().element_type())));
 
   if (is_reduction_over_minor_dimension) {
     // TODO(sanjoy): Implement vectorized reduction over the minor dimension.
@@ -2583,8 +2583,8 @@ void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,
                                      const llvm_ir::IrArray& source_array) {
   unsigned primitive_type_size =
       ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
-  unsigned element_alignment = tensorflow::MathUtil::GCD<unsigned>(
-      primitive_type_size, MinimumAlignmentForPrimitiveType(primitive_type));
+  llvm::Align element_alignment(tensorflow::MathUtil::GCD<unsigned>(
+      primitive_type_size, MinimumAlignmentForPrimitiveType(primitive_type)));
   llvm::Type* primitive_ptr_type = llvm::PointerType::getUnqual(
       llvm_ir::PrimitiveTypeToIrType(primitive_type, module_));
 
@@ -3135,8 +3135,10 @@ Status IrEmitter::EmitTargetElementLoop(
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(target_op));
   llvm_ir::IrArray target_array = GetIrArrayFor(target_op);
 
-  if (target_shape.IsTuple() && (target_op->opcode() == HloOpcode::kFusion ||
-                                 target_op->opcode() == HloOpcode::kReduce)) {
+  if (target_shape.IsTuple() &&
+      (target_op->opcode() == HloOpcode::kFusion ||
+       target_op->opcode() == HloOpcode::kReduce ||
+       target_op->opcode() == HloOpcode::kReduceWindow)) {
     // For multiple outputs fusion, we need to emit each operand and the root.
     TF_RET_CHECK(num_dynamic_loop_bounds_ == 0);
     std::vector<llvm_ir::IrArray> output_arrays;

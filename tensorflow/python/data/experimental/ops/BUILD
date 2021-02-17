@@ -299,6 +299,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":batching",
+        ":error_ops",
         ":interleave_ops",
         ":optimization",
         ":parsing_ops",

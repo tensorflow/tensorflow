@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,58 +12,26 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <stddef.h>
 
-#include <algorithm>
-#include <cmath>
-#include <cstdint>
-#include <functional>
-#include <limits>
+#include "tensorflow/lite/kernels/internal/reference/leaky_relu.h"
 
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/cpu_backend_context.h"
-#include "tensorflow/lite/kernels/internal/common.h"
-#include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/internal/cppmath.h"
-#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/reference/binary_function.h"
-#include "tensorflow/lite/kernels/internal/reference/integer_ops/log_softmax.h"
-#include "tensorflow/lite/kernels/internal/reference/integer_ops/logistic.h"
-#include "tensorflow/lite/kernels/internal/reference/integer_ops/tanh.h"
-#include "tensorflow/lite/kernels/internal/reference/logistic.h"
-#include "tensorflow/lite/kernels/internal/reference/prelu.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
-#include "tensorflow/lite/kernels/internal/reference/softmax.h"
-#include "tensorflow/lite/kernels/internal/reference/tanh.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
 namespace ops {
-namespace builtin {
+namespace micro {
 namespace activations {
 namespace {
 
 // OLD-TODO(b/142762739): We should figure out a multi-threading plan for most
 // of the activation ops below.
 
-enum KernelType {
-  kReference,
-  kGenericOptimized,
-  kFixedPointOptimized,
-};
-
-struct OpData {
-  int32_t input_multiplier = 0;
-  int input_left_shift = 0;
-  int32_t input_range_radius = 0;
-  int diff_min = 0;
-  uint8_t table[256] = {0};
-};
+struct OpData {};
 
 struct LeakyReluOpData : public OpData {
   int32_t output_multiplier_alpha = 0;
@@ -91,11 +59,7 @@ void QuantizeLeakyRelu(const TfLiteTensor* input, TfLiteTensor* output,
 }  // namespace
 
 void* LeakyReluInit(TfLiteContext* context, const char* buffer, size_t length) {
-  return new LeakyReluOpData;
-}
-
-void LeakyReluFree(TfLiteContext* context, void* buffer) {
-  delete reinterpret_cast<LeakyReluOpData*>(buffer);
+  return nullptr;
 }
 
 TfLiteStatus LeakyReluPrepare(TfLiteContext* context, TfLiteNode* node) {
@@ -128,8 +92,7 @@ TfLiteStatus LeakyReluPrepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
   }
 
-  return context->ResizeTensor(context, output,
-                               TfLiteIntArrayCopy(input->dims));
+  return kTfLiteError;
 }
 
 TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
@@ -146,7 +109,7 @@ TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
   switch (input->type) {
     case kTfLiteFloat32: {
       op_params.alpha = params->alpha;
-      optimized_ops::LeakyRelu(
+      reference_ops::LeakyRelu(
           op_params, GetTensorShape(input), GetTensorData<float>(input),
           GetTensorShape(output), GetTensorData<float>(output));
       return kTfLiteOk;
@@ -174,13 +137,8 @@ TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace activations
 
-TfLiteRegistration* Register_LEAKY_RELU() {
-  static TfLiteRegistration r = {
-      activations::LeakyReluInit, activations::LeakyReluFree,
-      activations::LeakyReluPrepare, activations::LeakyReluEval};
-  return &r;
-}
+TfLiteRegistration* Register_LEAKY_RELU() { return nullptr; }
 
-}  // namespace builtin
+}  // namespace micro
 }  // namespace ops
 }  // namespace tflite

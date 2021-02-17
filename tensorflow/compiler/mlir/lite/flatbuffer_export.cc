@@ -38,6 +38,7 @@ limitations under the License.
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/ToolOutputFile.h"
@@ -181,11 +182,9 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
                  type.dyn_cast<mlir::quant::CalibratedQuantizedType>()) {
     return GetTFLiteType(q_calibrated_type.getExpressedType());
   } else if (type.isa<mlir::TF::ResourceType>()) {
-    // Treat tf.resource values as integer values in flatbuffer.
-    // TODO(b/146131919): Maybe need to have a detailed design for supporting
-    // other resource types beyonds hash table resources and resource
-    // variables.
-    return tflite::TensorType_INT32;
+    return tflite::TensorType_RESOURCE;
+  } else if (type.isa<mlir::TF::VariantType>()) {
+    return tflite::TensorType_VARIANT;
   }
   // TFLite export fills FLOAT32 for unknown data types. Returning an error
   // for now for safety and this could be revisited when required.
@@ -339,7 +338,7 @@ static bool IsValidTFLiteMlirModule(ModuleOp module) {
     // Verify that all operations except the terminator have exactly one
     // result of type supported by TFLite.
     for (auto& inst : bb) {
-      if (inst.isKnownTerminator()) break;
+      if (inst.hasTrait<mlir::OpTrait::IsTerminator>()) break;
 
       for (auto result : inst.getResults()) {
         if (!HasValidTFLiteType(result, inst)) {
@@ -522,18 +521,16 @@ class Translator {
       mlir::TFL::CallOnceOp op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
-  // Builds custom operators.
-  // Templated on a) data type of custom_option to be stored into flatbuffer,
-  // and b) TFL custom op type.
-  template <typename CustomOptionType, typename TFLOp>
-  BufferOffset<tflite::Operator> BuildCustomOperator(
-      const CustomOptionType& custom_option, const std::string& opcode_name,
-      TFLOp op, const std::vector<int32_t>& operands,
-      const std::vector<int32_t>& results);
-
   BufferOffset<tflite::Operator> BuildNumericVerifyOperator(
       mlir::TFL::NumericVerifyOp op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
+
+  // Builds Assign/Read Variable ops.
+  template <typename T>
+  BufferOffset<tflite::Operator> BuildVariableOperator(
+      T op, const std::string& op_name, const std::vector<int32_t>& operands,
+      const std::vector<int32_t>& results);
+
   BufferOffset<tflite::Operator> BuildCustomOperator(
       Operation* inst, mlir::TFL::CustomOp op,
       const std::vector<int32_t>& operands,
@@ -923,23 +920,6 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildWhileOperator(
                                 builtin_options);
 }
 
-template <typename CustomOptionType, typename TFLOp>
-BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
-    const CustomOptionType& custom_option, const std::string& opcode_name,
-    TFLOp op, const std::vector<int32_t>& operands,
-    const std::vector<int32_t>& results) {
-  std::vector<uint8_t> custom_option_vector(sizeof(CustomOptionType));
-  memcpy(custom_option_vector.data(), &custom_option, sizeof(CustomOptionType));
-  auto opcode_index =
-      GetOpcodeIndex(opcode_name, tflite::BuiltinOperator_CUSTOM);
-  return tflite::CreateOperator(
-      builder_, opcode_index, builder_.CreateVector(operands),
-      builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
-      /*builtin_options=*/0,
-      builder_.CreateVector<uint8_t>(custom_option_vector),
-      tflite::CustomOptionsFormat_FLEXBUFFERS);
-}
-
 BufferOffset<tflite::Operator> Translator::BuildNumericVerifyOperator(
     mlir::TFL::NumericVerifyOp op, const std::vector<int32_t>& operands,
     const std::vector<int32_t>& results) {
@@ -960,6 +940,17 @@ BufferOffset<tflite::Operator> Translator::BuildNumericVerifyOperator(
       builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
       /*builtin_options=*/0, builder_.CreateVector<uint8_t>(custom_option),
       tflite::CustomOptionsFormat_FLEXBUFFERS);
+}
+
+// Builds Assign/Read Variable ops.
+template <typename T>
+BufferOffset<tflite::Operator> Translator::BuildVariableOperator(
+    T op, const std::string& op_name, const std::vector<int32_t>& operands,
+    const std::vector<int32_t>& results) {
+  auto opcode_index = GetOpcodeIndex(op_name, tflite::BuiltinOperator_CUSTOM);
+  return tflite::CreateOperator(
+      builder_, opcode_index, builder_.CreateVector(operands),
+      builder_.CreateVector(results), tflite::BuiltinOptions_NONE);
 }
 
 BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
@@ -1101,6 +1092,18 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
   if (!dialect) {
     inst->emitOpError("dialect is not registered");
     return llvm::None;
+  }
+
+  // TODO(b/149099381): Remove this once the kernels are promoted as
+  // builtin TFLite kernels.
+  // We export the Assign/Read variable ops as custom ops.
+  if (auto read_op = llvm::dyn_cast<mlir::TFL::ReadVariableOp>(inst)) {
+    return BuildVariableOperator<mlir::TFL::ReadVariableOp>(
+        read_op, "ReadVariable", operands, results);
+  } else if (auto assign_op =
+                 llvm::dyn_cast<mlir::TFL::AssignVariableOp>(inst)) {
+    return BuildVariableOperator<mlir::TFL::AssignVariableOp>(
+        assign_op, "AssignVariable", operands, results);
   }
 
   // If TFLite built in op, create operator as a builtin op.
@@ -1390,7 +1393,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
 
   bool failed_once = false;
   for (auto& inst : bb) {
-    if (inst.isKnownTerminator()) break;
+    if (inst.hasTrait<mlir::OpTrait::IsTerminator>()) break;
     // For "quant.stats" op, it's used to store the quantization parameters info
     // and its output should be then replaced by its input value.
     if (auto quant_stats_op = llvm::dyn_cast<mlir::quant::StatisticsOp>(inst)) {
@@ -1707,6 +1710,9 @@ Optional<std::string> Translator::Translate(
     const std::unordered_set<std::string>& select_user_tf_ops,
     const std::unordered_set<std::string>& tags,
     OpOrArgNameMapper* op_or_arg_name_mapper) {
+  OpOrArgLocNameMapper default_op_or_arg_name_mapper;
+  if (!op_or_arg_name_mapper)
+    op_or_arg_name_mapper = &default_op_or_arg_name_mapper;
   if (!UpdateEntryFunction(module)) return llvm::None;
   if (!IsValidTFLiteMlirModule(module)) return llvm::None;
   Translator translator(module, emit_builtin_tflite_ops, emit_select_tf_ops,
@@ -1939,69 +1945,23 @@ BufferOffset<tflite::SparsityParameters> Translator::BuildSparsityParameters(
 
 }  // namespace
 
-// Translates the given MLIR module in the TFLite dialect to TFLite FlatBuffer
-// format. Returns false on success.
-//
+namespace tflite {
 // TODO(hinsu): Support all valid MLIR modules in TFLite dialect by supporting
 // the following:
 //
 // * Quantization
 // * Ops with variable tensors
 //
-bool tflite::MlirToFlatBufferTranslateFunction(
-    ModuleOp module, std::string* serialized_flatbuffer,
-    bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
-    OpOrArgNameMapper* op_or_arg_name_mapper) {
-  return MlirToFlatBufferTranslateFunction(
-      module, serialized_flatbuffer, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, /*saved_model_tags=*/{},
-      op_or_arg_name_mapper);
-}
-
-bool tflite::MlirToFlatBufferTranslateFunction(
-    ModuleOp module, std::string* serialized_flatbuffer,
-    bool emit_builtin_tflite_ops, bool emit_select_tf_ops,
-    bool emit_custom_ops) {
-  OpOrArgLocNameMapper op_or_arg_name_mapper;
-  return MlirToFlatBufferTranslateFunction(
-      module, serialized_flatbuffer, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, /*saved_model_tags=*/{},
-      &op_or_arg_name_mapper);
-}
-
-bool tflite::MlirToFlatBufferTranslateFunction(
-    mlir::ModuleOp module, std::string* serialized_flatbuffer,
-    bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
-    const std::unordered_set<std::string>& saved_model_tags) {
-  OpOrArgLocNameMapper op_or_arg_name_mapper;
-  return MlirToFlatBufferTranslateFunction(
-      module, serialized_flatbuffer, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, saved_model_tags,
-      &op_or_arg_name_mapper);
-}
-
-bool tflite::MlirToFlatBufferTranslateFunction(
-    mlir::ModuleOp module, std::string* serialized_flatbuffer,
-    bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
-    const std::unordered_set<std::string>& saved_model_tags,
-    OpOrArgNameMapper* op_or_arg_name_mapper) {
-  std::unordered_set<std::string> select_user_tf_ops;
-  return MlirToFlatBufferTranslateFunction(
-      module, serialized_flatbuffer, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, select_user_tf_ops, saved_model_tags,
-      op_or_arg_name_mapper);
-}
-
-bool tflite::MlirToFlatBufferTranslateFunction(
-    ModuleOp module, std::string* serialized_flatbuffer,
-    bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
-    const std::unordered_set<std::string>& select_user_tf_ops,
-    const std::unordered_set<std::string>& saved_model_tags,
-    tensorflow::OpOrArgNameMapper* op_or_arg_name_mapper) {
+bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
+                                       const FlatbufferExportOptions& options,
+                                       std::string* serialized_flatbuffer) {
   auto maybe_translated = Translator::Translate(
-      module, emit_builtin_tflite_ops, emit_select_tf_ops, emit_custom_ops,
-      select_user_tf_ops, saved_model_tags, op_or_arg_name_mapper);
-  if (!maybe_translated) return true;
+      module, options.emit_builtin_tflite_ops, options.emit_select_tf_ops,
+      options.emit_custom_ops, options.select_user_tf_ops,
+      options.saved_model_tags, options.op_or_arg_name_mapper);
+  if (!maybe_translated) return false;
   *serialized_flatbuffer = std::move(*maybe_translated);
-  return false;
+  return true;
 }
+
+}  // namespace tflite

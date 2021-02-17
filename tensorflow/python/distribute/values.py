@@ -362,23 +362,8 @@ class DistributedDelegate(DistributedValues):
 class PerReplica(DistributedValues, composite_tensor.CompositeTensor):
   """Holds a map from replica to unsynchronized values."""
 
-  def __init__(self, values, type_spec_override=None):
-    super(PerReplica, self).__init__(values)
-    # Allow setting a type spec that can be different from the underlying
-    # values. This allows us avoid retracing for PerReplica from full, partial
-    # and empty batches. In a multi client setup, we need to avoid such
-    # retracing otherwise the collectives may mismatch since we assign new
-    # collective keys when retracing the function.
-    #
-    # TODO(b/166169298): remove after CrossDeviceOps is tracing safe.
-    self._type_spec_override = type_spec_override
-
   @property
   def _type_spec(self):
-    if self._type_spec_override is not None:
-      # Return a deep copy in case the caller changes it, since _type_spec()
-      # normally returns a temporary object.
-      return copy.deepcopy(self._type_spec_override)
     return PerReplicaSpec(
         *(type_spec.type_spec_from_value(v) for v in self._values))
 
@@ -1514,13 +1499,13 @@ class OnReadPolicy(VariablePolicy):
     return values_util.get_on_read_restore_ops(var, tensor, self._aggregation)
 
 
-class AutoPolicy(VariablePolicy):
-  """Policy defined for `tf.VariableSynchronization.AUTO` synchronization.
+class OnWritePolicy(VariablePolicy):
+  """Policy defined for `tf.VariableSynchronization.ON_WRITE` synchronization.
 
-  This policy is created when `synchronization` is set to
-  `tf.VariableSynchronization.AUTO` and `aggregation` is set to
-  `tf.VariableAggregation.NONE` when creating a `tf.Variable` in `tf.distribute`
-  scope.
+  This policy is created when the following `synchronization` and `aggregation`
+  parameters are specified when creating a `tf.Variable` in `tf.distribute`
+  scope and `synchronization` is equal to `tf.VariableSynchronization.ON_WRITE`
+  or `tf.VariableSynchronization.AUTO`.
   """
 
   def _is_mirrored(self):
@@ -1538,7 +1523,9 @@ class AutoPolicy(VariablePolicy):
     return array_ops.identity(var._get_on_device_or_primary())  # pylint: disable=protected-access
 
   def _update_replica(self, var, update_fn, value, **kwargs):
-    return update_fn(var._get_on_device_or_primary(), value, **kwargs)  # pylint: disable=protected-access
+    if var.aggregation == variables_lib.VariableAggregation.NONE:
+      return update_fn(var._get_on_device_or_primary(), value, **kwargs)  # pylint: disable=protected-access
+    return _on_write_update_replica(var, update_fn, value, **kwargs)
 
   def assign(self, var, value, use_locking=False, name=None, read_value=True):
     return values_util.on_write_assign(var, value, use_locking=use_locking,
@@ -1622,21 +1609,3 @@ class AutoPolicy(VariablePolicy):
       options: A `SaveOptions` instance.
     """
     values_util.write_object_proto(var, proto, options)
-
-
-class OnWritePolicy(AutoPolicy):
-  """Policy defined for `tf.VariableSynchronization.ON_WRITE` synchronization.
-
-  This policy is created when the following `synchronization` and
-  `aggregation` parameters are specified when creating a `tf.Variable` in
-  `tf.distribute` scope:
-  * `synchronization` is equal to `tf.VariableSynchronization.AUTO` and
-  aggregation can be any of the following `tf.VariableAggregation` enum
-  values such as `SUM`, `MEAN` or `ONLY_FIRST_REPLICA`.
-  * `synchronization` is equal to `tf.VariableSynchronization.ON_WRITE` and
-  aggregation can be any of the following `tf.VariableAggregation` enum
-  values such as `NONE`, `SUM`, `MEAN` or `ONLY_FIRST_REPLICA`.
-  """
-
-  def _update_replica(self, var, update_fn, value, **kwargs):
-    return _on_write_update_replica(var, update_fn, value, **kwargs)

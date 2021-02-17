@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/tpu/tpu_api.h"
+#include "tensorflow/core/tpu/tpu_initializer_helper.h"
 #include "tensorflow/core/tpu/tpu_ops_c_api.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
 
@@ -58,16 +59,22 @@ class TpuTracer : public ProfilerInterface {
 };
 
 TpuTracer::TpuTracer() {
-  tpu_profiler_ = tpu::OpsApiFn()->TpuProfiler_CreateFn();
+  StatusHelper status;
+  tpu::OpsApiFn()->TpuProfiler_CreateFn(&tpu_profiler_, status.c_status);
+  if (!status.ok()) {
+    LOG(ERROR) << status.status().error_message();
+  }
 }
 
-TpuTracer::~TpuTracer() { tpu::OpsApiFn()->TpuProfiler_FreeFn(tpu_profiler_); }
+TpuTracer::~TpuTracer() {
+  tpu::OpsApiFn()->TpuProfiler_DestroyFn(tpu_profiler_);
+}
 
 Status TpuTracer::Start() {
   StatusHelper status;
   tpu::OpsApiFn()->TpuProfiler_StartFn(tpu_profiler_, status.c_status);
   if (!status.ok()) {
-    VLOG(1) << "Run Start failed.";
+    LOG(ERROR) << "TPU tracer failed to start.";
     return status.status();
   }
   return Status::OK();
@@ -77,7 +84,7 @@ Status TpuTracer::Stop() {
   StatusHelper status;
   tpu::OpsApiFn()->TpuProfiler_StopFn(tpu_profiler_, status.c_status);
   if (!status.ok()) {
-    VLOG(1) << "Run Stop failed.";
+    LOG(ERROR) << "TPU tracer failed to stop.";
     return status.status();
   }
   return Status::OK();
@@ -90,10 +97,26 @@ Status TpuTracer::CollectData(RunMetadata* run_metadata) {
 
 Status TpuTracer::CollectData(XSpace* space) {
   StatusHelper status;
+  // Get size of buffer required for TPU driver to serialize XSpace into.
+  size_t size_in_bytes;
   tpu::OpsApiFn()->TpuProfiler_CollectDataFn(tpu_profiler_, status.c_status,
-                                             space);
+                                             /*buffer=*/nullptr,
+                                             &size_in_bytes);
+  // Prepare an appropriately sized buffer.
+  if (size_in_bytes > 0) {
+    std::vector<uint8_t> buffer(size_in_bytes);
+    tpu::OpsApiFn()->TpuProfiler_CollectDataFn(tpu_profiler_, status.c_status,
+                                               buffer.data(), &size_in_bytes);
+    // Deserialize XSpace from the buffer and return it.
+    XSpace tpu_space;
+    tpu_space.ParseFromArray(buffer.data(), buffer.size());
+    for (XPlane& tpu_plane : *tpu_space.mutable_planes()) {
+      XPlane* plane = space->add_planes();
+      plane->Swap(&tpu_plane);
+    }
+  }
   if (!status.ok()) {
-    VLOG(1) << "Run CollectData failed.";
+    LOG(ERROR) << "TPU tracer failed to collect data.";
     return status.status();
   }
   return Status::OK();
@@ -112,7 +135,9 @@ std::unique_ptr<ProfilerInterface> CreateTpuTracer(
 }
 
 auto register_tpu_tracer_factory = [] {
-  RegisterProfilerFactory(&CreateTpuTracer);
+  if (tensorflow::tpu::TryAcquireTpuLock()) {
+    RegisterProfilerFactory(&CreateTpuTracer);
+  }
   return 0;
 }();
 

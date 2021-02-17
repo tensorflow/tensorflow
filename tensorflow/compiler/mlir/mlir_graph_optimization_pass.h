@@ -29,7 +29,20 @@ namespace tensorflow {
 // MLIR passes running on Tensorflow function graphs (Tensorflow V2).
 // -------------------------------------------------------------------------- //
 
-enum class MlirOptimizationPassState { Disabled, Enabled, ShadowEnabled };
+// Disabled - skip execution of the pass.
+// Enabled - execute the pass, propagate errors to the caller if any.
+// ShadowEnabled - execute the pass in a shadow mode. The pass should not commit
+//   any changes to the MLIR module it's processing. Failures are not propagated
+//   to the caller.
+// FallbackEnabled - execute the pass and commit all the changes to the MLIR
+//   module in case of success. Do not commit any changes in case of failures,
+//   let the rest of the pipeline run.
+enum class MlirOptimizationPassState {
+  Disabled,
+  Enabled,
+  ShadowEnabled,
+  FallbackEnabled
+};
 
 // An API for registering MLIR ModulePass with the Tensorflow runtime. These
 // passes are running only for function graphs built by Tensorflow V2 and
@@ -72,14 +85,18 @@ class MlirOptimizationPassRegistry {
     }
   };
 
-  using Passes = std::multiset<PassRegistration, PriorityComparator>;
+  using Passes = std::set<PassRegistration, PriorityComparator>;
 
   // Returns the global registry of MLIR optimization passes.
   static MlirOptimizationPassRegistry& Global();
 
   // Register optimization `pass` with the given `priority`.
   void Add(int priority, std::unique_ptr<MlirOptimizationPass> pass) {
-    passes_.insert({priority, std::move(pass)});
+    auto inserted = passes_.insert({priority, std::move(pass)});
+    CHECK(inserted.second)
+        << "Pass priority must be unique. "
+        << "Previously registered pass with the same priority: "
+        << inserted.first->pass->name().str();
   }
 
   // Free the memory allocated for all passes.
@@ -162,13 +179,17 @@ class MlirV1CompatOptimizationPassRegistry {
     }
   };
 
-  using Passes = std::multiset<PassRegistration, PriorityComparator>;
+  using Passes = std::set<PassRegistration, PriorityComparator>;
 
   // Returns the global registry of MLIR optimization passes.
   static MlirV1CompatOptimizationPassRegistry& Global();
 
   void Add(int priority, std::unique_ptr<MlirV1CompatOptimizationPass> pass) {
-    passes_.insert({priority, std::move(pass)});
+    auto inserted = passes_.insert({priority, std::move(pass)});
+    CHECK(inserted.second)
+        << "Pass priority must be unique. "
+        << "Previously registered pass with the same priority: "
+        << inserted.first->pass->name().str();
   }
 
   const Passes& passes() const { return passes_; }
