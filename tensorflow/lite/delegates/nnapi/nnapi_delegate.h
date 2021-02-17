@@ -130,16 +130,32 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
   // Uses default options.
   StatefulNnApiDelegate();
 
+  // The ownership of the NnApi instance is left to the caller of the
+  // StatefulNnApiDelegate constructor; the caller must ensure that the lifetime
+  // of the NnApi instance exceeds the lifetime of the StatefulNnApiDelegate.
   explicit StatefulNnApiDelegate(const NnApi* nnapi);
 
   // The constructor that accepts options from user.
+  // This makes a copy of any data that it needs from Options, so
+  // the caller can safely deallocate any storage pointed to by
+  // the 'const char *' members of Options immediately after calling this.
   explicit StatefulNnApiDelegate(Options options);
 
+  // Constructor that accepts both an NnApi instance and options.
+  // The ownership of the NnApi instance is left to the caller of the
+  // StatefulNnApiDelegate constructor; the caller must ensure that the lifetime
+  // of the NnApi instance exceeds the lifetime of the StatefulNnApiDelegate.
+  // This constructor makes a copy of any data that it needs from Options, so
+  // the caller can safely deallocate any storage pointed to by
+  // the 'const char *' members of Options immediately after calling this.
   StatefulNnApiDelegate(const NnApi* nnapi, Options options);
 
   ~StatefulNnApiDelegate() = default;
 
   // Returns the delegate options.
+  // The lifetime of the storage pointed to by the 'const char *' members of the
+  // returned Options object is the same as the lifetime of the supplied
+  // TfLiteDelegate instance.
   static const Options GetOptions(TfLiteDelegate* delegate);
 
   // Callback function which copies data from ANeuralNetworksMemory to host

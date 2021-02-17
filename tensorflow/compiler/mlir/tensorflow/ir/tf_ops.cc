@@ -191,7 +191,7 @@ bool TensorFlowDialect::CanHaveSideEffects(Operation *op) {
     return !is_stateless.getValue();
 
   // Terminators defined in the TF dialect do not have side effects.
-  if (op->isKnownTerminator()) return false;
+  if (op->hasTrait<OpTrait::IsTerminator>()) return false;
 
   // Otherwise assume that the op can have side effects.
   return true;

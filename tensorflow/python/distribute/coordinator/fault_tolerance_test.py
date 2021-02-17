@@ -183,6 +183,7 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
 
     # Wait for threads to close.
     self.cluster_coord = None
+    self.strategy = None
     gc.collect()
     time.sleep(1)
 

@@ -47,7 +47,6 @@ ConverterToConvWeights& ConverterToConvWeights::operator=(
 std::string ConverterToConvWeights::GetConverterToConvWeightsCode(
     const OperationDef& op_def, const WeightsDescription& conv_weights_desc) {
   AddSrcTensor("src_tensor", op_def.src_tensors[0]);
-  AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
   args_.AddFloat("mask_x");
   args_.AddFloat("mask_y");
   args_.AddFloat("mask_z");
@@ -72,8 +71,6 @@ std::string ConverterToConvWeights::GetConverterToConvWeightsCode(
 
   std::string c;
   c += "MAIN_FUNCTION($0) {\n";
-  c += "  int GROUP_SIZE = " +
-       std::to_string(conv_weights_desc.GetOutputGroupSize()) + ";\n";
   c += "  int O = GLOBAL_ID_0 * 4;\n";
   c += "  int I = GLOBAL_ID_1;\n";
   c += "  int Z = GLOBAL_ID_2;\n";
@@ -125,30 +122,48 @@ std::string ConverterToConvWeights::GetConverterToConvWeightsCode(
     c += "  FLT4 r2 = v2;\n";
     c += "  FLT4 r3 = v3;\n";
   }
-  c += "  int d_index = O / (GROUP_SIZE * 4);\n";
-  c += "  int k_index = (O % (GROUP_SIZE * 4)) / 4;\n";
-  std::string index;
-  if (conv_weights_desc.layout == WeightsLayout::kOICustomSpatialI4O4 ||
-      conv_weights_desc.layout == WeightsLayout::kOICustomSpatialO4I4) {
-    index =
-        "((d_index * args.src_tensor.Slices() + I) * args.src_tensor.Height() "
-        "+ H) * args.src_tensor.Width() + W";
-  } else if (conv_weights_desc.layout == WeightsLayout::kOHWIOGroupI4O4 ||
-             conv_weights_desc.layout == WeightsLayout::kOHWIOGroupO4I4) {
-    index =
-        "((d_index * args.src_tensor.Height() + H) * args.src_tensor.Width() + "
-        "W) * args.src_tensor.Slices() + I";
+  if (conv_weights_desc.layout == WeightsLayout::k2DX4I4YIsHWIAndXIsOOGroupO4 ||
+      conv_weights_desc.layout == WeightsLayout::k2DX4O4YIsHWIAndXIsOOGroupI4) {
+    // Writing to 4X Textures 2D
+    AddDstTensor("dst_tensor0", op_def.dst_tensors[0]);
+    AddDstTensor("dst_tensor1", op_def.dst_tensors[1]);
+    AddDstTensor("dst_tensor2", op_def.dst_tensors[2]);
+    AddDstTensor("dst_tensor3", op_def.dst_tensors[3]);
+    c += "  int yc = (H * args.src_tensor.Width() + W) * "
+         "args.src_tensor.Slices() + I\n;";
+    c += "  args.dst_tensor0.Write2D(r0, O / 4, yc)\n;";
+    c += "  args.dst_tensor1.Write2D(r1, O / 4, yc)\n;";
+    c += "  args.dst_tensor2.Write2D(r2, O / 4, yc)\n;";
+    c += "  args.dst_tensor3.Write2D(r3, O / 4, yc)\n;";
+    c += "}\n";
+  } else {
+    // Writing to linear buffer
+    AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
+    c += "  int GROUP_SIZE = " +
+         std::to_string(conv_weights_desc.GetOutputGroupSize()) + ";\n";
+    c += "  int d_index = O / (GROUP_SIZE * 4);\n";
+    c += "  int k_index = (O % (GROUP_SIZE * 4)) / 4;\n";
+    std::string index;
+    if (conv_weights_desc.layout == WeightsLayout::kOICustomSpatialI4O4 ||
+        conv_weights_desc.layout == WeightsLayout::kOICustomSpatialO4I4) {
+      index =
+          "((d_index * args.src_tensor.Slices() + I) * "
+          "args.src_tensor.Height() "
+          "+ H) * args.src_tensor.Width() + W";
+    } else if (conv_weights_desc.layout == WeightsLayout::kOHWIOGroupI4O4 ||
+               conv_weights_desc.layout == WeightsLayout::kOHWIOGroupO4I4) {
+      index =
+          "((d_index * args.src_tensor.Height() + H) * args.src_tensor.Width() "
+          "+ "
+          "W) * args.src_tensor.Slices() + I";
+    }
+    c += "  int dst_offset = (" + index + ") * GROUP_SIZE + k_index;\n";
+    c += "  args.dst_tensor.WriteLinear(r0, dst_offset * 4 + 0)\n;";
+    c += "  args.dst_tensor.WriteLinear(r1, dst_offset * 4 + 1)\n;";
+    c += "  args.dst_tensor.WriteLinear(r2, dst_offset * 4 + 2)\n;";
+    c += "  args.dst_tensor.WriteLinear(r3, dst_offset * 4 + 3)\n;";
+    c += "}\n";
   }
-  c += "  int dst_offset = (" + index + ") * GROUP_SIZE + k_index;\n";
-  c += "  int address0 = dst_offset * 4 + 0;\n";
-  c += "  int address1 = dst_offset * 4 + 1;\n";
-  c += "  int address2 = dst_offset * 4 + 2;\n";
-  c += "  int address3 = dst_offset * 4 + 3;\n";
-  c += "  args.dst_tensor.WriteLinear(r0, dst_offset * 4 + 0)\n;";
-  c += "  args.dst_tensor.WriteLinear(r1, dst_offset * 4 + 1)\n;";
-  c += "  args.dst_tensor.WriteLinear(r2, dst_offset * 4 + 2)\n;";
-  c += "  args.dst_tensor.WriteLinear(r3, dst_offset * 4 + 3)\n;";
-  c += "}\n";
   return c;
 }
 

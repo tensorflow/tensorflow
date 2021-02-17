@@ -51,6 +51,11 @@ TEST_F(OpenCLOperationTest, ConverterToConvTransposedWeights4x4) {
   ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
+TEST_F(OpenCLOperationTest, ConverterToConvWeights4xTextures) {
+  const auto status = ConverterToConvWeights4xTexturesTest(&exec_env_);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+}
+
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

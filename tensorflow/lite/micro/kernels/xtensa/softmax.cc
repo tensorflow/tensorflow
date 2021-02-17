@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/xtensa/xtensa.h"
 
 namespace tflite {
 namespace {
@@ -32,7 +33,14 @@ namespace {
 struct OpData {
   uint16_t* exp_lut;
 };
+#elif defined(FUSION_F1)
+struct OpData {
+  SoftmaxParams params;
+  int scratch_tensor_index;
+};
+#endif
 
+#if defined(HIFIMINI)
 // Number of unique int8_t and int16_t values.  Used in exponent lookup table
 // computation.
 constexpr int kInt8Range =
@@ -173,8 +181,63 @@ TfLiteStatus PrepareHifimini(TfLiteContext* context, TfLiteNode* node) {
 }
 #endif  // defined(HIFIMINI)
 
+#if defined(FUSION_F1)
+TfLiteStatus PrepareHifi4(TfLiteContext* context, TfLiteNode* node) {
+  TF_LITE_ENSURE_OK(context, SoftmaxPrepare(context, node));
+
+  // Calculate scratch memory requirements and request scratch buffer
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  const TfLiteTensor* output = GetOutput(context, node, 0);
+
+  const RuntimeShape& input_shape = GetTensorShape(input);
+  const RuntimeShape& output_shape = GetTensorShape(output);
+  const int trailing_dim = input_shape.DimensionsCount() - 1;
+  const int depth =
+      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
+
+  if (input->type == kTfLiteInt8) {
+    int required_scratch =
+        get_softmax_scratch_size(PREC_ASYM8S, PREC_ASYM8S, depth);
+    TF_LITE_ENSURE(context, required_scratch > 0);
+
+    auto* data = static_cast<OpData*>(node->user_data);
+    TF_LITE_ENSURE_OK(
+        context, context->RequestScratchBufferInArena(
+                     context, required_scratch, &(data->scratch_tensor_index)));
+  }
+
+  return kTfLiteOk;
+}
+
+TfLiteStatus EvalHifi4(const OpData* op_data, const TfLiteEvalTensor* input,
+                       TfLiteEvalTensor* output, TfLiteContext* context) {
+  const RuntimeShape& input_shape = tflite::micro::GetTensorShape(input);
+  const int8_t* input_data = tflite::micro::GetTensorData<int8_t>(input);
+  const RuntimeShape& output_shape = tflite::micro::GetTensorShape(output);
+  int16_t* output_data = tflite::micro::GetTensorData<int16_t>(output);
+  const int trailing_dim = input_shape.DimensionsCount() - 1;
+  const int outer_size =
+      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
+  const int depth =
+      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
+
+  void* p_scratch = static_cast<void*>(
+      context->GetScratchBuffer(context, op_data->scratch_tensor_index));
+
+  for (int i = 0; i < outer_size; ++i) {
+    int err = xa_nn_vec_softmax_asym8s_16(
+        &output_data[i * depth], &input_data[i * depth],
+        op_data->params.diff_min, op_data->params.input_left_shift,
+        op_data->params.input_multiplier, depth, p_scratch);
+    TF_LITE_ENSURE(context, err == 0);
+  }
+  return kTfLiteOk;
+}
+
+#endif  // defined(FUSION_F1)
+
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-#if defined(HIFIMINI)
+#if defined(HIFIMINI) || defined(FUSION_F1)
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
   return context->AllocatePersistentBuffer(context, sizeof(OpData));
 #else
@@ -185,6 +248,8 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 #if defined(HIFIMINI)
   return PrepareHifimini(context, node);
+#elif defined(FUSION_F1)
+  return PrepareHifi4(context, node);
 #else
   return SoftmaxPrepare(context, node);
 #endif
@@ -208,7 +273,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                        TfLiteTypeGetName(input->type), input->type);
     return kTfLiteError;
   }
-#else   // !defined(HIFIMINI)
+#else  // !defined(HIFIMINI)
   switch (input->type) {
     case kTfLiteFloat32: {
       SoftmaxParams op_data = *static_cast<SoftmaxParams*>(node->user_data);
@@ -221,12 +286,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }
     case kTfLiteInt8: {
       if (output->type == kTfLiteInt16) {
+#if defined(FUSION_F1)
+        return EvalHifi4(static_cast<OpData*>(node->user_data), input, output,
+                         context);
+#else
         SoftmaxParams op_data = *static_cast<SoftmaxParams*>(node->user_data);
         tflite::reference_ops::Softmax(
             op_data, tflite::micro::GetTensorShape(input),
             tflite::micro::GetTensorData<int8_t>(input),
             tflite::micro::GetTensorShape(output),
             tflite::micro::GetTensorData<int16_t>(output));
+#endif
       } else {
         SoftmaxParams op_data = *static_cast<SoftmaxParams*>(node->user_data);
         tflite::reference_ops::Softmax(

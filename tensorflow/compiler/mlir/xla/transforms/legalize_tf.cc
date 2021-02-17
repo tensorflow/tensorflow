@@ -2774,7 +2774,7 @@ static void BroadcastBatchMatMulV2Operands(Value lhs, Value rhs, Location loc,
   Value lhs_shape = rewriter->create<shape::ShapeOfOp>(loc, lhs);
   Value rhs_shape = rewriter->create<shape::ShapeOfOp>(loc, rhs);
   Value const_neg2 =
-      rewriter->create<ConstantOp>(loc, rewriter->getI32IntegerAttr(-2));
+      rewriter->create<ConstantOp>(loc, rewriter->getIndexAttr(-2));
   auto lhs_splitted =
       rewriter->create<shape::SplitAtOp>(loc, lhs_shape, const_neg2);
   auto rhs_splitted =

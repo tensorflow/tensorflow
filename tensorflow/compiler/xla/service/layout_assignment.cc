@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
@@ -1948,9 +1949,19 @@ Status LayoutAssignment::RunOnComputation(
                                   computation->root_instruction()));
       computation->set_root_instruction(new_root);
     } else {
-      // Use the specified shape including tiling info in layout.
-      *(computation->root_instruction()->mutable_shape()) =
-          constraints.ResultLayout()->shape();
+      // Copy the specified tiling info.
+      auto assign_tiling = [&constraints](xla::Shape* subshape,
+                                          const xla::ShapeIndex& index) {
+        if (subshape->IsArray()) {
+          const Shape& result_shape = ShapeUtil::GetSubshape(
+              constraints.ResultLayout()->shape(), index);
+          subshape->mutable_layout()->mutable_tiles()->assign(
+              result_shape.layout().tiles().begin(),
+              result_shape.layout().tiles().end());
+        }
+      };
+      xla::ShapeUtil::ForEachMutableSubshape(
+          computation->root_instruction()->mutable_shape(), assign_tiling);
     }
   }
   return Status::OK();

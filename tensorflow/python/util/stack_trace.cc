@@ -42,7 +42,7 @@ const char* GetPythonString(PyObject* o) {
 namespace tensorflow {
 
 std::vector<StackFrame> StackTrace::ToStackFrames(
-    const SourceMap& source_map, const StackTraceFilter& filtered,
+    const StackTraceMap& mapper, const StackTraceFilter& filtered,
     bool reverse_traversal, int limit) const {
   DCheckPyGilStateForStackTrace();
   std::vector<StackFrame> result;
@@ -61,9 +61,11 @@ std::vector<StackFrame> StackTrace::ToStackFrames(
       continue;
     }
 
-    const auto it = source_map.find(std::make_tuple(file_name, line_number));
-    if (it != source_map.end()) {
-      result.push_back(it->second);
+    absl::optional<StackFrame> mapped =
+        mapper ? mapper(std::make_pair(file_name, line_number)) : absl::nullopt;
+
+    if (mapped) {
+      result.push_back(*mapped);
     } else {
       result.emplace_back(StackFrame{file_name, line_number,
                                      GetPythonString(code_obj.first->co_name)});

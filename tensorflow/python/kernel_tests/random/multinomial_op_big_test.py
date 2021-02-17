@@ -34,7 +34,7 @@ class MultinomialTest(test.TestCase):
   def testLargeDynamicRange(self):
     random_seed.set_random_seed(10)
     counts_by_indices = {}
-    with self.test_session(use_gpu=True) as sess:
+    with self.test_session():
       samples = random_ops.multinomial(
           constant_op.constant([[-30, 0]], dtype=dtypes.float32),
           num_samples=1000000,
@@ -52,7 +52,7 @@ class MultinomialTest(test.TestCase):
   def testLargeDynamicRange2(self):
     random_seed.set_random_seed(10)
     counts_by_indices = {}
-    with self.test_session(use_gpu=True) as sess:
+    with self.test_session():
       samples = random_ops.multinomial(
           constant_op.constant([[0, -30]], dtype=dtypes.float32),
           num_samples=1000000,
@@ -72,7 +72,7 @@ class MultinomialTest(test.TestCase):
     random_seed.set_random_seed(10)
     counts_by_indices = {}
     # here the cpu undersamples and won't pass this test either
-    with self.test_session(use_gpu=True) as sess:
+    with self.test_session():
       samples = random_ops.multinomial(
           constant_op.constant([[0, -17]], dtype=dtypes.float32),
           num_samples=1000000,

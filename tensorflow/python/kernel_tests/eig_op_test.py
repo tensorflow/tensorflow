@@ -55,7 +55,7 @@ class EigTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testConcurrentExecutesWithoutError(self):
     all_ops = []
-    with self.session(use_gpu=True) as sess:
+    with self.session():
       for compute_v_ in True, False:
         matrix1 = random_ops.random_normal([5, 5], seed=42)
         matrix2 = random_ops.random_normal([5, 5], seed=42)
@@ -84,7 +84,7 @@ class EigTest(test.TestCase):
             "self_adjoint_eig_fail_if_denorms_flushed.txt")).astype(np.float32)
     self.assertEqual(matrix.shape, (32, 32))
     matrix_tensor = constant_op.constant(matrix)
-    with self.session(use_gpu=True) as _:
+    with self.session() as _:
       (e, v) = self.evaluate(linalg_ops.self_adjoint_eig(matrix_tensor))
       self.assertEqual(e.size, 32)
       self.assertAllClose(
@@ -166,7 +166,7 @@ def _GetEigTest(dtype_, shape_, compute_v_):
 
     a = RandomInput()
     np_e, np_v = np.linalg.eig(a)
-    with self.session(use_gpu=True):
+    with self.session():
       if compute_v_:
         tf_e, tf_v = linalg_ops.eig(constant_op.constant(a))
 
@@ -222,7 +222,7 @@ def _GetEigGradTest(dtype_, shape_, compute_v_):
       tol = 1e-2
     else:
       tol = 1e-7
-    with self.session(use_gpu=True):
+    with self.session():
 
       def Compute(x):
         e, v = linalg_ops.eig(x)

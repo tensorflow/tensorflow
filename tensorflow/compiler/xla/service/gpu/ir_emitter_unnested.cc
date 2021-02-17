@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
@@ -1059,10 +1060,13 @@ Status IrEmitterUnnested::EmitSliceToDynamicFromMlir(
 }
 
 Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(custom_call));
+  return EmitCustomCallFromMlir(input);
+}
+
+Status IrEmitterUnnested::EmitCustomCallFromMlir(MlirEmitterInput input) {
   using mlir::dyn_cast;
   using mlir::isa;
-
-  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(custom_call));
 
   if (auto call = dyn_cast<mlir::lmhlo::CustomCallOp>(input.op)) {
     if (call.call_target_name() == "PadToStatic") {
@@ -1099,7 +1103,7 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
 #endif  // GOOGLE_CUDA
 
   return Unimplemented("No registered implementation for custom call to \"%s\"",
-                       custom_call->custom_call_target());
+                       MlirToString(input.op));
 }
 
 Status IrEmitterUnnested::EmitConvolutionThunkFromMlir(MlirEmitterInput input) {
@@ -1896,10 +1900,12 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
               GetNestedComputer());
           FusedIrEmitter operand_fused_emitter(&operand_elemental_emitter);
           for (int i = 0; i < fused_computation->num_parameters(); i++) {
+            auto fused_operand = fused_computation->parameter_instruction(i);
             operand_fused_emitter.BindGenerator(
-                fused_computation->parameter_instruction(i),
-                [this, &ir_arrays, i](llvm_ir::IrArray::Index index) {
-                  return ir_arrays[i].EmitReadArrayElement(index, &b_);
+                fused_operand, [this, &ir_arrays, i, fused_operand](
+                                   const llvm_ir::IrArray::Index& index) {
+                  return ir_arrays[i].EmitReadArrayElement(
+                      index, &b_, fused_operand->name());
                 });
           }
           TF_ASSIGN_OR_RETURN(
@@ -1938,10 +1944,12 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
               GetNestedComputer());
           FusedIrEmitter scatter_fused_emitter(&scatter_elemental_emitter);
           for (int i = 0; i < fused_computation->num_parameters(); i++) {
+            auto fused_operand = fused_computation->parameter_instruction(i);
             scatter_fused_emitter.BindGenerator(
-                fused_computation->parameter_instruction(i),
-                [this, &ir_arrays, i](llvm_ir::IrArray::Index index) {
-                  return ir_arrays[i].EmitReadArrayElement(index, &b_);
+                fused_operand, [this, &ir_arrays, i, fused_operand](
+                                   const llvm_ir::IrArray::Index& index) {
+                  return ir_arrays[i].EmitReadArrayElement(
+                      index, &b_, fused_operand->name());
                 });
           }
 
@@ -2045,10 +2053,12 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
                                             /*is_fusion=*/true));
 
     for (int i = 0; i < fused_computation->num_parameters(); i++) {
+      auto fused_operand = fused_computation->parameter_instruction(i);
       fused_emitter.BindGenerator(
-          fused_computation->parameter_instruction(i),
-          [this, &ir_arrays, i](llvm_ir::IrArray::Index index) {
-            return ir_arrays[i].EmitReadArrayElement(index, &b_);
+          fused_operand, [this, &ir_arrays, i,
+                          fused_operand](const llvm_ir::IrArray::Index& index) {
+            return ir_arrays[i].EmitReadArrayElement(index, &b_,
+                                                     fused_operand->name());
           });
     }
 
@@ -2126,7 +2136,10 @@ Status IrEmitterUnnested::EmitExtraOutputsForReduce(
 
 Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
   TF_ASSIGN_OR_RETURN(auto mlir_input, GetMlirEmitterInput(reduce));
+  return EmitReduceFromMlir(mlir_input);
+}
 
+Status IrEmitterUnnested::EmitReduceFromMlir(MlirEmitterInput mlir_input) {
   if (GetHloOutputs(mlir_input.op).size() == 1 &&
       IsReductionFromOrToContiguousDimensions(mlir_input.op)) {
     return EmitReductionFromOrToContiguousDimensions(mlir_input);
@@ -2835,20 +2848,8 @@ IrEmitterUnnested::GetOrCreateSubComputationFromRegion(mlir::Region* region,
 }
 
 Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
-  MlirEmitterInput result;
-
-  TF_ASSIGN_OR_RETURN(auto sort_op, lhlo_scratch_emitter_->EmitOp(sort));
-  result.op = sort_op;
-  const auto& buffer_assignment = ir_emitter_context_->buffer_assignment();
-  auto& slice = result.extra_slice.emplace();
-  TF_ASSIGN_OR_RETURN(slice.buffer_slice,
-                      buffer_assignment.GetUniqueSlice(sort, {}));
-  slice.written = true;
-  slice.shape = sort->shape();
-
-  result.thunk_info = GetThunkInfo(sort);
-
-  return EmitSortFromMlir(result);
+  TF_ASSIGN_OR_RETURN(auto mlir_input, GetMlirEmitterInput(sort));
+  return EmitSortFromMlir(mlir_input);
 }
 
 Status IrEmitterUnnested::EmitSortFromMlir(MlirEmitterInput mlir_input) {
@@ -4170,8 +4171,9 @@ void IrEmitterUnnested::EmitTileElementForFusion(
       };
     } else {
       auto array = operand_arrays[i];
-      gen = [this, array](llvm_ir::IrArray::Index index) {
-        return array.EmitReadArrayElement(index, &b_);
+      auto name = fused_computation->parameter_instruction(i)->name();
+      gen = [this, array, name](const llvm_ir::IrArray::Index& index) {
+        return array.EmitReadArrayElement(index, &b_, name);
       };
     }
     fused_emitter.BindGenerator(fused_computation->parameter_instruction(i),
@@ -4867,7 +4869,7 @@ void IrEmitterUnnested::EmitHlo021Tile(
       VLOG(3) << "Added shmem buffer for parameter " << id << ": "
               << llvm_ir::DumpToString(*param_shmem_buffers[id]);
       Shape reduced_shape = ShapeUtil::MakeShapeWithDescendingLayout(
-          param_shape.element_type(), Permute({0, 2, 1}, reduced_output_dims));
+          param_shape.element_type(), Permute(reduced_output_dims, {0, 2, 1}));
       param_in_reduced_shape_arrays.push_back(
           param_arrays[id].CastToShape(reduced_shape, &b_));
     } else {
@@ -4902,8 +4904,8 @@ void IrEmitterUnnested::EmitHlo021Tile(
         if (!tiled_param_ids.empty()) {
           // Calculate the input tile origin from the output tile origin.
           const IrArray::Index input_tile_origin(
-              Permute({0, 2, 1}, index.multidim()),
-              Permute({0, 2, 1}, index.dims()), index.GetType());
+              Permute(index.multidim(), {0, 2, 1}),
+              Permute(index.dims(), {0, 2, 1}), index.GetType());
 
           // Copy input parameter values to shared memory buffers:
           // tile[thread_id_y, thread_id_x] = input[index]
@@ -5626,10 +5628,12 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
     CHECK_LT(fused_computation->num_parameters(), ir_arrays.size());
     for (int i = 0; i < fused_computation->num_parameters(); i++) {
       auto ir_array = ir_arrays[i];
+      auto fused_operand = fused_computation->parameter_instruction(i);
       fused_emitter->BindGenerator(
-          fused_computation->parameter_instruction(i),
-          [this, ir_array](llvm_ir::IrArray::Index index) {
-            return ir_array.EmitReadArrayElement(index, &b_);
+          fused_operand, [this, ir_array,
+                          fused_operand](const llvm_ir::IrArray::Index& index) {
+            return ir_array.EmitReadArrayElement(index, &b_,
+                                                 fused_operand->name());
           });
     }
     result_ir_arrays = absl::MakeSpan(ir_arrays).subspan(
@@ -5855,6 +5859,12 @@ void MlirEmitterContext::SetOperation(mlir::Operation* op) {
   for (auto output : outputs) {
     output_shapes.push_back(TypeToShape(output.getType()));
   }
+}
+
+Status IrEmitterUnnested::HandleBitcast(HloInstruction* bitcast) {
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(bitcast));
+  DCHECK_EQ(nullptr, input.op);
+  return Status::OK();
 }
 
 }  // namespace gpu

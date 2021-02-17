@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -601,8 +602,8 @@ Status ShapeVerifier::HandleConstant(HloInstruction* constant) {
                     /*only_compare_minor_to_major_in_layout=*/true);
 }
 
-Status ShapeVerifier::HandleIota(HloInstruction* instruction) {
-  auto* iota = Cast<HloIotaInstruction>(instruction);
+Status ShapeVerifier::HandleIota(HloInstruction* hlo) {
+  auto* iota = Cast<HloIotaInstruction>(hlo);
   if (!iota->shape().IsArray()) {
     return InternalError("Iota does not support non-array result.");
   }
@@ -1077,6 +1078,8 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kConstant:
+    case HloOpcode::kConvolution:
+    case HloOpcode::kDot:
     case HloOpcode::kAllReduce:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCopyStart:
@@ -1862,9 +1865,9 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     TF_RET_CHECK(shape.dimensions().size() ==
                  transpose->operand(0)->shape().dimensions().size());
     TF_RET_CHECK(std::equal(
-        operand->shape().dimensions().begin(),
-        operand->shape().dimensions().end(),
-        Permute(transpose->dimensions(), shape.dimensions()).begin()))
+        shape.dimensions().begin(), shape.dimensions().end(),
+        Permute(operand->shape().dimensions(), transpose->dimensions())
+            .begin()))
         << "shape: " << shape << ", operand->shape(): " << shape
         << ", dimensions: {" << absl::StrJoin(transpose->dimensions(), ", ")
         << "}";

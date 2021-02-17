@@ -36,6 +36,11 @@ Status GenerateResourceSharedNameIfEmpty(
 stream_executor::port::StatusOr<GraphDef> RunGrappler(
     const MetaGraphDef& meta_graph_def);
 
+// Upgrade the `graph` and `flib_def` by applying control flow
+// functionalization.
+Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def,
+                          bool restrict_functionalization_to_tpu_nodes);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_UPGRADE_GRAPH_H_

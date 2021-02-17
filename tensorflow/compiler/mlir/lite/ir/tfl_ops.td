@@ -905,6 +905,8 @@ def TFL_ExternalConstOp : Op<TFL_Dialect, "external_const", [NoSideEffect]> {
 }
 
 def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0> {
+  let hasCanonicalizer = 1;
+
   let extraClassDeclaration = [{
     // AffineQuantizedOpInterface:
     int GetChannelDimIndex() { return 0; }
@@ -973,6 +975,8 @@ def TFL_DepthwiseConv2DOp :
     I32Attr:$depth_multiplier
   );
 
+  let hasCanonicalizer = 1;
+
   let extraClassDeclaration = [{
     // AffineQuantizedOpInterface:
     int GetChannelDimIndex() { return 3; }
@@ -1019,6 +1023,8 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
   let verifier = [{ return Verify(*this); }];
 
   let hasOptions = 1;
+
+  let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
     // AffineQuantizedOpInterface:
@@ -3488,6 +3494,10 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
   let hasOptions = 1;
 }
 
+// If there is a change in supporting more types in the TFLite cast op kernel,
+// the While loop outline pass should be updated since it inserts cast op(s)
+// after the TF -> TFL legalization pass is done.
+// LINT.IfChange
 def TFL_CastOp : TFL_Op<"cast", [
     NoSideEffect,
     SameOperandsAndResultShape,
@@ -3510,6 +3520,7 @@ def TFL_CastOp : TFL_Op<"cast", [
 
   let hasFolder = 1;
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/transforms/while_loop_outline.cc)
 
 def TFL_MirrorPadOp: TFL_Op<"mirror_pad", [
                      NoSideEffect, TFL_OperandHasRank<1, 2>]> {
@@ -3929,6 +3940,8 @@ Ba et al. 'Layer Normalization'
   let regions = (region AnyRegion:$internal);
 
   let hasOptions = 1;
+
+  let hasCanonicalizer = 1;
 
   let verifier = [{ return Verify(*this); }];
 
@@ -4681,6 +4694,69 @@ def TFL_Conv3DOp : TFL_Op<"conv_3d", [
   let hasOptions = 1;
 
   let customOption = "Conv3DOptions";
+}
+
+def TFL_ComplexAbsOp : TFL_Op<"complex_abs", [
+  NoSideEffect,
+  SameOperandsAndResultShape]> {
+  let summary = "Computes the complex absolute value of a tensor.";
+
+  let description = [{
+Given a tensor `x` of complex numbers, this operation returns a tensor of type
+`float` or `double` that is the absolute value of each element in `x`. All
+elements in `x` must be complex numbers of the form \\(a + bj\\). The absolute
+value is computed as \\( \sqrt{a^2 + b^2}\\).
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[Complex<F<32>>, Complex<F<64>>]>:$input
+  );
+
+  let results = (outs
+    TFL_TensorOf<[F32, F64]>:$output
+  );
+}
+
+def TFL_RealOp : TFL_Op<"real", [
+  NoSideEffect,
+  SameOperandsAndResultShape]> {
+  let summary = "Returns the real part of a complex number.";
+
+  let description = [{
+Given a tensor `input` of complex numbers, this operation returns a tensor of
+type `float` that is the real part of each element in `input`. All elements in
+`input` must be complex numbers of the form \\(a + bj\\), where *a* is the real
+ part returned by this operation and *b* is the imaginary part.
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[Complex<F<32>>, Complex<F<64>>]>:$input
+  );
+
+  let results = (outs
+    TFL_TensorOf<[F32, F64]>:$output
+  );
+}
+
+def TFL_ImagOp : TFL_Op<"imag", [
+  NoSideEffect,
+  SameOperandsAndResultShape]> {
+  let summary = "Returns the imaginary part of a complex number.";
+
+  let description = [{
+Given a tensor `input` of complex numbers, this operation returns a tensor of
+type `float` that is the imaginary part of each element in `input`. All
+elements in `input` must be complex numbers of the form \\(a + bj\\), where *a*
+is the real part and *b* is the imaginary part returned by this operation.
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[Complex<F<32>>, Complex<F<64>>]>:$input
+  );
+
+  let results = (outs
+    TFL_TensorOf<[F32, F64]>:$output
+  );
 }
 
 #endif // TFL_OPS

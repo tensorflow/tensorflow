@@ -996,22 +996,17 @@ void TFE_ContextEndStep(TFE_Context* ctx) {
 }
 
 const TFE_OpAttrs* TFE_OpGetAttrs(const TFE_Op* op) {
-  return tensorflow::wrap(
-      &OperationFromInterface(tensorflow::unwrap(op))->Attrs());
+  return tensorflow::wrap(tensorflow::unwrap(op)->GetOpAttrs());
 }
 
 void TFE_OpAddAttrs(TFE_Op* op, const TFE_OpAttrs* attrs) {
-  tensorflow::EagerOperation* operation =
-      OperationFromInterface(tensorflow::unwrap(op));
-  tensorflow::AttrBuilder* destination = operation->MutableAttrs();
-  destination->CopyAttributes(*tensorflow::unwrap(attrs));
+  tensorflow::unwrap(op)->AddAttrs(tensorflow::unwrap(attrs));
 }
 
 void TFE_OpAttrsSerialize(const TFE_OpAttrs* attrs, TF_Buffer* buf,
                           TF_Status* status) {
   tensorflow::NameAttrList name_and_attrs;
-  tensorflow::unwrap(attrs)->FillAttrValueMap(name_and_attrs.mutable_attr());
-  name_and_attrs.set_name(tensorflow::unwrap(attrs)->op_name());
+  tensorflow::unwrap(attrs)->GetNameAttrList(&name_and_attrs);
   status->status = MessageToBuffer(name_and_attrs, buf);
 }
 

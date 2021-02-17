@@ -454,7 +454,7 @@ Before we begin, you'll need the following:
 
 - STM32F7 discovery kit board
 - Mini-USB cable
-- ARM Mbed CLI ([installation instructions](https://os.mbed.com/docs/mbed-os/v5.12/tools/installation-and-setup.html))
+- ARM Mbed CLI ([installation instructions](https://os.mbed.com/docs/mbed-os/v5.12/tools/installation-and-setup.html). Check it out for MacOS Catalina - [mbed-cli is broken on MacOS Catalina #930](https://github.com/ARMmbed/mbed-cli/issues/930#issuecomment-660550734))
 - Python 2.7 and pip
 
 Since Mbed requires a special folder structure for projects, we'll first run a

@@ -86,7 +86,7 @@ class BandedTriangularSolveOpTest(test.TestCase):
         a_np = np.tile(a_np, batch_dims + [1, 1])
         b = np.tile(b, batch_dims + [1, 1])
 
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         a_tf = a
         b_tf = b
         if use_placeholder:
@@ -199,7 +199,7 @@ class BandedTriangularSolveOpTest(test.TestCase):
     # right-hand sides.
     matrix = np.array([[1., 1.], [1., 1.]])
     rhs = np.array([[1., 0.]])
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       with self.assertRaises(ValueError):
         self._verifySolve(matrix, rhs)
       with self.assertRaises(ValueError):
@@ -208,7 +208,7 @@ class BandedTriangularSolveOpTest(test.TestCase):
     # Number of bands exceeds the dimension of the matrix.
     matrix = np.ones((6, 4))
     rhs = np.ones((4, 2))
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       with self.assertRaises(ValueError):
         self._verifySolve(matrix, rhs)
       with self.assertRaises(ValueError):

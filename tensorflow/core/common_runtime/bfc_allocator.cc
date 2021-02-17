@@ -1032,9 +1032,9 @@ void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
           (c->in_use() ? "InUse" : "Free "), " at ",
           strings::Hex(reinterpret_cast<uint64>(c->ptr)), " of size ", c->size);
       if (ShouldRecordOpName()) {
-        strings::StrAppend(
-            &buf, " by op ", c->op_name ? string(c->op_name) : "UNKNOWN",
-            " action_count ", c->action_count, " step ", c->step_id);
+        strings::StrAppend(&buf, " by op ", c->GetDebugOpName(),
+                           " action_count ", c->action_count, " step ",
+                           c->step_id);
       }
       strings::StrAppend(&buf, " next ", c->next);
       if (timing_counter_) {
@@ -1125,7 +1125,7 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
       mc->set_size(c->size);
       mc->set_requested_size(c->requested_size);
       mc->set_bin(c->bin_num);
-      mc->set_op_name(c->op_name ? string(c->op_name) : "UNKNOWN");
+      mc->set_op_name(c->GetDebugOpName());
       mc->set_step_id(c->step_id);
       mc->set_action_count(c->action_count);
       if (timing_counter_) {

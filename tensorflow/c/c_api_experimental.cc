@@ -658,6 +658,7 @@ void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
       c.SetInput(i, c.UnknownShape());
       continue;
     }
+    dims.reserve(input_shape.num_dims);
     for (int j = 0; j < input_shape.num_dims; ++j) {
       dims.push_back(c.MakeDim(input_shape.dims[j]));
     }

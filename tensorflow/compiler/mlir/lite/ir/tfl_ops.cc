@@ -147,6 +147,41 @@ bool IsI64Type(Type element_type) {
   return element_type.isInteger(64) && !element_type.isUnsignedInteger();
 }
 
+// Return true if the value is a splat tensor constant zero.
+bool EqualsZero(Value value) {
+  DenseElementsAttr constant;
+  if (!matchPattern(value, m_Constant(&constant)) || !constant.isSplat()) {
+    return false;
+  }
+
+  Type element_type = value.getType().cast<ShapedType>().getElementType();
+  if (element_type.isa<FloatType>()) {
+    return constant.getSplatValue<APFloat>().isZero();
+  } else {
+    return false;
+  }
+}
+
+// Replaces the bias operand with a "none" type value if the bias value is
+// constant zero.
+// `ConcreteOpType` must be an concrete MLIR op class that has an optional
+// bias operand named 'bias'.
+template <typename ConcreteOpType>
+struct RemoveOptionalZeroBias : public OpRewritePattern<ConcreteOpType> {
+  using OpRewritePattern<ConcreteOpType>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ConcreteOpType op,
+                                PatternRewriter &rewriter) const override {
+    if (EqualsZero(op.bias())) {
+      auto none_value = rewriter.create<mlir::ConstantOp>(
+          rewriter.getUnknownLoc(), rewriter.getUnitAttr());
+      op.biasMutable().assign(none_value);
+    }
+
+    return success();
+  }
+};
+
 // Return true if the given Add operation has the CPU kernel supported shapes.
 bool VerifyAddOpShapeConstraints(AddOp op) {
   auto element_type = getElementTypeOrSelf(op.output().getType());
@@ -797,6 +832,33 @@ LogicalResult Verify(FullyConnectedOp op) {
   }
 
   return mlir::success();
+}
+
+void FullyConnectedOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<RemoveOptionalZeroBias<FullyConnectedOp>>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// Conv2DOp
+//===----------------------------------------------------------------------===//
+
+void Conv2DOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                           MLIRContext *context) {
+  // TODO(b/180121750): Enable the pattern after the integration tests are
+  // fixed.
+  // results.insert<RemoveOptionalZeroBias<Conv2DOp>>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// DepthwiseConv2DO
+//===----------------------------------------------------------------------===//
+
+void DepthwiseConv2DOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  // TODO(b/180121750): Enable the pattern after the integration tests are
+  // fixed.
+  // results.insert<RemoveOptionalZeroBias<DepthwiseConv2DOp>>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1900,6 +1962,38 @@ static LogicalResult Verify(LSTMOp op) {
   }
 
   return success();
+}
+
+namespace {
+
+// Replaces the optional bias operands with a "none" type value if the bias
+// values are constant zeros.
+struct RemoveLSTMOpZeroBias : public OpRewritePattern<LSTMOp> {
+  using OpRewritePattern<LSTMOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LSTMOp op,
+                                PatternRewriter &rewriter) const override {
+    if (EqualsZero(op.input_gate_bias())) {
+      auto none_value = rewriter.create<mlir::ConstantOp>(
+          rewriter.getUnknownLoc(), rewriter.getUnitAttr());
+      op.input_gate_biasMutable().assign(none_value);
+    }
+
+    if (EqualsZero(op.projection_bias())) {
+      auto none_value = rewriter.create<mlir::ConstantOp>(
+          rewriter.getUnknownLoc(), rewriter.getUnitAttr());
+      op.projection_biasMutable().assign(none_value);
+    }
+
+    return success();
+  }
+};
+
+}  // namespace
+
+void LSTMOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                         MLIRContext *context) {
+  results.insert<RemoveLSTMOpZeroBias>(context);
 }
 
 //===----------------------------------------------------------------------===//

@@ -161,8 +161,8 @@ Status RoundRobinTaskRunner::PreparePartialRound()
   current_round_ = first_round_;
   new_round_cv_.notify_all();
   // Indicates that we need a partial round to get consumers back in sync.
-  auto next_round_request = *(requests_[first_round_ + 1].begin());
-  if (next_round_request->skipped_previous_round()) {
+  auto next_round_request = *(requests_[first_round_ + 1].begin()->second);
+  if (next_round_request.skipped_previous_round()) {
     VLOG(1) << "Skipping partial round";
     round_skipped_ = true;
     return Status::OK();
@@ -174,10 +174,13 @@ Status RoundRobinTaskRunner::PreparePartialRound()
 
 Status RoundRobinTaskRunner::PrepareRound(const GetElementRequest& req) {
   mutex_lock l(mu_);
-  absl::flat_hash_set<const GetElementRequest*>& round =
-      requests_[req.round_index()];
   first_round_ = std::min(first_round_, req.round_index());
-  round.insert(&req);
+  absl::flat_hash_map<int64, const GetElementRequest*>& round =
+      requests_[req.round_index()];
+  round[req.consumer_index()] = &req;
+  auto cleanup = gtl::MakeCleanup([&]() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    requests_[req.round_index()].erase(req.consumer_index());
+  });
   if (current_round_ < req.round_index() && round.size() == num_consumers_) {
     current_round_ = req.round_index();
     int64 wait_us = kWaitBeforeSkipUs;

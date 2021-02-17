@@ -8389,7 +8389,7 @@ def TF_MinimumOp : TF_Op<"Minimum", [NoSideEffect, ResultsBroadcastableShape, TF
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_MirrorPadOp : TF_Op<"MirrorPad", [NoSideEffect]> {
+def TF_MirrorPadOp : TF_Op<"MirrorPad", [NoSideEffect, TF_OperandHasRank<1, 2>]> {
   let summary = "Pads a tensor with mirrored values.";
 
   let description = [{
@@ -8436,7 +8436,7 @@ rows must be the same as the rank of `input`.}]>:$paddings,
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_MirrorPadGradOp : TF_Op<"MirrorPadGrad", [NoSideEffect]> {
+def TF_MirrorPadGradOp : TF_Op<"MirrorPadGrad", [NoSideEffect, TF_OperandHasRank<1, 2>]> {
   let summary = [{
 Gradient op for `MirrorPad` op. This op folds a mirror-padded tensor.
   }];
@@ -9315,7 +9315,7 @@ This is the opposite of `unpack`.
   let hasFolder = 1;
 }
 
-def TF_PadOp : TF_Op<"Pad", [NoSideEffect, TF_FoldOperandsTransposeInterface]> {
+def TF_PadOp : TF_Op<"Pad", [NoSideEffect, TF_FoldOperandsTransposeInterface, TF_OperandHasRank<1, 2>]> {
   let summary = "Pads a tensor with zeros.";
 
   let description = [{
@@ -9363,7 +9363,7 @@ pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
   }];
 }
 
-def TF_PadV2Op : TF_Op<"PadV2", [NoSideEffect]> {
+def TF_PadV2Op : TF_Op<"PadV2", [NoSideEffect, TF_OperandHasRank<1, 2>]> {
   let summary = "Pads a tensor.";
 
   let description = [{
@@ -11823,6 +11823,44 @@ shape must be exactly the shape produced by the slice of `ref`.
   TF_DerivedOperandTypeAttr Index = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_RestoreOp : TF_Op<"Restore", []> {
+  let summary = "Restores a tensor from checkpoint files.";
+
+  let description = [{
+Reads a tensor stored in one or several files. If there are several files (for
+instance because a tensor was saved as slices), `file_pattern` may contain
+wildcard symbols (`*` and `?`) in the filename portion only, not in the
+directory portion.
+
+If a `file_pattern` matches several files, `preferred_shard` can be used to hint
+in which file the requested tensor is likely to be found. This op will first
+open the file at index `preferred_shard` in the list of matching files and try
+to restore tensors from that file.  Only if some tensors or tensor slices are
+not found in that first file, then the Op opens all the files. Setting
+`preferred_shard` to match the value passed as the `shard` input
+of a matching `Save` Op may speed up Restore.  This attribute only affects
+performance, not correctness.  The default value -1 means files are processed in
+order.
+
+See also `RestoreSlice`.
+  }];
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{Must have a single element. The pattern of the files from
+which we read the tensor.}]>:$file_pattern,
+    Arg<TF_StrTensor, [{Must have a single element. The name of the tensor to be
+restored.}]>:$tensor_name,
+
+    DefaultValuedAttr<I64Attr, "-1">:$preferred_shard
+  );
+
+  let results = (outs
+    Res<TF_Tensor, [{The restored tensor.}]>:$tensor
+  );
+
+  TF_DerivedResultTypeAttr dt = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_RestoreV2Op : TF_Op<"RestoreV2", []> {
   let summary = "Restores tensors from a V2 checkpoint.";
 
@@ -12608,6 +12646,27 @@ def TF_RiscDotOp : TF_Op<"RiscDot", [NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_RngReadAndSkipOp : TF_Op<"RngReadAndSkip", []> {
+  let summary = "Advance the counter of a counter-based RNG.";
+
+  let description = [{
+The state of the RNG after
+`rng_read_and_skip(n)` will be the same as that after `uniform([n])`
+(or any other distribution). The actual increment added to the
+counter is an unspecified implementation choice.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$resource,
+    TF_Int32Tensor:$alg,
+    TF_Uint64Tensor:$delta
+  );
+
+  let results = (outs
+    TF_Int64Tensor:$value
+  );
+}
+
 def TF_RollOp : TF_Op<"Roll", [NoSideEffect]> {
   let summary = "Rolls the elements of a tensor along an axis.";
 
@@ -12714,6 +12773,69 @@ is the corresponding input gradient.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_SaveOp : TF_Op<"Save", []> {
+  let summary = "Saves the input tensors to disk.";
+
+  let description = [{
+The size of `tensor_names` must match the number of tensors in `data`. `data[i]`
+is written to `filename` with name `tensor_names[i]`.
+
+See also `SaveSlices`.
+  }];
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{Must have a single element. The name of the file to which we write
+the tensor.}]>:$filename,
+    Arg<TF_StrTensor, [{Shape `[N]`. The names of the tensors to be saved.}]>:$tensor_names,
+    Arg<Variadic<TF_Tensor>, [{`N` tensors to save.}]>:$data
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<2>;
+}
+
+def TF_SaveSlicesOp : TF_Op<"SaveSlices", []> {
+  let summary = "Saves input tensors slices to disk.";
+
+  let description = [{
+This is like `Save` except that tensors can be listed in the saved file as being
+a slice of a larger tensor.  `shapes_and_slices` specifies the shape of the
+larger tensor and the slice that this tensor covers. `shapes_and_slices` must
+have as many elements as `tensor_names`.
+
+Elements of the `shapes_and_slices` input must either be:
+
+*  The empty string, in which case the corresponding tensor is
+   saved normally.
+*  A string of the form `dim0 dim1 ... dimN-1 slice-spec` where the
+   `dimI` are the dimensions of the larger tensor and `slice-spec`
+   specifies what part is covered by the tensor to save.
+
+`slice-spec` itself is a `:`-separated list: `slice0:slice1:...:sliceN-1`
+where each `sliceI` is either:
+
+*  The string `-` meaning that the slice covers all indices of this dimension
+*  `start,length` where `start` and `length` are integers.  In that
+   case the slice covers `length` indices starting at `start`.
+
+See also `Save`.
+  }];
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{Must have a single element. The name of the file to which we write the
+tensor.}]>:$filename,
+    Arg<TF_StrTensor, [{Shape `[N]`. The names of the tensors to be saved.}]>:$tensor_names,
+    Arg<TF_StrTensor, [{Shape `[N]`.  The shapes and slice specifications to use when
+saving the tensors.}]>:$shapes_and_slices,
+    Arg<Variadic<TF_Tensor>, [{`N` tensors to save.}]>:$data
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<3>;
 }
 
 def TF_SaveV2Op : TF_Op<"SaveV2", []> {
@@ -14907,6 +15029,32 @@ The outputs are a deterministic function of `shape` and `seed`.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tseed = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_StatelessRandomUniformFullIntV2Op : TF_Op<"StatelessRandomUniformFullIntV2", [NoSideEffect]> {
+  let summary = [{
+Outputs deterministic pseudorandom random integers from a uniform distribution.
+  }];
+
+  let description = [{
+The generated values are uniform integers covering the whole range of `dtype`.
+
+The outputs are a deterministic function of `shape`, `key`, `counter` and `alg`.
+  }];
+
+  let arguments = (ins
+    Arg<TF_I32OrI64Tensor, [{The shape of the output tensor.}]>:$shape,
+    Arg<TF_Uint64Tensor, [{Key for the counter-based RNG algorithm (shape uint64[1]).}]>:$key,
+    Arg<TF_Uint64Tensor, [{Initial counter for the counter-based RNG algorithm (shape uint64[2] or uint64[1] depending on the algorithm). If a larger vector is given, only the needed portion on the left (i.e. [:N]) will be used.}]>:$counter,
+    Arg<TF_Int32Tensor, [{The RNG algorithm (shape int32[]).}]>:$alg
+  );
+
+  let results = (outs
+    Res<TensorOf<[TF_Int32, TF_Int64, TF_Uint32, TF_Uint64]>, [{Random values with specified shape.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tshape = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 

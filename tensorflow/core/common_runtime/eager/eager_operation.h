@@ -127,6 +127,9 @@ class EagerOperation : public ImmediateExecutionOperation {
   Status InputLength(const char* input_name, int* length) override;
   Status OutputLength(const char* output_name, int* length) override;
 
+  const AbstractOpAttrs* GetOpAttrs() const override;
+  void AddAttrs(const AbstractOpAttrs* op_attrs) override;
+
   void SetStackTrace(ManagedStackTrace stack_trace) override {
     stack_trace_ = stack_trace;
   }

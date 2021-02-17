@@ -49,14 +49,13 @@ TEST(BlockingCounterTest, TestMultipleThread) {
 
 }  // namespace
 
-static void BM_BlockingCounter(int iters, int num_threads,
-                               int shards_per_thread) {
-  testing::StopTiming();
+static void BM_BlockingCounter(::testing::benchmark::State& state) {
+  int num_threads = state.range(0);
+  int shards_per_thread = state.range(1);
   std::unique_ptr<thread::ThreadPool> thread_pool(
       new thread::ThreadPool(Env::Default(), "test", num_threads));
   const int num_shards = num_threads * shards_per_thread;
-  testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     BlockingCounter bc(num_shards);
     for (int j = 0; j < num_threads; ++j) {
       thread_pool->Schedule([&bc, shards_per_thread] {
@@ -67,7 +66,6 @@ static void BM_BlockingCounter(int iters, int num_threads,
     }
     bc.Wait();
   }
-  testing::StopTiming();
 }
 
 BENCHMARK(BM_BlockingCounter)->RangePair(1, 12, 1, 1000);

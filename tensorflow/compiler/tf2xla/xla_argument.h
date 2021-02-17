@@ -119,6 +119,9 @@ struct XlaArgument {
   string ShapeHumanString() const;
 };
 
+// Returns true if any of `args` is an uninitialized resource variable.
+bool AnyUninitializedResourceArg(absl::Span<const XlaArgument> args);
+
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_XLA_ARGUMENT_H_
