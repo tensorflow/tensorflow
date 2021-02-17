@@ -1480,6 +1480,13 @@ Status ImporterBase::ConvertFunctionArgAndRets(
     const absl::InlinedVector<OutputTensor, 4>& arg_nodes,
     const absl::InlinedVector<OutputTensor, 4>& ret_nodes,
     const absl::InlinedVector<Node*, 4>& control_ret_nodes) {
+  // Store the arg/return attributes as a list rather than uniqueuing during
+  // construction.
+  llvm::SmallVector<mlir::NamedAttrList, 4> arg_attrs;
+  arg_attrs.resize(func.getNumArguments());
+  llvm::SmallVector<mlir::NamedAttrList, 4> ret_attrs;
+  ret_attrs.resize(func.getNumResults());
+
   auto set_attributes_on_func = [&](Node* node, int64_t index, bool is_arg) {
     for (const auto& node_attr : node->attrs()) {
       const auto& key = node_attr.first;
@@ -1495,9 +1502,10 @@ Status ImporterBase::ConvertFunctionArgAndRets(
                           ConvertAttributeValue(node_attr.second));
       std::string dialect_attribute = "tf." + key;
       if (is_arg) {
-        func.setArgAttr(index, dialect_attribute, converted_attr);
+        arg_attrs[index].set(dialect_attribute, converted_attr);
       } else {
         func.setResultAttr(index, dialect_attribute, converted_attr);
+        ret_attrs[index].set(dialect_attribute, converted_attr);
       }
     }
     return Status::OK();
@@ -1528,9 +1536,8 @@ Status ImporterBase::ConvertFunctionArgAndRets(
       control_use.getOwner()->eraseOperand(control_use.getOperandNumber());
 
     if (!arg_node.node->requested_device().empty())
-      func.setArgAttr(
-          i, "tf.device",
-          builder_.getStringAttr(arg_node.node->requested_device()));
+      arg_attrs[i].set("tf.device", builder_.getStringAttr(
+                                        arg_node.node->requested_device()));
 
     if (arg_node.node->IsArg()) {
       TF_RETURN_IF_ERROR(
@@ -1547,9 +1554,8 @@ Status ImporterBase::ConvertFunctionArgAndRets(
     auto* inst = node_values_[ret.node->id()];
     if (ret.node->IsRetval()) {
       if (!ret.node->requested_device().empty())
-        func.setResultAttr(
-            ret_and_idx.index(), "tf.device",
-            builder_.getStringAttr(ret.node->requested_device()));
+        ret_attrs[ret_and_idx.index()].set(
+            "tf.device", builder_.getStringAttr(ret.node->requested_device()));
       TF_RETURN_IF_ERROR(set_attributes_on_func(ret.node, ret_and_idx.index(),
                                                 /*is_arg=*/false));
       // Lookup the instruction inside the island
@@ -1586,6 +1592,16 @@ Status ImporterBase::ConvertFunctionArgAndRets(
   builder_.setInsertionPointToEnd(bb);
   builder_.create<mlir::ReturnOp>(mlir::UnknownLoc::get(context_),
                                   graph_op.getResults());
+
+  func.setAllArgAttrs(
+      llvm::to_vector<4>(llvm::map_range(arg_attrs, [&](NamedAttrList& list) {
+        return list.getDictionary(context_);
+      })));
+  func.setAllResultAttrs(
+      llvm::to_vector<4>(llvm::map_range(ret_attrs, [&](NamedAttrList& list) {
+        return list.getDictionary(context_);
+      })));
+
   return Status::OK();
 }
 
