@@ -30,6 +30,8 @@ TEST(TypeToTfLiteType, TypeMapsAreInverseOfEachOther) {
             typeToTfLiteType<TfLiteTypeToType<kTfLiteInt16>::Type>());
   EXPECT_EQ(kTfLiteInt32,
             typeToTfLiteType<TfLiteTypeToType<kTfLiteInt32>::Type>());
+  EXPECT_EQ(kTfLiteUInt32,
+            typeToTfLiteType<TfLiteTypeToType<kTfLiteUInt32>::Type>());
   EXPECT_EQ(kTfLiteFloat32,
             typeToTfLiteType<TfLiteTypeToType<kTfLiteFloat32>::Type>());
   EXPECT_EQ(kTfLiteUInt8,

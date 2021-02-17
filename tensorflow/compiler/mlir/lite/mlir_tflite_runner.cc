@@ -79,6 +79,8 @@ static std::string TfLiteTensorString(const TfLiteTensor& tensor) {
   switch (tensor.type) {
     case kTfLiteInt32:
       return TfLiteTypedTensorString<int32_t>(tensor);
+    case kTfLiteUInt32:
+      return TfLiteTypedTensorString<uint32_t>(tensor);
     case kTfLiteInt64:
       return TfLiteTypedTensorString<int64_t>(tensor);
     case kTfLiteFloat32:

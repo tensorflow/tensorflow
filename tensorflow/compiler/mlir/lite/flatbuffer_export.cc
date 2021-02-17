@@ -165,7 +165,8 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
       case 16:
         return tflite::TensorType_INT16;
       case 32:
-        return tflite::TensorType_INT32;
+        return itype.isUnsigned() ? tflite::TensorType_UINT32
+                                  : tflite::TensorType_INT32;
       case 64:
         return itype.isUnsigned() ? tflite::TensorType_UINT64
                                   : tflite::TensorType_INT64;

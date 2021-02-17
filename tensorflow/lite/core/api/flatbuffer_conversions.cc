@@ -851,6 +851,9 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
     case TensorType_INT32:
       *type = kTfLiteInt32;
       return kTfLiteOk;
+    case TensorType_UINT32:
+      *type = kTfLiteUInt32;
+      return kTfLiteOk;
     case TensorType_UINT8:
       *type = kTfLiteUInt8;
       return kTfLiteOk;
