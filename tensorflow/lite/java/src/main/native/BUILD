@@ -33,6 +33,7 @@ cc_library(
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/shims:common",
         "//tensorflow/lite/core/shims:framework",
+        "//tensorflow/lite/core/shims:jni_initialization",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
         "//tensorflow/lite/java/jni",
     ],
