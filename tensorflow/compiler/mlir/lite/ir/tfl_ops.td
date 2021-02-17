@@ -1026,6 +1026,8 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
 
   let hasCanonicalizer = 1;
 
+  let hasFolder = 1;
+
   let extraClassDeclaration = [{
     // AffineQuantizedOpInterface:
     int GetChannelDimIndex() { return 0; }
