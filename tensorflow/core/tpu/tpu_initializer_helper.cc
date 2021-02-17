@@ -42,7 +42,7 @@ bool TryAcquireTpuLock() {
     // if the TPU_HOST_BOUNDS env var is set, that means we are loading each
     // chip in a different process and thus multiple libtpu loads are OK.
     if (getenv("TPU_HOST_BOUNDS") == nullptr) {
-      int fd = open("/tmp/libtpu_lockfile", O_CREAT | O_RDWR);
+      int fd = open("/tmp/libtpu_lockfile", O_CREAT | O_RDWR, 0644);
 
       // This lock is held until the process exits intentionally. The underlying
       // TPU device will be held on until it quits.
