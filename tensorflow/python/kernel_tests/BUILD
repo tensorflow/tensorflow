@@ -2915,7 +2915,10 @@ cuda_py_test(
     name = "atrous_convolution_test",
     size = "medium",
     srcs = ["atrous_convolution_test.py"],
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "no_cuda_asan",
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
