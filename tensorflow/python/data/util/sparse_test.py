@@ -56,9 +56,7 @@ def _test_any_sparse_combinations():
         classes_fn=combinations.NamedObject(
             "classes_fn.{}".format(name), classes_fn
         ),
-        expected=combinations.NamedObject(
-            "expected.{}".format(name), expected
-        )
+        expected=expected
     )
 
   return functools.reduce(reduce_fn, cases, [])
@@ -415,7 +413,6 @@ class SparseTest(test_base.DatasetTestBase, parameterized.TestCase):
   )
   def testAnySparse(self, classes_fn, expected):
     classes = classes_fn()
-    expected = expected._obj # pylint: disable=protected-access
     self.assertEqual(sparse.any_sparse(classes), expected)
 
   def assertShapesEqual(self, a, b):
