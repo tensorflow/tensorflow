@@ -122,8 +122,7 @@ class RandomSeedTest(test_base.DatasetTestBase, parameterized.TestCase):
       )
   )
   def testRandomSeed(self, input_fn, output_fn):
-
-    tinput, toutput = input_fn(), output_fn() # pylint: disable=protected-access
+    tinput, toutput = input_fn(), output_fn()
     random_seed.set_random_seed(tinput[0])
     g_seed, op_seed = data_random_seed.get_seed(tinput[1])
     g_seed = self.evaluate(g_seed)
@@ -132,6 +131,20 @@ class RandomSeedTest(test_base.DatasetTestBase, parameterized.TestCase):
         tinput, (g_seed, op_seed), toutput)
     self.assertEqual((g_seed, op_seed), toutput, msg=msg)
     random_seed.set_random_seed(None)
+
+  @combinations.generate(test_base.graph_only_combinations())
+  def testIncrementalRandomSeed(self):
+    random_seed.set_random_seed(1)
+    for i in range(10):
+      tinput = (1, None)
+      toutput = (1, i)
+      random_seed.set_random_seed(tinput[0])
+      g_seed, op_seed = data_random_seed.get_seed(tinput[1])
+      g_seed = self.evaluate(g_seed)
+      op_seed = self.evaluate(op_seed)
+      msg = 'test_case = {0}, got {1}, want {2}'.format(
+          1, (g_seed, op_seed), toutput)
+      self.assertEqual((g_seed, op_seed), toutput, msg=msg)
 
 
 if __name__ == '__main__':
