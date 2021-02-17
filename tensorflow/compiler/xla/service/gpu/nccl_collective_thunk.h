@@ -73,8 +73,6 @@ struct NcclCollectiveConfig {
   int64 op_id;
 };
 
-NcclCollectiveConfig GetNcclCollectiveConfig(const HloInstruction* hlo,
-                                             int64 replica_count);
 
 template <typename OpT>
 NcclCollectiveConfig GetNcclCollectiveConfigForMlir(OpT op,

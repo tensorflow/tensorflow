@@ -53,28 +53,6 @@ NcclCollectiveConfig::~NcclCollectiveConfig() = default;
 NcclCollectiveConfig& NcclCollectiveConfig::operator=(NcclCollectiveConfig&&) =
     default;
 
-NcclCollectiveConfig GetNcclCollectiveConfig(const HloInstruction* hlo,
-                                             int64 replica_count) {
-  NcclCollectiveConfig config;
-  config.operand_count = hlo->operands().size();
-  config.operand_element_type.reserve(config.operand_count);
-  for (int i = 0; i < config.operand_count; i++) {
-    config.operand_element_type.push_back(
-        hlo->operand(i)->shape().element_type());
-  }
-  config.replica_count = replica_count;
-  config.replica_groups = hlo->replica_groups();
-
-  if (hlo->channel_id().has_value()) {
-    config.collective_op_kind = RendezvousKey::kCrossModule;
-    config.op_id = *hlo->channel_id();
-  } else {
-    config.collective_op_kind = RendezvousKey::kCrossReplica;
-    config.op_id = static_cast<int64>(hlo->GetModule()->unique_id());
-  }
-  return config;
-}
-
 /* static */ bool NcclCollectiveThunk::NcclIsEnabled() {
 #if XLA_ENABLE_XCCL
   return true;
