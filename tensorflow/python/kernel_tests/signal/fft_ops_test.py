@@ -84,7 +84,7 @@ class BaseFFTOpsTest(test.TestCase):
 
   @test.disable_with_predicate(pred=test.is_built_with_rocm,
                                skip_message='Complex datatype not '
-                                      'yet supported in ROCm.')
+                                            'yet supported in ROCm.')
   def _check_grad_complex(self, func, x, y, result_is_complex=True,
                           rtol=1e-2, atol=1e-2):
 
@@ -189,7 +189,7 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
                         (np.complex64, np.complex128)))
   @test.disable_with_predicate(pred=test.is_built_with_rocm,
                                skip_message='Complex datatype not '
-                                      'yet supported in ROCm.')
+                                            'yet supported in ROCm.')
   def test_basic(self, rank, extra_dims, np_type):
     dims = rank + extra_dims
     tol = 1e-4 if np_type == np.complex64 else 1e-8

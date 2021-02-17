@@ -429,7 +429,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
 
   @test.disable_with_predicate(pred=test.is_built_with_rocm,
                                skip_message='sparse-matrix-add op '
-                                      'not supported on ROCm')
+                                            'not supported on ROCm')
   @test_util.run_in_graph_and_eager_modes
   def testSparseMatrixAdd(self):
     if not self._gpu_available:
@@ -469,7 +469,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
 
   @test.disable_with_predicate(pred=test.is_built_with_rocm,
                                skip_message='sparse-matrix-add op '
-                                      'not supported on ROCm')
+                                            'not supported on ROCm')
   @test_util.run_in_graph_and_eager_modes
   def testLargeBatchSparseMatrixAdd(self):
     if not self._gpu_available:
@@ -594,7 +594,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
   # Re-enable it once the fix is available
   @test.disable_with_predicate(pred=test.is_built_with_rocm,
                                skip_message='hipSPARSE all failure '
-                                      'on the ROCm platform')
+                                            'on the ROCm platform')
   @test_util.run_in_graph_and_eager_modes
   def testLargeBatchSparseMatrixMatMulTransposed(self):
     dtypes_to_test = [np.float32]
@@ -654,7 +654,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
 
   @test.disable_with_predicate(pred=test.is_built_with_rocm,
                                skip_message='complex type is not '
-                                      'yet supported in ROCm')
+                                            'yet supported in ROCm')
   @test_util.run_in_graph_and_eager_modes
   def testLargeBatchSparseMatrixMatMulConjugate(self):
     sparsify = lambda m: m * (m > 0)
@@ -785,7 +785,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
 
   @test.disable_with_predicate(pred=test.is_built_with_rocm,
                                skip_message='sparse-matrix-add op is not '
-                                      'yet supported on ROCm')
+                                            'yet supported on ROCm')
   @test_util.run_in_graph_and_eager_modes
   def testLargeBatchRegisteredAddN(self):
     if not self._gpu_available:

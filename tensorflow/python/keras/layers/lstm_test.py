@@ -48,7 +48,7 @@ class LSTMLayerTest(keras_parameterized.TestCase):
 
   @test.disable_with_predicate(pred=test.is_built_with_rocm,
                                skip_message='Double type is yet'
-                                      'not supported in ROCm')
+                                            'not supported in ROCm')
   @testing_utils.run_v2_only
   def test_float64_LSTM(self):
     num_samples = 2
@@ -146,7 +146,7 @@ class LSTMLayerTest(keras_parameterized.TestCase):
   @parameterized.parameters([True, False])
   @test.disable_with_predicate(pred=test.is_built_with_rocm,
                                skip_message='Skipping the test as ROCm MIOpen '
-                                      'does not support padded input.')
+                                            'does not support padded input.')
   def test_with_masking_layer_LSTM(self, unroll):
     layer_class = keras.layers.LSTM
     inputs = np.random.random((2, 3, 4))
@@ -388,7 +388,7 @@ class LSTMLayerTest(keras_parameterized.TestCase):
 
   @test.disable_with_predicate(pred=test.is_built_with_rocm,
                                skip_message='Skipping the test as ROCm MIOpen '
-                                      'does not support padded input.')
+                                            'does not support padded input.')
   def test_statefulness_LSTM(self):
     num_samples = 2
     timesteps = 3

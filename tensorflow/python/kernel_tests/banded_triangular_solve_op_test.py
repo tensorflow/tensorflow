@@ -144,7 +144,7 @@ class BandedTriangularSolveOpTest(test.TestCase):
 
   @test.disable_with_predicate(pred=test.is_built_with_rocm,
                                skip_message='ROCm does not support BLAS '
-                                      'operations for complex types')
+                                            'operations for complex types')
   @test_util.run_deprecated_v1
   def testSolveComplex(self):
     # 1x1 matrix, single rhs.
@@ -183,7 +183,7 @@ class BandedTriangularSolveOpTest(test.TestCase):
 
   @test.disable_with_predicate(pred=test.is_built_with_rocm,
                                skip_message='ROCm does not support BLAS '
-                                      'operations for complex types')
+                                            'operations for complex types')
   @test_util.run_deprecated_v1
   def testSolveBatchComplex(self):
     matrix = np.array([[1., 2.], [3., 4.]]).astype(np.complex64)

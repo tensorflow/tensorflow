@@ -152,8 +152,8 @@ class GRUV2Test(keras_parameterized.TestCase):
 
   @test.disable_with_predicate(pred=test.is_built_with_rocm,
                                skip_message='Skipping the test as ROCm '
-                                      'MIOpen does not support '
-                                      'padded input yet.')
+                                            'MIOpen does not support '
+                                            'padded input yet.')
   @testing_utils.run_v2_only
   def test_gru_v2_feature_parity_with_canonical_gru(self):
     input_shape = 10
@@ -325,8 +325,8 @@ class GRUV2Test(keras_parameterized.TestCase):
 
   @test.disable_with_predicate(pred=test.is_built_with_rocm,
                                skip_message='Skipping the test as ROCm '
-                                      'MIOpen does not support '
-                                      'padded input yet.')
+                                            'MIOpen does not support '
+                                            'padded input yet.')
   def test_with_masking_layer_GRU(self):
     layer_class = rnn.GRU
     inputs = np.random.random((2, 3, 4))
@@ -341,8 +341,8 @@ class GRUV2Test(keras_parameterized.TestCase):
 
   @test.disable_with_predicate(pred=test.is_built_with_rocm,
                                skip_message='Skipping the test as ROCm '
-                                      'MIOpen does not support '
-                                      'padded input yet.')
+                                            'MIOpen does not support '
+                                            'padded input yet.')
   def test_masking_with_stacking_GRU(self):
     inputs = np.random.random((2, 3, 4))
     targets = np.abs(np.random.random((2, 3, 5)))
@@ -369,7 +369,7 @@ class GRUV2Test(keras_parameterized.TestCase):
 
   @test.disable_with_predicate(pred=test.is_built_with_rocm,
                                skip_message='Double type is not '
-                                      'yet supported in ROCm')
+                                            'yet supported in ROCm')
   @testing_utils.run_v2_only
   def test_float64_GRU(self):
     num_samples = 2
@@ -386,8 +386,8 @@ class GRUV2Test(keras_parameterized.TestCase):
 
   @test.disable_with_predicate(pred=test.is_built_with_rocm,
                                skip_message='Skipping the test as ROCm '
-                                      'MIOpen does not support '
-                                      'padded input yet.')
+                                            'MIOpen does not support '
+                                            'padded input yet.')
   def test_return_states_GRU(self):
     layer_class = rnn.GRU
     x = np.random.random((2, 3, 4))
@@ -470,8 +470,8 @@ class GRUV2Test(keras_parameterized.TestCase):
 
   @test.disable_with_predicate(pred=test.is_built_with_rocm,
                                skip_message='Skipping the test as ROCm '
-                                      'MIOpen does not support '
-                                      'padded input yet.')
+                                            'MIOpen does not support '
+                                            'padded input yet.')
   def test_statefulness_GRU(self):
     num_samples = 2
     timesteps = 3
@@ -569,8 +569,8 @@ class GRUV2Test(keras_parameterized.TestCase):
 
   @test.disable_with_predicate(pred=test.is_built_with_rocm,
                                skip_message='Skipping the test as ROCm '
-                                      'MIOpen does not support '
-                                      'padded input yet.')
+                                            'MIOpen does not support '
+                                            'padded input yet.')
   @testing_utils.run_v2_only
   def test_explicit_device_with_go_backward_and_mask(self):
     batch_size = 8
@@ -751,8 +751,8 @@ class GRUGraphRewriteTest(keras_parameterized.TestCase):
 
   @test.disable_with_predicate(pred=test.is_built_with_rocm,
                                skip_message='Skipping the test as ROCm '
-                                      'MIOpen does not support '
-                                      'padded input yet.')
+                                            'MIOpen does not support '
+                                            'padded input yet.')
   @testing_utils.run_v2_only
   def test_GRU_runtime_with_mask(self):
     # Masking will affect which backend is selected based on whether the mask

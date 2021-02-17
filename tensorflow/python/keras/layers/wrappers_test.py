@@ -1034,8 +1034,8 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
   @test.disable_with_predicate(pred=test.is_built_with_rocm,
                                skip_message='Skipping the test as ROCm '
-                                      'MIOpen does not support '
-                                      'padded input yet.')
+                                            'MIOpen does not support '
+                                            'padded input yet.')
   def test_Bidirectional_last_output_with_masking(self):
     rnn = keras.layers.LSTM
     samples = 2
@@ -1065,8 +1065,8 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters([keras.layers.LSTM, keras.layers.GRU])
   @test.disable_with_predicate(pred=test.is_built_with_rocm,
                                skip_message='Skipping the test as ROCm '
-                                      'MIOpen does not support '
-                                      'padded input yet.')
+                                            'MIOpen does not support '
+                                            'padded input yet.')
   def test_Bidirectional_sequence_output_with_masking(self, rnn):
     samples = 2
     dim = 5

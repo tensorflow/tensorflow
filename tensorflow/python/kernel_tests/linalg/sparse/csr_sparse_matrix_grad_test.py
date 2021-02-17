@@ -81,7 +81,7 @@ class CSRSparseMatrixGradTest(test.TestCase):
 
   @test.disable_with_predicate(pred=test.is_built_with_rocm,
                                skip_message='sparse-matrix-add op '
-                                      'not supported on ROCm')
+                                            'not supported on ROCm')
   @test_util.run_deprecated_v1
   def testLargeBatchSparseMatrixAddGrad(self):
     if not self._gpu_available:
