@@ -1160,6 +1160,7 @@ cc_library(
         "@llvm-project//llvm:Linker",
         "@llvm-project//mlir:CFGTransforms",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMIRModuleTranslation",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:TargetLLVMIR",
