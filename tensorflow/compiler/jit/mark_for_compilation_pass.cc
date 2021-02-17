@@ -1936,6 +1936,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "Qr",
                                      "QuantizeAndDequantizeV2",
                                      "QuantizeAndDequantizeV3",
+                                     "QuantizeAndDequantizeV4",
                                      "RFFT",
                                      "RFFT2D",
                                      "RFFT3D",

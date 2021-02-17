@@ -233,6 +233,7 @@ class QuantizeAndDequantizeV2Op : public QuantizeAndDequantizeOp {
 
 REGISTER_XLA_OP(Name("QuantizeAndDequantizeV2"), QuantizeAndDequantizeV2Op);
 REGISTER_XLA_OP(Name("QuantizeAndDequantizeV3"), QuantizeAndDequantizeOp);
+REGISTER_XLA_OP(Name("QuantizeAndDequantizeV4"), QuantizeAndDequantizeV2Op);
 
 }  // namespace
 }  // namespace tensorflow
