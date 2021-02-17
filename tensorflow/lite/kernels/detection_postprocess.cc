@@ -369,6 +369,9 @@ void DecreasingPartialArgSort(const float* values, int num_values,
 
 void DecreasingArgSort(const float* values, int num_values, int* indices) {
   std::iota(indices, indices + num_values, 0);
+
+  // We want here a stable sort, in order to get completely defined output.
+  // In this way TFL and TFLM can be bit-exact.
   std::stable_sort(
       indices, indices + num_values,
       [&values](const int i, const int j) { return values[i] > values[j]; });
