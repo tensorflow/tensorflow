@@ -56,43 +56,43 @@ def _test_flat_structure_combinations():
       (
           "Tensor",
           lambda: constant_op.constant(37.0),
-          tensor_spec.TensorSpec,
-          [dtypes.float32],
-          [[]]
+          lambda: tensor_spec.TensorSpec,
+          lambda: [dtypes.float32],
+          lambda: [[]]
       ),
       (
           "TensorArray",
           lambda: tensor_array_ops.TensorArray(
               dtype=dtypes.float32, element_shape=(3,),
               size=0),
-          tensor_array_ops.TensorArraySpec,
-          [dtypes.variant],
-          [[]]
+          lambda: tensor_array_ops.TensorArraySpec,
+          lambda: [dtypes.variant],
+          lambda: [[]]
       ),
       (
           "SparseTensor",
           lambda: sparse_tensor.SparseTensor(
               indices=[[3, 4]], values=[-1],
               dense_shape=[4, 5]),
-          sparse_tensor.SparseTensorSpec,
-          [dtypes.variant],
-          [None]
+          lambda: sparse_tensor.SparseTensorSpec,
+          lambda: [dtypes.variant],
+          lambda: [None]
       ),
       (
           "RaggedTensor",
           lambda: ragged_factory_ops.constant(
               [[1, 2], [], [4]]),
-          ragged_tensor.RaggedTensorSpec,
-          [dtypes.variant],
-          [None]
+          lambda: ragged_tensor.RaggedTensorSpec,
+          lambda: [dtypes.variant],
+          lambda: [None]
       ),
       (
           "Nested_0",
           lambda: (constant_op.constant(37.0),
                    constant_op.constant([1, 2, 3])),
-          tuple,
-          [dtypes.float32, dtypes.int32],
-          [[], [3]]
+          lambda: tuple,
+          lambda: [dtypes.float32, dtypes.int32],
+          lambda: [[], [3]]
       ),
       (
           "Nested_1",
@@ -100,9 +100,9 @@ def _test_flat_structure_combinations():
               "a": constant_op.constant(37.0),
               "b": constant_op.constant([1, 2, 3])
           },
-          dict,
-          [dtypes.float32, dtypes.int32],
-          [[], [3]]
+          lambda: dict,
+          lambda: [dtypes.float32, dtypes.int32],
+          lambda: [[], [3]]
       ),
       (
           "Nested_2",
@@ -114,25 +114,27 @@ def _test_flat_structure_combinations():
                       indices=[[3, 4]], values=[-1],
                       dense_shape=[4, 5]))
           },
-          dict,
-          [dtypes.float32, dtypes.variant, dtypes.variant],
-          [[], None, None]
+          lambda: dict,
+          lambda: [dtypes.float32, dtypes.variant, dtypes.variant],
+          lambda: [[], None, None]
       ),
   ]
   def reduce_fn(x, y):
-    name, value_fn, expected_structure, expected_types, expected_shapes = y
+    # workaround for long line
+    name, value_fn = y[:2]
+    expected_structure_fn, expected_types_fn, expected_shapes_fn = y[2:]
     return x + combinations.combine(
         value_fn=combinations.NamedObject(
             "value_fn.{}".format(name), value_fn
         ),
-        expected_structure=combinations.NamedObject(
-            "expected_structure.{}".format(name), expected_structure
+        expected_structure_fn=combinations.NamedObject(
+            "expected_structure_fn.{}".format(name), expected_structure_fn
         ),
-        expected_types=combinations.NamedObject(
-            "expected_types.{}".format(name), expected_types
+        expected_types_fn=combinations.NamedObject(
+            "expected_types_fn.{}".format(name), expected_types_fn
         ),
-        expected_shapes=combinations.NamedObject(
-            "expected_shapes.{}".format(name), expected_shapes
+        expected_shapes_fn=combinations.NamedObject(
+            "expected_shapes_fn.{}".format(name), expected_shapes_fn
         )
     )
 
@@ -330,26 +332,23 @@ def _test_structure_from_value_equality_combinations():
 def _test_ragged_structure_inequality_combinations():
   cases = [
       (
-          "RaggedTensor_RaggedRank",
           ragged_tensor.RaggedTensorSpec(None, dtypes.int32, 1),
           ragged_tensor.RaggedTensorSpec(None, dtypes.int32, 2)
       ),
       (
-          "RaggedTensor_Shape",
           ragged_tensor.RaggedTensorSpec([3, None], dtypes.int32, 1),
           ragged_tensor.RaggedTensorSpec([5, None], dtypes.int32, 1)
       ),
       (
-          "RaggedTensor_DType",
           ragged_tensor.RaggedTensorSpec(None, dtypes.int32, 1),
           ragged_tensor.RaggedTensorSpec(None, dtypes.float32, 1)
       ),
   ]
   def reduce_fn(x, y):
-    name, spec1, spec2 = y
+    spec1, spec2 = y
     return x + combinations.combine(
-        spec1=combinations.NamedObject("spec1.{}".format(name), spec1),
-        spec2=combinations.NamedObject("spec2.{}".format(name), spec2),
+        spec1=spec1,
+        spec2=spec2
     )
 
   return functools.reduce(reduce_fn, cases, [])
@@ -468,21 +467,18 @@ def _test_round_trip_conversion_combinations():
 def _test_convert_legacy_structure_combinations():
   cases = [
       (
-          "Tensor",
           dtypes.float32,
           tensor_shape.TensorShape([]),
           ops.Tensor,
           tensor_spec.TensorSpec([], dtypes.float32)
       ),
       (
-          "SparseTensor",
           dtypes.int32,
           tensor_shape.TensorShape([2, 2]),
           sparse_tensor.SparseTensor,
           sparse_tensor.SparseTensorSpec([2, 2], dtypes.int32)
       ),
       (
-          "TensorArray_0",
           dtypes.int32,
           tensor_shape.TensorShape(
               [None, True, 2, 2]),
@@ -492,7 +488,6 @@ def _test_convert_legacy_structure_combinations():
               infer_shape=True)
       ),
       (
-          "TensorArray_1",
           dtypes.int32,
           tensor_shape.TensorShape([True, None, 2, 2]),
           tensor_array_ops.TensorArray,
@@ -501,7 +496,6 @@ def _test_convert_legacy_structure_combinations():
               infer_shape=None)
       ),
       (
-          "TensorArray_2",
           dtypes.int32,
           tensor_shape.TensorShape([True, False, 2, 2]),
           tensor_array_ops.TensorArray,
@@ -510,7 +504,6 @@ def _test_convert_legacy_structure_combinations():
               infer_shape=False)
       ),
       (
-          "RaggedTensor",
           dtypes.int32,
           tensor_shape.TensorShape([2, None]),
           ragged_tensor.RaggedTensorSpec(
@@ -519,7 +512,6 @@ def _test_convert_legacy_structure_combinations():
               [2, None], dtypes.int32, 1)
       ),
       (
-          "Nested",
           {
               "a": dtypes.float32,
               "b": (dtypes.int32, dtypes.string)
@@ -542,20 +534,12 @@ def _test_convert_legacy_structure_combinations():
       )
   ]
   def reduce_fn(x, y):
-    name, output_types, output_shapes, output_classes, expected_structure = y
+    output_types, output_shapes, output_classes, expected_structure = y
     return x + combinations.combine(
-        output_types=combinations.NamedObject(
-            "output_types.{}".format(name), output_types
-        ),
-        output_shapes=combinations.NamedObject(
-            "output_shapes.{}".format(name), output_shapes
-        ),
-        output_classes=combinations.NamedObject(
-            "output_classes.{}".format(name), output_classes
-        ),
-        expected_structure=combinations.NamedObject(
-            "expected_structure.{}".format(name), expected_structure
-        )
+        output_types=output_types,
+        output_shapes=output_shapes,
+        output_classes=output_classes,
+        expected_structure=expected_structure
     )
 
   return functools.reduce(reduce_fn, cases, [])
@@ -563,43 +547,36 @@ def _test_convert_legacy_structure_combinations():
 def _test_batch_combinations():
   cases = [
       (
-          "Tensor",
           tensor_spec.TensorSpec([], dtypes.float32),
           32,
           tensor_spec.TensorSpec([32], dtypes.float32)
       ),
       (
-          "TensorUnknown",
           tensor_spec.TensorSpec([], dtypes.float32),
           None,
           tensor_spec.TensorSpec([None], dtypes.float32)
       ),
       (
-          "SparseTensor",
           sparse_tensor.SparseTensorSpec([None], dtypes.float32),
           32,
           sparse_tensor.SparseTensorSpec([32, None], dtypes.float32)
       ),
       (
-          "SparseTensorUnknown",
           sparse_tensor.SparseTensorSpec([4], dtypes.float32),
           None,
           sparse_tensor.SparseTensorSpec([None, 4], dtypes.float32)
       ),
       (
-          "RaggedTensor",
           ragged_tensor.RaggedTensorSpec([2, None], dtypes.float32, 1),
           32,
           ragged_tensor.RaggedTensorSpec([32, 2, None], dtypes.float32, 2)
       ),
       (
-          "RaggedTensorUnknown",
           ragged_tensor.RaggedTensorSpec([4, None], dtypes.float32, 1),
           None,
           ragged_tensor.RaggedTensorSpec([None, 4, None], dtypes.float32, 2)
       ),
       (
-          "Nested",
           {
               "a":
                   tensor_spec.TensorSpec([], dtypes.float32),
@@ -622,18 +599,11 @@ def _test_batch_combinations():
       ),
   ]
   def reduce_fn(x, y):
-    name, element_structure, batch_size, expected_batched_structure = y
+    element_structure, batch_size, expected_batched_structure = y
     return x + combinations.combine(
-        element_structure=combinations.NamedObject(
-            "element_structure.{}".format(name), element_structure
-        ),
-        batch_size=combinations.NamedObject(
-            "batch_size.{}".format(name), batch_size
-        ),
-        expected_batched_structure=combinations.NamedObject(
-            "expected_batched_structure.{}".format(name),
-            expected_batched_structure
-        )
+        element_structure=element_structure,
+        batch_size=batch_size,
+        expected_batched_structure=expected_batched_structure
     )
 
   return functools.reduce(reduce_fn, cases, [])
@@ -641,37 +611,30 @@ def _test_batch_combinations():
 def _test_unbatch_combinations():
   cases = [
       (
-          "Tensor",
           tensor_spec.TensorSpec([32], dtypes.float32),
           tensor_spec.TensorSpec([], dtypes.float32)
       ),
       (
-          "TensorUnknown",
           tensor_spec.TensorSpec([None], dtypes.float32),
           tensor_spec.TensorSpec([], dtypes.float32)
       ),
       (
-          "SparseTensor",
           sparse_tensor.SparseTensorSpec([32, None], dtypes.float32),
           sparse_tensor.SparseTensorSpec([None], dtypes.float32)
       ),
       (
-          "SparseTensorUnknown",
           sparse_tensor.SparseTensorSpec([None, 4], dtypes.float32),
           sparse_tensor.SparseTensorSpec([4], dtypes.float32)
       ),
       (
-          "RaggedTensor",
           ragged_tensor.RaggedTensorSpec([32, None, None], dtypes.float32, 2),
           ragged_tensor.RaggedTensorSpec([None, None], dtypes.float32, 1)
       ),
       (
-          "RaggedTensorUnknown",
           ragged_tensor.RaggedTensorSpec([None, None, None], dtypes.float32, 2),
           ragged_tensor.RaggedTensorSpec([None, None], dtypes.float32, 1)
       ),
       (
-          "Nested",
           {
               "a": tensor_spec.TensorSpec([128], dtypes.float32),
               "b": (sparse_tensor.SparseTensorSpec([128, 2, 2], dtypes.int32),
@@ -685,15 +648,10 @@ def _test_unbatch_combinations():
       ),
   ]
   def reduce_fn(x, y):
-    name, element_structure, expected_unbatched_structure = y
+    element_structure, expected_unbatched_structure = y
     return x + combinations.combine(
-        element_structure=combinations.NamedObject(
-            "element_structure.{}".format(name), element_structure
-        ),
-        expected_unbatched_structure=combinations.NamedObject(
-            "expected_unbatched_structure.{}".format(name),
-            expected_unbatched_structure
-        )
+        element_structure=element_structure,
+        expected_unbatched_structure=expected_unbatched_structure
     )
 
   return functools.reduce(reduce_fn, cases, [])
@@ -755,12 +713,12 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
           _test_flat_structure_combinations()
       )
   )
-  def testFlatStructure(self, value_fn, expected_structure,
-                        expected_types, expected_shapes):
-    expected_structure = expected_structure._obj
-    expected_types = expected_types._obj
-    expected_shapes = expected_shapes._obj
+  def testFlatStructure(self, value_fn, expected_structure_fn,
+                        expected_types_fn, expected_shapes_fn):
     value = value_fn()
+    expected_structure = expected_structure_fn()
+    expected_types = expected_types_fn()
+    expected_shapes = expected_shapes_fn()
     s = structure.type_spec_from_value(value)
     self.assertIsInstance(s, expected_structure)
     flat_types = structure.get_flat_tensor_types(s)
@@ -829,8 +787,6 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
       )
   )
   def testRaggedStructureInequality(self, spec1, spec2):
-    spec1 = spec1._obj
-    spec2 = spec2._obj
     # pylint: disable=g-generic-assert
     self.assertNotEqual(spec1, spec2)  # check __ne__ operator.
     self.assertFalse(spec1 == spec2)  # check __eq__ operator.
@@ -1086,10 +1042,6 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
   )
   def testConvertLegacyStructure(self, output_types, output_shapes,
                                  output_classes, expected_structure):
-    output_types = output_types._obj
-    output_shapes = output_shapes._obj
-    output_classes = output_classes._obj
-    expected_structure = expected_structure._obj
     actual_structure = structure.convert_legacy_structure(
         output_types, output_shapes, output_classes)
     self.assertEqual(actual_structure, expected_structure)
@@ -1131,9 +1083,6 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
   )
   def testBatch(self, element_structure, batch_size,
                 expected_batched_structure):
-    element_structure = element_structure._obj
-    batch_size = batch_size._obj
-    expected_batched_structure = expected_batched_structure._obj
     batched_structure = nest.map_structure(
         lambda component_spec: component_spec._batch(batch_size),
         element_structure)
@@ -1146,8 +1095,6 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
       )
   )
   def testUnbatch(self, element_structure, expected_unbatched_structure):
-    element_structure = element_structure._obj
-    expected_unbatched_structure = expected_unbatched_structure._obj
     unbatched_structure = nest.map_structure(
         lambda component_spec: component_spec._unbatch(), element_structure)
     self.assertEqual(unbatched_structure, expected_unbatched_structure)
