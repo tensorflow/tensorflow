@@ -3487,8 +3487,7 @@ class SavedModelSignatureDefImporterLite {
 
   // Moves the functions in `sub_module` to `module_` and skips the duplicate
   // functions.
-  Status MoveConvertedFunctionsToModule(absl::string_view name,
-                                        mlir::ModuleOp sub_module);
+  void MoveConvertedFunctionsToModule(mlir::ModuleOp sub_module);
 
   GraphImportConfig::InputArrays ParseInputArrays(
       llvm::ArrayRef<std::pair<std::string, TensorInfo>> inputs);
@@ -3528,34 +3527,14 @@ SavedModelSignatureDefImporterLite::ConvertAssets() {
   return results;
 }
 
-Status SavedModelSignatureDefImporterLite::MoveConvertedFunctionsToModule(
-    absl::string_view name, mlir::ModuleOp sub_module) {
-  mlir::Builder builder(sub_module.getContext());
-  mlir::SymbolTable sub_module_symbol_table(sub_module);
-
-  // Prefix private functions with the unique signature name, so that it cannot
-  // collide with private functions used in the other signatures.
+void SavedModelSignatureDefImporterLite::MoveConvertedFunctionsToModule(
+    mlir::ModuleOp sub_module) {
+  // Iterate through all functions and insert the ones that do not already exist
+  // in `module_`.
   for (auto func : sub_module.getOps<mlir::FuncOp>()) {
-    if (mlir::tf_saved_model::IsExported(func)) continue;
-
-    std::string new_sym_name = absl::StrCat(name, "/", func.sym_name().str());
-    if (mlir::failed(sub_module_symbol_table.replaceAllSymbolUses(
-            func, new_sym_name, sub_module)))
-      return tensorflow::errors::InvalidArgument(absl::StrCat(
-          "SavedModelSignatureDefImporterLite: failed to assign a unique "
-          "name to the private function used in a signature: ",
-          func.sym_name().str()));
-
-    mlir::SymbolTable::setSymbolName(func, new_sym_name);
-  }
-
-  // Copy all functions used by this signature to the final MLIR module.
-  for (auto func : sub_module.getOps<mlir::FuncOp>()) {
-    DCHECK(symbol_table_.lookup(func.sym_name()) == nullptr);
+    if (symbol_table_.lookup(func.getName())) continue;
     symbol_table_.insert(func.clone());
   }
-
-  return Status::OK();
 }
 
 Status SavedModelSignatureDefImporterLite::ConvertInitializer(
@@ -3596,7 +3575,9 @@ Status SavedModelSignatureDefImporterLite::ConvertInitializer(
           "__tf_saved_model_session_initializer_", target_node_name)}));
 
   // Move the converted functions to top level MLIR module.
-  return MoveConvertedFunctionsToModule(target_node_name, *sub_module);
+  MoveConvertedFunctionsToModule(*sub_module);
+
+  return Status::OK();
 }
 
 StatusOr<mlir::OwningModuleRef>
@@ -3666,7 +3647,9 @@ Status SavedModelSignatureDefImporterLite::ConvertSignature(
   }
 
   // Move the converted functions to top level MLIR module.
-  return MoveConvertedFunctionsToModule(sig_def_key, *sub_module);
+  MoveConvertedFunctionsToModule(*sub_module);
+
+  return Status::OK();
 }
 
 GraphImportConfig::InputArrays
