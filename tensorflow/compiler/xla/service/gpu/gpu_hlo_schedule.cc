@@ -190,28 +190,29 @@ GpuHloSchedule::GpuHloSchedule() {}
 
 /* static */
 StatusOr<std::unique_ptr<GpuHloSchedule>> GpuHloSchedule::Build(
-    HloModule* module, const StreamAssignment& stream_assignment,
+    const HloModule& module, const StreamAssignment& stream_assignment,
     int64 pointer_size) {
   std::unique_ptr<GpuHloSchedule> schedule(new GpuHloSchedule);
 
   // Initialize thunk_launch_order_, the total order of thunk launches.
-  HloComputation* entry_computation = module->entry_computation();
+  HloComputation* entry_computation = module.entry_computation();
   if (stream_assignment.StreamCount() == 1) {
+    // All kernels are launched on a single stream, so there's no loss of
+    // concurrency by optimizing for minimal memory usage.
     TF_ASSIGN_OR_RETURN(
-        HloSchedule sequences,
-        ScheduleModule(module, [pointer_size](const BufferValue& buffer) {
-          return ShapeUtil::ByteSizeOf(buffer.shape(), pointer_size);
-        }));
-    schedule->thunk_launch_order_ =
-        sequences.sequence(entry_computation).instructions();
-    schedule->hlo_ordering_ =
-        absl::make_unique<SequentialHloOrdering>(sequences);
+        HloInstructionSequence sequence,
+        ScheduleComputation(
+            entry_computation, [pointer_size](const BufferValue& buffer) {
+              return ShapeUtil::ByteSizeOf(buffer.shape(), pointer_size);
+            }));
+    schedule->thunk_launch_order_ = sequence.instructions();
   } else {
     // BFS tends to increase concurrency, but also increases memory usage.
     BFSLaunchOrder(entry_computation, &schedule->thunk_launch_order_);
-    schedule->hlo_ordering_ = absl::make_unique<GpuHloOrdering>(
-        module, stream_assignment, schedule->thunk_launch_order_);
   }
+
+  schedule->hlo_ordering_ = absl::make_unique<GpuHloOrdering>(
+      &module, stream_assignment, schedule->thunk_launch_order_);
 
   return std::move(schedule);
 }

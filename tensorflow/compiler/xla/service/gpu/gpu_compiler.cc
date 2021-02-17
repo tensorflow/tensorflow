@@ -520,9 +520,9 @@ GpuCompiler::RunHloPassesAndBufferAssignement(
 
   std::unique_ptr<StreamAssignment> stream_assignment =
       AssignStreams(*hlo_module);
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<GpuHloSchedule> hlo_schedule,
-                      GpuHloSchedule::Build(hlo_module.get(),
-                                            *stream_assignment, pointer_size_));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<GpuHloSchedule> hlo_schedule,
+      GpuHloSchedule::Build(*hlo_module, *stream_assignment, pointer_size_));
 
   auto buffer_size_bytes_function =
       [this](const BufferValue& buffer_value) -> int64 {
@@ -565,7 +565,7 @@ static Status CompileModuleToLlvmIrImpl(
       AssignStreams(*hlo_module);
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<GpuHloSchedule> hlo_schedule,
-      GpuHloSchedule::Build(hlo_module, *stream_assignment, pointer_size));
+      GpuHloSchedule::Build(*hlo_module, *stream_assignment, pointer_size));
 
   auto buffer_size_bytes_function =
       [pointer_size](const BufferValue& buffer_value) -> int64 {
