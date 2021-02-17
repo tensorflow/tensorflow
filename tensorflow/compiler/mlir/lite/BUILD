@@ -36,7 +36,9 @@ filegroup(
     srcs = [
         "ir/tfl_op_interfaces.td",
         "ir/tfl_ops.td",
+        "ir/tfl_structs.td",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:SideEffectTdFiles",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
@@ -57,6 +59,22 @@ gentbl(
             "ir/tfl_ops.cc.inc",
         ),
         (
+            "-gen-dialect-doc",
+            "g3doc/tfl_ops.md",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "ir/tfl_ops.td",
+    td_srcs = [
+        ":tensorflow_lite_ops_td_files",
+    ],
+)
+
+gentbl(
+    name = "tensorflow_lite_structs_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
             "-gen-struct-attr-decls",
             "ir/tfl_structs.h.inc",
         ),
@@ -64,13 +82,9 @@ gentbl(
             "-gen-struct-attr-defs",
             "ir/tfl_structs.cc.inc",
         ),
-        (
-            "-gen-dialect-doc",
-            "g3doc/tfl_ops.md",
-        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "ir/tfl_ops.td",
+    td_file = "ir/tfl_structs.td",
     td_srcs = [
         ":tensorflow_lite_ops_td_files",
     ],
@@ -227,19 +241,23 @@ cc_library(
         "ir/tfl_ops.h.inc",
         "ir/tfl_ops_interface.cc.inc",
         "ir/tfl_ops_interface.h.inc",
+        "ir/tfl_structs.cc.inc",
         "runtime_verifiers.inc",
         "utils/attribute_utils.cc",
     ],
     hdrs = [
         "ir/tfl_ops.h",
+        "ir/tfl_structs.h.inc",
         "transforms/passes.h",
         "utils/attribute_utils.h",
         "@llvm-project//mlir:include/mlir/Transforms/InliningUtils.h",
     ],
     deps = [
         ":tensorflow_lite_ops_inc_gen",
+        ":tensorflow_lite_structs_inc_gen",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/lite/schema:schema_fbs",
         "//third_party/eigen3",
@@ -598,10 +616,7 @@ gentbl(
     tblgen = "//tensorflow/compiler/mlir/lite/quantization:op_quant_spec_getters_gen",
     td_file = "ir/tfl_ops.td",
     td_srcs = [
-        "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
-        "ir/tfl_op_interfaces.td",
+        ":tensorflow_lite_ops_td_files",
     ],
 )
 

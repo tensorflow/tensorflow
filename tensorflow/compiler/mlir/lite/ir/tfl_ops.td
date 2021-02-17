@@ -23,24 +23,8 @@ include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
+include "tensorflow/compiler/mlir/lite/ir/tfl_structs.td"
 include "tensorflow/compiler/mlir/lite/quantization/quantization.td"
-
-def TFL_Dialect : Dialect {
-  let name = "tfl";
-
-  let description = [{
-    The TensorFlow Lite dialect.
-
-    This dialect maps to TensorFlow Lite operations.
-
-    Invariants:
-
-    * All values are of Tensor type (in particular, scalars are
-      represented using zero-dimensional tensors);
-  }];
-
-  let cppNamespace = "::mlir::TFL";
-}
 
 //===----------------------------------------------------------------------===//
 // TFLite dialect string type - uses the TF string type as implementation
@@ -834,33 +818,6 @@ def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [ConstantLike, NoSideEffect,
       $_state.addTypes(value.getType());
     }]>
   ];
-}
-
-// Attributes used for encoding sparse tensors.
-// Please find detailed explanation of these parameters in the TFLite schema.
-def TFL_DT_Dense : StrEnumAttrCase<"DENSE", 0>;
-def TFL_DT_SparseCSR : StrEnumAttrCase<"SPARSE_CSR", 1>;
-
-def TFL_DimensionTypeAttr : StrEnumAttr<
-    "DimensionType", "dimension type", [TFL_DT_Dense, TFL_DT_SparseCSR]>;
-
-def DimensionMetadataAttr : StructAttr<"DimensionMetadataAttr", TFL_Dialect, [
-                            StructFieldAttr<"format", TFL_DimensionTypeAttr>,
-                            StructFieldAttr<"dense_size", I32Attr>,
-                            StructFieldAttr<"segments", I32ArrayAttr>,
-                            StructFieldAttr<"indices", I32ArrayAttr>] > {
-  let summary = "Dimension metadata.";
-}
-
-def DimensionMetadataArrayAttr : TypedArrayAttrBase<DimensionMetadataAttr,
-    "Array of DimensionMetadata">{}
-
-def SparsityParameterAttr : StructAttr<"SparsityParameterAttr", TFL_Dialect, [
-                            StructFieldAttr<"traversal_order", I32ArrayAttr>,
-                            StructFieldAttr<"block_map", I32ArrayAttr>,
-                            StructFieldAttr<"dim_metadata", DimensionMetadataArrayAttr>]> {
-  let summary = "Sparsity parameter.";
-  let storageType = [{ TFL::SparsityParameterAttr }];
 }
 
 def TFL_SparseConstOp : Op<TFL_Dialect, "pseudo_sparse_const", [
