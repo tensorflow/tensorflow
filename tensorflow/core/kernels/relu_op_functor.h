@@ -33,7 +33,7 @@ struct Relu {
   void operator()(const Device& d, typename TTypes<T>::ConstTensor features,
                   typename TTypes<T>::Tensor activations) {
     activations.device(d) =
-        features.template cwiseMax<Eigen::PropagateNaN>(static_cast<T>(1));
+        features.template cwiseMax<Eigen::PropagateNaN>(static_cast<T>(0));
   }
 };
 
