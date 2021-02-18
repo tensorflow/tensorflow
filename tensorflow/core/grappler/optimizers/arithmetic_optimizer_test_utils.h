@@ -138,12 +138,6 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     optimizer->options_.remove_redundant_cast = true;
   }
 
-  void EnableOnlyReorderRedundantReshapeAroundUnary(
-      ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.reorder_redundant_reshape_around_unary = true;
-  }
-
   void EnableOnlyRemoveRedundantReshape(ArithmeticOptimizer* optimizer) {
     DisableAllStages(optimizer);
     optimizer->options_.remove_redundant_reshape = true;
