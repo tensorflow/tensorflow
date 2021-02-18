@@ -40,7 +40,7 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 50,
     tags = [
-        "no_oss",  # TODO(b/162119374)
+        "no_pip",
         "notsan",  # TODO(b/171040359): Flaky timeout, even if maximum shards
     ],
     deps = [

@@ -91,8 +91,10 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
     return MlirOptimizationPassState::Disabled;
   }
 
-  MlirBridgeRolloutPolicy policy =
-      GetMlirBridgeRolloutPolicy(graph, config_proto);
+  // We set `uses_uninitialized_resource_args` to false here because the first
+  // phase of the bridge is not affected by uninitialized resource args.
+  MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
+      graph, config_proto, /*uses_uninitialized_resource_args=*/false);
   switch (policy) {
     case MlirBridgeRolloutPolicy::kEnabledByUser:
       return MlirOptimizationPassState::Enabled;
@@ -144,8 +146,10 @@ bool MlirBridgeV1CompatPass::IsEnabled(const DeviceSet* device_set,
 
   // Do not run the bridge if it's enabled by the graph analysis,
   // only run if it's enabled by the user explicitly.
-  MlirBridgeRolloutPolicy policy =
-      GetMlirBridgeRolloutPolicy(graph, config_proto);
+  // We set `uses_uninitialized_resource_args` to false here because the first
+  // phase of the bridge is not affected by uninitialized resource args.
+  MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
+      graph, config_proto, /*uses_uninitialized_resource_args=*/false);
   return policy == MlirBridgeRolloutPolicy::kEnabledByUser;
 }
 

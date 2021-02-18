@@ -39,7 +39,7 @@ class DynamicPartitionTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testSimpleOneDimensional(self):
-    with self.session() as sess:
+    with self.session():
       data = constant_op.constant([0, 13, 2, 39, 4, 17], dtype=dtypes.float32)
       indices = constant_op.constant([0, 0, 2, 3, 2, 1])
       partitions = data_flow_ops.dynamic_partition(
@@ -60,7 +60,7 @@ class DynamicPartitionTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testSimpleTwoDimensional(self):
-    with self.session() as sess:
+    with self.session():
       data = constant_op.constant([[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11],
                                    [12, 13, 14], [15, 16, 17]],
                                   dtype=dtypes.float32)
@@ -87,7 +87,7 @@ class DynamicPartitionTest(test.TestCase):
     indices_list = [x % 2 for x in range(num)]
     part1 = [x for x in range(num) if x % 2 == 0]
     part2 = [x for x in range(num) if x % 2 == 1]
-    with self.session() as sess:
+    with self.session():
       data = constant_op.constant(data_list, dtype=dtypes.float32)
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
@@ -109,7 +109,7 @@ class DynamicPartitionTest(test.TestCase):
     parts = [[] for _ in range(num_partitions)]
     for i in range(rows):
       parts[(i ** 2) % num_partitions].append(data_list[i])
-    with self.session() as sess:
+    with self.session():
       data = constant_op.constant(data_list, dtype=dtypes.float32)
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
@@ -125,7 +125,7 @@ class DynamicPartitionTest(test.TestCase):
   def testSimpleComplex(self):
     data_list = [1 + 2j, 3 + 4j, 5 + 6j, 7 + 8j]
     indices_list = [1, 0, 1, 0]
-    with self.session() as sess:
+    with self.session():
       data = constant_op.constant(data_list, dtype=dtypes.complex64)
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
@@ -138,7 +138,7 @@ class DynamicPartitionTest(test.TestCase):
 
   def testScalarPartitions(self):
     data_list = [10, 13, 12, 11]
-    with self.session() as sess:
+    with self.session():
       data = constant_op.constant(data_list, dtype=dtypes.float64)
       indices = 3
       partitions = data_flow_ops.dynamic_partition(
@@ -184,7 +184,7 @@ class DynamicPartitionTest(test.TestCase):
   def testEmptyParts(self):
     data_list = [1, 2, 3, 4]
     indices_list = [1, 3, 1, 3]
-    with self.session() as sess:
+    with self.session():
       data = constant_op.constant(data_list, dtype=dtypes.float32)
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
@@ -200,7 +200,7 @@ class DynamicPartitionTest(test.TestCase):
   def testEmptyDataTwoDimensional(self):
     data_list = [[], []]
     indices_list = [0, 1]
-    with self.session() as sess:
+    with self.session():
       data = constant_op.constant(data_list, dtype=dtypes.float32)
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
@@ -216,7 +216,7 @@ class DynamicPartitionTest(test.TestCase):
   def testEmptyPartitions(self):
     data_list = []
     indices_list = []
-    with self.session() as sess:
+    with self.session():
       data = constant_op.constant(data_list, dtype=dtypes.float32)
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
@@ -237,7 +237,7 @@ class DynamicPartitionTest(test.TestCase):
 
     data_list = [1, 2, 3, 4, 5, 6]
     indices_list = [6, 5, 4, 3, 1, 0]
-    with self.session() as sess:
+    with self.session():
       data = constant_op.constant(data_list, dtype=dtypes.float32)
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
@@ -258,7 +258,7 @@ class DynamicPartitionTest(test.TestCase):
 
     data_list = [1, 2, 3, 4, 5, 6]
     indices_list = [10, 11, 2, 12, 0, 1000]
-    with self.session() as sess:
+    with self.session():
       data = constant_op.constant(data_list, dtype=dtypes.float32)
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
@@ -282,7 +282,7 @@ class DynamicPartitionTest(test.TestCase):
 
     data_list = [1.1, 2.1, 3.1, 4.1, 5.1, 6.1]
     indices_list = [90, 70, 60, 100, 110, 40]
-    with self.session() as sess:
+    with self.session():
       data = constant_op.constant(data_list, dtype=dtypes.float32)
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
@@ -295,7 +295,7 @@ class DynamicPartitionTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testErrorIndexOutOfRange(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       data = constant_op.constant([[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11],
                                    [12, 13, 14]])
       indices = constant_op.constant([0, 2, 99, 2, 2])
@@ -346,7 +346,7 @@ class DynamicPartitionTest(test.TestCase):
     inds += [13]*194 + [14]*194 + [15]*192
     self.assertEqual(len(inds), x.shape[0])
     partitioned = data_flow_ops.dynamic_partition(x, inds, 16)
-    with self.cached_session() as sess:
+    with self.cached_session():
       res = self.evaluate(partitioned)
     self.assertEqual(res[-1].shape[0], 192)
 

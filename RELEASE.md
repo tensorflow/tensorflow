@@ -81,6 +81,8 @@
         *   Removed deprecated `Interpreter::UseNNAPI(bool)` C++ API.
             *   Use `NnApiDelegate()` and related delegate configuration methods
                 directly.
+        *  Replaced the model cache key for models computation algorithm with
+           one guaranteed to be stable across runs.
     *  16 bits quantization
         *   Added int16x8 support for ABS, REDUCE_MAX and REDUCE_MIN operators.
         *   Additional tests and fixes for ADD and SUB operators.
@@ -98,6 +100,9 @@
           function for a given signaturedef.
     *  Add int8 support for `ReshapeV2`.
     *  Add experimental support for optimization with sparsity.
+    *  Add nominal support for unsigned 32-bit integer tensor types. Note that
+       very few TFLite kernels support this type natively, so its use in mobile
+       ML authoring is generally discouraged.
 *   TF Core:
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,
         `tf.while_loop`, and compositions like `tf.foldl`) computed with

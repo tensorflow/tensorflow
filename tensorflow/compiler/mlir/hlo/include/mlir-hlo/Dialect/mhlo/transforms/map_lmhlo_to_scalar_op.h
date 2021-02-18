@@ -252,6 +252,15 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::ExpOp>(Location loc,
 }
 
 template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::Expm1Op>(Location loc,
+                                                    ArrayRef<Type> result_types,
+                                                    ArrayRef<Value> args,
+                                                    OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::math::ExpM1Op>{}(
+      loc, result_types, args, b);
+}
+
+template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::CeilOp>(Location loc,
                                                    ArrayRef<Type> result_types,
                                                    ArrayRef<Value> args,
@@ -311,13 +320,37 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::ConvertOp>(
     // No conversion is needed for the same width floats
     return args.front();
   }
+  if (targetType.isInteger(/*width=*/1)) {
+    // When casting to bool, we need to compare whether the value is equal to
+    // zero.
+    if (sourceType.isSignlessInteger()) {
+      Value zero_intval = b->create<::mlir::ConstantIntOp>(
+          loc, 0, sourceType.cast<IntegerType>().getWidth());
+      if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
+        zero_intval = b->create<::mlir::SplatOp>(loc, vec_type, zero_intval);
+      }
+      return b->create<mlir::CmpIOp>(loc, CmpIPredicate::ne, args.front(),
+                                     zero_intval);
+    } else if (sourceType.isa<FloatType>()) {
+      Value zero = b->create<ConstantOp>(loc, b->getFloatAttr(sourceType, 0.0));
+      if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
+        zero = b->create<::mlir::SplatOp>(loc, vec_type, zero);
+      }
+      return b->create<mlir::CmpFOp>(loc, CmpFPredicate::UNE, args.front(),
+                                     zero);
+    }
+  }
   if (sourceType.isSignlessInteger() && targetType.isSignlessInteger()) {
     IntegerType src = sourceType.cast<IntegerType>();
     IntegerType res = targetType.cast<IntegerType>();
     if (src.getWidth() > res.getWidth()) {
       return b->create<mlir::TruncateIOp>(loc, result_types, args, mlir::None);
-    } else if (src.getWidth() < res.getWidth()) {
+    } else if (src.getWidth() == 1) {
+      // Special case boolean values, so they get casted to `1` instead of `-1`.
       return b->create<mlir::ZeroExtendIOp>(loc, result_types, args,
+                                            mlir::None);
+    } else if (src.getWidth() < res.getWidth()) {
+      return b->create<mlir::SignExtendIOp>(loc, result_types, args,
                                             mlir::None);
     }
     // No conversion is needed for the same width integers

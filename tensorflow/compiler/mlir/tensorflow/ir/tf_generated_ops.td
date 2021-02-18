@@ -12646,6 +12646,27 @@ def TF_RiscDotOp : TF_Op<"RiscDot", [NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_RngReadAndSkipOp : TF_Op<"RngReadAndSkip", []> {
+  let summary = "Advance the counter of a counter-based RNG.";
+
+  let description = [{
+The state of the RNG after
+`rng_read_and_skip(n)` will be the same as that after `uniform([n])`
+(or any other distribution). The actual increment added to the
+counter is an unspecified implementation choice.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$resource,
+    TF_Int32Tensor:$alg,
+    TF_Uint64Tensor:$delta
+  );
+
+  let results = (outs
+    TF_Int64Tensor:$value
+  );
+}
+
 def TF_RollOp : TF_Op<"Roll", [NoSideEffect]> {
   let summary = "Rolls the elements of a tensor along an axis.";
 
@@ -15008,6 +15029,32 @@ The outputs are a deterministic function of `shape` and `seed`.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tseed = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_StatelessRandomUniformFullIntV2Op : TF_Op<"StatelessRandomUniformFullIntV2", [NoSideEffect]> {
+  let summary = [{
+Outputs deterministic pseudorandom random integers from a uniform distribution.
+  }];
+
+  let description = [{
+The generated values are uniform integers covering the whole range of `dtype`.
+
+The outputs are a deterministic function of `shape`, `key`, `counter` and `alg`.
+  }];
+
+  let arguments = (ins
+    Arg<TF_I32OrI64Tensor, [{The shape of the output tensor.}]>:$shape,
+    Arg<TF_Uint64Tensor, [{Key for the counter-based RNG algorithm (shape uint64[1]).}]>:$key,
+    Arg<TF_Uint64Tensor, [{Initial counter for the counter-based RNG algorithm (shape uint64[2] or uint64[1] depending on the algorithm). If a larger vector is given, only the needed portion on the left (i.e. [:N]) will be used.}]>:$counter,
+    Arg<TF_Int32Tensor, [{The RNG algorithm (shape int32[]).}]>:$alg
+  );
+
+  let results = (outs
+    Res<TensorOf<[TF_Int32, TF_Int64, TF_Uint32, TF_Uint64]>, [{Random values with specified shape.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tshape = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 

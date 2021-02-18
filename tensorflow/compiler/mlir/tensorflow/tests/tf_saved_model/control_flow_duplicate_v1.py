@@ -27,16 +27,19 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 
 # CHECK:  func {{.*}} tf_saved_model.exported_names = ["key_1"]
 # CHECK: "tf.If"
-# CHECK-SAME: else_branch = @[[else:[a-zA-Z_0-9]+]]
-# CHECK-SAME: then_branch = @[[then:[a-zA-Z_0-9]+]]
+# CHECK-SAME: else_branch = @[[else_1:"key_1/[a-zA-Z_0-9]+"]]
+# CHECK-SAME: then_branch = @[[then_1:"key_1/[a-zA-Z_0-9]+"]]
 
 # CHECK:  func {{.*}} tf_saved_model.exported_names = ["key_2"]
 # CHECK: "tf.If"
-# CHECK-SAME: else_branch = @[[else]]
-# CHECK-SAME: then_branch = @[[then]]
+# CHECK-SAME: else_branch = @[[else_2:"key_2/[a-zA-Z_0-9]+"]]
+# CHECK-SAME: then_branch = @[[then_2:"key_2/[a-zA-Z_0-9]+"]]
 
-# CHECK: func private @[[else]](
-# CHECK: func private @[[then]](
+# CHECK: func private @[[else_1]](
+# CHECK: func private @[[then_1]](
+
+# CHECK: func private @[[else_2]](
+# CHECK: func private @[[then_2]](
 
 
 def Test():

@@ -95,8 +95,11 @@ Value ConvertConditionToBoolean(Operation* op, Value cond) {
 // Transform a functional IfOp to a region based IfRegionOp.
 LogicalResult ConvertIfOp(IfOp if_op) {
   Value cond = ConvertConditionToBoolean(if_op, if_op.cond());
-  auto if_region = OpBuilder(if_op).create<TF::IfRegionOp>(
-      if_op.getLoc(), if_op.getResultTypes(), cond, if_op.is_stateless());
+  OpBuilder builder(if_op);
+  auto if_region = builder.create<TF::IfRegionOp>(
+      if_op.getLoc(), if_op.getResultTypes(), cond, if_op.is_stateless(),
+      builder.getStringAttr(if_op.then_function().getName()),
+      builder.getStringAttr(if_op.else_function().getName()));
   CopyDeviceAndUnderscoredAttributes(if_op, if_region);
 
   CreateCall(if_op, if_op.then_function(),

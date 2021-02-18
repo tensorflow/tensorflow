@@ -69,6 +69,9 @@ func @different_block_no_merge() {
 func @same_predicate_no_returns_merged() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
+  // CHECK:         _else_func_name = "elseFunc1"
+  // CHECK-SAME:   _then_func_name = "thenFunc1"
+
   // CHECK-NOT:    "tf.IfRegion"
   "tf_device.cluster"() ( {
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
@@ -77,13 +80,13 @@ func @same_predicate_no_returns_merged() {
       "tf.Yield"() : () -> ()
       }, {
       "tf.Yield"() : () -> ()
-     }) {is_stateless = true} : (tensor<i1>) -> ()
+     }) {is_stateless = true, _else_func_name = "elseFunc1", _then_func_name = "thenFunc1"} : (tensor<i1>) -> ()
     "tf.IfRegion"(%0) ( {
       %2 = "tf.B"() : () -> (tensor<f32>)
       "tf.Yield"() : () -> ()
       }, {
       "tf.Yield"() : () -> ()
-     }) {is_stateless = true} : (tensor<i1>) -> ()
+     }) {is_stateless = true, _else_func_name = "elseFunc2", _then_func_name = "thenFunc2"} : (tensor<i1>) -> ()
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
   return

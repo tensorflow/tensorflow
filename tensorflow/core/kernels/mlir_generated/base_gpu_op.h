@@ -20,50 +20,39 @@ limitations under the License.
 
 namespace tensorflow {
 
-#define GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(tf_op, mlir_type, data_type) \
-  GENERATE_AND_REGISTER_UNARY_KERNEL(tf_op, GPU, mlir_type, data_type)
+#define GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(tf_op, input_type) \
+  GENERATE_AND_REGISTER_UNARY_KERNEL(tf_op, GPU, input_type)
 
-#define GENERATE_UNARY_GPU_KERNEL(tf_op, mlir_type, data_type) \
-  GENERATE_UNARY_KERNEL(tf_op, GPU, mlir_type, data_type)
+#define GENERATE_UNARY_GPU_KERNEL(tf_op, input_type) \
+  GENERATE_UNARY_KERNEL(tf_op, GPU, input_type)
 
-#define GENERATE_UNARY_GPU_KERNEL2(tf_op, mlir_type, mlir_output_type, \
-                                   result_data_type, input_data_type)  \
-  GENERATE_UNARY_KERNEL2(tf_op, GPU, mlir_type, mlir_output_type,      \
-                         result_data_type, input_data_type)
+#define GENERATE_UNARY_GPU_KERNEL2(tf_op, input_type, output_type) \
+  GENERATE_UNARY_KERNEL2(tf_op, GPU, input_type, output_type)
 
-#define REGISTER_ALIASED_GPU_KERNEL(tf_op, mlir_op, mlir_type,              \
-                                    mlir_output_type, data_type)            \
-  REGISTER_ALIASED_KERNEL(tf_op, mlir_op, GPU, mlir_type, mlir_output_type, \
-                          data_type)
+#define REGISTER_ALIASED_GPU_KERNEL(tf_op, mlir_op, input_type, output_type) \
+  REGISTER_ALIASED_KERNEL(tf_op, mlir_op, GPU, input_type, output_type)
 
-#define REGISTER_GPU_KERNEL(tf_op, mlir_type, mlir_output_type, data_type) \
-  REGISTER_KERNEL(tf_op, GPU, mlir_type, mlir_output_type, data_type)
+#define REGISTER_GPU_KERNEL(tf_op, input_type, output_type) \
+  REGISTER_KERNEL(tf_op, GPU, input_type, output_type)
 
-#define REGISTER_COMPLEX_GPU_KERNEL(tf_op, mlir_type, mlir_output_type,       \
-                                    data_type, input_data_type)               \
-  REGISTER_COMPLEX_KERNEL(tf_op, GPU, mlir_type, mlir_output_type, data_type, \
-                          input_data_type)
+#define REGISTER_COMPLEX_GPU_KERNEL(tf_op, input_type, output_type) \
+  REGISTER_COMPLEX_KERNEL(tf_op, GPU, input_type, output_type)
 
-#define REGISTER_GPU_KERNEL_NO_TYPE_CONSTRAINT(tf_op, mlir_type, \
-                                               mlir_output_type) \
-  REGISTER_KERNEL_NO_TYPE_CONSTRAINT(tf_op, GPU, mlir_type, mlir_output_type)
+#define REGISTER_GPU_KERNEL_NO_TYPE_CONSTRAINT(tf_op, input_type) \
+  REGISTER_KERNEL_NO_TYPE_CONSTRAINT(tf_op, GPU, input_type)
 
-#define GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(tf_op, mlir_type, data_type) \
-  GENERATE_AND_REGISTER_BINARY_KERNEL(tf_op, GPU, mlir_type, data_type)
+#define GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(tf_op, input_type) \
+  GENERATE_AND_REGISTER_BINARY_KERNEL(tf_op, GPU, input_type)
 
-#define GENERATE_AND_REGISTER_BINARY_GPU_KERNEL2(                          \
-    tf_op, mlir_type, mlir_output_type, result_data_type, input_data_type) \
-  GENERATE_AND_REGISTER_BINARY_KERNEL2(tf_op, GPU, mlir_type,              \
-                                       mlir_output_type, result_data_type, \
-                                       input_data_type)
+#define GENERATE_AND_REGISTER_BINARY_GPU_KERNEL2(tf_op, input_type, \
+                                                 output_type)       \
+  GENERATE_AND_REGISTER_BINARY_KERNEL2(tf_op, GPU, input_type, output_type)
 
-#define GENERATE_BINARY_GPU_KERNEL(tf_op, mlir_type, data_type) \
-  GENERATE_BINARY_KERNEL(tf_op, GPU, mlir_type, data_type)
+#define GENERATE_BINARY_GPU_KERNEL(tf_op, input_type) \
+  GENERATE_BINARY_KERNEL(tf_op, GPU, input_type)
 
-#define GENERATE_BINARY_GPU_KERNEL2(tf_op, mlir_type, mlir_output_type, \
-                                    result_data_type, input_data_type)  \
-  GENERATE_BINARY_KERNEL2(tf_op, GPU, mlir_type, mlir_output_type,      \
-                          result_data_type, input_data_type)
+#define GENERATE_BINARY_GPU_KERNEL2(tf_op, input_type, output_type) \
+  GENERATE_BINARY_KERNEL2(tf_op, GPU, input_type, output_type)
 
 }  // namespace tensorflow
 

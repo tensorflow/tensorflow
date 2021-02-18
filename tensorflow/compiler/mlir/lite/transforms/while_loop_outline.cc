@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
 namespace TFL {
@@ -70,6 +71,29 @@ bool IsAlreadyOutlined(WhileOp while_op) {
     return true;
   };
   return just_call(while_op.body()) && just_call(while_op.cond());
+}
+
+bool IsCompatibleTypeWithTFLCastOp(Type type) {
+  auto elemType = getElementTypeOrSelf(type);
+  // F32 and BF16 types are allowed.
+  if (elemType.isBF16() || elemType.isF32()) return true;
+
+  // I1, I16, I32, I64 types are allowed.
+  if (elemType.isInteger(1) || elemType.isInteger(16) ||
+      elemType.isInteger(32) || elemType.isInteger(64))
+    return true;
+
+  // Complex<F<32>> is allowed.
+  if (elemType.isa<ComplexType>() &&
+      elemType.cast<ComplexType>().getElementType().isF32())
+    return true;
+
+  // QUINT8 and UI8 are allowed.
+  if (elemType.isa<TF::Quint8Type>() ||
+      (elemType.isInteger(8) && elemType.cast<IntegerType>().isUnsigned()))
+    return true;
+
+  return false;
 }
 
 void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
@@ -171,8 +195,14 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
         if (value.getType() == type) {
           args.push_back(value);
         } else {
-          auto cast = b.create<CastOp>(yield_op->getLoc(), type, value);
-          args.push_back(cast);
+          if (IsCompatibleTypeWithTFLCastOp(value.getType()) &&
+              IsCompatibleTypeWithTFLCastOp(type)) {
+            auto cast = b.create<CastOp>(yield_op->getLoc(), type, value);
+            args.push_back(cast);
+          } else {
+            auto cast = b.create<TF::CastOp>(yield_op->getLoc(), type, value);
+            args.push_back(cast);
+          }
         }
       }
       args.append(new_args.begin(), new_args.end());

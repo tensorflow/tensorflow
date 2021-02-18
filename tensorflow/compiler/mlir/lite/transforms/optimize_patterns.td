@@ -669,7 +669,7 @@ def FoldNormalizationIntoSoftmax : Pat<
 
 def HaveSameType : Constraint<CPred<"($0.getType() == $1.getType())">>;
 
-class AllElementsAre<string val> : Constraint<CPred<
+class AllElementsAreF32<string val> : Constraint<CPred<
   "($0.isa<DenseElementsAttr>() && "
    "$0.cast<DenseElementsAttr>().getType().cast<ShapedType>().getElementType().isF32() && "
    "std::all_of($0.cast<DenseElementsAttr>().getValues<float>().begin(), "
@@ -683,4 +683,52 @@ def OptimizeMul1ToIdentity : Pat<
              TFL_AF_None),
   (replaceWithValue $input),
   [(HaveSameType $input, $constant),
-   (AllElementsAre<"1.0f"> $constant)]>;
+   (AllElementsAreF32<"1.0f"> $constant)]>;
+
+class AllElementsAreBool<string val> : Constraint<CPred<
+  "($0.isa<DenseElementsAttr>() && "
+   "$0.cast<DenseElementsAttr>().getType().cast<ShapedType>().getElementType().isInteger(1) && "
+   "std::all_of($0.cast<DenseElementsAttr>().getValues<bool>().begin(), "
+               "$0.cast<DenseElementsAttr>().getValues<bool>().end(), "
+               "[](bool v){ return v == " #val# ";}))">>;
+
+// Remove select operators when the result is known in advance.
+foreach SelectOp = [TFL_SelectOp, TFL_SelectV2Op] in {
+  // select(true_tensor, A, B) -> A
+  def Optimize#SelectOp#True : Pat<
+    (SelectOp (ConstantOp $constant),
+               $input1,
+               $input2),
+    (replaceWithValue $input1),
+    [(HaveSameType $input1, $input2),
+     (IsTailOfShape $input1, $constant),
+     (IsTailOfShape $constant, $input1),
+     (AllElementsAreBool<"true"> $constant)]>;
+  // select(false_tensor, A, B) -> B
+  def Optimize#SelectOp#False : Pat<
+    (SelectOp (ConstantOp $constant),
+               $input1,
+               $input2),
+    (replaceWithValue $input2),
+    [(HaveSameType $input1, $input2),
+     (IsTailOfShape $input1, $constant),
+     (IsTailOfShape $constant, $input1),
+     (AllElementsAreBool<"false"> $constant)]>;
+}
+
+// Remove (log-)softmax before arg-minmax as (log-)softmax is monotonic.
+foreach ArgMinMaxOp = [TFL_ArgMinOp, TFL_ArgMaxOp] in {
+  def RemoveSoftmaxOpBefore#ArgMinMaxOp : Pat<
+    (ArgMinMaxOp (TFL_SoftmaxOp:$softmax $logits, TFL_FloatNonNegative:$beta),
+                 (ConstantOp:$const_axes I32ElementsAttr:$axes)),
+    (ArgMinMaxOp $logits, $const_axes),
+    [(HasOneUse $softmax),
+     (AxesIsLastDimension $axes, $logits)]>;
+
+  def RemoveLogSoftmaxOpBefore#ArgMinMaxOp : Pat<
+    (ArgMinMaxOp (TFL_LogSoftmaxOp:$log_softmax $logits),
+                 (ConstantOp:$const_axes I32ElementsAttr:$axes)),
+    (ArgMinMaxOp $logits, $const_axes),
+    [(HasOneUse $log_softmax),
+     (AxesIsLastDimension $axes, $logits)]>;
+}

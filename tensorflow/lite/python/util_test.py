@@ -48,6 +48,8 @@ class UtilTest(test_util.TensorFlowTestCase):
     self.assertEqual(
         util.convert_dtype_to_tflite_type(dtypes.int32), _types_pb2.INT32)
     self.assertEqual(
+        util.convert_dtype_to_tflite_type(dtypes.uint32), _types_pb2.UINT32)
+    self.assertEqual(
         util.convert_dtype_to_tflite_type(dtypes.uint8),
         _types_pb2.QUANTIZED_UINT8)
     self.assertEqual(
@@ -89,13 +91,16 @@ class UtilTest(test_util.TensorFlowTestCase):
         util._convert_tflite_enum_type_to_tf_type(10), dtypes.float64)
     self.assertEqual(
         util._convert_tflite_enum_type_to_tf_type(11), dtypes.complex128)
+    self.assertEqual(
+        util._convert_tflite_enum_type_to_tf_type(16), dtypes.uint32)
     with self.assertRaises(ValueError) as error:
       util._convert_tflite_enum_type_to_tf_type(20)
     self.assertEqual(
         "Unsupported enum 20. The valid map of enum to tf types is : "
         "{0: tf.float32, 1: tf.float16, 2: tf.int32, 3: tf.uint8, 4: tf.int64, "
         "5: tf.string, 6: tf.bool, 7: tf.int16, 8: tf.complex64, 9: tf.int8, "
-        "10: tf.float64, 11: tf.complex128}", str(error.exception))
+        "10: tf.float64, 11: tf.complex128, 16: tf.uint32}",
+        str(error.exception))
 
   def testTensorName(self):
     with ops.Graph().as_default():
@@ -107,6 +112,30 @@ class UtilTest(test_util.TensorFlowTestCase):
     for i in range(len(expect_names)):
       got_name = util.get_tensor_name(out_tensors[i])
       self.assertEqual(got_name, expect_names[i])
+
+  def testUint32PassThrough(self):
+    model = tf.keras.Sequential([
+        tf.keras.layers.InputLayer(input_shape=(4,), dtype=tf.uint32),
+        tf.keras.layers.Reshape(target_shape=(2, 2))
+    ])
+    converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    tflite_model = converter.convert()
+    interpreter = tf.lite.Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()[0]
+    output_details = interpreter.get_output_details()[0]
+
+    self.assertEqual(input_details["dtype"], np.uint32)
+    self.assertEqual(output_details["dtype"], np.uint32)
+
+    in_array = np.array([[1, 1, 1, 1]], dtype="uint32") * ((1 << 32) - 1)
+    expected_out = np.reshape(in_array, (2, 2))
+
+    interpreter.set_tensor(input_details["index"], in_array)
+    interpreter.invoke()
+
+    output_data = interpreter.get_tensor(output_details["index"])[0]
+    self.assertAllEqual(expected_out, output_data)
 
   @test_util.enable_control_flow_v2
   def testRemoveLowerUsingSwitchMerge(self):

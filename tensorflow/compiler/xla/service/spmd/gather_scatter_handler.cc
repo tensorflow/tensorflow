@@ -165,7 +165,9 @@ StatusOr<HloInstruction*> PartitionIndexOnlyPartition(
       CHECK(pgather_sharding.has_value());
       pgather->set_sharding(*pgather_sharding);
       VLOG(5) << "[Gather partitioning]: Partitioned as index only";
-      return pgather;
+      return PartitionedHlo(pgather, gather->shape(), operand.state())
+          .Reshard(gather->sharding())
+          .hlo();
     }
   }
   return nullptr;

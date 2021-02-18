@@ -801,7 +801,7 @@ class TensorArrayTest(test.TestCase):
       self._testTensorArrayGradientWriteReadType(dtype)
 
   def _testTensorArrayGradientWritePackConcatAndRead(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       ta = tensor_array_ops.TensorArray(
           dtype=dtypes.float32,
           tensor_array_name="foo",
@@ -1371,7 +1371,7 @@ class TensorArrayTest(test.TestCase):
       self.assertAllEqual(grad_r0_x1_vals, [1.0, 0.0])
 
   def _testTensorArrayUnpackDynamic(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       ta = tensor_array_ops.TensorArray(
           dtype=dtypes.float32, size=3, dynamic_size=True)
       x = constant_op.constant([1.0, 2.0, 3.0])
@@ -1388,7 +1388,7 @@ class TensorArrayTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testSkipEagerTensorArraySplitDynamic(self):
-    with self.session() as sess:
+    with self.session():
       ta = tensor_array_ops.TensorArray(
           dtype=dtypes.float32, size=3, dynamic_size=True)
       x = constant_op.constant([1.0, 2.0, 3.0])
@@ -1771,7 +1771,7 @@ class TensorArrayTest(test.TestCase):
       # dy is outside of the gradients name scope; tf.gradients must
       # wrap it in the correct name scope.
       dx, = gradients_impl.gradients(ys=[y], xs=[x], grad_ys=[dy])
-      with self.cached_session() as sess:
+      with self.cached_session():
         vdx, vdy = self.evaluate([dx, dy])
       self.assertAllClose(vdx, vdy)
 

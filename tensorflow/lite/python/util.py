@@ -66,6 +66,7 @@ _MAP_TF_TO_TFLITE_TYPES = {
     dtypes.complex128: _types_pb2.COMPLEX128,
     dtypes.resource: _types_pb2.RESOURCE,
     dtypes.variant: _types_pb2.VARIANT,
+    dtypes.uint32: _types_pb2.UINT32,
 }
 
 _MAP_TFLITE_ENUM_TO_TF_TYPES = {
@@ -81,6 +82,7 @@ _MAP_TFLITE_ENUM_TO_TF_TYPES = {
     9: dtypes.int8,
     10: dtypes.float64,
     11: dtypes.complex128,
+    16: dtypes.uint32,
 }
 
 _TFLITE_FILE_IDENTIFIER = b"TFL3"

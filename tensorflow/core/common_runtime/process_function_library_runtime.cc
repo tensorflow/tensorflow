@@ -516,6 +516,22 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
             if (on_same_task) {
               continue;
             }
+            // Compare with default_device if it has a narrower scope matching
+            // requested device.
+            int colocated_on_default_device = 0;
+            for (int i = 0; i < matching_devices.size(); ++i) {
+              if (DeviceNameUtils::IsSameAddressSpace(
+                      default_device->parsed_name(),
+                      matching_devices.at(i)->parsed_name())) {
+                colocated_on_default_device++;
+              }
+            }
+            // Continue to raise error if multiple colocated devices are
+            // found.
+            if (colocated_on_default_device == 1) {
+              continue;
+            }
+
             // Convert a vector of devices to a string.
             // Using absl::StrJoin did not work in Android builds.
             string devices = "[";

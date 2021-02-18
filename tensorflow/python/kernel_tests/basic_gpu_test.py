@@ -40,13 +40,13 @@ from tensorflow.python.platform import test
 class GPUBinaryOpsTest(test.TestCase):
 
   def _compareGPU(self, x, y, np_func, tf_func):
-    with self.cached_session() as sess:
+    with self.cached_session():
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       out = tf_func(inx, iny)
       tf_gpu = self.evaluate(out)
 
-    with self.cached_session(use_gpu=False) as sess:
+    with self.cached_session(use_gpu=False):
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       out = tf_func(inx, iny)
@@ -143,7 +143,7 @@ class MathBuiltinUnaryTest(test.TestCase):
 
     np_out = np.floor_divide(x, y + 0.1)
 
-    with self.session() as sess:
+    with self.session():
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y + 0.1)
       ofunc = inx / iny
