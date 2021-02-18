@@ -314,7 +314,6 @@ def build_toco_flags(inference_type=dtypes.float32,
                      drop_control_dependency=True,
                      reorder_across_fake_quant=False,
                      allow_custom_ops=False,
-                     custom_opdefs=None,
                      post_training_quantize=False,
                      quantize_to_float16=False,
                      dump_graphviz_dir=None,
@@ -337,8 +336,6 @@ def build_toco_flags(inference_type=dtypes.float32,
   toco.drop_control_dependency = drop_control_dependency
   toco.reorder_across_fake_quant = reorder_across_fake_quant
   toco.allow_custom_ops = allow_custom_ops
-  if custom_opdefs:
-    toco.custom_opdefs.extend(custom_opdefs)
   if select_user_tf_ops:
     toco.select_user_tf_ops.extend(select_user_tf_ops)
   toco.post_training_quantize = post_training_quantize
@@ -372,7 +369,6 @@ def build_toco_convert_protos(input_tensors,
                               drop_control_dependency=True,
                               reorder_across_fake_quant=False,
                               allow_custom_ops=False,
-                              custom_opdefs=None,
                               change_concat_input_ranges=False,
                               post_training_quantize=False,
                               quantize_to_float16=False,
@@ -428,9 +424,6 @@ def build_toco_convert_protos(input_tensors,
       created for any op that is unknown. The developer will need to provide
       these to the TensorFlow Lite runtime with a custom resolver. (default
       False)
-    custom_opdefs: List of strings representing custom ops OpDefs that are
-      included in the GraphDef. Required when using custom operations with the
-      MLIR-based converter. (default None)
     change_concat_input_ranges: Boolean to change behavior of min/max ranges for
       inputs and outputs of the concat operator for quantized models. Changes
       the ranges of concat operator overlap when true. (default False)
@@ -482,7 +475,7 @@ def build_toco_convert_protos(input_tensors,
   toco = build_toco_flags(inference_type, inference_input_type, input_format,
                           output_format, default_ranges_stats,
                           drop_control_dependency, reorder_across_fake_quant,
-                          allow_custom_ops, custom_opdefs,
+                          allow_custom_ops,
                           post_training_quantize, quantize_to_float16,
                           dump_graphviz_dir, dump_graphviz_video, target_ops,
                           conversion_summary_dir, select_user_tf_ops)
