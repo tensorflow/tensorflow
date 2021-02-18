@@ -550,6 +550,14 @@ def : Pat<(TF_SliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
             $slice_sizes)]>;
 
 //===----------------------------------------------------------------------===//
+// Select op patterns.
+//===----------------------------------------------------------------------===//
+
+ def : Pat<(TF_SelectV2Op HLO_Tensor:$pred, HLO_Tensor:$on_true,
+            HLO_Tensor:$on_false),
+           (HLOClient_BroadcastSelectOp $pred, $on_true, $on_false)>;
+
+//===----------------------------------------------------------------------===//
 // PartitionedCall and LegacyCall op patterns.
 //===----------------------------------------------------------------------===//
 
