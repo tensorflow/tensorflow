@@ -759,3 +759,18 @@ foreach ArgMinMaxOp = [TFL_ArgMinOp, TFL_ArgMaxOp] in {
     [(HasOneUse $log_softmax),
      (AxesIsLastDimension $axes, $logits)]>;
 }
+
+class AllElementsAreI64<string val> : Constraint<CPred<
+  "($0.isa<DenseElementsAttr>() && "
+   "$0.cast<DenseElementsAttr>().getType().cast<ShapedType>().getElementType().isInteger(64) && "
+   "std::all_of($0.cast<DenseElementsAttr>().getValues<int64_t>().begin(), "
+               "$0.cast<DenseElementsAttr>().getValues<int64_t>().end(), "
+               "[](int64_t v){ return v == " #val# ";}))">>;
+
+// Remove Slice ops slicing the whole input tensor, effectively no-op
+def OptimizeSliceOp : Pat<
+  (TFL_SliceOp:$output $input, (ConstantOp $begin), $shape),
+  (replaceWithValue $input),
+  [(AllElementsAreI64<"0"> $begin),
+   (IsTailOfShape $input, $output),
+   (IsTailOfShape $output, $input)]>;

@@ -1678,3 +1678,30 @@ func @ReorderReshapex2Add(%arg0: tensor<1x2x3x4xf32>, %arg1: tensor<1x2x3x4xf32>
   // CHECK: %[[VAL_1:.*]] = "tfl.reshape"(%[[VAL_0]], %[[CST]]) : (tensor<1x2x3x4xf32>, tensor<2xi32>) -> tensor<6x4xf32>
   // CHECK: return %[[VAL_1]]
 }
+
+// CHECK-LABEL: ConvertSliceToIdentity
+func @ConvertSliceToIdentity(%arg0: tensor<2x3x4x5xf32>) -> tensor<2x3x4x5xf32> {
+  %begin = constant dense<0> : tensor<4xi64>
+  %shape = constant dense<[2,3,4,5]> : tensor<4xi64>
+  %0 = "tfl.slice"(%arg0, %begin, %shape) : (tensor<2x3x4x5xf32>, tensor<4xi64>, tensor<4xi64>) -> tensor<2x3x4x5xf32>
+  return %0 : tensor<2x3x4x5xf32>
+  // CHECK: return %arg0
+}
+
+// CHECK-LABEL: DontConvertSliceToIdentity
+func @DontConvertSliceToIdentity(%arg0: tensor<2x3x4x5xf32>) -> (tensor<2x3x4x4xf32>, tensor<1x2x3x4xf32>) {
+  %begin0 = constant dense<0> : tensor<4xi64>
+  %shape0 = constant dense<[2,3,4,4]> : tensor<4xi64>
+  %begin1 = constant dense<1> : tensor<4xi64>
+  %shape1 = constant dense<[1,2,3,4]> : tensor<4xi64>
+  %0 = "tfl.slice"(%arg0, %begin0, %shape0) : (tensor<2x3x4x5xf32>, tensor<4xi64>, tensor<4xi64>) -> tensor<2x3x4x4xf32>
+  %1 = "tfl.slice"(%arg0, %begin1, %shape1) : (tensor<2x3x4x5xf32>, tensor<4xi64>, tensor<4xi64>) -> tensor<1x2x3x4xf32>
+  return %0, %1 : tensor<2x3x4x4xf32>, tensor<1x2x3x4xf32>
+  // CHECK: %[[BEGIN_0:.*]] = constant dense<0> : tensor<4xi64>
+  // CHECK: %[[SHAPE_0:.*]] = constant dense<[2, 3, 4, 4]> : tensor<4xi64>
+  // CHECK: %[[BEGIN_1:.*]] = constant dense<1> : tensor<4xi64>
+  // CHECK: %[[SHAPE_1:.*]] = constant dense<[1, 2, 3, 4]> : tensor<4xi64>
+  // CHECK: %[[SLICE_0:.*]] = "tfl.slice"(%arg0, %[[BEGIN_0]], %[[SHAPE_0]]) : (tensor<2x3x4x5xf32>, tensor<4xi64>, tensor<4xi64>) -> tensor<2x3x4x4xf32>
+  // CHECK: %[[SLICE_1:.*]] = "tfl.slice"(%arg0, %[[BEGIN_1]], %[[SHAPE_1]]) : (tensor<2x3x4x5xf32>, tensor<4xi64>, tensor<4xi64>) -> tensor<1x2x3x4xf32>
+  // CHECK: return %[[SLICE_0]], %[[SLICE_1]] : tensor<2x3x4x4xf32>, tensor<1x2x3x4xf32>
+}
