@@ -115,7 +115,7 @@ def _test_random_seed_combinations():
 
 class RandomSeedTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  def _evaluate(self, tinput, toutput):
+  def _checkEqual(self, tinput, toutput):
     random_seed.set_random_seed(tinput[0])
     g_seed, op_seed = data_random_seed.get_seed(tinput[1])
     g_seed = self.evaluate(g_seed)
@@ -132,7 +132,7 @@ class RandomSeedTest(test_base.DatasetTestBase, parameterized.TestCase):
   )
   def testRandomSeed(self, input_fn, output_fn):
     tinput, toutput = input_fn(), output_fn()
-    self._evaluate(tinput=tinput, toutput=toutput)
+    self._checkEqual(tinput=tinput, toutput=toutput)
     random_seed.set_random_seed(None)
 
   @combinations.generate(test_base.graph_only_combinations())
@@ -141,7 +141,7 @@ class RandomSeedTest(test_base.DatasetTestBase, parameterized.TestCase):
     for i in range(10):
       tinput = (1, None)
       toutput = (1, i)
-      self._evaluate(tinput=tinput, toutput=toutput)
+      self._checkEqual(tinput=tinput, toutput=toutput)
 
 
 if __name__ == '__main__':
