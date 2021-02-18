@@ -40,6 +40,7 @@ AllOpsResolver::AllOpsResolver() {
   AddEqual();
   AddEthosU();
   AddFloor();
+  AddFloorDiv();
   AddFullyConnected();
   AddGreater();
   AddGreaterEqual();

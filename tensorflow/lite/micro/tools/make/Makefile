@@ -285,6 +285,7 @@ tensorflow/lite/micro/kernels/exp_test.cc \
 tensorflow/lite/micro/kernels/expand_dims_test.cc \
 tensorflow/lite/micro/kernels/fill_test.cc \
 tensorflow/lite/micro/kernels/floor_test.cc \
+tensorflow/lite/micro/kernels/floor_div_test.cc \
 tensorflow/lite/micro/kernels/fully_connected_test.cc \
 tensorflow/lite/micro/kernels/hard_swish_test.cc \
 tensorflow/lite/micro/kernels/l2norm_test.cc \
@@ -346,6 +347,7 @@ tensorflow/lite/micro/kernels/exp.cc \
 tensorflow/lite/micro/kernels/expand_dims.cc \
 tensorflow/lite/micro/kernels/fill.cc \
 tensorflow/lite/micro/kernels/floor.cc \
+tensorflow/lite/micro/kernels/floor_div.cc \
 tensorflow/lite/micro/kernels/fully_connected.cc \
 tensorflow/lite/micro/kernels/fully_connected_common.cc \
 tensorflow/lite/micro/kernels/hard_swish.cc \
@@ -437,6 +439,7 @@ tensorflow/lite/kernels/internal/reference/elu.h \
 tensorflow/lite/kernels/internal/reference/exp.h \
 tensorflow/lite/kernels/internal/reference/fill.h \
 tensorflow/lite/kernels/internal/reference/floor.h \
+tensorflow/lite/kernels/internal/reference/floor_div.h \
 tensorflow/lite/kernels/internal/reference/fully_connected.h \
 tensorflow/lite/kernels/internal/reference/hard_swish.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/add.h \
