@@ -45,13 +45,16 @@ namespace tensorflow {
 namespace grappler {
 
 #if TENSORFLOW_USE_ROCM
-const std::array<std::string, 2> FP16SupportedDevices = {"906", "908"}; 
-
-bool HasEnhancedFP16ComputeSupport(std::pair<int, int> gpu_arch){
-    std::string arch = std::to_string(gpu_arch.first); 
-    return std::find(std::begin(FP16SupportedDevices), 
-                     std::end(FP16SupportedDevices), arch)
-           != std::end(FP16SupportedDevices); 
+bool GetFastFP16Support(const DeviceProperties &props)
+{
+    bool supported = false;
+    std::set<std::string> FP16SupportedDevices = {"gfx906", "gfx908"};
+    std::string gcnArchName = props.environment().at("architecture");
+    std::vector<std::string> gpu_arch = absl::StrSplit(gcnArchName, ":");
+    supported = std::find(std::begin(FP16SupportedDevices),
+                std::end(FP16SupportedDevices), gpu_arch[0])
+                != std::end(FP16SupportedDevices);
+    return supported;
 }
 #endif
 
@@ -59,9 +62,6 @@ namespace {
 
 #if GOOGLE_CUDA
 const std::pair<int, int> kMinGPUArch = {7, 0};
-#elif TENSORFLOW_USE_ROCM
-const std::pair<int, int> kMinGPUArch = {906,0}; 
-// TODO change this to handle strings for ROCm 3.7
 #else
 const std::pair<int, int> kMinGPUArch = {0, 0};
 #endif
@@ -1179,7 +1179,7 @@ bool AutoMixedPrecisionImpl::IsOnSuitableGPUArch(const NodeDef& node) const {
 #ifndef TENSORFLOW_USE_ROCM
   return GetDeviceGPUArch(virtual_placer_.get_device(node)) >= kMinGPUArch;
 #else
-  return HasEnhancedFP16ComputeSupport(GetDeviceGPUArch(virtual_placer_.get_device(node)));
+  return GetFastFP16Support(virtual_placer_.get_device(node)); 
 #endif
 }
 
@@ -1990,10 +1990,18 @@ int GetNumGPUs(const Cluster& cluster,
   int num_gpus = 0;
   for (const auto& device : devices) {
     const DeviceProperties& device_properties = device.second;
+#if GOOGLE_CUDA
     std::pair<int, int> arch = GetDeviceGPUArch(device_properties);
     if (device_properties.type() == "GPU" && arch >= min_arch) {
       num_gpus++;
     }
+#elif TENSORFLOW_USE_ROCM
+    if (device_properties.type() == "GPU"){
+        if(ShouldIgnorePerformance() || GetFastFP16Support(device_properties)){
+            num_gpus++;
+        }
+    }
+#endif
   }
   return num_gpus;
 }
@@ -2020,7 +2028,6 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   // Start by copying input graph to output.
   *output = item.graph;
-
   int num_gpus = ShouldIgnorePerformance() ? GetNumGPUs(*cluster)
                                            : GetNumGPUs(*cluster, kMinGPUArch);
   if (num_gpus < 1 && mode_ == AutoMixedPrecisionMode::CUDA) {

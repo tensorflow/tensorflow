@@ -17,17 +17,13 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_AUTO_MIXED_PRECISION_H_
 
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
+#include "tensorflow/core/protobuf/device_properties.pb.h" 
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
 
 enum class AutoMixedPrecisionMode { CUDA, MKL };
-
-//Getting FP16 supported devices for ROCm
-#if TENSORFLOW_USE_ROCM
-bool HasEnhancedFP16ComputeSupport(std::pair<int, int> gpu_arch);
-#endif
 
 // Convert data types to float16 or bfloat16 where appropriate to improve
 // performance on GPUs or CPUs.
