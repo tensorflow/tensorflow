@@ -56,6 +56,8 @@ filegroup(
         "gpu_op_digamma.cc",
         "gpu_op_erf.cc",
         "gpu_op_erfc.cc",
+        "gpu_op_exp.cc",
+        "gpu_op_expm1.cc",
         "gpu_op_floor.cc",
         "gpu_op_imag.cc",
         "gpu_op_invert.cc",
@@ -82,8 +84,6 @@ filegroup(
 filegroup(
     name = "experimental_unary_gpu_kernel_srcs",
     srcs = [
-        "gpu_op_exp.cc",
-        "gpu_op_expm1.cc",
         "gpu_op_sign.cc",
     ],
     compatible_with = get_compatible_with_cloud(),
