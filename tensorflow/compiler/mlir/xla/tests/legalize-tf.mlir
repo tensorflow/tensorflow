@@ -2183,6 +2183,13 @@ func @exp(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   return %0 : tensor<2xf32>
 }
 
+// CHECK-LABEL: @expm1
+func @expm1(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK:  "mhlo.exponential_minus_one"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  %0 = "tf.Expm1"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
 // CHECK-LABEL: func @exp_dynamic
 func @exp_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   // CHECK:  "mhlo.exponential"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
