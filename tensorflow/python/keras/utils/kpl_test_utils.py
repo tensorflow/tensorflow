@@ -18,16 +18,22 @@ from __future__ import division
 from __future__ import print_function
 
 import random
+import tempfile
 
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras.layers.preprocessing import string_lookup
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
+from tensorflow.python.saved_model import save as tf_save
 
 
-class DistributeKplTestUtils:
+class DistributeKplTestUtils(test.TestCase):
   """Utils for test of tf.distribute + KPL."""
   FEATURE_VOCAB = [
       "avenger", "ironman", "batman", "hulk", "spiderman", "kingkong",
@@ -127,3 +133,58 @@ class DistributeKplTestUtils:
             emb_output)
     model = keras.Model({"features": model_input}, dense_output)
     return model
+
+  def define_reverse_lookup_layer(self):
+    """Create string reverse lookup layer for serving."""
+
+    label_inverse_lookup_layer = string_lookup.StringLookup(
+        num_oov_indices=1,
+        mask_token=None,
+        vocabulary=self.LABEL_VOCAB,
+        invert=True)
+    return label_inverse_lookup_layer
+
+  def create_serving_signature(self, model, feature_mapper,
+                               label_inverse_lookup_layer):
+    """Create serving signature for the given model."""
+
+    @def_function.function
+    def serve_fn(raw_features):
+      raw_features = array_ops.expand_dims(raw_features, axis=0)
+      transformed_features = model.feature_mapper(raw_features)
+      outputs = model(transformed_features)
+      outputs = array_ops.squeeze(outputs, axis=0)
+      outputs = math_ops.cast(math_ops.greater(outputs, 0.5), dtypes.int64)
+      decoded_outputs = model.label_inverse_lookup_layer(outputs)
+      return array_ops.squeeze(decoded_outputs, axis=0)
+
+    model.feature_mapper = feature_mapper
+    model.label_inverse_lookup_layer = label_inverse_lookup_layer
+    # serving does NOT have batch dimension
+    return serve_fn.get_concrete_function(
+        tensor_spec.TensorSpec(
+            shape=(3), dtype=dtypes.string, name="example"))
+
+  def test_save_load_serving_model(self, model, feature_mapper,
+                                   label_inverse_lookup_layer):
+    """Test save/load/serving model."""
+
+    serving_fn = self.create_serving_signature(model, feature_mapper,
+                                               label_inverse_lookup_layer)
+
+    saved_model_dir = tempfile.mkdtemp(dir=self.get_temp_dir())
+    tf_save.save(
+        model, saved_model_dir, signatures={"serving_default": serving_fn})
+
+    # Test the saved_model.
+    loaded_serving_fn = keras.saving.save.load_model(
+        saved_model_dir).signatures["serving_default"]
+
+    # check the result w/ and w/o avenger.
+    prediction0 = loaded_serving_fn(
+        constant_op.constant(["avenger", "ironman", "avenger"]))["output_0"]
+    self.assertIn(prediction0.numpy().decode("UTF-8"), ("yes", "no"))
+
+    prediction1 = loaded_serving_fn(
+        constant_op.constant(["ironman", "ironman", "unkonwn"]))["output_0"]
+    self.assertIn(prediction1.numpy().decode("UTF-8"), ("yes", "no"))
