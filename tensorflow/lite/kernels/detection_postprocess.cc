@@ -367,16 +367,6 @@ void DecreasingPartialArgSort(const float* values, int num_values,
       [&values](const int i, const int j) { return values[i] > values[j]; });
 }
 
-void DecreasingArgSort(const float* values, int num_values, int* indices) {
-  std::iota(indices, indices + num_values, 0);
-
-  // We want here a stable sort, in order to get completely defined output.
-  // In this way TFL and TFLM can be bit-exact.
-  std::stable_sort(
-      indices, indices + num_values,
-      [&values](const int i, const int j) { return values[i] > values[j]; });
-}
-
 void SelectDetectionsAboveScoreThreshold(const std::vector<float>& values,
                                          const float threshold,
                                          std::vector<float>* keep_values,
@@ -461,8 +451,8 @@ TfLiteStatus NonMaxSuppressionSingleClassHelper(
   int num_scores_kept = keep_scores.size();
   std::vector<int> sorted_indices;
   sorted_indices.resize(num_scores_kept);
-  DecreasingArgSort(keep_scores.data(), num_scores_kept, sorted_indices.data());
-
+  DecreasingPartialArgSort(keep_scores.data(), num_scores_kept, num_scores_kept,
+                           sorted_indices.data());
   const int num_boxes_kept = num_scores_kept;
   const int output_size = std::min(num_boxes_kept, max_detections);
   selected->clear();
