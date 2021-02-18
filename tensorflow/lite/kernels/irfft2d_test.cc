@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,11 +29,8 @@ namespace tflite {
 namespace ops {
 namespace custom {
 
-TfLiteRegistration* Register_IRFFT2D();
-
 namespace {
 
-using std::complex;
 using ::testing::ElementsAreArray;
 
 class Irfft2dOpModel : public SingleOpModel {
