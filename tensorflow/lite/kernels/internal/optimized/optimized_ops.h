@@ -4961,6 +4961,20 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
       output_data, op_params.half_pixel_centers);
 }
 
+// TODO(b/180609127) Create optimized int8 version from uint8. Call from here.
+inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
+                           const RuntimeShape& unextended_input_shape,
+                           const int8* input_data,
+                           const RuntimeShape& unextended_output_size_shape,
+                           const int32* output_size_data,
+                           const RuntimeShape& unextended_output_shape,
+                           int8* output_data) {
+  reference_ops::ResizeBilinearInteger(op_params, unextended_input_shape,
+                                       input_data, unextended_output_size_shape,
+                                       output_size_data,
+                                       unextended_output_shape, output_data);
+}
+
 // Helper methods for BatchToSpaceND.
 // `spatial_index_dim` specifies post-crop offset index in this spatial
 // dimension, i.e. spatial offset introduced by flattening batch to spatial
