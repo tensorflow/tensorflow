@@ -72,6 +72,7 @@ gentbl(
 cc_library(
     name = "xla_passes",
     srcs = [
+        "transforms/legalize_tf_types.cc",
         "transforms/passes_detail.h",
         "transforms/prepare_for_export.cc",
     ],
@@ -81,10 +82,12 @@ cc_library(
     deps = [
         ":xla_passes_inc_gen",
         "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
     ],
     alwayslink = 1,
 )
@@ -109,6 +112,7 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo:convert_op_folder",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:padding",
