@@ -1466,6 +1466,13 @@ class HloCustomCallInstruction : public HloInstruction {
     padding_type_ = padding_type;
   }
 
+  // Returns the literal associated with this instruction.
+  const Literal& literal() const { return *literal_; }
+  // Set the value of literal to a new one.
+  void set_literal(Literal&& literal) { literal_.emplace(std::move(literal)); }
+  // Returns whether there is literal associated with this instruction.
+  bool HasLiteral() const { return literal_.has_value(); }
+
   const PrecisionConfig& precision_config() const { return precision_config_; }
   PrecisionConfig* mutable_precision_config() { return &precision_config_; }
 
@@ -1532,6 +1539,7 @@ class HloCustomCallInstruction : public HloInstruction {
   // output_to_operand_aliasing().
   std::vector<std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
       output_to_operand_aliasing_;
+  absl::optional<Literal> literal_;
 };
 
 class HloPadInstruction : public HloInstruction {

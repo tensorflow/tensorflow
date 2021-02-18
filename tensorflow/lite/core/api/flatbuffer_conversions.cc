@@ -821,6 +821,9 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_SEGMENT_SUM:
     case BuiltinOperator_BROADCAST_TO:
     case BuiltinOperator_RFFT2D:
+    case BuiltinOperator_IMAG:
+    case BuiltinOperator_REAL:
+    case BuiltinOperator_COMPLEX_ABS:
       return kTfLiteOk;
     case BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES:
       return kTfLiteError;
@@ -847,6 +850,9 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
       return kTfLiteOk;
     case TensorType_INT32:
       *type = kTfLiteInt32;
+      return kTfLiteOk;
+    case TensorType_UINT32:
+      *type = kTfLiteUInt32;
       return kTfLiteOk;
     case TensorType_UINT8:
       *type = kTfLiteUInt8;
@@ -1985,6 +1991,14 @@ TfLiteStatus ParseSvdf(const Operator* op, ErrorReporter* error_reporter,
 // selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseTanh(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
                        void**) {
+  return kTfLiteOk;
+}
+//
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseTranspose(const Operator*, ErrorReporter*,
+                            BuiltinDataAllocator*, void**) {
   return kTfLiteOk;
 }
 

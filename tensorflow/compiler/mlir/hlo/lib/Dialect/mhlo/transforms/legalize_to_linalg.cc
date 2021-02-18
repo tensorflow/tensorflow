@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -329,7 +330,7 @@ struct ConvToLinalgConverter : public OpConversionPattern<lmhlo::ConvOp> {
       auto range = window_strides->getAttributeValues();
       strides.assign(range.begin(), range.end());
     }
-    auto strides_arg = ArrayAttr::get(strides, op.getContext());
+    auto strides_arg = ArrayAttr::get(op.getContext(), strides);
 
     llvm::SmallVector<Attribute, 2> dilation;
     if (auto rhs_dilation = op.rhs_dilation()) {
@@ -339,7 +340,7 @@ struct ConvToLinalgConverter : public OpConversionPattern<lmhlo::ConvOp> {
       // Default dilation of 1.
       dilation.resize(2, IntegerAttr::get(rewriter.getIntegerType(64), 1));
     }
-    auto dilation_arg = ArrayAttr::get(dilation, op.getContext());
+    auto dilation_arg = ArrayAttr::get(op.getContext(), dilation);
 
     // Set padding only if it is non-zero.
     DenseIntElementsAttr padding = op.paddingAttr();
@@ -804,9 +805,8 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
             loc, collapsed_type, args[0], collapsing_map);
         Value reshape_buffer = rewriter.create<linalg::ReshapeOp>(
             loc, result_type, collapsed_op, expanding_map);
-        rewriter.replaceOpWithNewOp<linalg::CopyOp>(
-            reshape_op, reshape_buffer, args[1], /*inputPermutation =*/nullptr,
-            /*outputPermutation =*/nullptr);
+        rewriter.replaceOpWithNewOp<linalg::CopyOp>(reshape_op, reshape_buffer,
+                                                    args[1]);
       } else {
         auto collapsed_type = RankedTensorType::get({total_elems}, elem_type);
         Value collapsed_op = rewriter.create<linalg::TensorReshapeOp>(
@@ -820,9 +820,8 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
     if (isLHLO) {
       Value reshape_buffer = rewriter.create<linalg::ReshapeOp>(
           reshape_op.getLoc(), result_type, args[0], reassociation_map);
-      rewriter.replaceOpWithNewOp<linalg::CopyOp>(
-          reshape_op, reshape_buffer, args[1], /*inputPermutation =*/nullptr,
-          /*outputPermutation =*/nullptr);
+      rewriter.replaceOpWithNewOp<linalg::CopyOp>(reshape_op, reshape_buffer,
+                                                  args[1]);
     } else {
       rewriter.replaceOpWithNewOp<linalg::TensorReshapeOp>(
           reshape_op, result_type, args[0], reassociation_map);
@@ -1399,6 +1398,7 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<lmhlo::CosOp>,
                    PointwiseToLinalgConverter<lmhlo::DivOp>,
                    PointwiseToLinalgConverter<lmhlo::ExpOp>,
+                   PointwiseToLinalgConverter<lmhlo::Expm1Op>,
                    PointwiseToLinalgConverter<lmhlo::FloorOp>,
                    PointwiseToLinalgConverter<lmhlo::ImagOp>,
                    PointwiseToLinalgConverter<lmhlo::IsFiniteOp>,
@@ -1456,14 +1456,15 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
 struct LhloLegalizeToLinalgPass
     : public PassWrapper<LhloLegalizeToLinalgPass, FunctionPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<AffineDialect, linalg::LinalgDialect>();
+    registry.insert<AffineDialect, linalg::LinalgDialect, math::MathDialect>();
   }
 
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
     target.addLegalDialect<complex::ComplexDialect, linalg::LinalgDialect,
-                           StandardOpsDialect, AffineDialect>();
+                           math::MathDialect, StandardOpsDialect,
+                           AffineDialect>();
 
     auto func = getFunction();
     populateLHLOToLinalgConversionPattern(func.getContext(), &patterns);
@@ -1477,15 +1478,15 @@ struct HloLegalizeToLinalgPass
     : public PassWrapper<HloLegalizeToLinalgPass, FunctionPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<linalg::LinalgDialect, scf::SCFDialect,
-                    complex::ComplexDialect>();
+                    complex::ComplexDialect, math::MathDialect>();
   }
 
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
     target.addLegalDialect<complex::ComplexDialect, linalg::LinalgDialect,
-                           StandardOpsDialect, tensor::TensorDialect,
-                           scf::SCFDialect>();
+                           math::MathDialect, StandardOpsDialect,
+                           tensor::TensorDialect, scf::SCFDialect>();
 
     auto func = getFunction();
     mhlo::populateHLOToLinalgConversionPattern(func.getContext(), &patterns);
@@ -1524,6 +1525,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgConverter<mhlo::CosOp, false>,
       PointwiseToLinalgConverter<mhlo::DivOp, false>,
       PointwiseToLinalgConverter<mhlo::ExpOp, false>,
+      PointwiseToLinalgConverter<mhlo::Expm1Op, false>,
       PointwiseToLinalgConverter<mhlo::FloorOp, false>,
       PointwiseToLinalgConverter<mhlo::ImagOp, false>,
       PointwiseToLinalgConverter<mhlo::IsFiniteOp, false>,

@@ -20,7 +20,6 @@
 # Second argument is a regular expression that's required to be in the output
 # logs for the test to pass.
 
-declare -r ROOT_DIR=`pwd`
 declare -r TEST_TMPDIR=/tmp/test_hexagon_binary/
 declare -r MICRO_LOG_PATH=${TEST_TMPDIR}/$1
 declare -r MICRO_LOG_FILENAME=${MICRO_LOG_PATH}/logs.txt
@@ -29,11 +28,14 @@ mkdir -p ${MICRO_LOG_PATH}
 hexagon-elfcopy $1 $1.elf
 hexagon-sim $1.elf 2>&1 | tee ${MICRO_LOG_FILENAME}
 
-if grep -q "$2" ${MICRO_LOG_FILENAME}
+if [[ ${2} != "non_test_binary" ]]
 then
-  echo "$1: PASS"
-  exit 0
-else
-  echo "$1: FAIL - '$2' not found in logs."
-  exit 1
+  if grep -q "$2" ${MICRO_LOG_FILENAME}
+  then
+    echo "$1: PASS"
+    exit 0
+  else
+    echo "$1: FAIL - '$2' not found in logs."
+    exit 1
+  fi
 fi

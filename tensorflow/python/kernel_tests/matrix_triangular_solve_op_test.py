@@ -195,7 +195,7 @@ class MatrixTriangularSolveOpTest(test.TestCase):
   def testNonSquareMatrix(self):
     # A non-square matrix should cause an error.
     matrix = np.array([[1., 2., 3.], [3., 4., 5.]])
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       with self.assertRaises(ValueError):
         self._verifySolve(matrix, matrix)
       with self.assertRaises(ValueError):
@@ -207,7 +207,7 @@ class MatrixTriangularSolveOpTest(test.TestCase):
     # right-hand sides.
     matrix = np.array([[1., 0.], [0., 1.]])
     rhs = np.array([[1., 0.]])
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       with self.assertRaises(ValueError):
         self._verifySolve(matrix, rhs)
       with self.assertRaises(ValueError):
@@ -218,9 +218,10 @@ class MatrixTriangularSolveOpTest(test.TestCase):
   def testNotInvertible(self):
     # The input should be invertible.
     # The matrix is singular because it has a zero on the diagonal.
-    # FIXME(rmlarsen): The GPU kernel does not check for singularity.
     singular_matrix = np.array([[1., 0., -1.], [-1., 0., 1.], [0., -1., 1.]])
-    with self.cached_session():
+
+    # FIXME(rmlarsen): The GPU kernel does not check for singularity.
+    with self.cached_session(use_gpu=False):
       with self.assertRaisesOpError("Input matrix is not invertible."):
         self._verifySolve(singular_matrix, singular_matrix)
       with self.assertRaisesOpError("Input matrix is not invertible."):

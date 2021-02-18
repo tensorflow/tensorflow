@@ -93,9 +93,10 @@ class Conv(Layer):
     activation: Activation function to use.
       If you don't specify anything, no activation is applied.
     use_bias: Boolean, whether the layer uses a bias.
-    kernel_initializer: An initializer for the convolution kernel.
+    kernel_initializer: An initializer for the convolution kernel. If None, the 
+      default initializer (glorot_uniform) will be used. 
     bias_initializer: An initializer for the bias vector. If None, the default
-      initializer will be used.
+      initializer (zeros) will be used.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Optional regularizer function for the output.
@@ -450,9 +451,9 @@ class Conv1D(Conv):
       see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias vector.
     kernel_initializer: Initializer for the `kernel` weights matrix (
-      see `keras.initializers`).
+      see `keras.initializers`). Defaults to 'glorot_uniform'.
     bias_initializer: Initializer for the bias vector (
-      see `keras.initializers`).
+      see `keras.initializers`). Defaults to 'zeros'.
     kernel_regularizer: Regularizer function applied to
       the `kernel` weights matrix (see `keras.regularizers`).
     bias_regularizer: Regularizer function applied to the bias vector (
@@ -606,13 +607,13 @@ class Conv2D(Conv):
       activation is applied (see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias vector.
     kernel_initializer: Initializer for the `kernel` weights matrix (see
-      `keras.initializers`).
+      `keras.initializers`). Defaults to 'glorot_uniform'.
     bias_initializer: Initializer for the bias vector (see
-      `keras.initializers`).
+      `keras.initializers`). Defaults to 'zeros'.
     kernel_regularizer: Regularizer function applied to the `kernel` weights
-      matrix (see `keras.regularizers`).
+      matrix (see `keras.regularizers`). 
     bias_regularizer: Regularizer function applied to the bias vector (see
-      `keras.regularizers`).
+      `keras.regularizers`). 
     activity_regularizer: Regularizer function applied to the output of the
       layer (its "activation") (see `keras.regularizers`).
     kernel_constraint: Constraint function applied to the kernel matrix (see
@@ -751,9 +752,9 @@ class Conv3D(Conv):
       activation is applied (see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias vector.
     kernel_initializer: Initializer for the `kernel` weights matrix (see
-      `keras.initializers`).
+      `keras.initializers`). Defaults to 'glorot_uniform'.
     bias_initializer: Initializer for the bias vector (see
-      `keras.initializers`).
+      `keras.initializers`). Defaults to 'zeros'.
     kernel_regularizer: Regularizer function applied to the `kernel` weights
       matrix (see `keras.regularizers`).
     bias_regularizer: Regularizer function applied to the bias vector (see
@@ -872,9 +873,9 @@ class Conv1DTranspose(Conv1D):
       see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias vector.
     kernel_initializer: Initializer for the `kernel` weights matrix (
-      see `keras.initializers`).
+      see `keras.initializers`). Defaults to 'glorot_uniform'.
     bias_initializer: Initializer for the bias vector (
-      see `keras.initializers`).
+      see `keras.initializers`). Defaults to 'zeros'.
     kernel_regularizer: Regularizer function applied to
       the `kernel` weights matrix (see `keras.regularizers`).
     bias_regularizer: Regularizer function applied to the bias vector (
@@ -1136,9 +1137,9 @@ class Conv2DTranspose(Conv2D):
       see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias vector.
     kernel_initializer: Initializer for the `kernel` weights matrix (
-      see `keras.initializers`).
+      see `keras.initializers`). Defaults to 'glorot_uniform'.
     bias_initializer: Initializer for the bias vector (
-      see `keras.initializers`).
+      see `keras.initializers`). Defaults to 'zeros'.
     kernel_regularizer: Regularizer function applied to
       the `kernel` weights matrix (see `keras.regularizers`).
     bias_regularizer: Regularizer function applied to the bias vector (
@@ -1439,8 +1440,10 @@ class Conv3DTranspose(Conv3D):
       If you don't specify anything, no activation is applied (
       see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias vector.
-    kernel_initializer: Initializer for the `kernel` weights matrix.
-    bias_initializer: Initializer for the bias vector.
+    kernel_initializer: Initializer for the `kernel` weights matrix (
+      see `keras.initializers`). Defaults to 'glorot_uniform'.
+    bias_initializer: Initializer for the bias vector (
+      see `keras.initializers`). Defaults to 'zeros'.
     kernel_regularizer: Regularizer function applied to
       the `kernel` weights matrix (
       see `keras.regularizers`).
@@ -1729,10 +1732,14 @@ class SeparableConv(Conv):
       If you don't specify anything, no activation is applied (
       see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias.
-    depthwise_initializer: An initializer for the depthwise convolution kernel.
-    pointwise_initializer: An initializer for the pointwise convolution kernel.
+    depthwise_initializer: An initializer for the depthwise convolution kernel (
+      see `keras.initializers`). If None, then the default initializer (
+      'glorot_uniform') will be used.
+    pointwise_initializer: An initializer for the pointwise convolution kernel (
+      see `keras.initializers`). If None, then the default initializer 
+      ('glorot_uniform') will be used.
     bias_initializer: An initializer for the bias vector. If None, the default
-      initializer will be used.
+      initializer ('zeros') will be used (see `keras.initializers`).
     depthwise_regularizer: Optional regularizer for the depthwise
       convolution kernel.
     pointwise_regularizer: Optional regularizer for the pointwise
@@ -1935,11 +1942,13 @@ class SeparableConv1D(SeparableConv):
       see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias.
     depthwise_initializer: An initializer for the depthwise convolution kernel (
-      see `keras.initializers`).
+      see `keras.initializers`). If None, then the default initializer (
+      'glorot_uniform') will be used.
     pointwise_initializer: An initializer for the pointwise convolution kernel (
-      see `keras.initializers`).
+      see `keras.initializers`). If None, then the default initializer 
+      ('glorot_uniform') will be used.
     bias_initializer: An initializer for the bias vector. If None, the default
-      initializer will be used (see `keras.initializers`).
+      initializer ('zeros') will be used (see `keras.initializers`).
     depthwise_regularizer: Optional regularizer for the depthwise
       convolution kernel (see `keras.regularizers`).
     pointwise_regularizer: Optional regularizer for the pointwise
@@ -2127,12 +2136,14 @@ class SeparableConv2D(SeparableConv):
       If you don't specify anything, no activation is applied (
       see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias vector.
-    depthwise_initializer: Initializer for the depthwise kernel matrix (
-      see `keras.initializers`).
-    pointwise_initializer: Initializer for the pointwise kernel matrix (
-      see `keras.initializers`).
-    bias_initializer: Initializer for the bias vector (
-      see `keras.initializers`).
+    depthwise_initializer: An initializer for the depthwise convolution kernel (
+      see `keras.initializers`). If None, then the default initializer (
+      'glorot_uniform') will be used.
+    pointwise_initializer: An initializer for the pointwise convolution kernel (
+      see `keras.initializers`). If None, then the default initializer 
+      ('glorot_uniform') will be used.
+    bias_initializer: An initializer for the bias vector. If None, the default
+      initializer ('zeros') will be used (see `keras.initializers`).
     depthwise_regularizer: Regularizer function applied to
       the depthwise kernel matrix (see `keras.regularizers`).
     pointwise_regularizer: Regularizer function applied to
@@ -2291,9 +2302,11 @@ class DepthwiseConv2D(Conv2D):
       see `keras.activations`).
     use_bias: Boolean, whether the layer uses a bias vector.
     depthwise_initializer: Initializer for the depthwise kernel matrix (
-      see `keras.initializers`).
+      see `keras.initializers`). If None, the default initializer (
+      'glorot_uniform') will be used.
     bias_initializer: Initializer for the bias vector (
-      see `keras.initializers`).
+      see `keras.initializers`). If None, the default initializer (
+      'zeros') will bs used.
     depthwise_regularizer: Regularizer function applied to
       the depthwise kernel matrix (see `keras.regularizers`).
     bias_regularizer: Regularizer function applied to the bias vector (

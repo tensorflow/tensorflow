@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/delegates/gpu/common/custom_parsers.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/lstm_parser.h"
@@ -1820,6 +1819,40 @@ class SpaceToDepthOperationParser : public TFLiteOperationParser {
   }
 };
 
+class SplitVOperationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    const TfLiteSplitVParams* split_params;
+    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &split_params));
+    if (split_params->num_splits == 1) {
+      return absl::InvalidArgumentError(
+          "SplitV with num_splits = 1 is a no-op.");
+    }
+    return absl::OkStatus();
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    const TfLiteTensor* input = reader->GetInputTensor(0);
+    const TfLiteTensor* axis_tensor = reader->GetInputTensor(2);
+    SplitAttributes attr;
+    RETURN_IF_ERROR(
+        ExtractAxisFromIndex(*input, axis_tensor->data.i32[0], &attr.axis));
+
+    Node* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::SPLIT);
+    node->operation.attributes = attr;
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    for (int i = 0; i < tflite_node->outputs->size; ++i) {
+      RETURN_IF_ERROR(reader->AddOutput(node, i));
+    }
+    return absl::OkStatus();
+  }
+};
+
 class StridedSliceOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
@@ -2383,6 +2416,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<SoftmaxOperationParser>();
     case kTfLiteBuiltinSpaceToDepth:
       return std::make_unique<SpaceToDepthOperationParser>();
+    case kTfLiteBuiltinSplitV:
+      return std::make_unique<SplitVOperationParser>();
     case kTfLiteBuiltinSqrt:
       return std::make_unique<ElementwiseOperationParser>(OperationType::SQRT);
     case kTfLiteBuiltinSquare:
@@ -2412,24 +2447,6 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
 absl::Status IsSupported(const TfLiteContext* context, TfLiteNode* node,
                          const TfLiteRegistration* registration,
                          bool allow_quant_ops = false) {
-  // Report it unsupported if there are unknown shapes in input/output tensors.
-  for (int i = 0; i < node->inputs->size; i++) {
-    const int input_id = node->inputs->data[i];
-    const auto* tensor = context->tensors + input_id;
-    if (HasUnspecifiedDimension(tensor)) {
-      return absl::UnimplementedError(
-          "one of input tensors has unknown dimension(s)");
-    }
-  }
-  for (int i = 0; i < node->outputs->size; i++) {
-    const int output_id = node->outputs->data[i];
-    const auto* tensor = context->tensors + output_id;
-    if (HasUnspecifiedDimension(tensor)) {
-      return absl::UnimplementedError(
-          "one of output tensors has unknown dimension(s)");
-    }
-  }
-
   return NewOperationParser(registration, allow_quant_ops)
       ->IsSupported(context, node, registration);
 }

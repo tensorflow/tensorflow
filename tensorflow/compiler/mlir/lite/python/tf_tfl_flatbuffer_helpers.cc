@@ -119,6 +119,8 @@ DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
       return DT_INT16;
     case toco::IODataType::INT32:
       return DT_INT32;
+    case toco::IODataType::UINT32:
+      return DT_UINT32;
     case toco::IODataType::INT64:
       return DT_INT64;
     case toco::IODataType::UINT64:

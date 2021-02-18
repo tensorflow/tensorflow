@@ -135,6 +135,8 @@ class DataServiceDispatcherImpl {
   Status GetSplit(const GetSplitRequest* request, GetSplitResponse* response);
 
   /// Client-facing API.
+  Status GetVersion(const GetVersionRequest* request,
+                    GetVersionResponse* response);
   Status GetOrRegisterDataset(const GetOrRegisterDatasetRequest* request,
                               GetOrRegisterDatasetResponse* response);
   Status GetOrCreateJob(const GetOrCreateJobRequest* request,

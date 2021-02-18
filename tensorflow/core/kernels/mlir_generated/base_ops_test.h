@@ -63,6 +63,8 @@ struct OpsTestConfig {
   // Negative atol/rtol will make ExpectClose use the default.
   double atol = -1;
   double rtol = -1;
+  std::string input_attribute = "T";
+  std::string output_attribute = "Tout";
   OpsTestConfig ExpectStrictlyEqual() {
     OpsTestConfig config = *this;
     config.expect_strictly_equal = true;
@@ -91,6 +93,16 @@ struct OpsTestConfig {
   OpsTestConfig ATol(double new_atol) {
     OpsTestConfig config = *this;
     config.atol = new_atol;
+    return config;
+  }
+  OpsTestConfig InputAttribute(const std::string& attr) {
+    OpsTestConfig config = *this;
+    config.input_attribute = attr;
+    return config;
+  }
+  OpsTestConfig OutputAttribute(const std::string& attr) {
+    OpsTestConfig config = *this;
+    config.output_attribute = attr;
     return config;
   }
 };

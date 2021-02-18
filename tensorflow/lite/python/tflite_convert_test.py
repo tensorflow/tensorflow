@@ -54,7 +54,8 @@ class TestModels(test_util.TensorFlowTestCase):
   def _run(self,
            flags_str,
            should_succeed,
-           expected_ops_in_converted_model=None):
+           expected_ops_in_converted_model=None,
+           expected_output_shapes=None):
     output_file = os.path.join(self.get_temp_dir(), 'model.tflite')
     tflite_bin = resource_loader.get_path_to_datafile('tflite_convert')
     cmdline = '{0} --output_file={1} {2}'.format(tflite_bin, output_file,
@@ -69,6 +70,9 @@ class TestModels(test_util.TensorFlowTestCase):
         op_set = tflite_test_util.get_ops_list(content)
         for opname in expected_ops_in_converted_model:
           self.assertIn(opname, op_set)
+      if expected_output_shapes:
+        output_shapes = tflite_test_util.get_output_shapes(content)
+        self.assertEqual(output_shapes, expected_output_shapes)
       os.remove(output_file)
     else:
       self.assertFalse(should_succeed)
@@ -85,6 +89,17 @@ class TestModels(test_util.TensorFlowTestCase):
     model.fit(x, y, epochs=1)
 
     keras_file = self._getFilepath('model.h5')
+    keras.models.save_model(model, keras_file)
+    return keras_file
+
+  def _getKerasFunctionalModelFile(self):
+    """Returns a functional Keras model with output shapes [[1, 1], [1, 2]]."""
+    input_tensor = keras.layers.Input(shape=(1,))
+    output1 = keras.layers.Dense(1, name='b')(input_tensor)
+    output2 = keras.layers.Dense(2, name='a')(input_tensor)
+    model = keras.models.Model(inputs=input_tensor, outputs=[output1, output2])
+
+    keras_file = self._getFilepath('functional_model.h5')
     keras.models.save_model(model, keras_file)
     return keras_file
 
@@ -480,6 +495,25 @@ class TfLiteConvertV2Test(TestModels):
     flags_str = (
         '--keras_model_file={} --experimental_new_converter'.format(keras_file))
     self._run(flags_str, should_succeed=True)
+    os.remove(keras_file)
+
+  @test_util.run_v2_only
+  def testFunctionalKerasModel(self):
+    keras_file = self._getKerasFunctionalModelFile()
+
+    flags_str = '--keras_model_file={}'.format(keras_file)
+    self._run(flags_str, should_succeed=True,
+              expected_output_shapes=[[1, 1], [1, 2]])
+    os.remove(keras_file)
+
+  @test_util.run_v2_only
+  def testFunctionalKerasModelMLIR(self):
+    keras_file = self._getKerasFunctionalModelFile()
+
+    flags_str = (
+        '--keras_model_file={} --experimental_new_converter'.format(keras_file))
+    self._run(flags_str, should_succeed=True,
+              expected_output_shapes=[[1, 1], [1, 2]])
     os.remove(keras_file)
 
   def testMissingRequired(self):

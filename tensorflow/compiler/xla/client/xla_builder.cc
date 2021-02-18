@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
@@ -1881,7 +1882,8 @@ XlaOp XlaBuilder::CustomCall(
     absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing) {
+        output_operand_aliasing,
+    const Literal* literal) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     if (absl::StartsWith(call_target_name, "$")) {
       return InvalidArgument(
@@ -1914,7 +1916,7 @@ XlaOp XlaBuilder::CustomCall(
     }
     return CustomCallInternal(call_target_name, operands, shape, opaque,
                               operand_shapes_with_layout, has_side_effect,
-                              output_operand_aliasing);
+                              output_operand_aliasing, literal);
   });
 }
 
@@ -1924,7 +1926,8 @@ StatusOr<XlaOp> XlaBuilder::CustomCallInternal(
     absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing) {
+        output_operand_aliasing,
+    const Literal* literal) {
   HloInstructionProto instr;
   *instr.mutable_shape() = shape.ToProto();
   instr.set_custom_call_target(call_target_name);
@@ -1934,6 +1937,9 @@ StatusOr<XlaOp> XlaBuilder::CustomCallInternal(
     for (const Shape& operand_shape : *operand_shapes_with_layout) {
       *instr.add_operand_shapes_with_layout() = operand_shape.ToProto();
     }
+  }
+  if (literal != nullptr) {
+    *instr.mutable_literal() = literal->ToProto();
   }
   instr.set_custom_call_has_side_effect(has_side_effect);
   for (const auto& pair : output_operand_aliasing) {
@@ -1955,7 +1961,8 @@ XlaOp XlaBuilder::CustomCall(
     absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing) {
+        output_operand_aliasing,
+    const Literal* literal) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     if (absl::StartsWith(call_target_name, "$")) {
@@ -1967,6 +1974,9 @@ XlaOp XlaBuilder::CustomCall(
     *instr.mutable_shape() = shape.ToProto();
     instr.set_custom_call_target(call_target_name);
     instr.set_backend_config(opaque);
+    if (literal != nullptr) {
+      *instr.mutable_literal() = literal->ToProto();
+    }
     if (operand_shapes_with_layout.has_value()) {
       if (!LayoutUtil::HasLayout(shape)) {
         return InvalidArgument(
@@ -3545,13 +3555,25 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
       }
       case HloOpcode::kTuple:
       case HloOpcode::kTranspose:
-      case HloOpcode::kGetTupleElement:
       case HloOpcode::kSlice:
       case HloOpcode::kBroadcast:
       case HloOpcode::kConcatenate:
       case HloOpcode::kReshape:
       case HloOpcode::kPad:
         break;
+      case HloOpcode::kGetTupleElement: {
+        // Rewrite parameter followed by gte into constants to avoid
+        // rematerializing the tuple parameter (could be very large).
+        int64 operand_handle = instr_proto->operand_ids(0);
+        TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
+                            LookUpInstructionByHandle(operand_handle));
+        TF_ASSIGN_OR_RETURN(HloOpcode operand_opcode,
+                            StringToHloOpcode(operand_proto->opcode()));
+        if (operand_opcode == HloOpcode::kParameter) {
+          SetInstructionAsConstant(new_instr, id, new_shape, true);
+        }
+        break;
+      }
       case HloOpcode::kGetDimensionSize: {
         int64 dimension = instr_proto->dimensions(0);
         int64 operand_handle = instr_proto->operand_ids(0);
@@ -3643,6 +3665,18 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
       // We rewrite gte instructions into constants based on its operand shape
       // so no need to visit their operands.
       should_visit_operand = false;
+    }
+
+    if (opcode == HloOpcode::kGetTupleElement) {
+      int64 operand_handle = instr_proto->operand_ids(0);
+      TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
+                          LookUpInstructionByHandle(operand_handle));
+      TF_ASSIGN_OR_RETURN(HloOpcode operand_opcode,
+                          StringToHloOpcode(operand_proto->opcode()));
+      if (operand_opcode == HloOpcode::kParameter) {
+        // Don't rematerialize the whole parameter if it's followed by a GTE.
+        should_visit_operand = false;
+      }
     }
 
     if (opcode == HloOpcode::kSelect) {
@@ -3761,6 +3795,8 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
             HloOpcodeString(HloOpcode::kGetDimensionSize) ||
         InstrIsSetBound(instr_proto)) {
       int32 constant_value = -1;
+      HloInstructionProto const_instr;
+
       if (instr_proto->opcode() ==
           HloOpcodeString(HloOpcode::kGetDimensionSize)) {
         // At this point, BuildConstantSubGraph should never encounter a
@@ -3779,18 +3815,14 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
           constant_value =
               static_cast<int32>(operand_proto->shape().dimensions(dimension));
         }
+        Literal literal = LiteralUtil::CreateR0(constant_value);
+        *const_instr.mutable_literal() = literal.ToProto();
+        *const_instr.mutable_shape() = literal.shape().ToProto();
       } else {
-        TF_RET_CHECK(
-            absl::SimpleAtoi(instr_proto->backend_config(), &constant_value));
+        *const_instr.mutable_literal() = instr_proto->literal();
+        *const_instr.mutable_shape() = instr_proto->shape();
       }
-
-      Literal literal = LiteralUtil::CreateR0(constant_value);
-
-      HloInstructionProto const_instr;
-      *const_instr.mutable_shape() = literal.shape().ToProto();
-      *const_instr.mutable_literal() = literal.ToProto();
       *const_instr.mutable_opcode() = HloOpcodeString(HloOpcode::kConstant);
-
       const_instr.set_id(handle);
       *const_instr.mutable_name() =
           GetFullName(const_instr.opcode(), kNameSeparator, const_instr.id());
@@ -3841,7 +3873,6 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
     }
   }
   *module->add_computations() = std::move(entry);
-
   return std::move(computation);
 }
 
@@ -4434,10 +4465,11 @@ XlaOp CustomCall(
     absl::Span<const XlaOp> operands, const Shape& shape, const string& opaque,
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing) {
+        output_operand_aliasing,
+    const Literal* literal) {
   return builder->CustomCall(call_target_name, operands, shape, opaque,
                              /*operand_shapes_with_layout=*/absl::nullopt,
-                             has_side_effect, output_operand_aliasing);
+                             has_side_effect, output_operand_aliasing, literal);
 }
 
 XlaOp CustomCallWithComputation(
@@ -4445,11 +4477,12 @@ XlaOp CustomCallWithComputation(
     absl::Span<const XlaOp> operands, const XlaComputation& computation,
     const Shape& shape, const string& opaque, bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing) {
+        output_operand_aliasing,
+    const Literal* literal) {
   return builder->CustomCall(call_target_name, operands, computation, shape,
                              opaque,
                              /*operand_shapes_with_layout=*/absl::nullopt,
-                             has_side_effect, output_operand_aliasing);
+                             has_side_effect, output_operand_aliasing, literal);
 }
 
 XlaOp CustomCallWithLayout(
@@ -4458,10 +4491,11 @@ XlaOp CustomCallWithLayout(
     absl::Span<const Shape> operand_shapes_with_layout, const string& opaque,
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing) {
+        output_operand_aliasing,
+    const Literal* literal) {
   return builder->CustomCall(call_target_name, operands, shape, opaque,
                              operand_shapes_with_layout, has_side_effect,
-                             output_operand_aliasing);
+                             output_operand_aliasing, literal);
 }
 
 XlaOp Complex(const XlaOp lhs, const XlaOp rhs,

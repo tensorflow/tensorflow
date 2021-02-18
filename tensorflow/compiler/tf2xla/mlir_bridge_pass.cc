@@ -36,15 +36,32 @@ auto* mlir_bridge_gauge_v2 = monitoring::Gauge<bool, 0>::New(
 
 namespace {
 
-// Checks if the module has any TPU devices in its device list.
-bool HasTPUDevice(mlir::ModuleOp op) {
-  mlir::TF::RuntimeDevices devices;
-  if (failed(GetDevicesFromOp(op.getOperation(), &devices))) return false;
+constexpr char kTPUReplicateAttr[] = "_tpu_replicate";
 
-  for (const auto& device : devices.device_names()) {
-    if (device.has_type && device.type == "TPU") return true;
-  }
-  return false;
+bool HasTPUDevice(mlir::ModuleOp module) {
+  mlir::TF::RuntimeDevices devices;
+  if (failed(GetDevicesFromOp(module.getOperation(), &devices))) return false;
+  return absl::c_any_of(
+      devices.device_names(),
+      [](const tensorflow::DeviceNameUtils::ParsedName& device) {
+        return device.has_type && device.type == "TPU";
+      });
+}
+
+bool HasTPUOp(mlir::ModuleOp module) {
+  auto walk_result = module.walk([&](mlir::Operation* op) {
+    auto replicate_attr =
+        op->getAttrOfType<mlir::StringAttr>(kTPUReplicateAttr);
+    if (replicate_attr) return mlir::WalkResult::interrupt();
+    return mlir::WalkResult::advance();
+  });
+  return walk_result.wasInterrupted();
+}
+
+// Checks that the module has both - TPU devices in its device list and contains
+// TPU ops (identifed by `_tpu_replicate` attribute on ops).
+bool HasTPUDevicesAndOps(mlir::ModuleOp module) {
+  return HasTPUDevice(module) && HasTPUOp(module);
 }
 
 bool HasTPUDevice(const DeviceSet& device_set) {
@@ -74,14 +91,18 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
     return MlirOptimizationPassState::Disabled;
   }
 
-  MlirBridgeRolloutPolicy policy =
-      GetMlirBridgeRolloutPolicy(graph, config_proto);
-  if (policy == MlirBridgeRolloutPolicy::kEnabledByUser) {
-    return MlirOptimizationPassState::Enabled;
-  } else if (policy == MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysis) {
-    return MlirOptimizationPassState::ShadowEnabled;
-  } else {
-    return MlirOptimizationPassState::Disabled;
+  // We set `uses_uninitialized_resource_args` to false here because the first
+  // phase of the bridge is not affected by uninitialized resource args.
+  MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
+      graph, config_proto, /*uses_uninitialized_resource_args=*/false);
+  switch (policy) {
+    case MlirBridgeRolloutPolicy::kEnabledByUser:
+      return MlirOptimizationPassState::Enabled;
+    case MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysis:
+      return MlirOptimizationPassState::ShadowEnabled;
+    case MlirBridgeRolloutPolicy::kDisabledByUser:
+    case MlirBridgeRolloutPolicy::kDisabledAfterGraphAnalysis:
+      return MlirOptimizationPassState::Disabled;
   }
 }
 
@@ -102,9 +123,9 @@ Status MlirBridgePass::Run(const ConfigProto& config_proto,
     return Status::OK();
   }
 
-  // Skip MLIR TPU Bridge if no TPU devices found.
-  if (!HasTPUDevice(module)) {
-    VLOG(1) << "Skipping MLIR TPU Bridge, no TPU devices found";
+  // Skip MLIR TPU Bridge if no TPU devices or TPU ops found.
+  if (!HasTPUDevicesAndOps(module)) {
+    VLOG(1) << "Skipping MLIR TPU Bridge, no TPU devices or TPU ops found";
     return Status::OK();
   }
 
@@ -125,8 +146,10 @@ bool MlirBridgeV1CompatPass::IsEnabled(const DeviceSet* device_set,
 
   // Do not run the bridge if it's enabled by the graph analysis,
   // only run if it's enabled by the user explicitly.
-  MlirBridgeRolloutPolicy policy =
-      GetMlirBridgeRolloutPolicy(graph, config_proto);
+  // We set `uses_uninitialized_resource_args` to false here because the first
+  // phase of the bridge is not affected by uninitialized resource args.
+  MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
+      graph, config_proto, /*uses_uninitialized_resource_args=*/false);
   return policy == MlirBridgeRolloutPolicy::kEnabledByUser;
 }
 
@@ -144,9 +167,10 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
     return Status::OK();
   }
 
-  // Skip MLIR TPU Bridge if no TPU devices found.
-  if (!HasTPUDevice(module)) {
-    VLOG(1) << "Skipping MLIR TPU Bridge V1 Compat, no TPU devices found";
+  // Skip MLIR TPU Bridge if no TPU devices or TPU ops found.
+  if (!HasTPUDevicesAndOps(module)) {
+    VLOG(1) << "Skipping MLIR TPU Bridge V1 Compat, no TPU devices or TPU ops "
+               "found";
     return Status::OK();
   }
 

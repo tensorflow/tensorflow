@@ -597,13 +597,13 @@ class ShapeUtil {
   static Shape DropDegenerateDimensions(const Shape& shape);
 
   // Permutes the dimensions by the given permutation, so
-  // return_value.dimensions[permutation[i]] = argument.dimensions[i].
+  // return_value.dimensions[i] = argument.dimensions[permutation[i]].
   //
   // Postcondition: For any valid permutation,
   //
   //   !HasLayout(shape) ||
   //   TransposeIsBitcast(shape, PermuteDimensions(permutation, shape),
-  //                      InversePermutation(permutation)).
+  //                      permutation).
   static Shape PermuteDimensions(absl::Span<const int64> permutation,
                                  const Shape& shape);
 

@@ -1,11 +1,34 @@
 // RUN: tf-opt %s -tf-region-control-flow-to-functional -split-input-file | FileCheck %s
 
 // Simple IfRegion
+// CHECK: func private @test_else_name(%arg0: tensor<*xf32>) -> tensor<*xf32>
+// CHECK-NEXT:   "tf.Neg"
+// CHECK: func private @test_then_name(%arg0: tensor<*xf32>) -> tensor<*xf32>
+// CHECK-NEXT:   "tf.Abs"
+func @testSimple(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK: "tf.If"
+  // CHECK-SAME: _attr0 = false
+  // CHECK-NOT: attr1
+  // CHECK-SAME: else_branch = @test_else_name
+  // CHECK-SAME: then_branch = @test_then_name
+  %0 = "tf.IfRegion"(%arg0) ({
+    %1 = "tf.Abs"(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
+    "tf.Yield"(%1) : (tensor<*xf32>) -> ()
+    }, {
+    %2 = "tf.Neg"(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
+    "tf.Yield"(%2) : (tensor<*xf32>) -> ()
+    }) {is_stateless = true, _attr0 = false, attr1 = "hello", _then_func_name = "test_then_name", _else_func_name = "test_else_name"} :  (tensor<i1>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
+// Simple IfRegion with empty branch names
 // CHECK: func private @tf.IfRegion_else(%arg0: tensor<*xf32>) -> tensor<*xf32>
 // CHECK-NEXT:   "tf.Neg"
 // CHECK: func private @tf.IfRegion_then(%arg0: tensor<*xf32>) -> tensor<*xf32>
 // CHECK-NEXT:   "tf.Abs"
-func @testSimple(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+func @testSimpleEmptyBranchNames(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: "tf.If"
   // CHECK-SAME: _attr0 = false
   // CHECK-NOT: attr1
@@ -17,7 +40,7 @@ func @testSimple(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
     }, {
     %2 = "tf.Neg"(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%2) : (tensor<*xf32>) -> ()
-    }) {is_stateless = true, _attr0 = false, attr1 = "hello"} :  (tensor<i1>) -> tensor<*xf32>
+    }) {is_stateless = true, _attr0 = false, attr1 = "hello", _then_func_name = "", _else_func_name = ""} :  (tensor<i1>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
 

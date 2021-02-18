@@ -159,14 +159,17 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common/selectors:operation_selector",
+        "//tensorflow/lite/delegates/gpu/common/selectors:special_selector",
         "//tensorflow/lite/delegates/gpu/common/selectors:subgraph",
+        "//tensorflow/lite/delegates/gpu/common/task:profiling_info",
         "//tensorflow/lite/delegates/gpu/common/task:storage_type_util",
         "//tensorflow/lite/delegates/gpu/common/task:tuning_type",
         "//tensorflow/lite/delegates/gpu/common/transformations:add_bias",
         "//tensorflow/lite/delegates/gpu/common/transformations:global_pooling_to_reduce_op",
         "//tensorflow/lite/delegates/gpu/common/transformations:merge_padding_with",
-        "//tensorflow/lite/delegates/gpu/metal/selectors:operation_selector",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -242,6 +245,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/task:buffer_desc",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_tensor",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
+        "//tensorflow/lite/delegates/gpu/common/task:texture2d_desc",
     ],
 )
 

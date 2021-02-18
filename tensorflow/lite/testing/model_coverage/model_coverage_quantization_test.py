@@ -39,6 +39,7 @@ NUM_CALIBRATION_STEPS = 100
 
 @enum.unique
 class QuantizationType(enum.Enum):
+  DYNAMIC_RANGE = "dynamicRange"
   FLOAT16 = "float16"
   FULL_INTEGER = "int"
   FULL_INTEGER_16X8 = "int16x8"
@@ -93,6 +94,7 @@ class ModelQuantizationTest(parameterized.TestCase):
     converter.experimental_new_quantizer = True
     converter.optimizations = [_lite.Optimize.DEFAULT]
 
+    # QuantizationType.DYNAMIC_RANGE: No additional converter option necessary
     if quantization_type == QuantizationType.FLOAT16:
       converter.target_spec.supported_types = [dtypes.float16]
     elif quantization_type in (QuantizationType.FULL_INTEGER,
@@ -146,6 +148,22 @@ class ModelQuantizationTest(parameterized.TestCase):
         converter,
         input_data=[img_array],
         golden_name="mobilenet_v2_%s" % quantization_type.value)
+
+  @parameterize_by_quantization(*ALL_QUANTIZATION_TYPES)
+  def test_inception_v3(self, quantization_type):
+    keras_model = keras.models.load_model(
+        model_coverage.get_filepath("keras_applications/inception_v3.h5"))
+    keras_model.inputs[0].set_shape([1, 299, 299, 3])
+
+    converter = _lite.TFLiteConverterV2.from_keras_model(keras_model)
+    img_array = keras.applications.inception_v3.preprocess_input(
+        model_coverage.get_image(299))
+
+    self._test_quantization_goldens(
+        quantization_type,
+        converter,
+        input_data=[img_array],
+        golden_name="inception_v3_%s" % quantization_type.value)
 
 
 if __name__ == "__main__":

@@ -108,6 +108,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/graph:mkl_graph_util",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:single_machine",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",

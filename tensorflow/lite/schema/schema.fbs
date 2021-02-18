@@ -47,6 +47,7 @@ enum TensorType : byte {
   UINT64 = 12,
   RESOURCE = 13,
   VARIANT = 14,
+  UINT32 = 15,
 }
 
 // Custom quantization parameters for experimenting with new quantization
@@ -360,6 +361,9 @@ enum BuiltinOperator : int32 {
   BROADCAST_TO = 130,
   RFFT2D = 131,
   CONV_3D = 132,
+  IMAG=133,
+  REAL=134,
+  COMPLEX_ABS=135,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 

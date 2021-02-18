@@ -13,6 +13,9 @@ limitations under the License.
 #include "tensorflow/core/data/service/task_runner.h"
 
 #include "absl/memory/memory.h"
+#include "tensorflow/core/data/compression_utils.h"
+#include "tensorflow/core/data/dataset.pb.h"
+#include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -31,7 +34,10 @@ class TestTaskIterator : public TaskIterator {
   Status GetNext(std::vector<Tensor>& element, bool& end_of_sequence) override {
     end_of_sequence = index_ >= elements_.size();
     if (!end_of_sequence) {
-      element = elements_[index_];
+      CompressedElement compressed;
+      TF_RETURN_IF_ERROR(CompressElement(elements_[index_], &compressed));
+      element.emplace_back(DT_VARIANT, TensorShape({}));
+      element[0].scalar<Variant>()() = std::move(compressed);
       index_ = (index_ + 1) % elements_.size();
     }
     return Status::OK();
@@ -47,16 +53,22 @@ class TestTaskIterator : public TaskIterator {
 // Reads from the task runner, storing results in `*output`.
 Status RunConsumer(int64 consumer_index, int64 start_index, int64 end_index,
                    TaskRunner& task_runner, std::vector<int64>& output) {
-  bool end_of_sequence = false;
   for (int64 next_index = start_index; next_index < end_index; ++next_index) {
-    TaskRunner::Request request;
-    request.round_index = next_index;
-    request.consumer_index = consumer_index;
-    std::vector<Tensor> element;
-    TF_RETURN_IF_ERROR(task_runner.GetNext(request, element, end_of_sequence));
-    if (!end_of_sequence) {
-      output.push_back(element[0].flat<int64>()(0));
-    }
+    GetElementRequest request;
+    request.set_round_index(next_index);
+    request.set_consumer_index(consumer_index);
+    request.set_skipped_previous_round(false);
+    request.set_allow_skip(false);
+    GetElementResponse response;
+    do {
+      TF_RETURN_IF_ERROR(task_runner.GetNext(request, response));
+      if (!response.end_of_sequence()) {
+        std::vector<Tensor> uncompressed;
+        TF_RETURN_IF_ERROR(
+            UncompressElement(response.compressed_element(), &uncompressed));
+        output.push_back(uncompressed[0].flat<int64>()(0));
+      }
+    } while (response.skip_task());
   }
   return Status::OK();
 }
@@ -71,12 +83,13 @@ TEST(FirstComeFirstServedTaskRunner, GetNext) {
   }
   FirstComeFirstServedTaskRunner runner(
       absl::make_unique<TestTaskIterator>(elements));
-  TaskRunner::Request request;
+  GetElementRequest request;
+  GetElementResponse response;
   for (auto& expected_element : elements) {
+    TF_ASSERT_OK(runner.GetNext(request, response));
+    ASSERT_FALSE(response.end_of_sequence());
     std::vector<Tensor> element;
-    bool end_of_sequence;
-    TF_ASSERT_OK(runner.GetNext(request, element, end_of_sequence));
-    ASSERT_FALSE(end_of_sequence);
+    TF_ASSERT_OK(UncompressElement(response.compressed_element(), &element));
     ASSERT_EQ(element.size(), 1);
     test::ExpectEqual(element[0], expected_element[0]);
   }

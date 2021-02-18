@@ -150,9 +150,9 @@
 // CHECK:         %[[VAL_136:.*]] = icmp ult i32 %[[VAL_134]], 3
 // CHECK:         %[[VAL_137:.*]] = and i1 true, %[[VAL_136]]
 // CHECK:         br i1 %[[VAL_137]], label %[[VAL_138:.*]], label %[[VAL_131]]
-// CHECK:       scatter.in_bounds-after2:                         ; preds = %[[VAL_138]], %[[VAL_129]]
+// CHECK:       scatter.in_bounds-after3:                         ; preds = %[[VAL_138]], %[[VAL_129]]
 // CHECK:         br label %[[VAL_130]]
-// CHECK:       scatter.in_bounds-true1:                          ; preds = %[[VAL_129]]
+// CHECK:       scatter.in_bounds-true2:                          ; preds = %[[VAL_129]]
 // CHECK:         %[[VAL_139:.*]] = getelementptr inbounds [3 x [3 x i32]], [3 x [3 x i32]]* %[[VAL_119]], i32 0, i32 %[[VAL_135]], i32 %[[VAL_126]]
 // CHECK:         %[[VAL_140:.*]] = bitcast [2 x [3 x i32]]* %[[VAL_116]] to i32*
 // CHECK:         %[[VAL_141:.*]] = getelementptr inbounds i32, i32* %[[VAL_140]], i32 %[[VAL_123]]

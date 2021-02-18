@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
+#include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
@@ -113,7 +114,8 @@ struct HloBufferizePass : public HloBufferizePassBase<HloBufferizePass> {
     auto& context = getContext();
     ConversionTarget target(context);
     target.addLegalDialect<complex::ComplexDialect, lmhlo::LmhloDialect,
-                           StandardOpsDialect, tensor::TensorDialect>();
+                           StandardOpsDialect, tensor::TensorDialect,
+                           math::MathDialect>();
     target.addIllegalDialect<mhlo::MhloDialect>();
 
     CustomBufferizeTypeConverter converter;
@@ -161,10 +163,11 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
   void runOnOperation() override {
     auto& context = getContext();
     ConversionTarget target(context);
-    target.addLegalDialect<
-        complex::ComplexDialect, scf::SCFDialect, StandardOpsDialect,
-        tensor::TensorDialect, tf_framework::TFFrameworkDialect, AffineDialect,
-        shape::ShapeDialect, lmhlo::LmhloDialect, linalg::LinalgDialect>();
+    target.addLegalDialect<complex::ComplexDialect, scf::SCFDialect,
+                           StandardOpsDialect, tensor::TensorDialect,
+                           tf_framework::TFFrameworkDialect, AffineDialect,
+                           shape::ShapeDialect, lmhlo::LmhloDialect,
+                           linalg::LinalgDialect, math::MathDialect>();
     target.addLegalOp<FuncOp, ModuleOp, ModuleTerminatorOp>();
 
     target.addIllegalDialect<mhlo::MhloDialect>();

@@ -1619,4 +1619,14 @@ TfLiteStatus Subgraph::SetCustomAllocationForTensor(
   return kTfLiteOk;
 }
 
+void Subgraph::SetName(const char* name) {
+  if (name) {
+    name_ = name;
+  } else {
+    name_ = "";
+  }
+}
+
+const std::string& Subgraph::GetName() const { return name_; }
+
 }  // namespace tflite

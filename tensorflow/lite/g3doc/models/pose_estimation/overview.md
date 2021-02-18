@@ -199,8 +199,7 @@ Performance benchmark numbers are generated with the tool
 *   Check out this
     [blog post](https://medium.com/tensorflow/real-time-human-pose-estimation-in-the-browser-with-tensorflow-js-7dd0bc881cd5)
     to learn more about pose estimation using TensorFlow JS.
-*   Read the PoseNet paper
-    [here](https://www.cv-foundation.org/openaccess/content_iccv_2015/papers/Kendall_PoseNet_A_Convolutional_ICCV_2015_paper.pdf)
+*   Read the PoseNet paper [here](https://arxiv.org/abs/1803.08225)
 
 Also, check out these use cases of pose estimation.
 

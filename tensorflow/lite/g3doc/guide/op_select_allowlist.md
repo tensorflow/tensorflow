@@ -387,6 +387,8 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.RequantizationRange`
 *   `raw_ops.Requantize`
 *   `raw_ops.Reshape`
+*   `raw_ops.ResizeBicubic`
+*   `raw_ops.ResizeBicubicGrad`
 *   `raw_ops.ResizeBilinear`
 *   `raw_ops.ResizeBilinearGrad`
 *   `raw_ops.ResizeNearestNeighbor`
@@ -554,6 +556,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.StridedSlice`
 *   `raw_ops.StridedSliceAssign`
 *   `raw_ops.StridedSliceGrad`
+*   `raw_ops.StringFormat`
 *   `raw_ops.StringJoin`
 *   `raw_ops.StringLength`
 *   `raw_ops.StringLower`
@@ -563,6 +566,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.StringToHashBucket`
 *   `raw_ops.StringToHashBucketFast`
 *   `raw_ops.StringToHashBucketStrong`
+*   `raw_ops.StringToNumber`
 *   `raw_ops.Sub`
 *   `raw_ops.Substr`
 *   `raw_ops.Sum`

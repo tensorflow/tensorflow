@@ -544,8 +544,8 @@ void BuildListOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 OpFoldResult TFR::EqualOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.size() == 2 && "equal op has two operands");
   auto ctx = getContext();
-  if (operands[0] == operands[1]) return BoolAttr::get(/*value=*/true, ctx);
-  return BoolAttr::get(/*value=*/false, ctx);
+  if (operands[0] == operands[1]) return BoolAttr::get(ctx, true);
+  return BoolAttr::get(ctx, false);
 }
 
 OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
@@ -593,7 +593,7 @@ Type TFRDialect::parseType(DialectAsmParser &parser) const {
     do {
       StringRef attr;
       if (failed(parser.parseKeyword(&attr))) return {};
-      attrs.push_back(StringAttr::get(attr, ctx));
+      attrs.push_back(StringAttr::get(ctx, attr));
     } while (succeeded(parser.parseOptionalComma()));
 
     if (l_square_parsed && failed(parser.parseRSquare())) {

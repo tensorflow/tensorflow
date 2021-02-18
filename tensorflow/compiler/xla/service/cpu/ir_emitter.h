@@ -379,7 +379,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // "store_address".
   void EmitShardedVectorStore(llvm::Value* store_address,
                               const ShardedVector& value_to_store,
-                              const int alignment,
+                              llvm::Align alignment,
                               const llvm_ir::IrArray& containing_array);
 
   using ReductionGenerator = std ::function<llvm::Value*(
@@ -399,7 +399,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
       const llvm_ir::IrArray::Index& output_index,
       const ShardedVectorType& accumulator_type, HloInstruction* init_value,
       HloInstruction* arg, absl::Span<const int64> dimensions,
-      unsigned element_alignment);
+      llvm::Align element_alignment);
 
   // Tries to emit a fast concatenate operation using memcpy.  Returns true if
   // successful, and false on failure.  On failure, sets "failure_reason" to a

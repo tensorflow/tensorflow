@@ -135,7 +135,8 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
       // Don't remove leading and tailing QDQ for PQT workflow, so the io
       // modifying lib can work correctly.
       if (!q.input().getDefiningOp()) return failure();
-      if (op->hasOneUse() && op->user_begin()->isKnownTerminator())
+      if (op->hasOneUse() &&
+          op->user_begin()->hasTrait<OpTrait::IsTerminator>())
         return failure();
 
       op.replaceAllUsesWith(q.input());
@@ -155,7 +156,7 @@ struct PruneUnusedOpsWithSideEffect : public OpRewritePattern<OpTy> {
 
   LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter& rewriter) const override {
-    if (op.getOperation()->isKnownTerminator()) {
+    if (op.getOperation()->template hasTrait<OpTrait::IsTerminator>()) {
       return failure();
     }
     for (auto result : op.getOperation()->getOpResults()) {

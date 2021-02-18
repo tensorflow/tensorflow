@@ -1597,6 +1597,21 @@ func @convert_dot_general(%arg0: tensor<3x2x6x5x1xf32>, %arg1: tensor<3x2x4x6xf3
   return %0 : tensor<3x5x1x4xf32>
 }
 
+// CHECK-LABEL:   func @convert_dot_general_repeated(
+// CHECK-SAME:                                       %[[VAL_0:.*]]: tensor<1x1x1024xf32>,
+// CHECK-SAME:                                       %[[VAL_1:.*]]: tensor<1024x1024xf32>) -> tensor<1x1x1024xf32> {
+// CHECK:           %[[VAL_2:.*]] = constant dense<[1, 1024]> : tensor<2xi64>
+// CHECK:           %[[VAL_3:.*]] = "tf.Reshape"(%[[VAL_0]], %[[VAL_2]]) : {{.*}} -> tensor<1x1024xf32>
+// CHECK:           %[[VAL_4:.*]] = "tf.BatchMatMulV2"(%[[VAL_3]], %[[VAL_1]]) {adj_x = false, adj_y = false} : {{.*}} -> tensor<1x1024xf32>
+// CHECK:           %[[VAL_5:.*]] = constant dense<[1, 1, 1024]> : tensor<3xi64>
+// CHECK:           %[[VAL_6:.*]] = "tf.Reshape"(%[[VAL_4]], %[[VAL_5]]) : {{.*}} -> tensor<1x1x1024xf32>
+// CHECK:           return %[[VAL_6]] : tensor<1x1x1024xf32>
+// CHECK:         }
+func @convert_dot_general_repeated(%arg0: tensor<1x1x1024xf32>, %arg1: tensor<1024x1024xf32>) -> tensor<1x1x1024xf32> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {dot_dimension_numbers = {lhs_batching_dimensions = dense<> : tensor<0xi64>, lhs_contracting_dimensions = dense<2> : tensor<1xi64>, rhs_batching_dimensions = dense<> : tensor<0xi64>, rhs_contracting_dimensions = dense<0> : tensor<1xi64>}, precision_config = ["DEFAULT", "DEFAULT"]} : (tensor<1x1x1024xf32>, tensor<1024x1024xf32>) -> tensor<1x1x1024xf32>
+    return %0 : tensor<1x1x1024xf32>
+}
+
 // CHECK-LABEL:   func @convert_conv2d(
 // CHECK-SAME:                         %[[VAL_0:.*]]: tensor<1x8x8x207xf32>,
 // CHECK-SAME:                         %[[VAL_1:.*]]: tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32> {

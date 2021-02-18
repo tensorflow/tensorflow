@@ -333,7 +333,7 @@ TEST_P(GPUBFCAllocatorTest, DISABLED_AllocatorReceivesZeroMemory) {
 INSTANTIATE_TEST_SUITE_P(GPUBFCAllocatorTestSuite, GPUBFCAllocatorTest,
                          TestSuiteValues());
 
-static void BM_Allocation(int iters) {
+static void BM_Allocation(::testing::benchmark::State& state) {
   GPUBFCAllocator a(CreateSubAllocator(1ul << 36), 1uLL << 33, "GPU_0_bfc");
   // Exercise a few different allocation sizes
   std::vector<size_t> sizes = {256,        4096,      16384,    524288,
@@ -341,7 +341,7 @@ static void BM_Allocation(int iters) {
                                1048576000, 2048576000};
   int size_index = 0;
 
-  while (--iters > 0) {
+  for (auto s : state) {
     size_t bytes = sizes[size_index++ % sizes.size()];
     void* p = a.AllocateRaw(1, bytes);
     a.DeallocateRaw(p);
@@ -349,43 +349,53 @@ static void BM_Allocation(int iters) {
 }
 BENCHMARK(BM_Allocation);
 
-static void BM_AllocationThreaded(int iters, int num_threads) {
-  GPUBFCAllocator a(CreateSubAllocator(1ul << 36), 1uLL << 33, "GPU_0_bfc");
-  thread::ThreadPool pool(Env::Default(), "test", num_threads);
-  std::atomic_int_fast32_t count(iters);
-  mutex done_lock;
-  condition_variable done;
-  bool done_flag = false;
+static void BM_AllocationThreaded(::testing::benchmark::State& state) {
+  int num_threads = state.range(0);
+  int sub_iters = 500;  // Pick a reasonably large number.
 
-  for (int t = 0; t < num_threads; t++) {
-    pool.Schedule([&a, &count, &done_lock, &done, &done_flag, iters]() {
-      // Exercise a few different allocation sizes
-      std::vector<int> sizes = {256, 4096,    16384,    524288,
-                                512, 1048576, 10485760, 104857600};
-      int size_index = 0;
-      for (int i = 0; i < iters; i++) {
-        int bytes = sizes[size_index++ % sizes.size()];
-        void* p = a.AllocateRaw(1, bytes);
-        a.DeallocateRaw(p);
-        if (count.fetch_sub(1) == 1) {
-          mutex_lock l(done_lock);
-          done_flag = true;
-          done.notify_all();
-          break;
+  for (auto s : state) {
+    state.PauseTiming();
+    GPUBFCAllocator a(CreateSubAllocator(1ul << 36), 1uLL << 33, "GPU_0_bfc");
+    thread::ThreadPool pool(Env::Default(), "test", num_threads);
+
+    std::atomic_int_fast32_t count(sub_iters);
+    mutex done_lock;
+    condition_variable done;
+    bool done_flag = false;
+    state.ResumeTiming();
+    for (int t = 0; t < num_threads; t++) {
+      pool.Schedule([&a, &count, &done_lock, &done, &done_flag, sub_iters]() {
+        // Exercise a few different allocation sizes
+        std::vector<int> sizes = {256, 4096,    16384,    524288,
+                                  512, 1048576, 10485760, 104857600};
+        int size_index = 0;
+        for (int i = 0; i < sub_iters; i++) {
+          int bytes = sizes[size_index++ % sizes.size()];
+          void* p = a.AllocateRaw(1, bytes);
+          a.DeallocateRaw(p);
+          if (count.fetch_sub(1) == 1) {
+            mutex_lock l(done_lock);
+            done_flag = true;
+            done.notify_all();
+            break;
+          }
         }
-      }
-    });
-  }
-  mutex_lock l(done_lock);
-  if (!done_flag) {
-    done.wait(l);
+      });
+    }
+
+    mutex_lock l(done_lock);
+    if (!done_flag) {
+      done.wait(l);
+    }
   }
 }
+
 BENCHMARK(BM_AllocationThreaded)->Arg(1)->Arg(4)->Arg(16);
 
 // A more complex benchmark that defers deallocation of an object for
 // "delay" allocations.
-static void BM_AllocationDelayed(int iters, int delay) {
+static void BM_AllocationDelayed(::testing::benchmark::State& state) {
+  int delay = state.range(0);
   GPUBFCAllocator a(CreateSubAllocator(1ull << 32), 1 << 30, "GPU_0_bfc");
   // Exercise a few different allocation sizes
   std::vector<int> sizes = {256, 4096, 16384, 4096, 512, 1024, 1024};
@@ -397,7 +407,7 @@ static void BM_AllocationDelayed(int iters, int delay) {
     ptrs.push_back(nullptr);
   }
   int pindex = 0;
-  while (--iters > 0) {
+  for (auto s : state) {
     if (ptrs[pindex] != nullptr) {
       a.DeallocateRaw(ptrs[pindex]);
       ptrs[pindex] = nullptr;

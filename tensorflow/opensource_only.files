@@ -23,6 +23,7 @@ tensorflow/lite/delegates/gpu/cl/compiled_program_cache_generated.h
 tensorflow/lite/delegates/gpu/cl/serialization_generated.h
 tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h
 tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h
+tensorflow/lite/java/src/main/native/nativeinterpreterwrapper_jni.cc
 tensorflow/lite/micro/build_def.bzl
 tensorflow/lite/schema/schema_generated.h
 tensorflow/opensource_only/BUILD
@@ -72,7 +73,6 @@ tensorflow/third_party/eigen3/Eigen/SVD
 tensorflow/third_party/eigen3/Eigen/SparseCholesky
 tensorflow/third_party/eigen3/Eigen/SparseCore
 tensorflow/third_party/eigen3/LICENSE
-tensorflow/third_party/eigen3/gpu_packet_math.patch
 tensorflow/third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint
 tensorflow/third_party/eigen3/unsupported/Eigen/CXX11/Tensor
 tensorflow/third_party/eigen3/unsupported/Eigen/CXX11/ThreadPool
@@ -278,10 +278,7 @@ tensorflow/third_party/toolchains/remote/BUILD
 tensorflow/third_party/toolchains/remote/BUILD.tpl
 tensorflow/third_party/toolchains/remote/configure.bzl
 tensorflow/third_party/toolchains/remote/execution.bzl.tpl
-tensorflow/third_party/toolchains/remote_config/BUILD
 tensorflow/third_party/toolchains/remote_config/configs.bzl
-tensorflow/third_party/toolchains/remote_config/containers.bzl
-tensorflow/third_party/toolchains/remote_config/rbe_config.bzl
 tensorflow/third_party/typing_extensions.BUILD
 tensorflow/third_party/wrapt.BUILD
 tensorflow/third_party/zlib.BUILD

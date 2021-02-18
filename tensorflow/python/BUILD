@@ -237,6 +237,7 @@ py_library(
         "//tensorflow/python/util",
         "//tensorflow/python/util:_pywrap_checkpoint_reader",
         "//tensorflow/python/util:_pywrap_kernel_registry",
+        "//tensorflow/python/util:_pywrap_nest",
         "//tensorflow/python/util:_pywrap_stat_summarizer",
         "//tensorflow/python/util:_pywrap_tfprof",
         "//tensorflow/python/util:_pywrap_transform_graph",
@@ -751,6 +752,7 @@ py_library(
     deps = [
         ":_pywrap_debug_events_writer",
         ":_pywrap_events_writer",
+        "//tensorflow/python/util:_pywrap_nest",
         "//tensorflow/python/util:_pywrap_kernel_registry",
         ":_pywrap_py_exception_registry",
         "//tensorflow/python/lib/core:_pywrap_py_func",  # TODO(b/142001480): remove once the bug is fixed.
@@ -3066,7 +3068,10 @@ tf_py_test(
     size = "small",
     srcs = ["ops/collective_ops_test.py"],
     python_version = "PY3",
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "no_tfrt",  # TODO(b/179692150)
+    ],
     deps = [
         ":client_testlib",
         ":collective_ops",
@@ -5209,6 +5214,7 @@ pywrap_tensorflow_macro(
         ":model_analyzer_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
+        "//tensorflow/python/util:cpp_nest",
         "//tensorflow/python/util:cpp_python_util",
         "//tensorflow/python/util:function_parameter_canonicalizer",
         "//tensorflow/python/util:kernel_registry",
@@ -5286,6 +5292,7 @@ filegroup(
     srcs = [
         ":bfloat16_lib",  # bfloat16
         ":cost_analyzer_lib",  # cost_analyzer
+        "//tensorflow/python/util:cpp_nest",
         "//tensorflow/python/util:cpp_python_util",
         "//tensorflow/python/util:kernel_registry",
         ":model_analyzer_lib",  # model_analyzer
@@ -6777,6 +6784,7 @@ tf_python_pybind_extension(
     visibility = ["//tensorflow/python/distribute/parallel_device:__pkg__"],
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
+        "//tensorflow/c/eager:tfe_cancellationmanager_internal_hdrs_only",
         "//tensorflow/c/eager:tfe_tensorhandle_internal_hdrs_only",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",

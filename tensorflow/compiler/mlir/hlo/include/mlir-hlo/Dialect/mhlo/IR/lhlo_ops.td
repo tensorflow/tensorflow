@@ -380,12 +380,6 @@ def LHLO_BatchNormTrainingOp : LHLO_Op<"batch_norm_training", []>,
   );
 }
 
-// TODO(timshen): add a custom verifier.
-def LHLO_BitcastOp: LHLO_Op<"bitcast", []> {
-  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$input,
-                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
-}
-
 def LHLO_BroadcastOp : LHLO_Op<"broadcast",
       []>, BASE_HLO_BroadcastOp {
   let arguments = (ins

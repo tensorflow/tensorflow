@@ -81,18 +81,11 @@ typename T::value_type baseline_angle(T x) {
   return std::arg(x);
 }
 
-GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
-    Angle, DT_COMPLEX64, DT_FLOAT,
-    test::ComplexInputFromValues<std::complex<float>>(
-        test::DefaultInputNonZero<float>(), test::DefaultInputNonZero<float>()),
-    baseline_angle, test::OpsTestConfig().AddTout().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Angle, DT_COMPLEX64, DT_FLOAT, baseline_angle,
+                      test::OpsTestConfig().AddTout().NoBufferReuse())
 
-GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
-    Angle, DT_COMPLEX128, DT_DOUBLE,
-    test::ComplexInputFromValues<std::complex<double>>(
-        test::DefaultInputNonZero<double>(),
-        test::DefaultInputNonZero<double>()),
-    baseline_angle, test::OpsTestConfig().AddTout().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Angle, DT_COMPLEX128, DT_DOUBLE, baseline_angle,
+                      test::OpsTestConfig().AddTout().NoBufferReuse())
 
 /// Test `tf.Asin`.
 
@@ -130,6 +123,43 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Atanh, DT_DOUBLE, DT_DOUBLE, test::DefaultInputBetweenZeroAndOne<double>(),
     std::atanh, test::OpsTestConfig())
+
+/// Test `tf.Cast`.
+
+template <typename SrcT, typename DstT>
+DstT baseline_cast(SrcT x) {
+  return static_cast<DstT>(x);
+}
+
+#define TEST_CAST_FROM_TO(from_type, to_type)                    \
+  GENERATE_DEFAULT_TEST(Cast, from_type, to_type, baseline_cast, \
+                        test::OpsTestConfig()                    \
+                            .AddTout()                           \
+                            .NoBufferReuse()                     \
+                            .ExpectStrictlyEqual()               \
+                            .InputAttribute("SrcT")              \
+                            .OutputAttribute("DstT"))
+
+#define TEST_CAST_TO(from_type)          \
+  TEST_CAST_FROM_TO(from_type, DT_BOOL)  \
+  TEST_CAST_FROM_TO(from_type, DT_INT8)  \
+  TEST_CAST_FROM_TO(from_type, DT_INT16) \
+  TEST_CAST_FROM_TO(from_type, DT_INT32) \
+  TEST_CAST_FROM_TO(from_type, DT_INT64) \
+  TEST_CAST_FROM_TO(from_type, DT_FLOAT) \
+  TEST_CAST_FROM_TO(from_type, DT_DOUBLE)
+
+TEST_CAST_TO(DT_BOOL)
+TEST_CAST_TO(DT_INT8)
+TEST_CAST_TO(DT_INT16)
+TEST_CAST_TO(DT_INT32)
+TEST_CAST_TO(DT_INT64)
+TEST_CAST_TO(DT_HALF)
+TEST_CAST_TO(DT_FLOAT)
+TEST_CAST_TO(DT_DOUBLE)
+
+#undef TEST_CAST_FROM_TO
+#undef TEST_CAST_TO
 
 /// Test `tf.Ceil`.
 
@@ -532,33 +562,24 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
 
 /// Test `tf.Log`.
 
-GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
-    Log, DT_FLOAT, DT_FLOAT, test::DefaultInputGreaterThanZero<float>(),
-    std::log, test::OpsTestConfig())
+GENERATE_DEFAULT_TEST(Log, DT_FLOAT, DT_FLOAT, std::log, test::OpsTestConfig())
 
-GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
-    Log, DT_DOUBLE, DT_DOUBLE, test::DefaultInputGreaterThanZero<double>(),
-    std::log, test::OpsTestConfig())
+GENERATE_DEFAULT_TEST(Log, DT_DOUBLE, DT_DOUBLE, std::log,
+                      test::OpsTestConfig())
 
-GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
-    Log, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
-    test::DefaultInputGreaterThanZero<Eigen::half>(), std::log,
-    test::OpsTestConfig())
+GENERATE_DEFAULT_TEST_2(Log, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::log,
+                        test::OpsTestConfig())
 
 /// Test `tf.Log1p`.
 
-GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
-    Log1p, DT_FLOAT, DT_FLOAT, test::DefaultInputGreaterThanZero<float>(),
-    std::log1p, test::OpsTestConfig())
+GENERATE_DEFAULT_TEST(Log1p, DT_FLOAT, DT_FLOAT, std::log1p,
+                      test::OpsTestConfig())
 
-GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
-    Log1p, DT_DOUBLE, DT_DOUBLE, test::DefaultInputGreaterThanZero<double>(),
-    std::log1p, test::OpsTestConfig())
+GENERATE_DEFAULT_TEST(Log1p, DT_DOUBLE, DT_DOUBLE, std::log1p,
+                      test::OpsTestConfig())
 
-GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
-    Log1p, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
-    test::DefaultInputGreaterThanZero<Eigen::half>(), std::log1p,
-    test::OpsTestConfig())
+GENERATE_DEFAULT_TEST_2(Log1p, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::log1p,
+                        test::OpsTestConfig())
 
 /// Test `tf.LogicalNot`
 
@@ -614,24 +635,21 @@ T baseline_rsqrt(T x) {
   return 1.0 / std::sqrt(x);
 }
 
-GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
-    Rsqrt, DT_FLOAT, DT_FLOAT, test::DefaultInputGreaterThanZero<float>(),
-    baseline_rsqrt, test::OpsTestConfig())
+GENERATE_DEFAULT_TEST(Rsqrt, DT_FLOAT, DT_FLOAT, baseline_rsqrt,
+                      test::OpsTestConfig())
 
-GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
-    Rsqrt, DT_DOUBLE, DT_DOUBLE, test::DefaultInputGreaterThanZero<double>(),
-    baseline_rsqrt, test::OpsTestConfig())
+GENERATE_DEFAULT_TEST(Rsqrt, DT_DOUBLE, DT_DOUBLE, baseline_rsqrt,
+                      test::OpsTestConfig())
 
-GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
-    Rsqrt, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
-    test::DefaultInputGreaterThanZero<Eigen::half>(), baseline_rsqrt,
-    test::OpsTestConfig())
+GENERATE_DEFAULT_TEST_2(Rsqrt, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+                        baseline_rsqrt, test::OpsTestConfig())
 
 /// Test `tf.Sign`.
 
 // Reference implementation
 template <typename T>
 T baseline_sign(T x) {
+  if (isnan(x)) return x;
   if (x == 0) return 0;
   if (x < 0) return -1;
   return 1;
@@ -671,19 +689,14 @@ GENERATE_DEFAULT_TEST(Sinh, DT_DOUBLE, DT_DOUBLE, std::sinh,
 
 /// Test `tf.Sqrt`.
 
-GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
-    Sqrt, DT_FLOAT, DT_FLOAT, test::DefaultInputGreaterOrEqualToZero<float>(),
-    std::sqrt, test::OpsTestConfig())
+GENERATE_DEFAULT_TEST(Sqrt, DT_FLOAT, DT_FLOAT, std::sqrt,
+                      test::OpsTestConfig())
 
-GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
-    Sqrt, DT_DOUBLE, DT_DOUBLE,
-    test::DefaultInputGreaterOrEqualToZero<double>(), std::sqrt,
-    test::OpsTestConfig())
+GENERATE_DEFAULT_TEST(Sqrt, DT_DOUBLE, DT_DOUBLE, std::sqrt,
+                      test::OpsTestConfig())
 
-GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
-    Sqrt, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
-    test::DefaultInputGreaterOrEqualToZero<Eigen::half>(), std::sqrt,
-    test::OpsTestConfig())
+GENERATE_DEFAULT_TEST_2(Sqrt, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::sqrt,
+                        test::OpsTestConfig())
 
 /// Test `tf.Tan`.
 

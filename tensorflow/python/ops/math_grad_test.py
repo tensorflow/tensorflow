@@ -46,7 +46,7 @@ class SquaredDifferenceOpTest(test.TestCase):
     l = np.random.randn(*left_shape)
     r = np.random.randn(*right_shape)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       left_tensor = constant_op.constant(l, shape=left_shape)
       right_tensor = constant_op.constant(r, shape=right_shape)
       output = math_ops.squared_difference(left_tensor, right_tensor)
@@ -83,7 +83,7 @@ class AbsOpTest(test.TestCase):
           self._biasedRandN(
               shape, bias=bias), dtype=dtype)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       output = math_ops.abs(value)
       error = gradient_checker.compute_gradient_error(
           value, shape, output, output.get_shape().as_list())

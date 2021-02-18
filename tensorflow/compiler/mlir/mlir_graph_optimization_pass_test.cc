@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -37,6 +38,37 @@ class MockMlirOptimizationPass : public MlirOptimizationPass {
                                                const Graph& graph));
   MOCK_METHOD3(Run, Status(const ConfigProto& config_proto,
                            mlir::ModuleOp module, const Graph& graph));
+};
+
+class ModifyMlirModulePass : public MlirOptimizationPass {
+ public:
+  explicit ModifyMlirModulePass(Status run_status) : run_status_(run_status) {}
+  // MOCK_METHOD does not work on Windows build, using MOCK_CONST_METHODX
+  // instead.
+  MOCK_CONST_METHOD0(name, llvm::StringRef());
+  MOCK_CONST_METHOD3(GetPassState,
+                     MlirOptimizationPassState(const DeviceSet* device_set,
+                                               const ConfigProto& config_proto,
+                                               const Graph& graph));
+
+  // Just modify MLIR module so that we can check whether original TF graph
+  // has changed or not.
+  Status Run(const ConfigProto& config_proto, mlir::ModuleOp module,
+             const Graph& graph) override {
+    mlir::Builder b(module.getContext());
+    auto producer = b.getNamedAttr("producer", b.getI32IntegerAttr(0));
+    auto min_consumer = b.getNamedAttr("min_consumer", b.getI32IntegerAttr(0));
+    auto bad_consumers =
+        b.getNamedAttr("bad_consumers", b.getI32ArrayAttr({1, 2, 3, 4}));
+
+    module->setAttr("tf.versions",
+                    b.getDictionaryAttr(llvm::ArrayRef<mlir::NamedAttribute>(
+                        {producer, min_consumer, bad_consumers})));
+
+    return run_status_;
+  }
+
+  Status run_status_;
 };
 
 class MlirGraphOptimizationPassTest : public Test {
@@ -61,18 +93,35 @@ class MlirGraphOptimizationPassTest : public Test {
     flib_.reset(new FunctionLibraryDefinition(graph_->flib_def()));
   }
 
+  void AddModuleModificationPass(MlirOptimizationPassState pass_state,
+                                 Status run_status) {
+    // Add FallbackEnabled pass that modifies the graph.
+    auto optimization_pass =
+        std::make_unique<NiceMock<ModifyMlirModulePass>>(run_status);
+    ON_CALL(*optimization_pass, GetPassState(_, _, _))
+        .WillByDefault(Return(pass_state));
+    MlirOptimizationPassRegistry::Global().Add(10,
+                                               std::move(optimization_pass));
+  }
+
   void TearDown() override {
     MlirOptimizationPassRegistry::Global().ClearPasses();
   }
 
-  void verifyGraphUnchanged(const GraphDef& original_graph_def) {
+  void verifyGraph(const GraphDef& original_graph_def, bool changed = false) {
 // Proto matchers might be unavailable in the OSS.
 #if defined(PLATFORM_GOOGLE)
     GraphDef resulted_graph_def;
     graph_->ToGraphDef(&resulted_graph_def);
-    EXPECT_THAT(resulted_graph_def,
-                ::testing::proto::IgnoringRepeatedFieldOrdering(
-                    ::testing::EquivToProto(original_graph_def)));
+
+    if (changed)
+      EXPECT_THAT(resulted_graph_def,
+                  Not(::testing::proto::IgnoringRepeatedFieldOrdering(
+                      ::testing::EquivToProto(original_graph_def))));
+    else
+      EXPECT_THAT(resulted_graph_def,
+                  ::testing::proto::IgnoringRepeatedFieldOrdering(
+                      ::testing::EquivToProto(original_graph_def)));
 #endif
   }
 
@@ -96,7 +145,7 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsNoShadow) {
                 device_set_, config_proto_, &graph_, flib_.get(),
                 &control_ret_node_names_, &control_rets_updated_),
             Status(error::Code::ABORTED, "aborted"));
-  verifyGraphUnchanged(original_graph_def);
+  verifyGraph(original_graph_def);
 }
 
 TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsShadow) {
@@ -111,7 +160,7 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsShadow) {
                 device_set_, config_proto_, &graph_, flib_.get(),
                 &control_ret_node_names_, &control_rets_updated_),
             Status::OK());
-  verifyGraphUnchanged(original_graph_def);
+  verifyGraph(original_graph_def);
 }
 
 TEST_F(MlirGraphOptimizationPassTest, OptimizationPassDoesNotFailShadow) {
@@ -125,7 +174,7 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassDoesNotFailShadow) {
                 device_set_, config_proto_, &graph_, flib_.get(),
                 &control_ret_node_names_, &control_rets_updated_),
             Status::OK());
-  verifyGraphUnchanged(original_graph_def);
+  verifyGraph(original_graph_def);
 }
 
 TEST_F(MlirGraphOptimizationPassTest,
@@ -141,6 +190,44 @@ TEST_F(MlirGraphOptimizationPassTest,
                 device_set_, config_proto_, &graph_, flib_.get(),
                 &control_ret_node_names_, &control_rets_updated_),
             Status(error::Code::ABORTED, "aborted"));
+  verifyGraph(original_graph_def);
+}
+
+TEST_F(MlirGraphOptimizationPassTest,
+       OptimizationPassFailsShadowDisabledFallback) {
+  Init(Status(error::Code::ABORTED, "aborted"),
+       {MlirOptimizationPassState::Disabled,
+        MlirOptimizationPassState::ShadowEnabled,
+        MlirOptimizationPassState::FallbackEnabled});
+
+  GraphDef original_graph_def;
+  graph_->ToGraphDef(&original_graph_def);
+  AddModuleModificationPass(MlirOptimizationPassState::FallbackEnabled,
+                            Status(error::Code::ABORTED, "aborted"));
+
+  EXPECT_EQ(function_optimization_pass_.Run(
+                device_set_, config_proto_, &graph_, flib_.get(),
+                &control_ret_node_names_, &control_rets_updated_),
+            Status::OK());
+  verifyGraph(original_graph_def);
+}
+
+TEST_F(MlirGraphOptimizationPassTest,
+       OptimizationPassDoesNotFailShadowFallback) {
+  Init(Status::OK(), {MlirOptimizationPassState::ShadowEnabled,
+                      MlirOptimizationPassState::FallbackEnabled});
+
+  GraphDef original_graph_def;
+  graph_->ToGraphDef(&original_graph_def);
+
+  AddModuleModificationPass(MlirOptimizationPassState::FallbackEnabled,
+                            Status::OK());
+  EXPECT_EQ(function_optimization_pass_.Run(
+                device_set_, config_proto_, &graph_, flib_.get(),
+                &control_ret_node_names_, &control_rets_updated_),
+            Status::OK());
+
+  verifyGraph(original_graph_def, true);
 }
 
 TEST(MlirOptimizationPassRegistry, RegisterPassesWithTheSamePriorityFails) {

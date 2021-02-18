@@ -178,6 +178,15 @@ def HLOClient_BroadcastMulOp : HLOClient_BroadcastBinaryElementwiseOp<
   }];
 }
 
+def HLOClient_BroadcastPolygammaOp : HLOClient_BroadcastBinaryElementwiseOp<
+    "broadcast_polygamma", [NoSideEffect, SameOperandsAndResultElementType]> {
+  let summary = "Polygamma function (with optional broadcasting)";
+
+  let description = [{
+    Returns `Polygamma(operand, operand)` element-wise.
+  }];
+}
+
 def HLOClient_BroadcastPowOp : HLOClient_BroadcastBinaryElementwiseOp<
     "broadcast_power",
     [NoSideEffect, SameOperandsAndResultElementType]> {
@@ -339,10 +348,9 @@ def HLOClient_BroadcastXorOp : HLOClient_BroadcastBinaryLogicalElementwiseOp<
 // not part of the HLO compiler instructions as modelled by the MHLO dialect.
 //===----------------------------------------------------------------------===//
 
-def HLOClient_ZetaOp : HLOClient_Op<"zeta",
-    [NoSideEffect, SameOperandsAndResultType]> {
+def HLOClient_ZetaOp : HLOClient_Op<"zeta", [NoSideEffect,
+    SameOperandsAndResultType]> {
   let summary = "Hurwitz zeta function";
-
   let description = [{
     Returns `Zeta(operand, operand)` element-wise.
 
@@ -351,15 +359,26 @@ def HLOClient_ZetaOp : HLOClient_Op<"zeta",
     $$
   }];
 
-  let arguments = (ins
-    HLO_FpTensor:$x,
-    HLO_FpTensor:$q
-  );
-
-  let results = (outs HLO_FpTensor);
+  let arguments = (ins HLO_FpTensor:$x, HLO_FpTensor:$q);
+  let results = (outs HLO_FpTensor:$result);
 
   let assemblyFormat = [{
-    $x `,` $q attr-dict `:` `(` type($x) `,` type($q) `)` `->` type(results)
+    $x `,` $q attr-dict `:` type($x) `,` type($q) `->` type(results)
+  }];
+}
+
+def HLOClient_PolygammaOp : HLOClient_Op<"polygamma", [NoSideEffect,
+    SameOperandsAndResultType]> {
+  let summary = "Polygamma function";
+  let description = [{
+    Returns `Polygamma(operand, operand)` element-wise.
+  }];
+
+  let arguments = (ins HLO_FpTensor:$n, HLO_FpTensor:$x);
+  let results = (outs HLO_FpTensor:$result);
+
+  let assemblyFormat = [{
+    $n `,` $x attr-dict `:` type($n) `,` type($x) `->` type(results)
   }];
 }
 

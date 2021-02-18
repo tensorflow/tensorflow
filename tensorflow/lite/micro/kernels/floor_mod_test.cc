@@ -12,118 +12,97 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <stdint.h>
 
-#include <vector>
+#include <type_traits>
 
-#include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/test_helpers.h"
+#include "tensorflow/lite/micro/testing/micro_test.h"
 
 namespace tflite {
-namespace {
+namespace testing {
+namespace {}
 
-using ::testing::ElementsAre;
+TF_LITE_MICRO_TESTS_BEGIN
 
-template <typename T>
-class FloorModModel : public SingleOpModel {
- public:
-  FloorModModel(const TensorData& input1, const TensorData& input2,
-                const TensorData& output) {
-    input1_ = AddInput(input1);
-    input2_ = AddInput(input2);
-    output_ = AddOutput(output);
-    SetBuiltinOp(BuiltinOperator_FLOOR_MOD, BuiltinOptions_FloorModOptions,
-                 CreateFloorModOptions(builder_).Union());
-    BuildInterpreter({GetShape(input1_), GetShape(input2_)});
-  }
-
-  int input1() { return input1_; }
-  int input2() { return input2_; }
-
-  std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
-  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
-
- private:
-  int input1_;
-  int input2_;
-  int output_;
-};
-
-TEST(FloorModModel, Simple) {
-  FloorModModel<int32_t> model({TensorType_INT32, {1, 2, 2, 1}},
-                               {TensorType_INT32, {1, 2, 2, 1}},
-                               {TensorType_INT32, {}});
+TF_LITE_MICRO_TEST(FloorModSimple) {
+#ifdef notdef
+  FloorMod<int32_t> model({TensorType_INT32, {1, 2, 2, 1}},
+                          {TensorType_INT32, {1, 2, 2, 1}},
+                          {TensorType_INT32, {}});
   model.PopulateTensor<int32_t>(model.input1(), {10, 9, 11, 3});
   model.PopulateTensor<int32_t>(model.input2(), {2, 2, 3, 4});
-  model.Invoke();
-  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(0, 1, 2, 3));
+#endif  // notdef
 }
 
-TEST(FloorModModel, NegativeValue) {
-  FloorModModel<int32_t> model({TensorType_INT32, {1, 2, 2, 1}},
-                               {TensorType_INT32, {1, 2, 2, 1}},
-                               {TensorType_INT32, {}});
+TF_LITE_MICRO_TEST(FloorModNegativeValue) {
+#ifdef notdef
+  FloorMod<int32_t> model({TensorType_INT32, {1, 2, 2, 1}},
+                          {TensorType_INT32, {1, 2, 2, 1}},
+                          {TensorType_INT32, {}});
   model.PopulateTensor<int32_t>(model.input1(), {10, -9, -11, 7});
   model.PopulateTensor<int32_t>(model.input2(), {2, 2, -3, -4});
-  model.Invoke();
-  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(0, 1, -2, -1));
+#endif  // notdef
 }
 
-TEST(FloorModModel, BroadcastFloorMod) {
-  FloorModModel<int32_t> model({TensorType_INT32, {1, 2, 2, 1}},
-                               {TensorType_INT32, {1}}, {TensorType_INT32, {}});
+TF_LITE_MICRO_TEST(FloorModBroadcast) {
+#ifdef notdef
+  FloorMod<int32_t> model({TensorType_INT32, {1, 2, 2, 1}},
+                          {TensorType_INT32, {1}}, {TensorType_INT32, {}});
   model.PopulateTensor<int32_t>(model.input1(), {10, -9, -11, 7});
   model.PopulateTensor<int32_t>(model.input2(), {-3});
-  model.Invoke();
-  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(-2, 0, -2, -2));
+#endif  // notdef
 }
 
-TEST(FloorModModel, Int64WithBroadcast) {
-  FloorModModel<int64_t> model({TensorType_INT64, {1, 2, 2, 1}},
-                               {TensorType_INT64, {1}}, {TensorType_INT64, {}});
+TF_LITE_MICRO_TEST(FloorModInt64WithBroadcast) {
+#ifdef notdef
+  FloorMod<int64_t> model({TensorType_INT64, {1, 2, 2, 1}},
+                          {TensorType_INT64, {1}}, {TensorType_INT64, {}});
   model.PopulateTensor<int64_t>(model.input1(), {10, -9, -11, (1LL << 34) + 9});
   model.PopulateTensor<int64_t>(model.input2(), {-(1LL << 33)});
-  model.Invoke();
-  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(),
               ElementsAre(-8589934582, -9, -11, -8589934583));
+#endif  // notdef
 }
 
-TEST(FloorModModel, FloatSimple) {
-  FloorModModel<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
-                             {TensorType_FLOAT32, {1, 2, 2, 1}},
-                             {TensorType_FLOAT32, {}});
+TF_LITE_MICRO_TEST(FloorModFloatSimple) {
+#ifdef notdef
+  FloorMod<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
+                        {TensorType_FLOAT32, {1, 2, 2, 1}},
+                        {TensorType_FLOAT32, {}});
   model.PopulateTensor<float>(model.input1(), {10, 9, 11, 3});
   model.PopulateTensor<float>(model.input2(), {2, 2, 3, 4});
-  model.Invoke();
-  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(0, 1, 2, 3));
+#endif  // notdef
 }
 
-TEST(FloorModModel, FloatNegativeValue) {
-  FloorModModel<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
-                             {TensorType_FLOAT32, {1, 2, 2, 1}},
-                             {TensorType_FLOAT32, {}});
+TF_LITE_MICRO_TEST(FloorModFloatNegativeValue) {
+#ifdef notdef
+  FloorMod<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
+                        {TensorType_FLOAT32, {1, 2, 2, 1}},
+                        {TensorType_FLOAT32, {}});
   model.PopulateTensor<float>(model.input1(), {10, -9, -11, 7});
   model.PopulateTensor<float>(model.input2(), {2, 2, -3, -4});
-  model.Invoke();
-  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(0, 1, -2, -1));
+#endif  // notdef
 }
 
-TEST(FloorModModel, FloatBroadcastFloorMod) {
-  FloorModModel<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
-                             {TensorType_FLOAT32, {1}},
-                             {TensorType_FLOAT32, {}});
+TF_LITE_MICRO_TEST(FloorModFloatBroadcast) {
+#ifdef notdef
+  FloorMod<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
+                        {TensorType_FLOAT32, {1}}, {TensorType_FLOAT32, {}});
   model.PopulateTensor<float>(model.input1(), {10, -9, -11, 7});
   model.PopulateTensor<float>(model.input2(), {-3});
-  model.Invoke();
-  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(-2, 0, -2, -2));
+#endif  // notdef
 }
 
-}  // namespace
+TF_LITE_MICRO_TESTS_END
+
+}  // namespace testing
 }  // namespace tflite

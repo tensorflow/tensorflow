@@ -2146,21 +2146,24 @@ inline void Add(const ArithmeticParams& params,
   auto input2_map = MapAsVector(input2_data, input2_shape);
   auto output_map = MapAsVector(output_data, output_shape);
   if (input1_shape == input2_shape) {
-    output_map.array() = input1_map.array() + input2_map.array();
+    output_map.array() = (input1_map.array() + input2_map.array())
+                             .cwiseMax(params.quantized_activation_min)
+                             .cwiseMin(params.quantized_activation_max);
   } else if (input2_shape.FlatSize() == 1) {
     auto scalar = input2_data[0];
-    output_map.array() = input1_map.array() + scalar;
+    output_map.array() = (input1_map.array() + scalar)
+                             .cwiseMax(params.quantized_activation_min)
+                             .cwiseMin(params.quantized_activation_max);
   } else if (input1_shape.FlatSize() == 1) {
     auto scalar = input1_data[0];
-    output_map.array() = scalar + input2_map.array();
+    output_map.array() = (scalar + input2_map.array())
+                             .cwiseMax(params.quantized_activation_min)
+                             .cwiseMin(params.quantized_activation_max);
   } else {
     reference_ops::BroadcastAdd4DSlow(params, input1_shape, input1_data,
                                       input2_shape, input2_data, output_shape,
                                       output_data);
-    return;
   }
-  output_map = output_map.cwiseMax(params.quantized_activation_min);
-  output_map = output_map.cwiseMin(params.quantized_activation_max);
 }
 
 template <typename T>
@@ -2715,7 +2718,23 @@ inline void BroadcastDivSlow(const ArithmeticParams& params,
   NDOpsHelper<N>(output_desc, div_func);
 }
 
-// TODO(aselle): This is not actually optimized yet.
+template <typename T>
+inline void SubWithActivation(
+    const ArithmeticParams& params, const RuntimeShape& input1_shape,
+    const T* input1_data, const RuntimeShape& input2_shape,
+    const T* input2_data, const RuntimeShape& output_shape, T* output_data) {
+  ruy::profiler::ScopeLabel label("SubWithActivation_optimized");
+  TFLITE_DCHECK_EQ(input1_shape.FlatSize(), input2_shape.FlatSize());
+  auto input1_map = MapAsVector(input1_data, input1_shape);
+  auto input2_map = MapAsVector(input2_data, input2_shape);
+  auto output_map = MapAsVector(output_data, output_shape);
+  T activation_min, activation_max;
+  GetActivationParams(params, &activation_min, &activation_max);
+  output_map.array() = (input1_map.array() - input2_map.array())
+                           .cwiseMin(activation_max)
+                           .cwiseMax(activation_min);
+}
+
 inline void SubNonBroadcast(const ArithmeticParams& params,
                             const RuntimeShape& input1_shape,
                             const float* input1_data,
@@ -2724,49 +2743,8 @@ inline void SubNonBroadcast(const ArithmeticParams& params,
                             const RuntimeShape& output_shape,
                             float* output_data) {
   ruy::profiler::ScopeLabel label("SubNonBroadcast");
-  const int flat_size =
-      MatchingElementsSize(input1_shape, input2_shape, output_shape);
-  for (int i = 0; i < flat_size; ++i) {
-    output_data[i] = ActivationFunctionWithMinMax(
-        input1_data[i] - input2_data[i], params.float_activation_min,
-        params.float_activation_max);
-  }
-}
-
-inline void SetActivationMinMax(const ArithmeticParams& params,
-                                int32* activation_min, int32* activation_max) {
-  *activation_min = params.quantized_activation_min;
-  *activation_max = params.quantized_activation_max;
-}
-
-inline void SetActivationMinMax(const ArithmeticParams& params,
-                                float* activation_min, float* activation_max) {
-  *activation_min = params.float_activation_min;
-  *activation_max = params.float_activation_max;
-}
-
-inline void SetActivationMinMax(const ArithmeticParams& params,
-                                int64_t* activation_min,
-                                int64_t* activation_max) {
-  *activation_min = params.int64_activation_min;
-  *activation_max = params.int64_activation_max;
-}
-
-template <typename T>
-inline void SubWithActivation(
-    const ArithmeticParams& params, const RuntimeShape& input1_shape,
-    const T* input1_data, const RuntimeShape& input2_shape,
-    const T* input2_data, const RuntimeShape& output_shape, T* output_data) {
-  ruy::profiler::ScopeLabel label("SubWithActivation_optimized");
-  const int flat_size =
-      MatchingElementsSize(input1_shape, input2_shape, output_shape);
-  T activation_min, activation_max;
-  SetActivationMinMax(params, &activation_min, &activation_max);
-
-  for (int i = 0; i < flat_size; ++i) {
-    output_data[i] = ActivationFunctionWithMinMax(
-        input1_data[i] - input2_data[i], activation_min, activation_max);
-  }
+  SubWithActivation<float>(params, input1_shape, input1_data, input2_shape,
+                           input2_data, output_shape, output_data);
 }
 
 template <typename T>

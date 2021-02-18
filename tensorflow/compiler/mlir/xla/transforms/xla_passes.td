@@ -15,6 +15,24 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
+def LegalizeTfTypesPass : Pass<"xla-legalize-tf-types"> {
+  let summary = "Replace TensorFlow types with types that are legal in the MHLO dialect";
+
+  let description = [{
+The TF dialect uses some TF types that are illegal in the MHLO dialect and
+some generic types that are legal in MHLO. This pass legalizes TF types into
+types that are legal in MHLO. Rewrites here should run before TF to MHLO op
+legalizations are run.
+
+Specifically, this pass replaces each quantized integer type with the
+corresponding ordinary types. For example, `TF::Qint8Type` is replaced with `i8`
+everywhere it occurs. Types that are replaced are `TF::Qint8Type`,
+`TF::Qint16Type`, `TF::Qint32Type`, `TF::Quint8Type`, and `TF::Quint16Type`.
+  }];
+
+  let constructor = "::mlir::mhlo::CreateLegalizeTfTypesPass()";
+}
+
 def PrepareForExportPass : FunctionPass<"xla-prepare-for-export"> {
   let summary = "Prepare for XLA export";
 
