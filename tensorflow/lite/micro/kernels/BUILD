@@ -179,6 +179,9 @@ cc_library(
         "kernel_runner.cc",
     ],
     hdrs = ["kernel_runner.h"],
+    visibility = [
+        "//learning/brain/contrib/micro/tflite:__pkg__",
+    ],
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
