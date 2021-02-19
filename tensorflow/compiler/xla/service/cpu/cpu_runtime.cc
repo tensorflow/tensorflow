@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -605,8 +604,8 @@ xla::RendezvousKey GetRendezvousKey(
                          : xla::RendezvousKey::kCrossReplica;
   std::vector<xla::GlobalDeviceId> participating_devices =
       xla::GetParticipatingDevices(xla::GlobalDeviceId(device_ordinal),
-                                   device_assignment, group,
-                                   xla::CollectiveOpGroupMode::kCrossReplica)
+                                   device_assignment,
+                                   device_assignment.replica_count(), group)
           .ValueOrDie();
   int num_local_participants = participating_devices.size();
   return xla::RendezvousKey{run_options->run_id(),
@@ -637,7 +636,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllToAll(
                                       run_options->stream());
   participant.replica_id = replica_id;
   participant.replica_ids_to_copy_to =
-      xla::GetParticipatingIDs(
+      xla::GetParticipatingReplicas(
           replica_id, run_options->device_assignment()->replica_count(), group)
           .ValueOrDie();
   for (int i = 0; i < num_buffers; i++) {

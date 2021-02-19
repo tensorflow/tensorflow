@@ -166,7 +166,7 @@ extern void __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
 // Perform all reduce on a CPU.
 //
 // participating_replicas: array of replica IDs participating in the reduction,
-// cf. GetParticipatingIDs.
+// cf. GetParticipatingReplicas.
 // channel_id_present, op_id: whether op_id is a channel ID or a module ID.
 // reduction_kind: operator used for a reduction, cf. ReductionKind.
 // shape_ptr: shape of all input/output buffers.
