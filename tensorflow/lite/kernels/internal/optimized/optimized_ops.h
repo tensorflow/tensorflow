@@ -4833,6 +4833,8 @@ inline void ResizeBilinearGenericSmallChannel(
     const RuntimeShape& output_shape, T* output_data,
     const bool half_pixel_centers) {
   T* output_ptr = &output_data[0];
+  const float rounding_offset = std::numeric_limits<T>::is_integer ? .5f : .0f;
+
   for (int b = 0; b < batches; ++b) {
     for (int y = 0; y < output_height; ++y) {
       float input_y;
@@ -4861,7 +4863,8 @@ inline void ResizeBilinearGenericSmallChannel(
           *output_ptr++ = static_cast<T>(input_ptr[input_offset[0]] * scale[0] +
                                          input_ptr[input_offset[1]] * scale[1] +
                                          input_ptr[input_offset[2]] * scale[2] +
-                                         input_ptr[input_offset[3]] * scale[3]);
+                                         input_ptr[input_offset[3]] * scale[3] +
+                                         rounding_offset);
         }
       }
     }
