@@ -2789,7 +2789,7 @@ void MklLayoutRewritePass::CopyAttrsQuantizedMatMulWithBiasAndDequantize(
   TF_CHECK_OK(orig_node->input_node(1, &filter_node));
   nb->Attr("is_weight_const", filter_node->IsConstant());
 
-  // added "T" for facilitating MklToTf conversion.
+  // Add "T" for facilitating MklToTf conversion.
   DataType T1;
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T1", &T1));
   nb->Attr("T", T1);  
