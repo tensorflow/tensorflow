@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/micro_utils.h"
 
 namespace tflite {
 namespace {
@@ -25,46 +26,48 @@ constexpr int kInputTensor = 0;
 constexpr int kAxisTensor = 1;
 constexpr int kOutputTensor = 0;
 
-TfLiteStatus ExpandTensorDim(TfLiteContext* context, const TfLiteTensor* input,
-                             int axis, TfLiteTensor* output) {
+TfLiteStatus ExpandTensorDim(TfLiteContext* context,
+                             const TfLiteEvalTensor* input, int axis,
+                             TfLiteEvalTensor* output) {
   const TfLiteIntArray *input_dims = input->dims;
-  if (axis < 0) {
-    axis = input_dims.size + 1 + axis;
-  }
-  TF_LITE_ENSURE(context, axis <= input_dims.size);
-
   TfLiteIntArray* output_dims = output->dims;
+  if (axis < 0) {
+    axis = output_dims->size + axis;
+  }
+  TF_LITE_ENSURE(context, axis <= input_dims->size);
+
   for (int i = 0; i < output_dims->size; ++i) {
     if (i < axis) {
-      output_dims->data[i] = input_dims.data[i];
+      output_dims->data[i] = input_dims->data[i];
     } else if (i == axis) {
       output_dims->data[i] = 1;
     } else {
-      output_dims->data[i] = input_dims.data[i - 1];
+      output_dims->data[i] = input_dims->data[i - 1];
     }
   }
   return kTfLiteOk;
 }
 
 TfLiteStatus GetAxisValueFromTensor(TfLiteContext* context,
-                                    const TfLiteTensor* axis, int* axis_value) {
-  TF_LITE_ENSURE_EQ(context, NumElements(&axis), 1);
-  switch (axis->type) {
-    case kTfLiteInt32:
-      *axis_value = tflite::micro::GetTensorData<int32_t>(axis);
-      return kTfLiteOk;
-    case kTfLiteInt64:
-      *axis_value = tflite::micro::GetTensorData<int64_t>(axis);
-      return kTfLiteOk;
-    default:
-      TF_LITE_KERNEL_LOG(context, "Axis type %s (%d) not supported by Expand_Dims.",
-                         TfLiteTypeGetName(axis->type), axis->type);
-      return kTfLiteError;
+                                    const TfLiteEvalTensor* axis,
+                                    int32_t* axis_value) {
+  const int axis_dims = (tflite::micro::GetTensorShape(axis)).DimensionsCount();
+  if (axis_dims > 1) {
+    TF_LITE_KERNEL_LOG(context, "Axis has only one element for Expand_Dims.",
+                       axis_dims);
+    return kTfLiteError;
   }
-  return kTfLiteOk;
-}
 
-}  // namespace
+  if (kTfLiteInt32 == (axis->type)) {
+    const int32_t *axis_ptr = tflite::micro::GetTensorData<int32_t>(axis);
+    *axis_value = axis_ptr[0];
+    return kTfLiteOk;
+  } else {
+    TF_LITE_KERNEL_LOG(context, "Axis type %s (%d) not supported by Expand_Dims.",
+                       TfLiteTypeGetName(axis->type), axis->type);
+    return kTfLiteError;
+  }
+}
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
@@ -76,40 +79,59 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, kOutputTensor, &output));
   output->type = input->type;
-  if (IsConstantTensor(axis)) {
-    int axis_value;
-    TF_LITE_ENSURE_OK(context,
-                      GetAxisValueFromTensor(context, axis, &axis_value));
-    return ExpandTensorDim(context, input, axis_value, output);
+  if (IsDynamicTensor(axis)) {
+    TF_LITE_KERNEL_LOG(context,
+                       "DynamicTensor is not yet supported by Expand_Dims.");
+    return kTfLiteError;
   }
-  SetTensorToDynamic(output);
   return kTfLiteOk;
 }
 
+template <typename Tin, typename Tout>
+void memCopyN(Tout* out, Tin* in, const int num_elements) {
+  for (int i = 0; i < num_elements; ++i) {
+    out[i] = static_cast<Tout>(in[i]);
+  }
+}
+
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  // Just copy input to output.
   const TfLiteEvalTensor* input =
       tflite::micro::GetEvalInput(context, node, kInputTensor);
   const TfLiteEvalTensor* axis =
       tflite::micro::GetEvalInput(context, node, kAxisTensor);
   TfLiteEvalTensor* output =
       tflite::micro::GetEvalOutput(context, node, kOutputTensor);
-  if (IsDynamicTensor(output)) {
-    int axis_value;
-    TF_LITE_ENSURE_OK(context,
-                      GetAxisValueFromTensor(context, axis, &axis_value));
-    TF_LITE_ENSURE_OK(context,
-                      ExpandTensorDim(context, *input, axis_value, output));
+  const int flat_size = ElementCount(*input->dims);
+  const int input_dims = input->dims->size;
+
+  int axis_value;
+  TF_LITE_ENSURE_OK(context,
+                    GetAxisValueFromTensor(context, axis, &axis_value));
+  if ((axis_value > static_cast<int32_t>(input_dims)) || (axis_value < static_cast<int32_t>(-(input_dims + 1)))) {
+    TF_LITE_KERNEL_LOG(context,
+                       "Invalid Expand_Dims axis value (%d).", axis_value);
+    return kTfLiteError;
   }
-  // For loop for memcpy(output->data.raw, input->data.raw, input->bytes);
-  for (size_t i = 0; i < input->bytes; ++i) {
-    output->data.raw[i] = input->data.raw[i]
+  ExpandTensorDim(context, input, axis_value, output);
+
+  switch (input->type) {
+    case kTfLiteFloat32: {
+      memCopyN(tflite::micro::GetTensorData<float>(output), tflite::micro::GetTensorData<float>(input), flat_size);
+    } break;
+    case kTfLiteInt8: {
+      memCopyN(tflite::micro::GetTensorData<int8_t>(output), tflite::micro::GetTensorData<int8_t>(input), flat_size);
+    } break;
+    default:
+      TF_LITE_KERNEL_LOG(context,
+                         "Expand_Dims only currently supports int8 and float32, got %d.",
+                         input->type);
+      return kTfLiteError;
   }
   return kTfLiteOk;
 }
 }  // namespace
 
-TfLiteRegistration* Register_EXPAND_DIMS() {
+TfLiteRegistration Register_EXPAND_DIMS() {
   return {/*init=*/nullptr,
           /*free=*/nullptr,
           /*prepare=*/Prepare,
