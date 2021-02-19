@@ -73,7 +73,8 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(
       std::vector<GlobalDeviceId> participants,
       GetParticipatingDevices(global_device_id, *params.device_assn,
-                              config().replica_count, config().replica_groups));
+                              config().replica_groups,
+                              CollectiveOpGroupMode::kCrossReplica));
 
   if (IsGlobalNcclConfig() && (participants.size() != config().replica_count)) {
     return InvalidArgument(
