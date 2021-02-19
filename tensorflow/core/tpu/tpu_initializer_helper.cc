@@ -21,6 +21,7 @@ limitations under the License.
 #include <unistd.h>
 #endif  // LIBTPU_ON_GCE
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/platform/logging.h"
@@ -37,6 +38,14 @@ bool TryAcquireTpuLock() {
   static bool should_load_library = false;
 
   if (!attempted_file_open) {
+    std::string load_library_override =
+        absl::StringCat(getenv("TPU_LOAD_LIBRARY"));
+
+    if (load_library_override == "true") {
+      return true;
+    } else if (load_library_override == "false") {
+      return false;
+    }
     should_load_library = true;
 
     // if the TPU_HOST_BOUNDS env var is set, that means we are loading each
