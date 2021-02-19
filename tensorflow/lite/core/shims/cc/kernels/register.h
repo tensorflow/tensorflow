@@ -21,8 +21,6 @@ namespace tflite_shims {
 namespace ops {
 namespace builtin {
 using BuiltinOpResolver = ::tflite::ops::builtin::BuiltinOpResolver;
-using BuiltinOpResolverWithoutDefaultDelegates =
-    ::tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates;
 }  // namespace builtin
 }  // namespace ops
 }  // namespace tflite_shims

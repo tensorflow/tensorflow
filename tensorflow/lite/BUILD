@@ -751,7 +751,7 @@ cc_library(
     deps = [
         ":mutable_op_resolver",
         ":op_resolver",
-        "//tensorflow/lite/core/shims:builtin_ops",
+        "//tensorflow/lite/kernels:builtin_ops",
     ],
 )
 
