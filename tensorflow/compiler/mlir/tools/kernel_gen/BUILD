@@ -118,7 +118,7 @@ tf_cc_binary(
         "@llvm-project//mlir:ExecutionEngineUtils",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:TargetLLVMIR",
-        "@llvm-project//mlir:LLVMIRModuleTranslation",
+        "@llvm-project//mlir:TargetLLVMIRModuleTranslation",
     ] + if_llvm_system_z_available([
         "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
     ]) + if_llvm_aarch64_available([
