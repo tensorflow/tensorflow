@@ -496,8 +496,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     """Configures the model for training.
 
     Args:
-        optimizer: String (name of optimizer) or optimizer instance. See
-          `tf.keras.optimizers`.
+        optimizer: String (name of optimizer, case-insensitive) or optimizer 
+          instance. See `tf.keras.optimizers`.
         loss: String (name of objective function), objective function or
           `tf.keras.losses.Loss` instance. See `tf.keras.losses`. An objective
           function is any callable with the signature `loss = fn(y_true,
