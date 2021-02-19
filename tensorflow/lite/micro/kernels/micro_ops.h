@@ -35,6 +35,7 @@ TfLiteRegistration Register_BATCH_TO_SPACE_ND();
 TfLiteRegistration Register_CAST();
 TfLiteRegistration Register_CONV_2D();
 TfLiteRegistration Register_DEPTHWISE_CONV_2D();
+TfLiteRegistration Register_ELU();
 TfLiteRegistration Register_EXP();
 TfLiteRegistration Register_QUANTIZE();
 TfLiteRegistration Register_SHAPE();
