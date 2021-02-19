@@ -788,6 +788,7 @@ cc_library(
     srcs = [
         "transforms/deduplicate_bound_input_bindings.cc",
         "transforms/freeze_global_tensors.cc",
+        "transforms/freeze_saved_model_assets.cc",
         "transforms/lift_variables_pass.cc",
         "transforms/optimize_global_tensors.cc",
         "transforms/remove_vars_in_session_initializer.cc",
