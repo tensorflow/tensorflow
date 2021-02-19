@@ -494,36 +494,28 @@ llvm::Type* GetIndexTypeForKernelFromMlir(mlir::Operation* op,
 // slices are the same and the slices are non-strided. Otherwise, returns
 // FailedPrecondition.
 StatusOr<Shape> GetConsistentInputShapeForRootSlices(
-    mlir::lmhlo::FusionOp fusion) {
-  if (!IsInputFusibleSlices(fusion, /*verify_no_strides=*/true)) {
-    return FailedPrecondition(
-        "Unsupported root for slice input fusion. "
-        "Only non-strided slices are supported.");
+    const HloComputation* fused_computation) {
+  const HloInstruction& root = *fused_computation->root_instruction();
+  if (root.opcode() == HloOpcode::kSlice) {
+    return root.operands()[0]->shape();
   }
 
-  absl::optional<Shape> first_slice_operand_shape;
-  for (mlir::Value result : fusion.getFusionResults()) {
-    auto slice =
-        mlir::dyn_cast_or_null<mlir::mhlo::SliceOp>(result.getDefiningOp());
-    if (!slice) {
-      return FailedPrecondition("Expected a slice op");
-    }
-    if (first_slice_operand_shape.has_value()) {
-      Shape operand_shape = TypeToShape(slice.operand().getType());
-      if (!ShapeUtil::EqualIgnoringElementType(*first_slice_operand_shape,
-                                               operand_shape)) {
-        return FailedPrecondition(
-            "Fused slices do not have the same input shape, instruction is %s",
-            MlirToString(fusion));
-      }
-    } else {
-      first_slice_operand_shape = TypeToShape(slice.operand().getType());
+  CHECK_EQ(root.opcode(), HloOpcode::kTuple);
+  const Shape& first_slice_operand_shape =
+      root.operands()[0]->operands()[0]->shape();
+  for (size_t i = 1; i < root.operands().size(); ++i) {
+    const HloInstruction* slice = root.operands()[i];
+    const Shape& operand_shape = slice->operands()[0]->shape();
+    if (!ShapeUtil::EqualIgnoringElementType(first_slice_operand_shape,
+                                             operand_shape)) {
+      return FailedPrecondition(
+          "Fused slices do not have the same input shape, fused computation = "
+          "%s.",
+          root.parent()->name());
     }
   }
-  if (!first_slice_operand_shape.has_value()) {
-    return InvalidArgument("Fusion has no roots");
-  }
-  return *first_slice_operand_shape;
+
+  return first_slice_operand_shape;
 }
 
 }  // namespace
@@ -2007,6 +1999,8 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
         return EmitReductionFromOrToContiguousDimensions(mlir_input);
       }
       case HloOpcode::kSlice: {
+        TF_RET_CHECK(
+            IsInputFusibleSlices(mlir_input.op, /*verify_no_strides=*/true));
         return EmitInputFusibleNonStridedSlices(mlir_input);
       }
       default:
@@ -5716,13 +5710,11 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
 // }
 //
 Status IrEmitterUnnested::EmitElementForInputFusibleSlices(
-    mlir::lmhlo::FusionOp fusion, absl::Span<const llvm_ir::IrArray> ir_arrays,
+    const HloComputation* fused_computation,
+    absl::Span<const llvm_ir::IrArray> ir_arrays,
     const llvm_ir::IrArray::Index& index) {
-  VLOG(10) << "Emitting slice input fusion for " << MlirToString(fusion);
-
-  TF_ASSIGN_OR_RETURN(const HloComputation* fused_computation,
-                      GetOrCreateSubComputationFromRegion(&fusion.region(),
-                                                          /*is_fusion=*/true));
+  VLOG(10) << "Emitting slice input fusion for "
+           << fused_computation->ToString();
 
   HloInstruction* slice_or_tuple = fused_computation->root_instruction();
   auto slice_instructions = [&]() -> absl::Span<HloInstruction* const> {
@@ -5804,8 +5796,13 @@ Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
       BuildKernelThunkForMlir(fusion, mlir_input.thunk_info,
                               mlir_input.extra_slice, &ir_arrays));
 
+  TF_ASSIGN_OR_RETURN(const HloComputation* fused_computation,
+                      GetOrCreateSubComputationFromRegion(&fusion.region(),
+                                                          /*is_fusion=*/true));
+
   TF_ASSIGN_OR_RETURN(Shape element_shape,
-                      GetConsistentInputShapeForRootSlices(fusion));
+                      GetConsistentInputShapeForRootSlices(fused_computation));
+
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
       element_shape, ir_emitter_context_->gpu_device_info(), unroll_factor);
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
@@ -5814,7 +5811,8 @@ Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
   Status emit_status =
       ParallelLoopEmitter(
           [&](const llvm_ir::IrArray::Index index) -> Status {
-            return EmitElementForInputFusibleSlices(fusion, ir_arrays, index);
+            return EmitElementForInputFusibleSlices(fused_computation,
+                                                    ir_arrays, index);
           },
           element_shape, launch_dimensions, &b_)
           .EmitLoop(IrName(mlir::GetNameFromLoc(fusion.getLoc())),
