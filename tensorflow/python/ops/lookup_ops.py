@@ -659,7 +659,7 @@ class TextFileInitializer(TableInitializerBase):
     - TextFileIndex.LINE_NUMBER means use the line number starting from zero,
       expects data type int64.
     - TextFileIndex.WHOLE_LINE means use the whole line content, expects data
-      type string.
+      type string or int64.
     - A value >=0 means use the index (starting at zero) of the split line based
       on `delimiter`.
 
@@ -712,9 +712,11 @@ class TextFileInitializer(TableInitializerBase):
     if value_index == TextFileIndex.LINE_NUMBER and value_dtype != dtypes.int64:
       raise ValueError("Signature mismatch. Values must be dtype %s, got %s." %
                        (dtypes.int64, value_dtype))
-    if value_index == TextFileIndex.WHOLE_LINE and value_dtype != dtypes.string:
-      raise ValueError("Signature mismatch. Values must be dtype %s, got %s." %
-                       (dtypes.string, value_dtype))
+    if ((value_index == TextFileIndex.WHOLE_LINE) and
+        (not value_dtype.is_integer) and (value_dtype != dtypes.string)):
+      raise ValueError(
+          "Signature mismatch. Values must be integer or string, got %s." %
+          (value_dtype))
 
     if (vocab_size is not None) and (vocab_size <= 0):
       raise ValueError("Invalid vocab_size %s." % vocab_size)
@@ -795,7 +797,7 @@ class TextFileStringTableInitializer(TextFileInitializer):
     - TextFileIndex.LINE_NUMBER means use the line number starting from zero,
       expects data type int64.
     - TextFileIndex.WHOLE_LINE means use the whole line content, expects data
-      type string.
+      type string or int64.
     - A value >=0 means use the index (starting at zero) of the split line based
       on `delimiter`.
 
