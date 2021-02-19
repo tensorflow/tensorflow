@@ -24,91 +24,156 @@ namespace tflite {
 namespace testing {
 namespace {
 
-enum class TestType {
-  kConst = 0,
-  kDynamic = 1,
-};
-
-template <typename InputType>
-class ExpandDimsOpModel : public SingleOpModel {
- public:
-  ExpandDimsOpModel(int axis, std::initializer_list<int> input_shape,
-                    std::initializer_list<InputType> input_data,
-                    TestType input_tensor_types) {
-    if (input_tensor_types == TestType::kDynamic) {
-      input_ = AddInput(GetTensorType<InputType>());
-      axis_ = AddInput(TensorType_INT32);
-    } else {
-      input_ =
-          AddConstInput(GetTensorType<InputType>(), input_data, input_shape);
-      axis_ = AddConstInput(TensorType_INT32, {axis}, {1});
-    }
-    output_ = AddOutput(GetTensorType<InputType>());
-    SetBuiltinOp(BuiltinOperator_EXPAND_DIMS, BuiltinOptions_ExpandDimsOptions,
-                 0);
-
-    BuildInterpreter({input_shape, {1}});
-
-    if (input_tensor_types == TestType::kDynamic) {
-      PopulateTensor<InputType>(input_, input_data);
-      PopulateTensor<int32_t>(axis_, {axis});
-    }
-  }
-  std::vector<InputType> GetValues() {
-    return ExtractVector<InputType>(output_);
-  }
-  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
-
- protected:
-  int input_;
-  int axis_;
-  int output_;
-};
+//Hard coded dimension limit. Is there a predefined constant?
+constexpr int MaxDims = 254;
 
 template <typename T>
-class ExpandDimsOpTest : public ::testing::Test {
- public:
-  static std::vector<TestType> range_;
-};
+void TestExpandDims(const int* input_dims, const T* input_data,
+                    const int* axis_dims, const int* axis_data,
+                    const int* output_dims, const T* expected_output_data,
+                    T* output_data) {
+  TfLiteIntArray* in_dims = IntArrayFromInts(input_dims);
+  TfLiteIntArray* ax_dims = IntArrayFromInts(axis_dims);
+  TfLiteIntArray* out_dims = IntArrayFromInts(output_dims);
+  const int in_dims_size = in_dims->size;
+  const int out_dims_size = out_dims->size;
+  const int output_size = ElementCount(*out_dims);
 
-template <>
-std::vector<TestType> ExpandDimsOpTest<TestType>::range_{TestType::kConst,
-                                                         TestType::kDynamic};
-
-using DataTypes = ::testing::Types<float, int8_t, int16_t, int32_t>;
-TYPED_TEST_SUITE(ExpandDimsOpTest, DataTypes);
-
-TYPED_TEST(ExpandDimsOpTest, PositiveAxis) {
-  for (TestType test_type : ExpandDimsOpTest<TestType>::range_) {
-    std::initializer_list<TypeParam> values = {-1, 1, -2, 2};
-
-    ExpandDimsOpModel<TypeParam> axis_0(0, {2, 2}, values, test_type);
-    axis_0.Invoke();
-    EXPECT_THAT(axis_0.GetValues(), ElementsAreArray(values));
-    EXPECT_THAT(axis_0.GetOutputShape(), ElementsAreArray({1, 2, 2}));
-
-    ExpandDimsOpModel<TypeParam> axis_1(1, {2, 2}, values, test_type);
-    axis_1.Invoke();
-    EXPECT_THAT(axis_1.GetValues(), ElementsAreArray(values));
-    EXPECT_THAT(axis_1.GetOutputShape(), ElementsAreArray({2, 1, 2}));
-
-    ExpandDimsOpModel<TypeParam> axis_2(2, {2, 2}, values, test_type);
-    axis_2.Invoke();
-    EXPECT_THAT(axis_2.GetValues(), ElementsAreArray(values));
-    EXPECT_THAT(axis_2.GetOutputShape(), ElementsAreArray({2, 2, 1}));
+  // Running the op will update output_dims[], so we need to save a copy first.
+  // We also need to skip output_dims[0], which is the dimension size.
+  int expected_out_dims[MaxDims];
+  for (int i = 0; i < out_dims_size; ++i) {
+    expected_out_dims[i] = output_dims[i + 1];
   }
-}
 
-TYPED_TEST(ExpandDimsOpTest, NegativeAxis) {
-  for (TestType test_type : ExpandDimsOpTest<TestType>::range_) {
-    std::initializer_list<TypeParam> values = {-1, 1, -2, 2};
+  constexpr int inputs_size = 2;
+  constexpr int outputs_size = 1;
+  constexpr int tensors_size = inputs_size + outputs_size;
+  TfLiteTensor tensors[tensors_size] = {
+      CreateTensor(input_data, in_dims),
+      CreateTensor(axis_data, ax_dims),
+      CreateTensor(output_data, out_dims, true),
+  };
+  int inputs_array_data[] = {2, 0, 1};
+  TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
+  int outputs_array_data[] = {1, 2};
+  TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-    ExpandDimsOpModel<TypeParam> m(-1, {2, 2}, values, test_type);
-    m.Invoke();
-    EXPECT_THAT(m.GetValues(), ElementsAreArray(values));
-    EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 1}));
+  const TfLiteRegistration registration = Register_EXPAND_DIMS();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array,
+                             /*builtin_data=*/nullptr);
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
+
+  // Get the actual output tensor.
+  TfLiteTensor* actual_out_tensor = &tensors[2];
+  TfLiteIntArray* actual_out_dims = actual_out_tensor->dims;
+  const int actual_out_dims_size = actual_out_dims->size;
+  TF_LITE_MICRO_EXPECT_EQ(actual_out_dims_size, (in_dims_size + 1));
+  for (int i = 0; i < actual_out_dims_size; ++i) {
+    TF_LITE_MICRO_EXPECT_EQ(expected_out_dims[i], actual_out_dims->data[i]);
+  }
+  for (int i = 0; i < output_size; ++i) {
+    TF_LITE_MICRO_EXPECT_EQ(expected_output_data[i], output_data[i]);
   }
 }
 
 }  // namespace
+}  // namespace testing
 }  // namespace tflite
+
+TF_LITE_MICRO_TESTS_BEGIN
+
+TF_LITE_MICRO_TEST(ExpandDimsPositiveAxisTest0) {
+  int8_t output_data[4];
+  const int input_dims[] = {2, 2, 2};
+  const int8_t input_data[] = {-1, 1, -2, 2};
+  const int8_t golden_data[] = {-1, 1, -2, 2};
+  const int axis_dims[] = {1, 1};
+  const int axis_data[] = {0};
+  const int golden_dims[] = {3, 1, 2, 2};
+  tflite::testing::TestExpandDims<int8_t>(
+             input_dims, input_data, axis_dims, axis_data,
+             golden_dims, golden_data, output_data);
+}
+
+TF_LITE_MICRO_TEST(ExpandDimsPositiveAxisTest1) {
+  float output_data[4];
+  const int input_dims[] = {2, 2, 2};
+  const float input_data[] = {-1.1, 1.2, -2.1, 2.2};
+  const float golden_data[] = {-1.1, 1.2, -2.1, 2.2};
+  const int axis_dims[] = {1, 1};
+  const int axis_data[] = {1};
+  const int golden_dims[] = {3, 2, 1, 2};
+  tflite::testing::TestExpandDims<float>(
+             input_dims, input_data, axis_dims, axis_data,
+             golden_dims, golden_data, output_data);
+}
+
+TF_LITE_MICRO_TEST(ExpandDimsPositiveAxisTest2) {
+  int8_t output_data[4];
+  const int input_dims[] = {2, 2, 2};
+  const int8_t input_data[] = {-1, 1, -2, 2};
+  const int8_t golden_data[] = {-1, 1, -2, 2};
+  const int axis_dims[] = {1, 1};
+  const int axis_data[] = {2};
+  const int golden_dims[] = {3, 2, 2, 1};
+  tflite::testing::TestExpandDims<int8_t>(
+             input_dims, input_data, axis_dims, axis_data,
+             golden_dims, golden_data, output_data);
+}
+
+TF_LITE_MICRO_TEST(ExpandDimsNegativeAxisTest4) {
+  int8_t output_data[6];
+  const int input_dims[] = {3, 3, 1, 2};
+  const int8_t input_data[] = {-1, 1, 2, -2, 0, 3};
+  const int8_t golden_data[] = {-1, 1, 2, -2, 0, 3};
+  const int axis_dims[] = {1, 1};
+  const int axis_data[] = {-4};
+  const int golden_dims[] = {4, 1, 3, 1, 2};
+  tflite::testing::TestExpandDims<int8_t>(
+             input_dims, input_data, axis_dims, axis_data,
+             golden_dims, golden_data, output_data);
+}
+
+TF_LITE_MICRO_TEST(ExpandDimsNegativeAxisTest3) {
+  float output_data[6];
+  const int input_dims[] = {3, 3, 1, 2};
+  const float input_data[] = {0.1, -0.8, -1.2, -0.5, 0.9, 1.3};
+  const float golden_data[] = {0.1, -0.8, -1.2, -0.5, 0.9, 1.3};
+  const int axis_dims[] = {1, 1};
+  const int axis_data[] = {-3};
+  const int golden_dims[] = {4, 3, 1, 1, 2};
+  tflite::testing::TestExpandDims<float>(
+             input_dims, input_data, axis_dims, axis_data,
+             golden_dims, golden_data, output_data);
+}
+
+TF_LITE_MICRO_TEST(ExpandDimsNegativeAxisTest2) {
+  int8_t output_data[6];
+  const int input_dims[] = {3, 1, 2, 3};
+  const int8_t input_data[] = {-1, 1, 2, -2, 0, 3};
+  const int8_t golden_data[] = {-1, 1, 2, -2, 0, 3};
+  const int axis_dims[] = {1, 1};
+  const int axis_data[] = {-2};
+  const int golden_dims[] = {4, 1, 2, 1, 3};
+  tflite::testing::TestExpandDims<int8_t>(
+             input_dims, input_data, axis_dims, axis_data,
+             golden_dims, golden_data, output_data);
+}
+
+TF_LITE_MICRO_TEST(ExpandDimsNegativeAxisTest1) {
+  float output_data[6];
+  const int input_dims[] = {3, 1, 3, 2};
+  const float input_data[] = {0.1, -0.8, -1.2, -0.5, 0.9, 1.3};
+  const float golden_data[] = {0.1, -0.8, -1.2, -0.5, 0.9, 1.3};
+  const int axis_dims[] = {1, 1};
+  const int axis_data[] = {-1};
+  const int golden_dims[] = {4, 1, 3, 2, 1};
+  tflite::testing::TestExpandDims<float>(
+             input_dims, input_data, axis_dims, axis_data,
+             golden_dims, golden_data, output_data);
+}
+
+TF_LITE_MICRO_TESTS_END

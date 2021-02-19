@@ -271,6 +271,7 @@ cc_library(
         "elementwise.cc",
         "elu.cc",
         "exp.cc",
+        "expand_dims.cc",
         "fill.cc",
         "floor.cc",
         "l2norm.cc",
@@ -613,6 +614,26 @@ cc_test(
         ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "expand_dims_test",
+    srcs = ["expand_dims_test.cc"],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
+    name = "fill_test",
+    srcs = [
+        "fill_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
