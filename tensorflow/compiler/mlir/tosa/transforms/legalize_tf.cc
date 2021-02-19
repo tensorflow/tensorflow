@@ -1210,7 +1210,7 @@ LogicalResult ConvertTFSoftmaxOp::matchAndRewrite(
   auto tf_softmax_op = cast<TF::SoftmaxOp>(op);
 
   llvm::Optional<Value> result = convertSoftmaxOp(
-      rewriter, op, tf_softmax_op.getResult(), tf_softmax_op.logits());
+      rewriter, op, tf_softmax_op.getResult(), tf_softmax_op.logits(), 1.0);
 
   if (!result) return failure();
 

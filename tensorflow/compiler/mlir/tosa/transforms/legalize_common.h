@@ -93,7 +93,8 @@ llvm::Optional<Value> convertEluOp(PatternRewriter& rewriter, Operation* op,
 
 // Lowers Softmax to a sequence of TOSA ops.
 llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
-                                       Value result_value, Value logits_value);
+                                       Value result_value, Value logits_value,
+                                       double beta);
 
 // Lowers LogSoftmax to a sequence of TOSA ops.
 llvm::Optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
