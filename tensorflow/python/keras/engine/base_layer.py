@@ -1867,7 +1867,14 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           'with a weight list of length %s, but the layer was '
           'expecting %s weights. Provided weights: %s...' %
           (self.name, len(weights), expected_num_weights, str(weights)[:50]))
-
+    for i in weights:
+        if type(i)!=np.ndarray:
+            raise TypeError(
+                'The weight values in the form of numpy arrays should be passed in the order they are created by the layer,'
+                'Instead encountered type "%s".'
+                 %
+                (type(i)))
+            break
     weight_index = 0
     weight_value_tuples = []
     for param in params:
