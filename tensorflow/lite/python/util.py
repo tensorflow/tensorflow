@@ -36,7 +36,6 @@ from tensorflow.lite.python import schema_util
 from tensorflow.lite.python import tflite_keras_util as _tflite_keras_util
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.lite.python.op_hint import find_all_hinted_output_nodes
-from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.eager import function
 from tensorflow.python.framework import convert_to_constants as _convert_to_constants
 from tensorflow.python.framework import dtypes
@@ -49,26 +48,7 @@ from tensorflow.python.training.saver import export_meta_graph as _export_meta_g
 model_input_signature = _tflite_keras_util.model_input_signature
 trace_model_call = _tflite_keras_util.trace_model_call
 
-# Map of tf.dtypes to TFLite types_flag_pb2.
-_MAP_TF_TO_TFLITE_TYPES = {
-    dtypes.float32: _types_pb2.FLOAT,
-    dtypes.float16: _types_pb2.FLOAT16,
-    dtypes.int32: _types_pb2.INT32,
-    dtypes.uint8: _types_pb2.QUANTIZED_UINT8,
-    dtypes.int64: _types_pb2.INT64,
-    dtypes.uint64: _types_pb2.UINT64,
-    dtypes.string: _types_pb2.STRING,
-    dtypes.bool: _types_pb2.BOOL,
-    dtypes.int16: _types_pb2.QUANTIZED_INT16,
-    dtypes.complex64: _types_pb2.COMPLEX64,
-    dtypes.int8: _types_pb2.INT8,
-    dtypes.float64: _types_pb2.FLOAT64,
-    dtypes.complex128: _types_pb2.COMPLEX128,
-    dtypes.resource: _types_pb2.RESOURCE,
-    dtypes.variant: _types_pb2.VARIANT,
-    dtypes.uint32: _types_pb2.UINT32,
-}
-
+# Defined as per TFLite schema
 _MAP_TFLITE_ENUM_TO_TF_TYPES = {
     0: dtypes.float32,
     1: dtypes.float16,
@@ -91,24 +71,6 @@ _MAP_QUANT_TO_IO_TYPES = {
     dtypes.int8: {dtypes.int8, dtypes.uint8},
     dtypes.int16: {dtypes.int16},
 }
-
-
-def convert_dtype_to_tflite_type(tf_dtype):
-  """Converts tf.dtype to TFLite proto type.
-
-  Args:
-    tf_dtype: tf.dtype
-
-  Raises:
-    ValueError: Unsupported tf.dtype.
-
-  Returns:
-    types_flag_pb2.
-  """
-  result = _MAP_TF_TO_TFLITE_TYPES.get(tf_dtype)
-  if result is None:
-    raise ValueError("Unsupported tf.dtype {0}".format(tf_dtype))
-  return result
 
 
 def _convert_tflite_enum_type_to_tf_type(tflite_enum_type):
