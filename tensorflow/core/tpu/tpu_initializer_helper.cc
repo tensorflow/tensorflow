@@ -39,11 +39,11 @@ bool TryAcquireTpuLock() {
 
   if (!attempted_file_open) {
     std::string load_library_override =
-        absl::StringCat(getenv("TPU_LOAD_LIBRARY"));
+        absl::StrCat(getenv("TPU_LOAD_LIBRARY"));
 
-    if (load_library_override == "true") {
+    if (load_library_override == "1") {
       return true;
-    } else if (load_library_override == "false") {
+    } else if (load_library_override == "0") {
       return false;
     }
     should_load_library = true;
