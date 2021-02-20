@@ -172,20 +172,13 @@ build:mkl -c opt
 build:mkl_threadpool --define=build_with_mkl=true --define=enable_mkl=true
 build:mkl_threadpool --define=tensorflow_mkldnn_contraction_kernel=0
 build:mkl_threadpool --define=build_with_mkl_opensource=true
-build:mkl_threadpool --define=build_with_mkldnn_threadpool=true
 build:mkl_threadpool -c opt
-
-# Config setting to build with oneDNN and without the binary blob
-build:mkl_opensource_only --define=build_with_mkl=true --define=enable_mkl=true
-build:mkl_opensource_only --define=tensorflow_mkldnn_contraction_kernel=0
-build:mkl_opensource_only --define=build_with_mkl_opensource=true
-build:mkl_opensource_only --define=build_with_openmp=true
-build:mkl_opensource_only -c opt
 
 # Config setting to build with oneDNN for Arm.
 build:mkl_aarch64 --define=build_with_mkl_aarch64=true --define=enable_mkl=true
 build:mkl_aarch64 --define=tensorflow_mkldnn_contraction_kernel=0
 build:mkl_aarch64 --define=build_with_mkl_opensource=true
+build:mkl_aarch64 --define=build_with_openmp=true
 build:mkl_aarch64 -c opt
 
 # This config refers to building with CUDA available. It does not necessarily

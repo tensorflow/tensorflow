@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/threadpool.h"
 #define EIGEN_USE_THREADS
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#ifndef ENABLE_ONEDNN_OPENMP
 using dnnl::stream_attr;
 using dnnl::threadpool_iface;
 
@@ -139,6 +139,6 @@ class MklDnnThreadPoolWrapper {
 };
 
 }  // namespace tensorflow
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
 #endif  // INTEL_MKL
 #endif  // TENSORFLOW_CORE_UTIL_MKL_THREADPOOL_H_

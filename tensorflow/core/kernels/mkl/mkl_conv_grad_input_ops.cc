@@ -106,7 +106,7 @@ class MklConvBwdInputPrimitive : public MklPrimitive {
   void Execute(const T* diff_src_data, const T* filter_data,
                const T* diff_dst_data,
                std::shared_ptr<stream> bwd_input_stream) {
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#ifndef ENABLE_ONEDNN_OPENMP
     // TODO: Create a common function and avoid the duplicate code
     context_.diff_src_mem->set_data_handle(
         static_cast<T*>(const_cast<T*>(diff_src_data)), *bwd_input_stream);
@@ -121,7 +121,7 @@ class MklConvBwdInputPrimitive : public MklPrimitive {
         static_cast<T*>(const_cast<T*>(filter_data)));
     context_.diff_dst_mem->set_data_handle(
         static_cast<T*>(const_cast<T*>(diff_dst_data)));
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
     execute_primitives(context_.bwd_input_primitives, bwd_input_stream,
                        context_.bwd_input_primitives_args);
 
