@@ -59,7 +59,7 @@ int GetNumAvailableGPUs(
             num_eligible_gpus++;
           }
         }
-#else
+#else //TENSORFLOW_USE_ROCM
         num_eligible_gpus++;
 #endif
       }
