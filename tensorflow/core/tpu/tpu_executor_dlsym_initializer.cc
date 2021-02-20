@@ -30,7 +30,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tpu {
-
+namespace {
 #if defined(PLATFORM_GOOGLE)
 Status InitializeTpuLibrary(void* library_handle) {
   return errors::Unimplemented("You must statically link in a TPU library.");
@@ -75,6 +75,6 @@ bool FindAndLoadTpuLibrary() {
 
 static bool tpu_library_finder = FindAndLoadTpuLibrary();
 #endif  // PLATFORM_GOOGLE
-
+}  // namespace
 }  // namespace tpu
 }  // namespace tensorflow
