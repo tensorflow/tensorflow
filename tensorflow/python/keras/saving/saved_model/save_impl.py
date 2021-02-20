@@ -113,19 +113,19 @@ def wrap_layer_objects(layer, serialization_cache):
   wrapped_layer_losses = [keras_loss_cache[fn]
                           for fn in layer._callable_losses[:]]  # pylint: disable=protected-access
 
-  layer_metrics = data_structures._DictWrapper(  # pylint: disable=protected-access
+  layer_metrics = data_structures.wrap_or_unwrap(
       {m.name: m for m in layer._metrics})  # pylint: disable=protected-access
   return dict(
-      variables=data_structures.ListWrapper(layer.variables),
-      trainable_variables=data_structures.ListWrapper(
+      variables=data_structures.wrap_or_unwrap(layer.variables),
+      trainable_variables=data_structures.wrap_or_unwrap(
           layer.trainable_variables),
-      non_trainable_variables=data_structures.ListWrapper(
+      non_trainable_variables=data_structures.wrap_or_unwrap(
           layer.non_trainable_variables),
-      layers=data_structures.ListWrapper(utils.list_all_layers(layer)),
-      metrics=data_structures.ListWrapper(layer.metrics),
-      regularization_losses=data_structures.ListWrapper(
+      layers=data_structures.wrap_or_unwrap(utils.list_all_layers(layer)),
+      metrics=data_structures.wrap_or_unwrap(layer.metrics),
+      regularization_losses=data_structures.wrap_or_unwrap(
           wrapped_loss_functions),
-      layer_regularization_losses=data_structures.ListWrapper(
+      layer_regularization_losses=data_structures.wrap_or_unwrap(
           wrapped_layer_losses),
       layer_metrics=layer_metrics)
   # pylint: disable=protected-access
