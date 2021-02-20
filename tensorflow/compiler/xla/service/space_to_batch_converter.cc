@@ -1766,7 +1766,6 @@ StatusOr<HloInstruction*> ConvolutionVisitor::BatchToSpace(
   std::vector<int64> transpose_dims(permute_dims);
   TF_ASSIGN_OR_RETURN(HloInstruction * output_transpose,
                       MakeTransposeHlo(output_slice, transpose_dims));
-
   old_instr->SetupDerivedInstruction(output_transpose);
 
   batch_to_space_map_[old_instr] = output_transpose;
@@ -1829,19 +1828,15 @@ Status ConvolutionVisitor::PropagateOnUsers(HloInstruction* old_conv) {
             computation_->ReplaceInstruction(node, old_to_new_instrs_[node]));
         continue;
       }
+
+      HloInstructionSet unsupported_users;
       // Insert all users into the queue, as long as the ops are supported and
       // the op is ready for propagation. If the op is unsupported, do
       // batch-to-space. If not ready, mark as non-propagatable.
       for (auto user : node->users()) {
         if (!SupportedOpForPropagation(user, node)) {
           VLOG(1) << "Unsupported op found " << user->ToString();
-          TF_ASSIGN_OR_RETURN(HloInstruction * batch_to_space,
-                              BatchToSpace(node));
-          for (int64 i = 0; i < user->operand_count(); ++i) {
-            if (user->operand(i) == node) {
-              TF_CHECK_OK(user->ReplaceOperandWith(i, batch_to_space));
-            }
-          }
+          unsupported_users.insert(user);
           continue;
         }
         // If the instruction is ready for propagation, add it to the queue.
@@ -1851,6 +1846,18 @@ Status ConvolutionVisitor::PropagateOnUsers(HloInstruction* old_conv) {
         } else {
           // Mark it as non-propagatable for now, for later revisiting.
           non_propagatable_instrs_.insert(user);
+        }
+      }
+
+      if (!unsupported_users.empty()) {
+        TF_ASSIGN_OR_RETURN(HloInstruction * batch_to_space,
+                            BatchToSpace(node));
+        for (auto user : unsupported_users) {
+          for (int64 i = 0; i < user->operand_count(); ++i) {
+            if (user->operand(i) == node) {
+              TF_CHECK_OK(user->ReplaceOperandWith(i, batch_to_space));
+            }
+          }
         }
       }
     }
