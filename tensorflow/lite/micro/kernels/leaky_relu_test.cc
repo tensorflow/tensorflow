@@ -40,8 +40,8 @@ struct TestLeakyReluParams {
   float tolerance;  // output vs expected value tolerance
 };
 
-void ExecuteLeakyReluTest(TfLiteTensor* tensors, int tensors_count,
-                          float alpha) {
+void ExecuteLeakyReluTest(const float alpha, const int tensors_count,
+                          TfLiteTensor* tensors) {
   TfLiteLeakyReluParams builtin_data = {};
   builtin_data.alpha = alpha;
 
@@ -50,8 +50,7 @@ void ExecuteLeakyReluTest(TfLiteTensor* tensors, int tensors_count,
   constexpr int kOutputArrayData[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(kOutputArrayData);
 
-  const TfLiteRegistration registration =
-      tflite::ops::micro::Register_LEAKY_RELU();
+  const TfLiteRegistration registration = tflite::Register_LEAKY_RELU();
   micro::KernelRunner runner(registration, tensors, tensors_count, inputs_array,
                              outputs_array, static_cast<void*>(&builtin_data));
 
@@ -60,9 +59,10 @@ void ExecuteLeakyReluTest(TfLiteTensor* tensors, int tensors_count,
 }
 
 template <typename T>
-void TestLeakyRelu(const int* input_dims_data, const T* input_data,
+void TestLeakyRelu(const TestLeakyReluParams<T>& params,
+                   const int* input_dims_data, const T* input_data,
                    const int* expected_dims, const T* expected_data,
-                   T* output_data, const TestLeakyReluParams<T>* params) {
+                   T* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(expected_dims);
   const int output_count = ElementCount(*output_dims);
@@ -72,7 +72,7 @@ void TestLeakyRelu(const int* input_dims_data, const T* input_data,
       CreateTensor(output_data, output_dims),
   };
   constexpr int tensors_count = std::extent<decltype(tensors)>::value;
-  ExecuteLeakyReluTest(tensors, tensors_count, params->alpha);
+  ExecuteLeakyReluTest(params.alpha, tensors_count, tensors);
 
   for (int i = 0; i < output_count; i++) {
     TF_LITE_MICRO_EXPECT_EQ(expected_data[i], output_data[i]);
@@ -80,30 +80,29 @@ void TestLeakyRelu(const int* input_dims_data, const T* input_data,
 }
 
 template <typename T>
-void TestLeakyReluQuantized(const int* input_dims_data, const float* input_data,
+void TestLeakyReluQuantized(const TestLeakyReluParams<T>& params,
+                            const int* input_dims_data, const float* input_data,
                             const int* expected_dims,
-                            const float* expected_data, float* output_data,
-                            const TestLeakyReluParams<T>* params) {
+                            const float* expected_data, float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(expected_dims);
   const int output_count = ElementCount(*output_dims);
 
-  const float scale = ScaleFromMinMax<T>(params->data_min, params->data_max);
+  const float scale = ScaleFromMinMax<T>(params.data_min, params.data_max);
   const int zero_point =
-      ZeroPointFromMinMax<T>(params->data_min, params->data_max);
+      ZeroPointFromMinMax<T>(params.data_min, params.data_max);
 
   TfLiteTensor tensors[] = {
-      CreateQuantizedTensor(input_data, params->input_data, input_dims, scale,
+      CreateQuantizedTensor(input_data, params.input_data, input_dims, scale,
                             zero_point),
-      CreateQuantizedTensor(params->output_data, output_dims, scale,
-                            zero_point),
+      CreateQuantizedTensor(params.output_data, output_dims, scale, zero_point),
   };
   constexpr int kTensorsCount = std::extent<decltype(tensors)>::value;
 
-  ExecuteLeakyReluTest(tensors, kTensorsCount, params->alpha);
+  ExecuteLeakyReluTest(params.alpha, kTensorsCount, tensors);
 
-  Dequantize(params->output_data, output_count, scale, zero_point, output_data);
-  const float kTolerance = params->tolerance;
+  Dequantize(params.output_data, output_count, scale, zero_point, output_data);
+  const float kTolerance = params.tolerance;
   for (int i = 0; i < output_count; i++) {
     TF_LITE_MICRO_EXPECT_NEAR(expected_data[i], output_data[i], kTolerance);
   }
@@ -165,7 +164,7 @@ void QuantizedActivationsOpTestLeakyRelu() {
                          ? kQuantizedToleranceInt16
                          : kQuantizedTolerance * 5;
 
-  TestLeakyReluQuantized(kDims, kInput, kDims, kExpect, output_data, &params);
+  TestLeakyReluQuantized(params, kDims, kInput, kDims, kExpect, output_data);
 }
 
 }  // namespace
@@ -194,8 +193,8 @@ TF_LITE_MICRO_TEST(QuantizedActivationsOpTestLeakyReluUint8) {
   params.output_data = q_output_data;
   params.tolerance = tflite::testing::kQuantizedTolerance * 8;
 
-  tflite::testing::TestLeakyReluQuantized(kDims, kInput, kDims, kExpect,
-                                          output_data, &params);
+  tflite::testing::TestLeakyReluQuantized(params, kDims, kInput, kDims, kExpect,
+                                          output_data);
 }
 
 TF_LITE_MICRO_TEST(QuantizedActivationsOpTestLeakyReluInt8) {
@@ -215,8 +214,8 @@ TF_LITE_MICRO_TEST(FloatActivationsOpTestLeakyRelu) {
   tflite::testing::TestLeakyReluParams<float> params = {};
   params.alpha = 0.5f;
 
-  tflite::testing::TestLeakyRelu(kDims, kInput, kDims, kExpect, output_data,
-                                 &params);
+  tflite::testing::TestLeakyRelu(params, kDims, kInput, kDims, kExpect,
+                                 output_data);
 }
 
 TF_LITE_MICRO_TESTS_END

@@ -23,39 +23,34 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
-namespace ops {
-namespace micro {
-namespace activations {
 namespace {
 
 // Input/output tensor index.
 constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
 
-// OLD-TODO(b/142762739): We should figure out a multi-threading plan for most
-// of the activation ops below.
-
 struct LeakyReluOpData {
   // quantization parameters
   int32_t output_multiplier_alpha;
-  int output_shift_alpha;
+  int32_t output_shift_alpha;
   int32_t output_multiplier_identity;
-  int output_shift_identity;
+  int32_t output_shift_identity;
   int32_t input_zero_point;
   int32_t output_zero_point;
 };
 
 template <typename T>
-void QuantizeLeakyRelu(const TfLiteEvalTensor* input, TfLiteEvalTensor* output,
-                       const LeakyReluOpData* data) {
+void QuantizeLeakyRelu(const LeakyReluOpData& data,
+                       const TfLiteEvalTensor* input,
+                       TfLiteEvalTensor* output) {
   LeakyReluParams op_params = {};
 
-  op_params.input_offset = data->input_zero_point;
-  op_params.output_offset = data->output_zero_point;
-  op_params.output_multiplier_alpha = data->output_multiplier_alpha;
-  op_params.output_shift_alpha = data->output_shift_alpha;
-  op_params.output_multiplier_identity = data->output_multiplier_identity;
-  op_params.output_shift_identity = data->output_shift_identity;
+  op_params.input_offset = data.input_zero_point;
+  op_params.output_offset = data.output_zero_point;
+  op_params.output_multiplier_alpha = data.output_multiplier_alpha;
+  op_params.output_shift_alpha = data.output_shift_alpha;
+  op_params.output_multiplier_identity = data.output_multiplier_identity;
+  op_params.output_shift_identity = data.output_shift_identity;
   reference_ops::QuantizeLeakyRelu(op_params,
                                    tflite::micro::GetTensorShape(input),
                                    tflite::micro::GetTensorData<T>(input),
@@ -82,13 +77,19 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node) {
     data->input_zero_point = input->params.zero_point;
     data->output_zero_point = output->params.zero_point;
 
-    double alpha_multiplier =
-        input->params.scale * params->alpha / output->params.scale;
+    int output_shift_alpha;
+    double alpha_multiplier = static_cast<double>(
+        input->params.scale * params->alpha / output->params.scale);
     QuantizeMultiplier(alpha_multiplier, &data->output_multiplier_alpha,
-                       &data->output_shift_alpha);
-    double identity_multiplier = input->params.scale / output->params.scale;
+                       &output_shift_alpha);
+    data->output_shift_alpha = static_cast<int32_t>(output_shift_alpha);
+
+    int output_shift_identity;
+    double identity_multiplier =
+        static_cast<double>(input->params.scale / output->params.scale);
     QuantizeMultiplier(identity_multiplier, &data->output_multiplier_identity,
-                       &data->output_shift_identity);
+                       &output_shift_identity);
+    data->output_shift_identity = static_cast<int32_t>(output_shift_identity);
   }
 
   if (input->type == kTfLiteInt16 && output->type == kTfLiteInt16) {
@@ -98,8 +99,6 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node) {
 
   return kTfLiteOk;
 }
-
-}  // namespace
 
 void* LeakyReluInit(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
@@ -115,7 +114,7 @@ TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
       tflite::micro::GetEvalInput(context, node, kInputTensor);
   TfLiteEvalTensor* output =
       tflite::micro::GetEvalOutput(context, node, kOutputTensor);
-  const LeakyReluOpData* data = static_cast<LeakyReluOpData*>(node->user_data);
+  const LeakyReluOpData& data = *static_cast<LeakyReluOpData*>(node->user_data);
 
   switch (input->type) {
     case kTfLiteFloat32: {
@@ -131,39 +130,37 @@ TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     }
     case kTfLiteUInt8: {
-      QuantizeLeakyRelu<uint8_t>(input, output, data);
+      QuantizeLeakyRelu<uint8_t>(data, input, output);
       return kTfLiteOk;
     }
     case kTfLiteInt8: {
-      QuantizeLeakyRelu<int8_t>(input, output, data);
+      QuantizeLeakyRelu<int8_t>(data, input, output);
       return kTfLiteOk;
     }
     case kTfLiteInt16: {
-      QuantizeLeakyRelu<int16_t>(input, output, data);
+      QuantizeLeakyRelu<int16_t>(data, input, output);
       return kTfLiteOk;
     }
     default:
       TF_LITE_KERNEL_LOG(context,
-                         "Only float32, int8, int16 and uint8 is supported by "
-                         "LEAKY_RELU, got %s.",
+                         "Only float32, int8, int16 and uint8 are supported "
+                         "by LEAKY_RELU, got %s.",
                          TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
 }
 
-}  // namespace activations
+}  // namespace
 
 TfLiteRegistration Register_LEAKY_RELU() {
-  return {/*init=*/activations::LeakyReluInit,
+  return {/*init=*/LeakyReluInit,
           /*free=*/nullptr,
-          /*prepare=*/activations::LeakyReluPrepare,
-          /*invoke=*/activations::LeakyReluEval,
+          /*prepare=*/LeakyReluPrepare,
+          /*invoke=*/LeakyReluEval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,
           /*custom_name=*/nullptr,
           /*version=*/0};
 }
 
-}  // namespace micro
-}  // namespace ops
 }  // namespace tflite
