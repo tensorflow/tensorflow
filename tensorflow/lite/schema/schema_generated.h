@@ -364,6 +364,18 @@ struct BroadcastToOptionsT;
 struct Rfft2dOptions;
 struct Rfft2dOptionsT;
 
+struct HashtableOptions;
+struct HashtableOptionsT;
+
+struct HashtableFindOptions;
+struct HashtableFindOptionsT;
+
+struct HashtableImportOptions;
+struct HashtableImportOptionsT;
+
+struct HashtableSizeOptions;
+struct HashtableSizeOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -823,11 +835,15 @@ enum BuiltinOperator {
   BuiltinOperator_IMAG = 133,
   BuiltinOperator_REAL = 134,
   BuiltinOperator_COMPLEX_ABS = 135,
+  BuiltinOperator_HASHTABLE = 136,
+  BuiltinOperator_HASHTABLE_FIND = 137,
+  BuiltinOperator_HASHTABLE_IMPORT = 138,
+  BuiltinOperator_HASHTABLE_SIZE = 139,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_COMPLEX_ABS
+  BuiltinOperator_MAX = BuiltinOperator_HASHTABLE_SIZE
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[136] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[140] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -964,13 +980,17 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[136] {
     BuiltinOperator_CONV_3D,
     BuiltinOperator_IMAG,
     BuiltinOperator_REAL,
-    BuiltinOperator_COMPLEX_ABS
+    BuiltinOperator_COMPLEX_ABS,
+    BuiltinOperator_HASHTABLE,
+    BuiltinOperator_HASHTABLE_FIND,
+    BuiltinOperator_HASHTABLE_IMPORT,
+    BuiltinOperator_HASHTABLE_SIZE
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[137] = {
+  static const char * const names[141] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1107,13 +1127,17 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "IMAG",
     "REAL",
     "COMPLEX_ABS",
+    "HASHTABLE",
+    "HASHTABLE_FIND",
+    "HASHTABLE_IMPORT",
+    "HASHTABLE_SIZE",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_COMPLEX_ABS)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_HASHTABLE_SIZE)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -1226,11 +1250,15 @@ enum BuiltinOptions {
   BuiltinOptions_BroadcastToOptions = 104,
   BuiltinOptions_Rfft2dOptions = 105,
   BuiltinOptions_Conv3DOptions = 106,
+  BuiltinOptions_HashtableOptions = 107,
+  BuiltinOptions_HashtableFindOptions = 108,
+  BuiltinOptions_HashtableImportOptions = 109,
+  BuiltinOptions_HashtableSizeOptions = 110,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_Conv3DOptions
+  BuiltinOptions_MAX = BuiltinOptions_HashtableSizeOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[107] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[111] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -1338,13 +1366,17 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[107] {
     BuiltinOptions_CallOnceOptions,
     BuiltinOptions_BroadcastToOptions,
     BuiltinOptions_Rfft2dOptions,
-    BuiltinOptions_Conv3DOptions
+    BuiltinOptions_Conv3DOptions,
+    BuiltinOptions_HashtableOptions,
+    BuiltinOptions_HashtableFindOptions,
+    BuiltinOptions_HashtableImportOptions,
+    BuiltinOptions_HashtableSizeOptions
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOptions() {
-  static const char * const names[108] = {
+  static const char * const names[112] = {
     "NONE",
     "Conv2DOptions",
     "DepthwiseConv2DOptions",
@@ -1452,13 +1484,17 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "BroadcastToOptions",
     "Rfft2dOptions",
     "Conv3DOptions",
+    "HashtableOptions",
+    "HashtableFindOptions",
+    "HashtableImportOptions",
+    "HashtableSizeOptions",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions(BuiltinOptions e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_Conv3DOptions)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_HashtableSizeOptions)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions()[index];
 }
@@ -1889,6 +1925,22 @@ template<> struct BuiltinOptionsTraits<tflite::Rfft2dOptions> {
 
 template<> struct BuiltinOptionsTraits<tflite::Conv3DOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_Conv3DOptions;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::HashtableOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_HashtableOptions;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::HashtableFindOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_HashtableFindOptions;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::HashtableImportOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_HashtableImportOptions;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::HashtableSizeOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_HashtableSizeOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -2770,6 +2822,38 @@ struct BuiltinOptionsUnion {
   const tflite::Conv3DOptionsT *AsConv3DOptions() const {
     return type == BuiltinOptions_Conv3DOptions ?
       reinterpret_cast<const tflite::Conv3DOptionsT *>(value) : nullptr;
+  }
+  tflite::HashtableOptionsT *AsHashtableOptions() {
+    return type == BuiltinOptions_HashtableOptions ?
+      reinterpret_cast<tflite::HashtableOptionsT *>(value) : nullptr;
+  }
+  const tflite::HashtableOptionsT *AsHashtableOptions() const {
+    return type == BuiltinOptions_HashtableOptions ?
+      reinterpret_cast<const tflite::HashtableOptionsT *>(value) : nullptr;
+  }
+  tflite::HashtableFindOptionsT *AsHashtableFindOptions() {
+    return type == BuiltinOptions_HashtableFindOptions ?
+      reinterpret_cast<tflite::HashtableFindOptionsT *>(value) : nullptr;
+  }
+  const tflite::HashtableFindOptionsT *AsHashtableFindOptions() const {
+    return type == BuiltinOptions_HashtableFindOptions ?
+      reinterpret_cast<const tflite::HashtableFindOptionsT *>(value) : nullptr;
+  }
+  tflite::HashtableImportOptionsT *AsHashtableImportOptions() {
+    return type == BuiltinOptions_HashtableImportOptions ?
+      reinterpret_cast<tflite::HashtableImportOptionsT *>(value) : nullptr;
+  }
+  const tflite::HashtableImportOptionsT *AsHashtableImportOptions() const {
+    return type == BuiltinOptions_HashtableImportOptions ?
+      reinterpret_cast<const tflite::HashtableImportOptionsT *>(value) : nullptr;
+  }
+  tflite::HashtableSizeOptionsT *AsHashtableSizeOptions() {
+    return type == BuiltinOptions_HashtableSizeOptions ?
+      reinterpret_cast<tflite::HashtableSizeOptionsT *>(value) : nullptr;
+  }
+  const tflite::HashtableSizeOptionsT *AsHashtableSizeOptions() const {
+    return type == BuiltinOptions_HashtableSizeOptions ?
+      reinterpret_cast<const tflite::HashtableSizeOptionsT *>(value) : nullptr;
   }
 };
 
@@ -9819,6 +9903,204 @@ inline flatbuffers::Offset<Rfft2dOptions> CreateRfft2dOptions(
 
 flatbuffers::Offset<Rfft2dOptions> CreateRfft2dOptions(flatbuffers::FlatBufferBuilder &_fbb, const Rfft2dOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct HashtableOptionsT : public flatbuffers::NativeTable {
+  typedef HashtableOptions TableType;
+  int32_t table_id;
+  tflite::TensorType key_dtype;
+  tflite::TensorType value_dtype;
+  HashtableOptionsT()
+      : table_id(0),
+        key_dtype(tflite::TensorType_FLOAT32),
+        value_dtype(tflite::TensorType_FLOAT32) {
+  }
+};
+
+struct HashtableOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef HashtableOptionsT NativeTableType;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_TABLE_ID = 4,
+    VT_KEY_DTYPE = 6,
+    VT_VALUE_DTYPE = 8
+  };
+  int32_t table_id() const {
+    return GetField<int32_t>(VT_TABLE_ID, 0);
+  }
+  tflite::TensorType key_dtype() const {
+    return static_cast<tflite::TensorType>(GetField<int8_t>(VT_KEY_DTYPE, 0));
+  }
+  tflite::TensorType value_dtype() const {
+    return static_cast<tflite::TensorType>(GetField<int8_t>(VT_VALUE_DTYPE, 0));
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int32_t>(verifier, VT_TABLE_ID) &&
+           VerifyField<int8_t>(verifier, VT_KEY_DTYPE) &&
+           VerifyField<int8_t>(verifier, VT_VALUE_DTYPE) &&
+           verifier.EndTable();
+  }
+  HashtableOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(HashtableOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<HashtableOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const HashtableOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct HashtableOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_table_id(int32_t table_id) {
+    fbb_.AddElement<int32_t>(HashtableOptions::VT_TABLE_ID, table_id, 0);
+  }
+  void add_key_dtype(tflite::TensorType key_dtype) {
+    fbb_.AddElement<int8_t>(HashtableOptions::VT_KEY_DTYPE, static_cast<int8_t>(key_dtype), 0);
+  }
+  void add_value_dtype(tflite::TensorType value_dtype) {
+    fbb_.AddElement<int8_t>(HashtableOptions::VT_VALUE_DTYPE, static_cast<int8_t>(value_dtype), 0);
+  }
+  explicit HashtableOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  HashtableOptionsBuilder &operator=(const HashtableOptionsBuilder &);
+  flatbuffers::Offset<HashtableOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<HashtableOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<HashtableOptions> CreateHashtableOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t table_id = 0,
+    tflite::TensorType key_dtype = tflite::TensorType_FLOAT32,
+    tflite::TensorType value_dtype = tflite::TensorType_FLOAT32) {
+  HashtableOptionsBuilder builder_(_fbb);
+  builder_.add_table_id(table_id);
+  builder_.add_value_dtype(value_dtype);
+  builder_.add_key_dtype(key_dtype);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<HashtableOptions> CreateHashtableOptions(flatbuffers::FlatBufferBuilder &_fbb, const HashtableOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct HashtableFindOptionsT : public flatbuffers::NativeTable {
+  typedef HashtableFindOptions TableType;
+  HashtableFindOptionsT() {
+  }
+};
+
+struct HashtableFindOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef HashtableFindOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  HashtableFindOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(HashtableFindOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<HashtableFindOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const HashtableFindOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct HashtableFindOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit HashtableFindOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  HashtableFindOptionsBuilder &operator=(const HashtableFindOptionsBuilder &);
+  flatbuffers::Offset<HashtableFindOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<HashtableFindOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<HashtableFindOptions> CreateHashtableFindOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  HashtableFindOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<HashtableFindOptions> CreateHashtableFindOptions(flatbuffers::FlatBufferBuilder &_fbb, const HashtableFindOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct HashtableImportOptionsT : public flatbuffers::NativeTable {
+  typedef HashtableImportOptions TableType;
+  HashtableImportOptionsT() {
+  }
+};
+
+struct HashtableImportOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef HashtableImportOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  HashtableImportOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(HashtableImportOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<HashtableImportOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const HashtableImportOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct HashtableImportOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit HashtableImportOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  HashtableImportOptionsBuilder &operator=(const HashtableImportOptionsBuilder &);
+  flatbuffers::Offset<HashtableImportOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<HashtableImportOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<HashtableImportOptions> CreateHashtableImportOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  HashtableImportOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<HashtableImportOptions> CreateHashtableImportOptions(flatbuffers::FlatBufferBuilder &_fbb, const HashtableImportOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct HashtableSizeOptionsT : public flatbuffers::NativeTable {
+  typedef HashtableSizeOptions TableType;
+  HashtableSizeOptionsT() {
+  }
+};
+
+struct HashtableSizeOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef HashtableSizeOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  HashtableSizeOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(HashtableSizeOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<HashtableSizeOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const HashtableSizeOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct HashtableSizeOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit HashtableSizeOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  HashtableSizeOptionsBuilder &operator=(const HashtableSizeOptionsBuilder &);
+  flatbuffers::Offset<HashtableSizeOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<HashtableSizeOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<HashtableSizeOptions> CreateHashtableSizeOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  HashtableSizeOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<HashtableSizeOptions> CreateHashtableSizeOptions(flatbuffers::FlatBufferBuilder &_fbb, const HashtableSizeOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   int8_t deprecated_builtin_code;
@@ -10287,6 +10569,18 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const tflite::Conv3DOptions *builtin_options_as_Conv3DOptions() const {
     return builtin_options_type() == tflite::BuiltinOptions_Conv3DOptions ? static_cast<const tflite::Conv3DOptions *>(builtin_options()) : nullptr;
   }
+  const tflite::HashtableOptions *builtin_options_as_HashtableOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_HashtableOptions ? static_cast<const tflite::HashtableOptions *>(builtin_options()) : nullptr;
+  }
+  const tflite::HashtableFindOptions *builtin_options_as_HashtableFindOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_HashtableFindOptions ? static_cast<const tflite::HashtableFindOptions *>(builtin_options()) : nullptr;
+  }
+  const tflite::HashtableImportOptions *builtin_options_as_HashtableImportOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_HashtableImportOptions ? static_cast<const tflite::HashtableImportOptions *>(builtin_options()) : nullptr;
+  }
+  const tflite::HashtableSizeOptions *builtin_options_as_HashtableSizeOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_HashtableSizeOptions ? static_cast<const tflite::HashtableSizeOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -10745,6 +11039,22 @@ template<> inline const tflite::Rfft2dOptions *Operator::builtin_options_as<tfli
 
 template<> inline const tflite::Conv3DOptions *Operator::builtin_options_as<tflite::Conv3DOptions>() const {
   return builtin_options_as_Conv3DOptions();
+}
+
+template<> inline const tflite::HashtableOptions *Operator::builtin_options_as<tflite::HashtableOptions>() const {
+  return builtin_options_as_HashtableOptions();
+}
+
+template<> inline const tflite::HashtableFindOptions *Operator::builtin_options_as<tflite::HashtableFindOptions>() const {
+  return builtin_options_as_HashtableFindOptions();
+}
+
+template<> inline const tflite::HashtableImportOptions *Operator::builtin_options_as<tflite::HashtableImportOptions>() const {
+  return builtin_options_as_HashtableImportOptions();
+}
+
+template<> inline const tflite::HashtableSizeOptions *Operator::builtin_options_as<tflite::HashtableSizeOptions>() const {
+  return builtin_options_as_HashtableSizeOptions();
 }
 
 struct OperatorBuilder {
@@ -14574,6 +14884,107 @@ inline flatbuffers::Offset<Rfft2dOptions> CreateRfft2dOptions(flatbuffers::FlatB
       _fbb);
 }
 
+inline HashtableOptionsT *HashtableOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new HashtableOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void HashtableOptions::UnPackTo(HashtableOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = table_id(); _o->table_id = _e; }
+  { auto _e = key_dtype(); _o->key_dtype = _e; }
+  { auto _e = value_dtype(); _o->value_dtype = _e; }
+}
+
+inline flatbuffers::Offset<HashtableOptions> HashtableOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const HashtableOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateHashtableOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<HashtableOptions> CreateHashtableOptions(flatbuffers::FlatBufferBuilder &_fbb, const HashtableOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const HashtableOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _table_id = _o->table_id;
+  auto _key_dtype = _o->key_dtype;
+  auto _value_dtype = _o->value_dtype;
+  return tflite::CreateHashtableOptions(
+      _fbb,
+      _table_id,
+      _key_dtype,
+      _value_dtype);
+}
+
+inline HashtableFindOptionsT *HashtableFindOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new HashtableFindOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void HashtableFindOptions::UnPackTo(HashtableFindOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<HashtableFindOptions> HashtableFindOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const HashtableFindOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateHashtableFindOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<HashtableFindOptions> CreateHashtableFindOptions(flatbuffers::FlatBufferBuilder &_fbb, const HashtableFindOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const HashtableFindOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateHashtableFindOptions(
+      _fbb);
+}
+
+inline HashtableImportOptionsT *HashtableImportOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new HashtableImportOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void HashtableImportOptions::UnPackTo(HashtableImportOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<HashtableImportOptions> HashtableImportOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const HashtableImportOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateHashtableImportOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<HashtableImportOptions> CreateHashtableImportOptions(flatbuffers::FlatBufferBuilder &_fbb, const HashtableImportOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const HashtableImportOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateHashtableImportOptions(
+      _fbb);
+}
+
+inline HashtableSizeOptionsT *HashtableSizeOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new HashtableSizeOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void HashtableSizeOptions::UnPackTo(HashtableSizeOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<HashtableSizeOptions> HashtableSizeOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const HashtableSizeOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateHashtableSizeOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<HashtableSizeOptions> CreateHashtableSizeOptions(flatbuffers::FlatBufferBuilder &_fbb, const HashtableSizeOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const HashtableSizeOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateHashtableSizeOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -15473,6 +15884,22 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const tflite::Conv3DOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_HashtableOptions: {
+      auto ptr = reinterpret_cast<const tflite::HashtableOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_HashtableFindOptions: {
+      auto ptr = reinterpret_cast<const tflite::HashtableFindOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_HashtableImportOptions: {
+      auto ptr = reinterpret_cast<const tflite::HashtableImportOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_HashtableSizeOptions: {
+      auto ptr = reinterpret_cast<const tflite::HashtableSizeOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -15915,6 +16342,22 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const tflite::Conv3DOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_HashtableOptions: {
+      auto ptr = reinterpret_cast<const tflite::HashtableOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_HashtableFindOptions: {
+      auto ptr = reinterpret_cast<const tflite::HashtableFindOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_HashtableImportOptions: {
+      auto ptr = reinterpret_cast<const tflite::HashtableImportOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_HashtableSizeOptions: {
+      auto ptr = reinterpret_cast<const tflite::HashtableSizeOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -16345,6 +16788,22 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const tflite::Conv3DOptionsT *>(value);
       return CreateConv3DOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_HashtableOptions: {
+      auto ptr = reinterpret_cast<const tflite::HashtableOptionsT *>(value);
+      return CreateHashtableOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_HashtableFindOptions: {
+      auto ptr = reinterpret_cast<const tflite::HashtableFindOptionsT *>(value);
+      return CreateHashtableFindOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_HashtableImportOptions: {
+      auto ptr = reinterpret_cast<const tflite::HashtableImportOptionsT *>(value);
+      return CreateHashtableImportOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_HashtableSizeOptions: {
+      auto ptr = reinterpret_cast<const tflite::HashtableSizeOptionsT *>(value);
+      return CreateHashtableSizeOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -16773,6 +17232,22 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_Conv3DOptions: {
       value = new tflite::Conv3DOptionsT(*reinterpret_cast<tflite::Conv3DOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_HashtableOptions: {
+      value = new tflite::HashtableOptionsT(*reinterpret_cast<tflite::HashtableOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_HashtableFindOptions: {
+      value = new tflite::HashtableFindOptionsT(*reinterpret_cast<tflite::HashtableFindOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_HashtableImportOptions: {
+      value = new tflite::HashtableImportOptionsT(*reinterpret_cast<tflite::HashtableImportOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_HashtableSizeOptions: {
+      value = new tflite::HashtableSizeOptionsT(*reinterpret_cast<tflite::HashtableSizeOptionsT *>(u.value));
       break;
     }
     default:
@@ -17309,6 +17784,26 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_Conv3DOptions: {
       auto ptr = reinterpret_cast<tflite::Conv3DOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_HashtableOptions: {
+      auto ptr = reinterpret_cast<tflite::HashtableOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_HashtableFindOptions: {
+      auto ptr = reinterpret_cast<tflite::HashtableFindOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_HashtableImportOptions: {
+      auto ptr = reinterpret_cast<tflite::HashtableImportOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_HashtableSizeOptions: {
+      auto ptr = reinterpret_cast<tflite::HashtableSizeOptionsT *>(value);
       delete ptr;
       break;
     }
