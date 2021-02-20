@@ -61,6 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/tensor_list.h"
@@ -1035,10 +1036,20 @@ void LowerStaticTensorListPass::runOnOperation() {
       context);
   patterns.insert<ConvertEmptyTensorList, ConvertTensorListReserve>(
       context, allow_tensorlist_pass_through);
-  if (failed(applyPartialConversion(getOperation(), target,
-                                    std::move(patterns)))) {
-    if (!allow_tensorlist_pass_through) {
+  if (!allow_tensorlist_pass_through) {
+    if (failed(applyPartialConversion(getOperation(), target,
+                                      std::move(patterns)))) {
       signalPassFailure();
+    }
+  } else {
+    // If `allow_tensorlist_pass_through` is set to true, if legalization fails
+    // we should not leak the diagnostic info outside this pass. Hence we use
+    // a `StatusScopedDiagnosticHandler` here to capture diagnostics generated
+    // within this pass.
+    StatusScopedDiagnosticHandler handler(context);
+    if (failed(applyPartialConversion(getOperation(), target,
+                                      std::move(patterns)))) {
+      auto _ = handler.ConsumeStatus();
     }
   }
 }
