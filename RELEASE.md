@@ -32,9 +32,11 @@
         examples in the same step.
     *   tf.data service supports custom data transfer protocols (other than
         gRPC).
-    *   `tf.data.Dataset.batch()` now supports `num_parallel_calls` argument,
-        which can be used to indicate that multiple input batches should be
-        computed in parallel.
+    *   `tf.data.Dataset.batch()` now supports `num_parallel_calls` and
+        `deterministic` arguments. `num_parallel_calls` is used to indicate that
+        multiple input batches should be computed in parallel. With
+        `num_parallel_calls` set, `deterministic` is used to indicate that
+        outputs can be obtained in the non-deterministic order.
 
 ## Bug Fixes and Other Changes
 

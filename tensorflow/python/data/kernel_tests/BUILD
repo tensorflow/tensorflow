@@ -10,7 +10,7 @@ package(
 
 tf_py_test(
     name = "batch_test",
-    size = "small",
+    size = "medium",
     srcs = ["batch_test.py"],
     deps = [
         ":test_base",
