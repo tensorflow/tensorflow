@@ -68,8 +68,7 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node) {
                     GetOutputSafe(context, node, kOutputTensor, &output));
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
 
-  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
-      output->type == kTfLiteInt16) {
+  if (output->type == kTfLiteInt8) {
     LeakyReluOpData* data = static_cast<LeakyReluOpData*>(node->user_data);
     const auto* params =
         static_cast<TfLiteLeakyReluParams*>(node->builtin_data);
@@ -90,11 +89,6 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node) {
     QuantizeMultiplier(identity_multiplier, &data->output_multiplier_identity,
                        &output_shift_identity);
     data->output_shift_identity = static_cast<int32_t>(output_shift_identity);
-  }
-
-  if (input->type == kTfLiteInt16 && output->type == kTfLiteInt16) {
-    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
-    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
   }
 
   return kTfLiteOk;
@@ -129,23 +123,14 @@ TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
                                tflite::micro::GetTensorData<float>(output));
       return kTfLiteOk;
     }
-    case kTfLiteUInt8: {
-      QuantizeLeakyRelu<uint8_t>(data, input, output);
-      return kTfLiteOk;
-    }
     case kTfLiteInt8: {
       QuantizeLeakyRelu<int8_t>(data, input, output);
       return kTfLiteOk;
     }
-    case kTfLiteInt16: {
-      QuantizeLeakyRelu<int16_t>(data, input, output);
-      return kTfLiteOk;
-    }
     default:
-      TF_LITE_KERNEL_LOG(context,
-                         "Only float32, int8, int16 and uint8 are supported "
-                         "by LEAKY_RELU, got %s.",
-                         TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(
+          context, "Only float32, int8 are supported by LEAKY_RELU, got %s.",
+          TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
 }

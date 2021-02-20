@@ -125,7 +125,6 @@ void TestLeakyReluQuantized(const TestLeakyReluParams<T>& params,
 // is 2, our representable values are often diluted by a factor of 2, whence
 // the factor of 2 below.
 const float kQuantizedTolerance = 2 * (1. / 256);
-const float kQuantizedToleranceInt16 = 2 * (1. / 4096);
 
 template <typename integer_dtype>
 void QuantizedActivationsOpTestLeakyRelu() {
@@ -160,9 +159,7 @@ void QuantizedActivationsOpTestLeakyRelu() {
   params.data_max = 5 * kMax;
   params.input_data = q_input_data;
   params.output_data = q_output_data;
-  params.tolerance = std::is_same<integer_dtype, int16_t>::value
-                         ? kQuantizedToleranceInt16
-                         : kQuantizedTolerance * 5;
+  params.tolerance = kQuantizedTolerance * 5;
 
   TestLeakyReluQuantized(params, kDims, kInput, kDims, kExpect, output_data);
 }
@@ -173,7 +170,7 @@ void QuantizedActivationsOpTestLeakyRelu() {
 
 TF_LITE_MICRO_TESTS_BEGIN
 
-TF_LITE_MICRO_TEST(QuantizedActivationsOpTestLeakyReluUint8) {
+TF_LITE_MICRO_TEST(QuantizedActivationsOpTestLeakyReluInt8_1) {
   constexpr int kDims[] = {2, 2, 3};
   constexpr float kInput[] = {0.0f, 1.0f, 3.0f, 1.0f, -1.0f, -2.0f};
   constexpr float kExpect[] = {0.0f, 1.0f, 3.0f, 1.0f, -0.5f, -1.0f};
@@ -181,11 +178,11 @@ TF_LITE_MICRO_TEST(QuantizedActivationsOpTestLeakyReluUint8) {
   float output_data[kOutputCount];
 
   // setup quantization storage and parameters
-  uint8_t q_output_data[kOutputCount];
-  uint8_t q_input_data[kOutputCount];
+  int8_t q_output_data[kOutputCount];
+  int8_t q_input_data[kOutputCount];
   constexpr float kMin = -1;
   constexpr float kMax = 127.f / 128.f;
-  tflite::testing::TestLeakyReluParams<uint8_t> params = {};
+  tflite::testing::TestLeakyReluParams<int8_t> params = {};
   params.alpha = 0.5f;
   params.data_min = 8 * kMin;
   params.data_max = 8 * kMax;
@@ -197,12 +194,8 @@ TF_LITE_MICRO_TEST(QuantizedActivationsOpTestLeakyReluUint8) {
                                           output_data);
 }
 
-TF_LITE_MICRO_TEST(QuantizedActivationsOpTestLeakyReluInt8) {
+TF_LITE_MICRO_TEST(QuantizedActivationsOpTestLeakyReluInt8_2) {
   tflite::testing::QuantizedActivationsOpTestLeakyRelu<int8_t>();
-}
-
-TF_LITE_MICRO_TEST(QuantizedActivationsOpTestLeakyReluInt16) {
-  tflite::testing::QuantizedActivationsOpTestLeakyRelu<int16_t>();
 }
 
 TF_LITE_MICRO_TEST(FloatActivationsOpTestLeakyRelu) {
