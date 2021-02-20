@@ -604,7 +604,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         self._input_workers_with_options(options),
         self._container_strategy(),
         num_replicas_in_sync=self._num_replicas_in_sync,
-        input_context=input_context)
+        input_context=input_context,
+        options=options)
 
   def _distribute_datasets_from_function(self, dataset_fn, options):
     if (options and options.experimental_replication_mode ==
@@ -619,7 +620,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         dataset_fn=dataset_fn,
         input_workers=self._input_workers_with_options(options),
         input_contexts=[input_context],
-        strategy=self._container_strategy())
+        strategy=self._container_strategy(),
+        options=options)
 
   def _experimental_distribute_values_from_function(self, value_fn):
     per_replica_values = []

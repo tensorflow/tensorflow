@@ -946,7 +946,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         dataset,
         self._get_input_workers(options),
         self._container_strategy(),
-        num_replicas_in_sync=self._num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync,
+        options=options)
 
   def _distribute_datasets_from_function(self, dataset_fn, options):
     if (options and options.experimental_replication_mode ==
@@ -969,7 +970,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         dataset_fn,
         input_workers,
         input_contexts,
-        self._container_strategy())
+        self._container_strategy(),
+        options=options)
 
     # We can only check after the dataset_fn is called.
     if options is None or options.experimental_prefetch_to_device:
