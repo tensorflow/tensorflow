@@ -43,13 +43,7 @@ void* GPUcudaMallocAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   CUdeviceptr rv = 0;
   CUresult res = cuMemAlloc(&rv, num_bytes);
   if (res != CUDA_SUCCESS) {
-    const char* error_name;
-    const char* error_string;
-    cuGetErrorName(res, &error_name);
-    cuGetErrorString(res, &error_string);
-    LOG(ERROR) << "cuMemAlloc failed to allocate " << num_bytes
-               << "\n Error name: " << error_name
-               << "\n Error string: " << error_string;
+    LOG(ERROR) << "cuMemAlloc failed to allocate " << num_bytes;
     return nullptr;
   }
   return reinterpret_cast<void*>(rv);
@@ -61,21 +55,8 @@ void GPUcudaMallocAllocator::DeallocateRaw(void* ptr) {
 #ifdef GOOGLE_CUDA
   // free with cudaFree
   CUresult res = cuMemFree(reinterpret_cast<CUdeviceptr>(ptr));
-  if (res == CUDA_ERROR_DEINITIALIZED) {
-    // It happens with multi-GPU that TF free the GPU allocation after
-    // the driver is unloaded. It is safe to ignore this error here.
-    // cuGetErrorName and cuGetErrorString doesn't return any useful
-    // information here.
-    // TODO: Find how to fix the shutdown steps in TF.
-    VLOG(1) << "Ignoring CUDA_ERROR_DEINITIALIZED Error";
-  } else if (res != CUDA_SUCCESS) {
-    const char* error_name;
-    const char* error_string;
-    cuGetErrorName(res, &error_name);
-    cuGetErrorString(res, &error_string);
-    LOG(ERROR) << "cuMemFree failed to free " << ptr
-               << "\n Error name: " << error_name
-               << "\n Error string: " << error_string;
+  if (res != CUDA_SUCCESS) {
+    LOG(ERROR) << "cuMemFree failed to free " << ptr;
   }
 #endif  // GOOGLE_CUDA
 }
