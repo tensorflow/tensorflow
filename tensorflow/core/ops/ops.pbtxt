@@ -27768,6 +27768,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "deterministic"
+    type: "string"
+    default_value {
+      s: "default"
+    }
+  }
 }
 op {
   name: "ParallelConcat"
