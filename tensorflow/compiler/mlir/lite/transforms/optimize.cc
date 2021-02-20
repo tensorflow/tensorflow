@@ -1011,13 +1011,13 @@ struct ConvertTrivialTransposeOpToReshapeOp
 //
 //   %shape = constant dense<[1, 128, 64]> : tensor<3xi32>
 //   %reshape = tfl.reshape(%input, %shape) // %input: tensor<128x64xf32>
-//   %1 = tfl.fully_connected(%reshape, %filter, %bias)
-//          {keep_num_dims = false, weights_format = "DEFAULT"}
+//   %fc = tfl.fully_connected(%reshape, %filter, %bias)
+//           {keep_num_dims = false, weights_format = "DEFAULT"}
 //
 // can be canonicalized to
 //
-//   %1 = tfl.fully_connected(%input, %filter, %bias)
-//          {keep_num_dims = false, weights_format = "DEFAULT"}
+//   %fc = tfl.fully_connected(%input, %filter, %bias)
+//           {keep_num_dims = false, weights_format = "DEFAULT"}
 struct RemoveReshapeBeforeFullyConnected
     : public OpRewritePattern<TFL::FullyConnectedOp> {
   using OpRewritePattern<TFL::FullyConnectedOp>::OpRewritePattern;
