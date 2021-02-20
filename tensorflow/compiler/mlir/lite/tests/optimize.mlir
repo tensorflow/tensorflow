@@ -1705,3 +1705,60 @@ func @DontConvertSliceToIdentity(%arg0: tensor<2x3x4x5xf32>) -> (tensor<2x3x4x4x
   // CHECK: %[[SLICE_1:.*]] = "tfl.slice"(%arg0, %[[BEGIN_1]], %[[SHAPE_1]]) : (tensor<2x3x4x5xf32>, tensor<4xi64>, tensor<4xi64>) -> tensor<1x2x3x4xf32>
   // CHECK: return %[[SLICE_0]], %[[SLICE_1]] : tensor<2x3x4x4xf32>, tensor<1x2x3x4xf32>
 }
+
+// CHECK-LABEL: @FuseAddWithFullyConnectedWithBias
+func @FuseAddWithFullyConnectedWithBias(%arg: tensor<2x512xf32>) -> tensor<2x1024xf32> {
+  %cst_add = constant dense<2.0> : tensor<512xf32>
+  %cst_weights = constant dense<3.0> : tensor<1024x512xf32>
+  %cst_bias = constant dense<5.0> : tensor<1024xf32>
+
+  %0 = "tfl.add"(%arg, %cst_add) {fused_activation_function = "NONE"} : (tensor<2x512xf32>, tensor<512xf32>) -> tensor<2x512xf32>
+  %1 = "tfl.fully_connected" (%0, %cst_weights, %cst_bias) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<2x512xf32>, tensor<1024x512xf32>, tensor<1024xf32>) -> tensor<2x1024xf32>
+
+  return %1 : tensor<2x1024xf32>
+
+  // 2.0 * 3.0 * 512 + 5.0 = 3077.0
+  // CHECK: %[[WEIGHTS:.*]] = constant dense<3.000000e+00> : tensor<1024x512xf32>
+  // CHECK: %[[BIAS:.*]] = constant dense<3.077000e+03> : tensor<1024xf32>
+  // CHECK: %[[RESULT:.*]] = "tfl.fully_connected"(%arg0, %[[WEIGHTS]], %[[BIAS]]) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<2x512xf32>, tensor<1024x512xf32>, tensor<1024xf32>) -> tensor<2x1024xf32>
+  // CHECK: return %[[RESULT]]
+}
+
+// CHECK-LABEL: @FuseAddWithFullyConnectedNoBias
+// Note: Currently not fused.
+func @FuseAddWithFullyConnectedNoBias(%arg: tensor<2x512xf32>) -> tensor<2x1024xf32> {
+  %cst_add = constant dense<2.0> : tensor<512xf32>
+  %cst_weights = constant dense<3.0> : tensor<1024x512xf32>
+  %cst_bias = constant unit
+
+  %0 = "tfl.add"(%arg, %cst_add) {fused_activation_function = "NONE"} : (tensor<2x512xf32>, tensor<512xf32>) -> tensor<2x512xf32>
+  %1 = "tfl.fully_connected" (%0, %cst_weights, %cst_bias) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<2x512xf32>, tensor<1024x512xf32>, none) -> tensor<2x1024xf32>
+
+  return %1 : tensor<2x1024xf32>
+
+  // CHECK: %[[ADDEND:.*]] = constant dense<2.000000e+00> : tensor<512xf32>
+  // CHECK: %[[WEIGHTS:.*]] = constant dense<3.000000e+00> : tensor<1024x512xf32>
+  // CHECK: %[[BIAS:.*]] = constant unit
+  // CHECK: %[[VAL_0:.*]] = "tfl.add"(%arg0, %[[ADDEND]]) {fused_activation_function = "NONE"} : (tensor<2x512xf32>, tensor<512xf32>) -> tensor<2x512xf32>
+  // CHECK: %[[VAL_1:.*]] = "tfl.fully_connected"(%[[VAL_0]], %[[WEIGHTS]], %[[BIAS]]) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<2x512xf32>, tensor<1024x512xf32>, none) -> tensor<2x1024xf32>
+  // CHECK: return %[[VAL_1]]
+}
+
+// CHECK-LABEL: @DontFuseAddWithFullyConnectedMismatchedDimensions
+func @DontFuseAddWithFullyConnectedMismatchedDimensions(%arg: tensor<2x512xf32>) -> tensor<2x1024xf32> {
+  %cst_add = constant dense<2.0> : tensor<2x512xf32>  // Not 1D
+  %cst_weights = constant dense<3.0> : tensor<1024x512xf32>
+  %cst_bias = constant dense<5.0> : tensor<1024xf32>
+
+  %0 = "tfl.add"(%arg, %cst_add) {fused_activation_function = "NONE"} : (tensor<2x512xf32>, tensor<2x512xf32>) -> tensor<2x512xf32>
+  %1 = "tfl.fully_connected" (%0, %cst_weights, %cst_bias) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<2x512xf32>, tensor<1024x512xf32>, tensor<1024xf32>) -> tensor<2x1024xf32>
+
+  return %1 : tensor<2x1024xf32>
+
+  // CHECK: %[[ADDEND:.*]] = constant dense<2.000000e+00> : tensor<2x512xf32>
+  // CHECK: %[[WEIGHTS:.*]] = constant dense<3.000000e+00> : tensor<1024x512xf32>
+  // CHECK: %[[BIAS:.*]] = constant dense<5.000000e+00> : tensor<1024xf32>
+  // CHECK: %[[VAL_0:.*]] = tfl.add %arg0, %[[ADDEND]] {fused_activation_function = "NONE"} : tensor<2x512xf32>
+  // CHECK: %[[VAL_1:.*]] = "tfl.fully_connected"(%[[VAL_0]], %[[WEIGHTS]], %[[BIAS]]) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<2x512xf32>, tensor<1024x512xf32>, tensor<1024xf32>) -> tensor<2x1024xf32>
+  // CHECK: return %[[VAL_1]]
+}
