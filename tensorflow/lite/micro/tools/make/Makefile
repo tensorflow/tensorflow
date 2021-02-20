@@ -742,3 +742,6 @@ $(DEPDIR)/%.d: ;
 .PRECIOUS: $(BINDIR)%_test
 
 -include $(patsubst %,$(DEPDIR)/%.d,$(basename $(ALL_SRCS)))
+
+$(eval $(call microlite_test,test_renode, tensorflow/lite/micro/test_renode.cc,))
+
