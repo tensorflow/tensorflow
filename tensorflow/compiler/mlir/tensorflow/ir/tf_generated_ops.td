@@ -17679,7 +17679,9 @@ https://www.tensorflow.org/performance/xla/operation_semantics#conv_convolution
   );
 
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr LhsT = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr RhsT = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr preferred_element_type = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_XlaDotOp : TF_Op<"XlaDot", [NoSideEffect]> {
@@ -17702,7 +17704,9 @@ https://www.tensorflow.org/performance/xla/operation_semantics#dotgeneral
     TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
   );
 
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr LhsT = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr RhsT = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr preferred_element_type = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_XlaDynamicSliceOp : TF_Op<"XlaDynamicSlice", [NoSideEffect]> {

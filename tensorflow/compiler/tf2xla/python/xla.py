@@ -39,6 +39,7 @@ from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
+from tensorflow.python.ops.numpy_ops import np_utils
 
 # TODO(phawkins): provide wrappers for all XLA operators. Currently the missing
 # ops include:
@@ -249,6 +250,7 @@ def conv(lhs,
          dimension_numbers,
          feature_group_count=1,
          precision_config=None,
+         preferred_element_type=None,
          name=None):
   """Wraps the XLA ConvGeneralDilated operator.
 
@@ -266,6 +268,7 @@ def conv(lhs,
     dimension_numbers: a `ConvolutionDimensionNumbers` proto.
     feature_group_count: number of feature groups for grouped convolution.
     precision_config: a `xla.PrecisionConfig` proto.
+    preferred_element_type: the result `dtype`.
     name: an optional name for the operator
 
   Returns:
@@ -274,6 +277,8 @@ def conv(lhs,
   precision_config_proto = ""
   if precision_config:
     precision_config_proto = precision_config.SerializeToString()
+  if preferred_element_type is None:
+    preferred_element_type = np_utils.result_type(lhs.dtype, rhs.dtype)
   return gen_xla_ops.xla_conv(
       lhs,
       rhs,
@@ -284,6 +289,7 @@ def conv(lhs,
       feature_group_count=feature_group_count,
       dimension_numbers=dimension_numbers.SerializeToString(),
       precision_config=precision_config_proto,
+      preferred_element_type=preferred_element_type,
       name=name)
 
 
@@ -294,15 +300,23 @@ def dot(lhs, rhs, name=None):
   return math_ops.tensordot(lhs, rhs, axes=1, name=name)
 
 
-def dot_general(lhs, rhs, dimension_numbers, precision_config=None, name=None):
+def dot_general(lhs,
+                rhs,
+                dimension_numbers,
+                precision_config=None,
+                preferred_element_type=None,
+                name=None):
   precision_config_proto = ""
   if precision_config:
     precision_config_proto = precision_config.SerializeToString()
+  if preferred_element_type is None:
+    preferred_element_type = np_utils.result_type(lhs.dtype, rhs.dtype)
   return gen_xla_ops.xla_dot(
       lhs,
       rhs,
       dimension_numbers=dimension_numbers.SerializeToString(),
       precision_config=precision_config_proto,
+      preferred_element_type=preferred_element_type,
       name=name)
 
 

@@ -14,12 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -39,6 +41,11 @@ class XlaDotOp : public XlaOpKernel {
         context,
         precision_config_.ParsePartialFromString(precision_config_attr),
         errors::InvalidArgument("Error parsing convolution dimension numbers"));
+    DataType preferred_element_dtype;
+    OP_REQUIRES_OK(context, context->GetAttr("preferred_element_type",
+                                             &preferred_element_dtype));
+    OP_REQUIRES_OK(context, DataTypeToPrimitiveType(preferred_element_dtype,
+                                                    &preferred_element_type_));
   }
 
   void Compile(XlaOpKernelContext* context) override {
@@ -47,14 +54,16 @@ class XlaDotOp : public XlaOpKernel {
 
     // We do only minimal checking, relying on XLA to check the shape
     // invariants.
-    xla::XlaOp output = xla::DotGeneral(context->Input(0), context->Input(1),
-                                        dnums_, &precision_config_);
+    xla::XlaOp output =
+        xla::DotGeneral(context->Input(0), context->Input(1), dnums_,
+                        &precision_config_, preferred_element_type_);
     context->SetOutput(0, output);
   }
 
  private:
   xla::DotDimensionNumbers dnums_;
   xla::PrecisionConfig precision_config_;
+  xla::PrimitiveType preferred_element_type_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaDotOp);
 };

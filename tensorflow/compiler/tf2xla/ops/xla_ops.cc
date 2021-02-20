@@ -132,18 +132,20 @@ v: Right singular vectors.
 )doc");
 
 REGISTER_OP("XlaConv")
-    .Input("lhs: T")
-    .Input("rhs: T")
+    .Input("lhs: LhsT")
+    .Input("rhs: RhsT")
     .Input("window_strides: Tindices")
     .Input("padding: Tindices")
     .Input("lhs_dilation: Tindices")
     .Input("rhs_dilation: Tindices")
     .Input("feature_group_count: Tindices")
-    .Attr("T: numbertype")
+    .Attr("LhsT: numbertype")
+    .Attr("RhsT: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("dimension_numbers: string")
     .Attr("precision_config: string")
-    .Output("output: T")
+    .Attr("preferred_element_type: numbertype")
+    .Output("output: preferred_element_type")
     .SetShapeFn(UnchangedRank)
     .Doc(R"doc(
 Wraps the XLA ConvGeneralDilated operator, documented at
@@ -162,12 +164,14 @@ precision_config: a serialized xla::PrecisionConfig proto.
 )doc");
 
 REGISTER_OP("XlaDot")
-    .Input("lhs: T")
-    .Input("rhs: T")
-    .Attr("T: numbertype")
+    .Input("lhs: LhsT")
+    .Input("rhs: RhsT")
+    .Attr("LhsT: numbertype")
+    .Attr("RhsT: numbertype")
     .Attr("dimension_numbers: string")
     .Attr("precision_config: string")
-    .Output("output: T")
+    .Attr("preferred_element_type: numbertype")
+    .Output("output: preferred_element_type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle lhs_shape_handle = c->input(0);
       shape_inference::ShapeHandle rhs_shape_handle = c->input(1);
