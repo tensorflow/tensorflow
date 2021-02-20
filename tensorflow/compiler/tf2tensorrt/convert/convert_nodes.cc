@@ -4734,6 +4734,7 @@ Status ConvertPack(OpConverterParams* params) {
       params->use_implicit_batch ? TrtInputArg::kTensor : TrtInputArg::kBoth;
 
   std::vector<std::pair<string, TrtInputArg>> inputs_is_weight;
+  inputs_is_weight.reserve(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
     inputs_is_weight.push_back({StrCat("values_", i), expected_arg});
   }
@@ -5111,6 +5112,7 @@ Status ConvertConcat(OpConverterParams* params) {
   // for details. TODO(tfeher): Allow weight input in explicit batch mode.
   std::vector<std::pair<string, TrtInputArg>> inputs_kinds;
   TrtInputArg expected_input = TrtInputArg::kTensor;
+  inputs_kinds.reserve(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
     inputs_kinds.push_back({StrCat("values_", i), expected_input});
   }
@@ -5141,6 +5143,7 @@ Status ConvertConcat(OpConverterParams* params) {
 
   // Gather inputs as tensors
   std::vector<nvinfer1::ITensor const*> input_tensors;
+  input_tensors.reserve(num_inputs);
   for (int i = 0; i < num_inputs; i++) {
     input_tensors.push_back(inputs.at(i).tensor());
   }

@@ -78,7 +78,7 @@ class CSRSparseMatrixDenseMatMulGradTest(test.TestCase):
       b_mats_val = np.transpose(b_mats_val, (0, 2, 1))
     if adjoint_b:
       b_mats_val = np.conj(b_mats_val)
-    with self.test_session(use_gpu=True):
+    with self.test_session():
       a_mats = ops.convert_to_tensor(a_mats_val, dtype=datatype)
       b_mats = ops.convert_to_tensor(b_mats_val, dtype=datatype)
       a_sm = dense_to_csr_sparse_matrix(a_mats)

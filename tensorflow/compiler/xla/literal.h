@@ -94,9 +94,17 @@ class LiteralBase {
   // element Literals.
   string ToString() const;
 
+  // Similar to ToString, but return the result in a compact
+  // one-line form.
+  string ToStringOneline() const;
+
   // Returns a string representation of the literal value which does *not*
   // include the shape string.
   string ToStringWithoutShape() const;
+
+  // Similar to ToStringWithoutShape, but return the result in a compact
+  // one-line form.
+  string ToStringWithoutShapeOneline() const;
 
   // Returns a string representation of the literal value which includes the
   // shape string with its layout.does *not* include the shape string.

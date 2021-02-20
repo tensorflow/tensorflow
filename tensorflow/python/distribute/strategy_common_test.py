@@ -131,7 +131,7 @@ class ReplicaCtxAllReduceTest(test.TestCase, parameterized.TestCase):
     def fn():
 
       def replica_fn():
-        value = constant_op.constant(1.0)
+        value = array_ops.identity(1.0)
         reduced = strategy.extended._replica_ctx_all_reduce('SUM', value)
         return reduced
 
@@ -152,7 +152,7 @@ class ReplicaCtxAllReduceTest(test.TestCase, parameterized.TestCase):
     def fn():
 
       def replica_fn():
-        value = (constant_op.constant(1.0), constant_op.constant(2.0))
+        value = (array_ops.identity(1.0), array_ops.identity(1.0))
         reduced = strategy.extended._replica_ctx_all_reduce('SUM', value)
         return reduced
 

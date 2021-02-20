@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_utils.h"
+#include "tensorflow/lite/micro/system_setup.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 /*
@@ -74,6 +75,8 @@ void PersonDetectionNIerations(const int8_t* input, int iterations,
 }  // namespace tflite
 
 int main(int argc, char** argv) {
+  tflite::InitializeTarget();
+
   tflite::MicroProfiler profiler;
 
   uint32_t event_handle = profiler.BeginEvent("InitializeBenchmarkRunner");

@@ -192,7 +192,7 @@ double NominalCPUFrequency() {
 }
 
 MemoryInfo GetMemoryInfo() {
-  MemoryInfo mem_info = {INT64_MAX, INT64_MAX, INT64_MAX};
+  MemoryInfo mem_info = {INT64_MAX, INT64_MAX};
   MEMORYSTATUSEX statex;
   statex.dwLength = sizeof(statex);
   if (GlobalMemoryStatusEx(&statex)) {
@@ -200,6 +200,11 @@ MemoryInfo GetMemoryInfo() {
     mem_info.total = statex.ullTotalPhys;
   }
   return mem_info;
+}
+
+MemoryBandwidthInfo GetMemoryBandwidthInfo() {
+  MemoryBandwidthInfo membw_info = {INT64_MAX};
+  return membw_info;
 }
 
 int NumHyperthreadsPerCore() {

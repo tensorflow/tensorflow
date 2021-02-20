@@ -94,6 +94,13 @@ class XlaExpression {
     return constant_value_;
   }
 
+  // Set the bound of the expression.
+  void set_value_bound(Tensor tensor) {
+    value_bound_.emplace(std::move(tensor));
+  }
+
+  // Return the bound of the expression, if available.
+  absl::optional<Tensor> value_bound() const { return value_bound_; }
   XlaResource* resource() const { return resource_; }
 
   // Returns a human-readable summary of the expression.
@@ -137,6 +144,9 @@ class XlaExpression {
 
   // The value of the constant, if available.
   absl::optional<Tensor> constant_value_;
+
+  // The bound of the expression, if available.
+  absl::optional<Tensor> value_bound_;
 
   // The resource, if kind_ == kResource. Not owned.
   XlaResource* resource_ = nullptr;

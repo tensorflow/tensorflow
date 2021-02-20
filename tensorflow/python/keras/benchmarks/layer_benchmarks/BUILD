@@ -51,7 +51,7 @@ py_library(
     visibility = ["//tensorflow/python/keras:__subpackages__"],
     deps = [
         ":run_xprof",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/keras/benchmarks:profiler_lib",
     ],
 )
@@ -63,7 +63,7 @@ tf_py_test(
     tags = BECHMARK_TAGS,
     deps = [
         ":layer_benchmarks_test_base",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/keras/benchmarks:benchmark_util",
     ],
 )

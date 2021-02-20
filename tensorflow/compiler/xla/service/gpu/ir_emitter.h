@@ -77,7 +77,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   Status DefaultAction(HloInstruction* hlo) override;
   Status HandleConstant(HloInstruction* constant) override;
-  Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleFft(HloInstruction* fft) override;

@@ -150,8 +150,9 @@ class RoundRobinTaskRunner : public TaskRunner {
   mutex mu_;
   // Condition variable notified whenever we start a new round of round-robin.
   condition_variable new_round_cv_;
-  // Map from round number to requests waiting for data from that round.
-  absl::flat_hash_map<int64, absl::flat_hash_set<const GetElementRequest*>>
+  // Outstanding requests, indexed by round number and then consumer index.
+  absl::flat_hash_map<int64,
+                      absl::flat_hash_map<int64, const GetElementRequest*>>
       requests_ TF_GUARDED_BY(mu_);
   // Index of the first round we plan to serve. At startup, this is the minimum
   // of all requested element indices.

@@ -93,7 +93,7 @@ third_party/gemmlowp \
 third_party/flatbuffers/include \
 third_party/ruy
 
-TEST_SCRIPT := tensorflow/lite/micro/testing/test_linux_binary.sh
+TEST_SCRIPT :=
 
 MICROLITE_LIBS := -lm
 
@@ -317,6 +317,7 @@ tensorflow/lite/micro/kernels/circular_buffer.cc \
 tensorflow/lite/micro/kernels/comparisons.cc \
 tensorflow/lite/micro/kernels/concatenation.cc \
 tensorflow/lite/micro/kernels/conv.cc \
+tensorflow/lite/micro/kernels/conv_common.cc \
 tensorflow/lite/micro/kernels/conv_test_common.cc \
 tensorflow/lite/micro/kernels/depthwise_conv.cc \
 tensorflow/lite/micro/kernels/dequantize.cc \

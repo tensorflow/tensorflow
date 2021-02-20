@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/micro/micro_profiler.h"
+#include "tensorflow/lite/micro/system_setup.h"
 
 /*
  * Keyword Spotting Benchmark for performance optimizations. The model used in
@@ -77,6 +78,7 @@ void KeywordRunNIerations(int iterations, const char* tag,
 }  // namespace tflite
 
 int main(int argc, char** argv) {
+  tflite::InitializeTarget();
   tflite::MicroProfiler profiler;
 
   uint32_t event_handle = profiler.BeginEvent("InitializeKeywordRunner");

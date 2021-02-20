@@ -26,6 +26,26 @@ limitations under the License.
 
 namespace tensorflow {
 
+const char* VariantUnaryOpToString(VariantUnaryOp op) {
+  switch (op) {
+    case INVALID_VARIANT_UNARY_OP:
+      return "INVALID";
+    case ZEROS_LIKE_VARIANT_UNARY_OP:
+      return "ZEROS_LIKE";
+    case CONJ_VARIANT_UNARY_OP:
+      return "CONJ";
+  }
+}
+
+const char* VariantBinaryOpToString(VariantBinaryOp op) {
+  switch (op) {
+    case INVALID_VARIANT_BINARY_OP:
+      return "INVALID";
+    case ADD_VARIANT_BINARY_OP:
+      return "ADD";
+  }
+}
+
 std::unordered_set<string>* UnaryVariantOpRegistry::PersistentStringStorage() {
   static std::unordered_set<string>* string_storage =
       new std::unordered_set<string>();

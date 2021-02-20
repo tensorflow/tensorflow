@@ -96,7 +96,10 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
       *bytes = sizeof(float);
       break;
     case kTfLiteInt32:
-      *bytes = sizeof(int);
+      *bytes = sizeof(int32_t);
+      break;
+    case kTfLiteUInt32:
+      *bytes = sizeof(uint32_t);
       break;
     case kTfLiteUInt8:
       *bytes = sizeof(uint8_t);

@@ -818,6 +818,13 @@ TfLiteRegistration* Register_DETECTION_POSTPROCESS() {
   return &r;
 }
 
+// Since the op is named "TFLite_Detection_PostProcess", the selective build
+// tool will assume the register function is named
+// "Register_TFLITE_DETECTION_POST_PROCESS".
+TfLiteRegistration* Register_TFLITE_DETECTION_POST_PROCESS() {
+  return Register_DETECTION_POSTPROCESS();
+}
+
 }  // namespace custom
 }  // namespace ops
 }  // namespace tflite

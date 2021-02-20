@@ -259,6 +259,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return CreateOpWithoutAttrs<lmhlo::AndOp>(instr);
     case HloOpcode::kAtan2:
       return CreateOpWithoutAttrs<lmhlo::Atan2Op>(instr);
+    case HloOpcode::kBitcast:
+      return nullptr;
     case HloOpcode::kBitcastConvert:
       return CreateOpWithoutAttrs<lmhlo::BitcastConvertOp>(instr);
     case HloOpcode::kBroadcast:

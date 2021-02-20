@@ -5,7 +5,7 @@ load(
     "//tensorflow/lite/ios:ios.bzl",
     "TFL_MINIMUM_OS_VERSION",
     "strip_common_include_path_prefix",
-    "tflite_ios_static_framework",
+    "tflite_ios_framework",
 )
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 
@@ -99,7 +99,7 @@ strip_common_include_path_prefix(
 )
 
 # bazel build -c opt --config=ios_fat //tensorflow/lite/ios:TensorFlowLiteC_framework
-tflite_ios_static_framework(
+tflite_ios_framework(
     name = "TensorFlowLiteC_framework",
     hdrs = [
         ":c_api.h",
@@ -108,6 +108,23 @@ tflite_ios_static_framework(
         "//tensorflow/lite/c:c_api_types.h",
     ],
     allowlist_symbols_file = ":allowlist_TensorFlowLiteC.txt",
+    bundle_name = "TensorFlowLiteC",
+    minimum_os_version = TFL_MINIMUM_OS_VERSION,
+    deps = [
+        ":tensorflow_lite_c",
+    ],
+)
+
+# Similar to TensorFlowLiteC_framework but this is a static framework and symbol
+# hiding is not applied. Note both have the same bundle name.
+ios_static_framework(
+    name = "TensorFlowLiteC_static_framework",
+    hdrs = [
+        ":c_api.h",
+        ":common.h",
+        ":xnnpack_delegate.h",
+        "//tensorflow/lite/c:c_api_types.h",
+    ],
     bundle_name = "TensorFlowLiteC",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
     deps = [
@@ -140,7 +157,7 @@ ios_static_framework(
 # TensorFlowLiteC framework above in a composable way.
 #
 # bazel build -c opt --config=ios_fat //tensorflow/lite/ios:TensorFlowLiteCCoreML_framework
-tflite_ios_static_framework(
+tflite_ios_framework(
     name = "TensorFlowLiteCCoreML_framework",
     hdrs = [
         ":coreml_delegate.h",
@@ -159,7 +176,7 @@ tflite_ios_static_framework(
 # TensorFlowLiteC framework above in a composable way.
 #
 # bazel build -c opt --config=ios_fat //tensorflow/lite/ios:TensorFlowLiteCMetal_framework
-tflite_ios_static_framework(
+tflite_ios_framework(
     name = "TensorFlowLiteCMetal_framework",
     hdrs = [
         ":metal_delegate.h",
@@ -208,5 +225,6 @@ build_test(
         ":TensorFlowLiteCMetal_framework",
         ":TensorFlowLiteC_framework",
         ":TensorFlowLiteSelectTfOps_framework",
+        ":TensorFlowLiteC_static_framework",
     ],
 )

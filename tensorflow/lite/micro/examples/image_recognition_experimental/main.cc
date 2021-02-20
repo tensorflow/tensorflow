@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
+#include "tensorflow/lite/micro/system_setup.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 #define NUM_OUT_CH 3
@@ -34,6 +35,7 @@ static const char* labels[] = {"Plane", "Car",  "Bird",  "Cat",  "Deer",
                                "Dog",   "Frog", "Horse", "Ship", "Truck"};
 
 int main(int argc, char** argv) {
+  tflite::InitializeTarget();
   init_lcd();
   wait_ms(100);
 

@@ -760,7 +760,10 @@ Status XlaCompiler::CompileFunction(
     if (absl::holds_alternative<xla::Shape>(args[i].shape)) {
       xla::Shape xla_shape = absl::get<xla::Shape>(args[i].shape);
       TensorShape tensor_shape;
-      if (XLAShapeToTensorShape(xla_shape, &tensor_shape).ok()) {
+      // If xla_shape is dynamic, prevent constant folding by not setting
+      // output_shapes.
+      if (XLAShapeToTensorShape(xla_shape, &tensor_shape).ok() &&
+          xla_shape.is_static()) {
         fbody->arg_nodes[i]->ClearAttr("_output_shapes");
         fbody->arg_nodes[i]->AddAttr("_output_shapes",
                                      std::vector<TensorShape>{tensor_shape});
@@ -801,8 +804,9 @@ Status XlaCompiler::CompileFunction(
   }
 
   VLOG(1) << "====================================================";
-  MlirBridgeRolloutPolicy policy =
-      GetMlirBridgeRolloutPolicy(*graph, config_proto);
+  MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
+      *graph, config_proto,
+      /*uses_uninitialized_resource_args=*/AnyUninitializedResourceArg(args));
   if (policy == MlirBridgeRolloutPolicy::kEnabledByUser) {
     VLOG(1) << "Using MLIR bridge";
     GraphDebugInfo debug_info;
@@ -1155,6 +1159,10 @@ Status XlaCompiler::BuildArguments(
               xla::Reshape(arg_handles[i], arg.DimensionSizes()), arg.type);
         } else {
           arg_expression = XlaExpression::XlaOp(arg_handles[i], arg.type);
+          if (arg.value_bound) {
+            // Propagate upper bound to arg_expression.
+            arg_expression.set_value_bound(arg.value_bound.value());
+          }
         }
         break;
       case XlaCompiler::Argument::kTensorList: {

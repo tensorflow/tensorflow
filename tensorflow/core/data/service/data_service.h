@@ -28,6 +28,10 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+// Increment this when making backwards-incompatible changes to communication
+// between tf.data servers.
+constexpr int kDataServiceVersion = 1;
+
 // Modes for how a tf.data service job should process a dataset.
 enum class ProcessingMode : int64 {
   UNSET = 0,

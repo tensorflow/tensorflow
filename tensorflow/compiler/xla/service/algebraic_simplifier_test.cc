@@ -6259,6 +6259,121 @@ TEST_F(AlgebraicSimplifierTest, CompareIota) {
               GmockMatch(m::Broadcast(m::ConstantScalar(false))));
 }
 
+TEST_F(AlgebraicSimplifierTest, CompareLtZero) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      zero = u32[] constant(0)
+      param = u32[] parameter(0)
+      ROOT compare = pred[] compare(param, zero), direction=LT
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::ConstantScalar(false)));
+}
+
+TEST_F(AlgebraicSimplifierTest, CompareLeZero) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      zero = u32[] constant(0)
+      param = u32[] parameter(0)
+      ROOT compare = pred[] compare(param, zero), direction=LE
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Le(m::Parameter(0), m::ConstantEffectiveScalar(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, CompareGeZero) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      zero = u32[] constant(0)
+      param = u32[] parameter(0)
+      ROOT compare = pred[] compare(param, zero), direction=GE
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::ConstantScalar(true)));
+}
+
+TEST_F(AlgebraicSimplifierTest, CompareGtZero) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      zero = u32[] constant(0)
+      param = u32[] parameter(0)
+      ROOT compare = pred[] compare(param, zero), direction=GT
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Gt(m::Parameter(0), m::ConstantEffectiveScalar(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, CompareZeroGt) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      zero = u32[] constant(0)
+      param = u32[] parameter(0)
+      ROOT compare = pred[] compare(zero, param), direction=GT
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::ConstantScalar(false)));
+}
+
+TEST_F(AlgebraicSimplifierTest, CompareZeroGe) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      zero = u32[] constant(0)
+      param = u32[] parameter(0)
+      ROOT compare = pred[] compare(zero, param), direction=GE
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Ge(m::ConstantEffectiveScalar(0), m::Parameter(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, CompareZeroLe) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      zero = u32[] constant(0)
+      param = u32[] parameter(0)
+      ROOT compare = pred[] compare(zero, param), direction=LE
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::ConstantScalar(true)));
+}
+
+TEST_F(AlgebraicSimplifierTest, CompareZeroLt) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      zero = u32[] constant(0)
+      param = u32[] parameter(0)
+      ROOT compare = pred[] compare(zero, param), direction=LT
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Lt(m::ConstantEffectiveScalar(0), m::Parameter(0))));
+}
+
 TEST_F(AlgebraicSimplifierTest, CompareSame) {
   const char* kModuleStr = R"(
     HloModule m

@@ -33,6 +33,7 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
@@ -56,11 +57,17 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
       for _ in range(num_inits):
         self.evaluate(multi_device_iterator.initializer)
 
-  @combinations.generate(test_base.v1_only_combinations())
-  def testBasic(self):
+  @combinations.generate(
+      combinations.times(
+          test_base.v1_only_combinations(),
+          combinations.combine(
+              max_buffer_size=[0, 1, 10], prefetch_buffer_size=[0, 1, 10])))
+  def testBasic(self, prefetch_buffer_size, max_buffer_size):
     dataset = dataset_ops.Dataset.range(10)
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
-        dataset, ["/cpu:1", "/cpu:2"])
+        dataset, ["/cpu:1", "/cpu:2"],
+        max_buffer_size=max_buffer_size,
+        prefetch_buffer_size=prefetch_buffer_size)
 
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
     with self.test_session(config=config):
@@ -346,8 +353,12 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
 class OwnedMultiDeviceIteratorTest(test_base.DatasetTestBase,
                                    parameterized.TestCase):
 
-  @combinations.generate(test_base.v2_eager_only_combinations())
-  def testBasic(self):
+  @combinations.generate(
+      combinations.times(
+          test_base.v2_eager_only_combinations(),
+          combinations.combine(
+              max_buffer_size=[0, 1, 10], prefetch_buffer_size=[0, 1, 10])))
+  def testBasic(self, max_buffer_size, prefetch_buffer_size):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
 
@@ -355,7 +366,9 @@ class OwnedMultiDeviceIteratorTest(test_base.DatasetTestBase,
       dataset = dataset_ops.Dataset.range(1000)
 
     mdi = multi_device_iterator_ops.OwnedMultiDeviceIterator(
-        dataset, ["/cpu:0", "/gpu:0"])
+        dataset, ["/cpu:0", "/gpu:0"],
+        max_buffer_size=max_buffer_size,
+        prefetch_buffer_size=prefetch_buffer_size)
 
     for i, el in enumerate(mdi):
       self.assertEqual([i * 2, i * 2 + 1], [el[0].numpy(), el[1].numpy()])
@@ -407,7 +420,12 @@ class OwnedMultiDeviceIteratorTest(test_base.DatasetTestBase,
 
     @def_function.function
     def fn():
-      dataset = dataset_ops._GeneratorDataset(1, init_fn, next_fn, finalize_fn)
+      dataset = dataset_ops._GeneratorDataset(
+          1,
+          init_fn,
+          next_fn,
+          finalize_fn,
+          output_signature=tensor_spec.TensorSpec([], dtypes.int64))
       iterator = multi_device_iterator_ops.OwnedMultiDeviceIterator(
           dataset, ["/cpu:0", "/gpu:0"])
       next(iterator)

@@ -1810,9 +1810,7 @@ ENTRY MatrixVectorComplex {
 //   dot(reshape(A), reshape(transpose(reshape(Const)))),
 // and then fold the reshape and transpose on the Const side.
 // We can compare performance with and without algsimp pass to see the impact.
-void DOT_ReorderContracting(int num_iters) {
-  tensorflow::testing::StopTiming();
-
+void DOT_ReorderContracting(::testing::benchmark::State& state) {
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().ValueOrDie();
   auto executors = PlatformUtil::GetStreamExecutors(platform).ValueOrDie();
   se::StreamExecutorMemoryAllocator allocator(platform, executors);
@@ -1864,16 +1862,13 @@ void DOT_ReorderContracting(int num_iters) {
   }
 
   const int64 total_bytes = d0 * d1 * d2 + d1 * d2 * d3 + d0 * d3;
-  tensorflow::testing::BytesProcessed(static_cast<int64>(num_iters) *
-                                      total_bytes * sizeof(float));
-  tensorflow::testing::UseRealTime();
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i < num_iters; ++i) {
+  for (auto s : state) {
     ASSERT_IS_OK(executable->Run({&buffer0}, options));
   }
+  state.SetBytesProcessed(state.iterations() * total_bytes * sizeof(float));
 }
 
-BENCHMARK(DOT_ReorderContracting);
+BENCHMARK(DOT_ReorderContracting)->UseRealTime();
 
 }  // namespace
 }  // namespace xla

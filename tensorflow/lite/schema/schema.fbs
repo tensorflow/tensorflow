@@ -47,6 +47,7 @@ enum TensorType : byte {
   UINT64 = 12,
   RESOURCE = 13,
   VARIANT = 14,
+  UINT32 = 15,
 }
 
 // Custom quantization parameters for experimenting with new quantization

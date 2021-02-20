@@ -55,7 +55,7 @@ struct ChloLegalizeToHloPass
     if (broadcast_only_) {
       chlo::PopulateChloBroadcastingPatterns(&getContext(),
                                              &conversionPatterns);
-      conversionTarget.addLegalOp<chlo::ZetaOp>();
+      conversionTarget.addLegalOp<chlo::ZetaOp, chlo::PolygammaOp>();
     } else {
       chlo::PopulateLegalizeChloToHloPatterns(&getContext(),
                                               &conversionPatterns);

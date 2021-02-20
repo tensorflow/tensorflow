@@ -223,5 +223,21 @@ build_test(
 )
 
 #------------------------------------------------------------------------------
+# JNI bindings (Java API and Java Tasks library)
+
+# Contains code to initialize TFLite through JNI in the internal version.
+cc_library(
+    name = "jni_initialization",
+    srcs = [],
+    # Prevent automated tools from removing this target as a dependency due to
+    # it being empty.
+    tags = ["keep_dep"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "//tensorflow_lite_support:__subpackages__",
+    ],
+)
+
+#------------------------------------------------------------------------------
 
 tflite_portable_test_suite()

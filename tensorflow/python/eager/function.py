@@ -2898,8 +2898,17 @@ class FunctionCache(object):
         _FunctionGarbageCollector(self.arg_relaxed_specs)]
 
   def all_values(self):
-    """A set of all `ConcreteFunction` instances held by this cache."""
-    return set(self.primary.values()) | set(self.arg_relaxed.values())
+    """A list of all `ConcreteFunction` instances held by this cache."""
+    # We need to simultaneously make sure our returned concrete functions are
+    # unique *and* make sure they are returned in a deterministic order for
+    # serialization.
+    #
+    # TODO(b/174215821): It's likely that we ultimately would just prefer to
+    # choose the most specific concrete function shape given a set of
+    # arguments. If and when that is implemented, this logic can be revisited.
+    primary_functions = set(self.primary.values())
+    return list(self.primary.values()) + [
+        v for v in self.arg_relaxed.values() if v not in primary_functions]
 
 
 class Function(object):

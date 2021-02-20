@@ -855,6 +855,24 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
       g.jacobian(y, [x])
 
   @test_util.assert_no_new_tensors
+  def testJacobianInsideGradientTapeScope(self):
+    with backprop.GradientTape() as g:
+      x = constant_op.constant(3.0)
+      g.watch(x)
+      y = x * x
+      z = y * y
+      self.assertAllClose(4. * 3. ** 3., g.jacobian(z, x))
+
+  @test_util.assert_no_new_tensors
+  def testBatchJacobianInsideGradientTapeScope(self):
+    with backprop.GradientTape(persistent=True) as g:
+      x = constant_op.constant([[3.0]])
+      g.watch(x)
+      y = x * x
+      z = y * y
+      self.assertAllClose([[[4. * 3. ** 3.]]], g.batch_jacobian(z, x))
+
+  @test_util.assert_no_new_tensors
   def testGradientTapeBatchJacobianCalledMultipleTimes(self):
     with backprop.GradientTape() as g:
       x = constant_op.constant([[3.0]])
