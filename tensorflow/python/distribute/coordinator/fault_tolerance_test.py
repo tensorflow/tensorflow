@@ -278,6 +278,12 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
       self.cluster_coord.schedule(normal_function)
     self.cluster_coord.join()
 
+    # The cluster is likely still being recovered since `join` returned early
+    # due to the error_function.
+    failure_handler = self.cluster_coord._cluster.failure_handler
+    failure_handler.stop()
+    failure_handler._preemption_handler_thread.join()
+
   def testHandleDatasetCreationFailure(self):
     model = Model(self.cluster_coord)
 
@@ -442,6 +448,12 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
 
     model.join_training_functions()
     self.assertGreaterEqual(model.iterations.numpy(), 10)
+
+  def testPSFailureWhileRecoveryFromWokerFailure(self):
+    # Only by adding this empty test, can the problem of b/180348454 be
+    # reproduced.
+    # TODO(yuefengz): fill in this test.
+    pass
 
   def testNumpyFetchedAfterWorkerFailure(self):
 

@@ -34,6 +34,9 @@ struct GpuDeviceInfo {
   int shared_memory_per_block;
   int threads_per_core_limit;
   int core_count;
+  int block_dim_limit_x;
+  int block_dim_limit_y;
+  int block_dim_limit_z;
 };
 }  // namespace gpu
 }  // namespace xla

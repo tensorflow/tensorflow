@@ -971,6 +971,12 @@ GpuDeviceInfo GetGpuDeviceInfo(se::StreamExecutor* stream_exec) {
   gpu_device_info.threads_per_core_limit =
       stream_exec->GetDeviceDescription().threads_per_core_limit();
   gpu_device_info.core_count = stream_exec->GetDeviceDescription().core_count();
+  gpu_device_info.block_dim_limit_x =
+      stream_exec->GetDeviceDescription().block_dim_limit().x;
+  gpu_device_info.block_dim_limit_y =
+      stream_exec->GetDeviceDescription().block_dim_limit().y;
+  gpu_device_info.block_dim_limit_z =
+      stream_exec->GetDeviceDescription().block_dim_limit().z;
   return gpu_device_info;
 }
 
