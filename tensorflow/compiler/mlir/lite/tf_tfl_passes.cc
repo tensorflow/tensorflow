@@ -316,7 +316,8 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
 
   // TFLite dialect passes.
   pm.addPass(mlir::TFL::CreatePrepareTFPass(
-      /*unfold_batch_matmul=*/true, /*allow_bf16_type_legalization=*/false));
+      /*unfold_batch_matmul=*/true,
+      /*allow_bf16_and_f16_type_legalization=*/false));
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pm.addPass(
       mlir::TFL::CreateLegalizeTFPass(/*run_tfl_runtime_verification=*/true));
