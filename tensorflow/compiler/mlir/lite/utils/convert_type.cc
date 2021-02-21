@@ -41,6 +41,8 @@ mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder) {
       return builder.getF64Type();
     case tflite::TensorType_INT32:
       return builder.getIntegerType(32);
+    case tflite::TensorType_UINT32:
+      return builder.getIntegerType(32, /*isSigned=*/false);
     case tflite::TensorType_UINT8:
       return builder.getIntegerType(8, /*isSigned=*/false);
     case tflite::TensorType_INT64:
@@ -86,6 +88,8 @@ tensorflow::DataType TflTypeToTfType(tflite::TensorType type) {
       return tensorflow::DT_INT16;
     case tflite::TensorType_INT32:
       return tensorflow::DT_INT32;
+    case tflite::TensorType_UINT32:
+      return tensorflow::DT_UINT32;
     case tflite::TensorType_INT64:
       return tensorflow::DT_INT64;
     case tflite::TensorType_STRING:
@@ -121,6 +125,8 @@ StatusOr<tflite::TensorType> TfTypeToTflType(tensorflow::DataType type) {
       return tflite::TensorType_INT16;
     case tensorflow::DT_INT32:
       return tflite::TensorType_INT32;
+    case tensorflow::DT_UINT32:
+      return tflite::TensorType_UINT32;
     case tensorflow::DT_INT64:
       return tflite::TensorType_INT64;
     case tensorflow::DT_UINT64:

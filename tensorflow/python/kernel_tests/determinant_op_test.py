@@ -154,7 +154,7 @@ class DeterminantOpTest(test.TestCase):
 
   @test_util.run_v1_only("b/120545219")
   def testConcurrentExecutesWithoutError(self):
-    with self.session() as sess:
+    with self.session():
       matrix1 = random_ops.random_normal([5, 5], seed=42)
       matrix2 = random_ops.random_normal([5, 5], seed=42)
       det1 = linalg_ops.matrix_determinant(matrix1)

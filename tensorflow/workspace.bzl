@@ -39,7 +39,7 @@ load("//third_party/psimd:workspace.bzl", psimd = "repo")
 load("//third_party/ruy:workspace.bzl", ruy = "repo")
 load("//third_party/sobol_data:workspace.bzl", sobol_data = "repo")
 load("//third_party/vulkan_headers:workspace.bzl", vulkan_headers = "repo")
-load("//third_party/toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
+load("@tf_toolchains//toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
 
 def initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
@@ -684,8 +684,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "2bfe27da171e8a6dddac6c444c4bca003103941a"
-    LLVM_SHA256 = "e94b8ec0d1b854da11dbf1587701e798df97be630f7019d0658452fae5e03bcf"
+    LLVM_COMMIT = "7e54d7304be2ddb51b4e8ad5d1b29b103360e4cf"
+    LLVM_SHA256 = "d6f63161257fa74e874ca2079b1d307c29b3bf2ce397550b63e852cbf1aa32f5"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
@@ -1133,17 +1133,6 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         urls = [
             "http://mirror.tensorflow.org/github.com/apple/coremltools/archive/3.3.zip",
             "https://github.com/apple/coremltools/archive/3.3.zip",
-        ],
-    )
-
-    tf_http_archive(
-        name = "tf_toolchains",
-        sha256 = "eb175afa73e5a33d2b5d2aabcfde6c8c3395fd7001eb5ba765a5cd98cce714ba",
-        strip_prefix = "toolchains-0.0.2",
-        build_file = clean_dep("//third_party:tf_toolchains.BUILD"),
-        urls = [
-            "http://mirror.tensorflow.org/github.com/tensorflow/toolchains/archive/v0.0.2.tar.gz",
-            "https://github.com/tensorflow/toolchains/archive/v0.0.2.tar.gz",
         ],
     )
 

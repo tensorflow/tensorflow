@@ -20,7 +20,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Conj, c64, std::complex<float>);
-GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Conj, c128, std::complex<double>);
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Conj, DT_COMPLEX64);
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Conj, DT_COMPLEX128);
 
 }  // namespace tensorflow

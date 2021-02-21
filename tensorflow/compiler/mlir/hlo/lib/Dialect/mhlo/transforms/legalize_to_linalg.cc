@@ -805,9 +805,8 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
             loc, collapsed_type, args[0], collapsing_map);
         Value reshape_buffer = rewriter.create<linalg::ReshapeOp>(
             loc, result_type, collapsed_op, expanding_map);
-        rewriter.replaceOpWithNewOp<linalg::CopyOp>(
-            reshape_op, reshape_buffer, args[1], /*inputPermutation =*/nullptr,
-            /*outputPermutation =*/nullptr);
+        rewriter.replaceOpWithNewOp<linalg::CopyOp>(reshape_op, reshape_buffer,
+                                                    args[1]);
       } else {
         auto collapsed_type = RankedTensorType::get({total_elems}, elem_type);
         Value collapsed_op = rewriter.create<linalg::TensorReshapeOp>(
@@ -821,9 +820,8 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
     if (isLHLO) {
       Value reshape_buffer = rewriter.create<linalg::ReshapeOp>(
           reshape_op.getLoc(), result_type, args[0], reassociation_map);
-      rewriter.replaceOpWithNewOp<linalg::CopyOp>(
-          reshape_op, reshape_buffer, args[1], /*inputPermutation =*/nullptr,
-          /*outputPermutation =*/nullptr);
+      rewriter.replaceOpWithNewOp<linalg::CopyOp>(reshape_op, reshape_buffer,
+                                                  args[1]);
     } else {
       rewriter.replaceOpWithNewOp<linalg::TensorReshapeOp>(
           reshape_op, result_type, args[0], reassociation_map);
@@ -1400,6 +1398,7 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<lmhlo::CosOp>,
                    PointwiseToLinalgConverter<lmhlo::DivOp>,
                    PointwiseToLinalgConverter<lmhlo::ExpOp>,
+                   PointwiseToLinalgConverter<lmhlo::Expm1Op>,
                    PointwiseToLinalgConverter<lmhlo::FloorOp>,
                    PointwiseToLinalgConverter<lmhlo::ImagOp>,
                    PointwiseToLinalgConverter<lmhlo::IsFiniteOp>,
@@ -1526,6 +1525,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgConverter<mhlo::CosOp, false>,
       PointwiseToLinalgConverter<mhlo::DivOp, false>,
       PointwiseToLinalgConverter<mhlo::ExpOp, false>,
+      PointwiseToLinalgConverter<mhlo::Expm1Op, false>,
       PointwiseToLinalgConverter<mhlo::FloorOp, false>,
       PointwiseToLinalgConverter<mhlo::ImagOp, false>,
       PointwiseToLinalgConverter<mhlo::IsFiniteOp, false>,

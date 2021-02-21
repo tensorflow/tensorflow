@@ -64,4 +64,7 @@ enum IODataType {
 
   // Variant type
   VARIANT = 15;
+
+  // Uint32
+  UINT32 = 16;
 }

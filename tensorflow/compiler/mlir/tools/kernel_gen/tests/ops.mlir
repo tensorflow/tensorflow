@@ -46,3 +46,11 @@ func @null_context() {
   tf_framework.null_context : !tf_framework.op_kernel_context
   return
 }
+
+// CHECK-LABEL: func @minimum_broadcast_shapes
+func @minimum_broadcast_shapes(%lhs: tensor<?xindex>, %rhs: tensor<?xindex>)
+    -> (tensor<?xindex>, tensor<?xindex>) {
+  %0, %1 = tf_framework.minimum_broadcast_shapes %lhs, %rhs :
+      tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>, tensor<?xindex>
+  return %0, %1 : tensor<?xindex>, tensor<?xindex>
+}

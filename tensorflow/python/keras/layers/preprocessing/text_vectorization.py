@@ -113,9 +113,9 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
        `[["string to split"], ["another string to split"]]`, the Callable will
        see `["string to split", "another string to split"]`. The callable should
        return a Tensor with the first dimension containing the split tokens -
-       in this example, we should see something like `[["string", "to", "split],
-       ["another", "string", "to", "split"]]`. This makes the callable site
-       natively compatible with `tf.strings.split()`.
+       in this example, we should see something like `[["string", "to",
+       "split"], ["another", "string", "to", "split"]]`. This makes the callable
+       site natively compatible with `tf.strings.split()`.
 
   Args:
     max_tokens: The maximum size of the vocabulary for this layer. If None,

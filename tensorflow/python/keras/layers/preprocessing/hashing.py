@@ -24,16 +24,12 @@ import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
-from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util.tf_export import keras_export
 
 # Default key from tf.sparse.cross_hashed
@@ -83,20 +79,6 @@ class Hashing(base_preprocessing_layer.PreprocessingLayer):
            [0],
            [2],
            [2]])>
-
-
-  Example (FarmHash64) with list of inputs:
-  >>> layer = tf.keras.layers.experimental.preprocessing.Hashing(num_bins=3)
-  >>> inp_1 = [['A'], ['B'], ['C'], ['D'], ['E']]
-  >>> inp_2 = np.asarray([[5], [4], [3], [2], [1]])
-  >>> layer([inp_1, inp_2])
-  <tf.Tensor: shape=(5, 1), dtype=int64, numpy=
-    array([[1],
-           [1],
-           [0],
-           [2],
-           [0]])>
-
 
   Example (SipHash64):
 
@@ -187,46 +169,12 @@ class Hashing(base_preprocessing_layer.PreprocessingLayer):
 
   def call(self, inputs):
     inputs = self._preprocess_inputs(inputs)
-    if isinstance(inputs, (tuple, list)):
-      return self._process_input_list(inputs)
-    elif isinstance(inputs, sparse_tensor.SparseTensor):
+    if isinstance(inputs, sparse_tensor.SparseTensor):
       return sparse_tensor.SparseTensor(
           indices=inputs.indices,
           values=self._hash_values_to_bins(inputs.values),
           dense_shape=inputs.dense_shape)
     return self._hash_values_to_bins(inputs)
-
-  def _process_input_list(self, inputs):
-    # TODO(momernick): support ragged_cross_hashed with corrected fingerprint
-    # and siphash.
-    if any(isinstance(inp, ragged_tensor.RaggedTensor) for inp in inputs):
-      raise ValueError('Hashing with ragged input is not supported yet.')
-    if self.mask_value is not None:
-      raise ValueError(
-          'Cross hashing with a mask_value is not supported yet, mask_value is '
-          '{}.'.format(self.mask_value))
-    sparse_inputs = [
-        inp for inp in inputs if isinstance(inp, sparse_tensor.SparseTensor)
-    ]
-    dense_inputs = [
-        inp for inp in inputs if not isinstance(inp, sparse_tensor.SparseTensor)
-    ]
-    all_dense = True if not sparse_inputs else False
-    indices = [sp_inp.indices for sp_inp in sparse_inputs]
-    values = [sp_inp.values for sp_inp in sparse_inputs]
-    shapes = [sp_inp.dense_shape for sp_inp in sparse_inputs]
-    indices_out, values_out, shapes_out = gen_sparse_ops.SparseCrossHashed(
-        indices=indices,
-        values=values,
-        shapes=shapes,
-        dense_inputs=dense_inputs,
-        num_buckets=self.num_bins,
-        strong_hash=self.strong_hash,
-        salt=self.salt)
-    sparse_out = sparse_tensor.SparseTensor(indices_out, values_out, shapes_out)
-    if all_dense:
-      return sparse_ops.sparse_tensor_to_dense(sparse_out)
-    return sparse_out
 
   def _hash_values_to_bins(self, values):
     """Converts a non-sparse tensor of values to bin indices."""
@@ -257,41 +205,16 @@ class Hashing(base_preprocessing_layer.PreprocessingLayer):
           string_ops.string_to_hash_bucket_strong, key=self.salt)
 
   def compute_output_shape(self, input_shape):
-    if not isinstance(input_shape, (tuple, list)):
-      return input_shape
-    input_shapes = input_shape
-    batch_size = None
-    for inp_shape in input_shapes:
-      inp_tensor_shape = tensor_shape.TensorShape(inp_shape).as_list()
-      if len(inp_tensor_shape) != 2:
-        raise ValueError('Inputs must be rank 2, get {}'.format(input_shapes))
-      if batch_size is None:
-        batch_size = inp_tensor_shape[0]
-    # The second dimension is dynamic based on inputs.
-    output_shape = [batch_size, None]
-    return tensor_shape.TensorShape(output_shape)
+    return input_shape
 
   def compute_output_signature(self, input_spec):
-    if not isinstance(input_spec, (tuple, list)):
-      output_shape = self.compute_output_shape(input_spec.shape)
-      output_dtype = dtypes.int64
-      if isinstance(input_spec, sparse_tensor.SparseTensorSpec):
-        return sparse_tensor.SparseTensorSpec(
-            shape=output_shape, dtype=output_dtype)
-      else:
-        return tensor_spec.TensorSpec(shape=output_shape, dtype=output_dtype)
-    input_shapes = [x.shape for x in input_spec]
-    output_shape = self.compute_output_shape(input_shapes)
-    if any(
-        isinstance(inp_spec, ragged_tensor.RaggedTensorSpec)
-        for inp_spec in input_spec):
-      return tensor_spec.TensorSpec(shape=output_shape, dtype=dtypes.int64)
-    elif any(
-        isinstance(inp_spec, sparse_tensor.SparseTensorSpec)
-        for inp_spec in input_spec):
+    output_shape = self.compute_output_shape(input_spec.shape)
+    output_dtype = dtypes.int64
+    if isinstance(input_spec, sparse_tensor.SparseTensorSpec):
       return sparse_tensor.SparseTensorSpec(
-          shape=output_shape, dtype=dtypes.int64)
-    return tensor_spec.TensorSpec(shape=output_shape, dtype=dtypes.int64)
+          shape=output_shape, dtype=output_dtype)
+    else:
+      return tensor_spec.TensorSpec(shape=output_shape, dtype=output_dtype)
 
   def get_config(self):
     config = {

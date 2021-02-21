@@ -20,9 +20,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-GENERATE_UNARY_GPU_KERNEL2(Angle, c64, f32, float, std::complex<float>);
-REGISTER_COMPLEX_GPU_KERNEL(Angle, c64, f32, float, std::complex<float>);
-GENERATE_UNARY_GPU_KERNEL2(Angle, c128, f64, double, std::complex<double>);
-REGISTER_COMPLEX_GPU_KERNEL(Angle, c128, f64, double, std::complex<double>);
+GENERATE_UNARY_GPU_KERNEL2(Angle, DT_COMPLEX64, DT_FLOAT);
+REGISTER_COMPLEX_GPU_KERNEL(Angle, DT_COMPLEX64, DT_FLOAT);
+GENERATE_UNARY_GPU_KERNEL2(Angle, DT_COMPLEX128, DT_DOUBLE);
+REGISTER_COMPLEX_GPU_KERNEL(Angle, DT_COMPLEX128, DT_DOUBLE);
 
 }  // namespace tensorflow

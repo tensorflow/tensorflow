@@ -32,9 +32,11 @@
         examples in the same step.
     *   tf.data service supports custom data transfer protocols (other than
         gRPC).
-    *   `tf.data.Dataset.batch()` now supports `num_parallel_calls` argument,
-        which can be used to indicate that multiple input batches should be
-        computed in parallel.
+    *   `tf.data.Dataset.batch()` now supports `num_parallel_calls` and
+        `deterministic` arguments. `num_parallel_calls` is used to indicate that
+        multiple input batches should be computed in parallel. With
+        `num_parallel_calls` set, `deterministic` is used to indicate that
+        outputs can be obtained in the non-deterministic order.
 
 ## Bug Fixes and Other Changes
 
@@ -81,6 +83,8 @@
         *   Removed deprecated `Interpreter::UseNNAPI(bool)` C++ API.
             *   Use `NnApiDelegate()` and related delegate configuration methods
                 directly.
+        *  Replaced the model cache key for models computation algorithm with
+           one guaranteed to be stable across runs.
     *  16 bits quantization
         *   Added int16x8 support for ABS, REDUCE_MAX and REDUCE_MIN operators.
         *   Additional tests and fixes for ADD and SUB operators.
@@ -98,6 +102,9 @@
           function for a given signaturedef.
     *  Add int8 support for `ReshapeV2`.
     *  Add experimental support for optimization with sparsity.
+    *  Add nominal support for unsigned 32-bit integer tensor types. Note that
+       very few TFLite kernels support this type natively, so its use in mobile
+       ML authoring is generally discouraged.
 *   TF Core:
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,
         `tf.while_loop`, and compositions like `tf.foldl`) computed with

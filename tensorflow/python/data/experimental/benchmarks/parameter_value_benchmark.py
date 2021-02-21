@@ -17,11 +17,28 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
 import numpy as np
 
 from tensorflow.python.data.benchmarks import benchmark_base
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import script_ops
+
+# The maximum sleeping time for each output step and the input sleeping time in
+# milliseconds.
+max_output_sleep_ms = 0.5
+input_sleep_ms = 1.5
+
+
+def sleep_function(x):
+  time.sleep(np.random.uniform(max_output_sleep_ms) / 1000)
+  return x
+
+
+def map_function(x):
+  return script_ops.py_func(sleep_function, [x], x.dtype)
 
 
 class ParameterValueBenchmark(benchmark_base.DatasetBenchmarkBase):
@@ -33,13 +50,17 @@ class ParameterValueBenchmark(benchmark_base.DatasetBenchmarkBase):
         (np.random.rand(1, 4 * k), np.random.rand(4 * k, 1))).repeat()
     dataset = dataset.map(
         math_ops.matmul, num_parallel_calls=num_parallel_calls)
+    dataset = dataset.map(map_function)
     dataset = dataset.prefetch(buffer_size=buffer_size)
+    dataset = dataset.apply(testing.sleep(int(input_sleep_ms * 1000)))
 
+    name_str = ("map_max_output_sleep_ms_%.2f_input_sleep_ms_%.2f_"
+                "num_parallel_calls_%d_buffer_size_%d")
     return self.run_and_report_benchmark(
         dataset=dataset,
         num_elements=10000,
-        name="map_num_parallel_calls_%d_buffer_size_%d" %
-        (num_parallel_calls, buffer_size))
+        name=name_str %
+        (max_output_sleep_ms, input_sleep_ms, num_parallel_calls, buffer_size))
 
   def benchmark_map(self):
     nums_parallel_calls = [4, 8, 12]
@@ -47,6 +68,7 @@ class ParameterValueBenchmark(benchmark_base.DatasetBenchmarkBase):
 
     parameters_list = []
     wall_time_map = {}
+
     for num_parallel_calls in nums_parallel_calls:
       for buffer_size in buffer_sizes:
         parameters = (num_parallel_calls, buffer_size)
@@ -68,13 +90,17 @@ class ParameterValueBenchmark(benchmark_base.DatasetBenchmarkBase):
     dataset = dataset.map(
         math_ops.matmul, num_parallel_calls=num_parallel_calls)
     dataset = dataset.batch(batch_size=batch_size)
+    dataset = dataset.map(map_function)
     dataset = dataset.prefetch(buffer_size=buffer_size)
+    dataset = dataset.apply(testing.sleep(int(input_sleep_ms * 1000)))
 
+    name_str = ("map_and_batch_max_output_sleep_ms_%.2f_input_sleep_ms_%.2f"
+                "_num_parallel_calls_%d_buffer_size_%d")
     return self.run_and_report_benchmark(
         dataset=dataset,
         num_elements=1000,
-        name="map_and_batch_num_parallel_calls_%d_buffer_size_%d" %
-        (num_parallel_calls, buffer_size))
+        name=name_str %
+        (max_output_sleep_ms, input_sleep_ms, num_parallel_calls, buffer_size))
 
   def benchmark_map_and_batch(self):
     nums_parallel_calls = [4, 8, 12]
@@ -101,17 +127,21 @@ class ParameterValueBenchmark(benchmark_base.DatasetBenchmarkBase):
     dataset = dataset_ops.Dataset.from_tensors(
         (np.random.rand(1, 4 * k), np.random.rand(4 * k, 1))).repeat()
     dataset = dataset.map(math_ops.matmul)
+    dataset = dataset.map(map_function)
     dataset = dataset_ops.Dataset.range(1).repeat().interleave(
         lambda _: dataset,  # pylint: disable=cell-var-from-loop
         cycle_length=10,
         num_parallel_calls=num_parallel_calls)
     dataset = dataset.prefetch(buffer_size=buffer_size)
+    dataset = dataset.apply(testing.sleep(int(input_sleep_ms * 1000)))
 
+    name_str = ("interleave_max_output_sleep_ms_%.2f_input_sleep_ms_%.2f"
+                "_num_parallel_calls_%d_buffer_size_%d")
     return self.run_and_report_benchmark(
         dataset=dataset,
         num_elements=10000,
-        name="interleave_num_parallel_calls_%d_buffer_size_%d" %
-        (num_parallel_calls, buffer_size))
+        name=name_str %
+        (max_output_sleep_ms, input_sleep_ms, num_parallel_calls, buffer_size))
 
   def benchmark_interleave(self):
     nums_parallel_calls = [4, 8, 10]

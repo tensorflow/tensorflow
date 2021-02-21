@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
@@ -122,6 +123,31 @@ TfLiteStatus FlexDelegate::CopyFromBufferHandle(
     }
 
     dynamic_buffer.WriteToTensor(output, /*new_shape=*/nullptr);
+    return kTfLiteOk;
+  }
+
+  // TODO(b/179094265): This is an experimental implementation, subject to
+  // change. This can be re-implemented with life cycle management mechanism
+  // like reference counting.
+  // When copying resource and variant tensors from Flex delegate to TensorFlow
+  // Lite tensors, the CopyFromBufferHandle method of the Flex delegate is
+  // invoked and it will store the `data` field of the given TensorFlow Lite
+  // tensor and pass the TensorFlow Lite tensor pointer. Copying the `data`
+  // field will act as passing pointers between TensorFlow Lite tensors.
+  //
+  // The life cycle of the pointer will be managed by the reference counting in
+  // the TensorFlow world and the pointer will be freed when all the buffer
+  // maps, who own it, are gone.
+  if (output->type == kTfLiteResource || output->type == kTfLiteVariant) {
+    const size_t required_bytes = sizeof(tensorflow::Tensor**);
+    const tensorflow::Tensor** tf_tensor_ptr =
+        reinterpret_cast<const tensorflow::Tensor**>(malloc(required_bytes));
+    *tf_tensor_ptr = buffer_map->GetTensorPtr(buffer_handle);
+
+    TfLiteTensorDataFree(output);
+    output->data.raw = reinterpret_cast<char*>(tf_tensor_ptr);
+    output->bytes = required_bytes;
+    output->data_is_stale = true;
     return kTfLiteOk;
   }
 

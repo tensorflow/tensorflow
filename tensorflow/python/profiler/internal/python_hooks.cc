@@ -30,13 +30,6 @@ namespace py = ::pybind11;
 
 namespace {
 
-template <typename T>
-int ProfileFunction(PyObject* obj, PyFrameObject* frame, int what,
-                    PyObject* arg) {
-  T::GetSingleton()->ProfileFast(frame, what, arg);
-  return 0;
-}
-
 void SysSetProfileNone() {
   py::object setprofile = py::module::import("sys").attr("setprofile");
   setprofile(py::none());
@@ -214,6 +207,12 @@ void PythonHookContext::Finalize(XSpace* space) {
   }
 }
 
+/*static*/ int PythonHooks::ProfileFunction(PyObject* obj, PyFrameObject* frame,
+                                            int what, PyObject* arg) {
+  GetSingleton()->ProfileFast(frame, what, arg);
+  return 0;
+}
+
 void PythonHooks::ProfileSlow(const py::object& frame, const string& event,
                               const py::object& arg) {
   int what;
@@ -301,7 +300,7 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
   }
 }
 
-void PythonHookContext::SetProfilerInAllThreads() {
+/*static*/ void PythonHookContext::SetProfilerInAllThreads() {
   // We also want any new threads started to use our profiler.
   // NOTE: threading does not provide a C API equivalent to
   // `threading.setprofile` so we are forced to go via Python to setup the
@@ -315,7 +314,7 @@ void PythonHookContext::SetProfilerInAllThreads() {
                                    const py::object& arg) {
         singleton->ProfileSlow(frame, event, arg);
         SysSetProfileNone();
-        PyEval_SetProfile(ProfileFunction<PythonHooks>, nullptr);
+        PyEval_SetProfile(&PythonHooks::ProfileFunction, nullptr);
       });
 
   ThreadingSetProfile(callback);
@@ -327,7 +326,7 @@ void PythonHookContext::SetProfilerInAllThreads() {
   while (next_thread != nullptr) {
     VLOG(1) << "Setting profiler in " << next_thread->thread_id;
     PyThreadState_Swap(next_thread);
-    PyEval_SetProfile(ProfileFunction<PythonHooks>, nullptr);
+    PyEval_SetProfile(&PythonHooks::ProfileFunction, nullptr);
     next_thread = next_thread->next;
   }
   PyThreadState_Swap(curr_thread);

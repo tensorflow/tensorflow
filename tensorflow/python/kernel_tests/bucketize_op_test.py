@@ -36,7 +36,7 @@ class BucketizationOpTest(test.TestCase):
         constant_op.constant([-5, 0, 2, 3, 5, 8, 10, 11, 12]),
         boundaries=[0, 3, 8, 11])
     expected_out = [0, 1, 1, 2, 2, 3, 3, 4, 4]
-    with self.session() as sess:
+    with self.session():
       self.assertAllEqual(expected_out, self.evaluate(op))
 
   def testEmptyFloat(self):
@@ -51,7 +51,7 @@ class BucketizationOpTest(test.TestCase):
         constant_op.constant([-5., 0., 2., 3., 5., 8., 10., 11., 12.]),
         boundaries=[0., 3., 8., 11.])
     expected_out = [0, 1, 1, 2, 2, 3, 3, 4, 4]
-    with self.session() as sess:
+    with self.session():
       self.assertAllEqual(expected_out, self.evaluate(op))
 
   def test2DInput(self):
@@ -59,14 +59,14 @@ class BucketizationOpTest(test.TestCase):
         constant_op.constant([[-5, 0, 2, 3, 5], [8, 10, 11, 12, 0]]),
         boundaries=[0, 3, 8, 11])
     expected_out = [[0, 1, 1, 2, 2], [3, 3, 4, 4, 1]]
-    with self.session() as sess:
+    with self.session():
       self.assertAllEqual(expected_out, self.evaluate(op))
 
   @test_util.run_deprecated_v1
   def testInvalidBoundariesOrder(self):
     op = math_ops._bucketize(
         constant_op.constant([-5, 0]), boundaries=[0, 8, 3, 11])
-    with self.session() as sess:
+    with self.session():
       with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
                                   "Expected sorted boundaries"):
         self.evaluate(op)

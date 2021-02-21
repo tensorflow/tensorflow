@@ -102,6 +102,9 @@ void RecordParseRaggedFeature(int64 num_features);
 void RecordGraphInputTensors(const size_t size);
 void RecordGraphOutputTensors(const size_t size);
 
+// Records the number of cores requested by graphs with XLA SPMD enabled.
+void RecordTPUXlaSpmdCoresPerReplica(int64 cores_per_replica);
+
 void UpdateGraphExecTime(const uint64 running_time_usecs);
 void UpdateGraphPendingQueueLength(uint64 len);
 

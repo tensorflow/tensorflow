@@ -1094,6 +1094,7 @@ class DatasetBaseIterator : public IteratorBase {
     return model && model->collect_resource_usage() && node_;
   }
 
+  string traceme_metadata_;
   BaseParams params_;
 };
 

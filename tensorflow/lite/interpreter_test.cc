@@ -189,9 +189,10 @@ TEST(BasicInterpreter, CheckAllocate) {
     TfLiteType type;
     size_t size;
   } cases[] = {
-      {kTfLiteFloat32, sizeof(float)}, {kTfLiteInt32, sizeof(int32_t)},
-      {kTfLiteUInt8, sizeof(uint8_t)}, {kTfLiteInt64, sizeof(int64_t)},
-      {kTfLiteInt16, sizeof(int16_t)}, {kTfLiteFloat16, sizeof(TfLiteFloat16)},
+      {kTfLiteFloat32, sizeof(float)},         {kTfLiteInt32, sizeof(int32_t)},
+      {kTfLiteUInt32, sizeof(uint32_t)},       {kTfLiteUInt8, sizeof(uint8_t)},
+      {kTfLiteInt64, sizeof(int64_t)},         {kTfLiteInt16, sizeof(int16_t)},
+      {kTfLiteFloat16, sizeof(TfLiteFloat16)},
   };
 
   for (auto test : cases) {
@@ -261,6 +262,7 @@ TEST(BasicInterpreter, CheckQuantization) {
 TEST(BasicInterpreter, CheckResize) {
   const float floats[] = {-3., -4.};
   const int32_t int32s[] = {-3, -4};
+  const uint32_t uint32s[] = {3, 4};
   const uint8_t uint8s[] = {3, 4};
   const int64_t int64s[] = {6, -7};
   const int16_t int16s[] = {8, -9};
@@ -274,6 +276,7 @@ TEST(BasicInterpreter, CheckResize) {
   } cases[] = {
       {kTfLiteFloat32, sizeof(float), reinterpret_cast<const char*>(floats)},
       {kTfLiteInt32, sizeof(int32_t), reinterpret_cast<const char*>(int32s)},
+      {kTfLiteUInt32, sizeof(uint32_t), reinterpret_cast<const char*>(uint32s)},
       {kTfLiteUInt8, sizeof(uint8_t), reinterpret_cast<const char*>(uint8s)},
       {kTfLiteInt64, sizeof(int64_t), reinterpret_cast<const char*>(int64s)},
       {kTfLiteInt16, sizeof(int16_t), reinterpret_cast<const char*>(int16s)},
@@ -313,8 +316,9 @@ TEST(BasicInterpreter, CheckResize) {
 TEST(BasicInterpreter, CheckAlignment) {
   struct {
     TfLiteType type;
-  } cases[] = {{kTfLiteFloat32}, {kTfLiteInt32}, {kTfLiteUInt8},
-               {kTfLiteInt64},   {kTfLiteInt16}, {kTfLiteFloat16}};
+  } cases[] = {{kTfLiteFloat32}, {kTfLiteInt32}, {kTfLiteUInt32},
+               {kTfLiteUInt8},   {kTfLiteInt64}, {kTfLiteInt16},
+               {kTfLiteFloat16}};
 
   for (auto test : cases) {
     Interpreter interpreter;

@@ -834,6 +834,104 @@ LogicalResult Verify(FullyConnectedOp op) {
   return mlir::success();
 }
 
+LogicalResult FullyConnectedOp::fold(ArrayRef<Attribute> operands,
+                                     SmallVectorImpl<OpFoldResult> &results) {
+  assert(operands.size() == 3);
+
+  // Folding not implemented with any activation function or any weight type
+  // besides the default.
+  if (fused_activation_function() != "NONE") return failure();
+  if (weights_format() != "DEFAULT") return failure();
+
+  // Bias tensor is optional.
+  const bool has_bias = !(!bias() || bias().getType().isa<NoneType>());
+
+  // Get the tensors.
+  DenseElementsAttr input_tensor, weights_tensor, bias_tensor;
+  if (!matchPattern(input(), m_Constant(&input_tensor)) ||
+      !matchPattern(filter(), m_Constant(&weights_tensor)) ||
+      (has_bias && !matchPattern(bias(), m_Constant(&bias_tensor)))) {
+    return failure();
+  }
+
+  // Get the tensor types.
+  const auto input_type = input_tensor.getType().cast<ShapedType>();
+  const auto weights_type = weights_tensor.getType().cast<ShapedType>();
+  const auto bias_type =
+      has_bias ? bias_tensor.getType().cast<ShapedType>() : ShapedType{};
+
+  const auto output_type = getType(0).cast<ShapedType>();
+
+  // Folding only implemented for float tensors.
+  if (!input_type.getElementType().isF32() ||
+      !weights_type.getElementType().isF32() ||
+      !output_type.getElementType().isF32() ||
+      (has_bias && !bias_type.getElementType().isF32())) {
+    return failure();
+  }
+
+  // Folding only implemented for static shapes
+  if (!input_type.hasStaticShape() || !weights_type.hasStaticShape() ||
+      (has_bias && !bias_type.hasStaticShape())) {
+    return failure();
+  }
+
+  // Folding only implemented for 1D input, 2D weights and 1D bias
+  if (input_type.getShape().size() != 1 ||
+      weights_type.getShape().size() != 2 ||
+      (has_bias && bias_type.getShape().size() != 1)) {
+    return failure();
+  }
+
+  // Get the sizes
+  const auto input_size = input_type.getNumElements();
+  const auto output_size = output_type.getNumElements();
+
+  // Get iterators to the tensors.
+  const auto input_values_it = input_tensor.getValues<float>().begin();
+  const auto weights_values_ptr = weights_tensor.getValues<float>().begin();
+  auto weights_row_it = weights_values_ptr;
+  // The 'else' case could be nullptr, but the types don't match.
+  auto bias_values_it =
+      has_bias ? bias_tensor.getValues<float>().begin() : input_values_it;
+
+  // Do the actual folding, one output at a time.
+  std::vector<float> result_values;
+  result_values.reserve(output_size);
+
+  for (int i = 0; i < output_size; ++i) {
+    // Dot product with Kahan/Neumaier summation to minimize numeric errors.
+    float sum = has_bias ? *bias_values_it : 0.0f;
+    float compensation = 0.0f;
+    for (int j = 0; j < input_size; ++j) {
+      const float addend = input_values_it[j] * weights_row_it[j];
+      const float new_sum = sum + addend;
+      // DO NOT enable -funsafe-math-optimizations here.
+      // There is a test detecting unsafe optimizations.
+      // Unsafe math optimizations can reorder float formulas, and set the
+      // compensation to constant 0. The formula must be evaluated as written
+      // for the algorithm to work.
+      // (Note: -ffast-math is a superset of -funsafe-math-optimizations.)
+      if (std::abs(sum) >= std::abs(addend)) {
+        compensation += (sum - new_sum) + addend;
+      } else {
+        compensation += (addend - new_sum) + sum;
+      }
+      sum = new_sum;
+    }
+    result_values.push_back(sum + compensation);
+    weights_row_it += input_size;
+    bias_values_it++;
+  }
+
+  // Set result tensor
+  const auto folded =
+      DenseElementsAttr::get(output_type, ArrayRef<float>(result_values));
+  results.assign({folded});
+
+  return success();
+}
+
 void FullyConnectedOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.insert<RemoveOptionalZeroBias<FullyConnectedOp>>(context);

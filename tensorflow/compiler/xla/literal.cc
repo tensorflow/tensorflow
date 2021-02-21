@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/index_util.h"
@@ -69,6 +70,22 @@ void ConvertEndianShort(char* bytes, int64 size) {
   for (int64 i = 0; i < size; i += 2) {
     std::swap(bytes[i], bytes[i + 1]);
   }
+}
+
+string CompactOneline(const string& input) {
+  string result;
+  std::vector<string> v = absl::StrSplit(input, absl::ByAnyChar("\n "));
+  bool first = true;
+  // Concatenate elements in "v" with spaces separating them, but ignoring
+  // empty entries.
+  for (const auto& s : v) {
+    if (s.empty()) {
+      continue;
+    }
+    absl::StrAppend(&result, (first ? "" : " "), s);
+    first = false;
+  }
+  return result;
 }
 
 // Since Eigen::half doesn't satisfy the absl::bit_cast contract, we need to be
@@ -1281,12 +1298,20 @@ string LiteralBase::ToString() const {
   return absl::StrJoin(pieces, "");
 }
 
+string LiteralBase::ToStringOneline() const {
+  return CompactOneline(ToString());
+}
+
 string LiteralBase::ToStringWithoutShape() const {
   std::vector<string> pieces;
   CHECK(LayoutUtil::HasLayout(this->shape()));
   ToStringHelper(*this, {}, /*print_shape=*/false,
                  /*print_layout=*/false, &pieces);
   return absl::StrJoin(pieces, "");
+}
+
+string LiteralBase::ToStringWithoutShapeOneline() const {
+  return CompactOneline(ToStringWithoutShape());
 }
 
 string LiteralBase::ToStringWithLayout() const {

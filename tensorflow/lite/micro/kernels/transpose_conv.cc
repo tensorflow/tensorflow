@@ -28,9 +28,13 @@ limitations under the License.
 namespace tflite {
 namespace {
 
-constexpr int kInputTensor = 0;
+// For the TfLite transpose_conv implementation, input tensor 0 corresponds to
+// the OutputShapeTensor. However, since TFLM does not support dynamic tensors,
+// the TFLM implementation ignores input tensor 0 and the only inputs we care
+// about are kFilterTensor, kInputTensor and kBiasTensor.
 constexpr int kFilterTensor = 1;
-constexpr int kBiasTensor = 2;
+constexpr int kInputTensor = 2;
+constexpr int kBiasTensor = 3;
 constexpr int kOutputTensor = 0;
 
 // Conv is quantized along dimension 0:
@@ -65,9 +69,9 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
                              int height, int filter_width, int filter_height,
                              int out_width, int out_height,
                              const TfLiteType data_type, OpData* data) {
-  bool has_bias = node->inputs->size == 3;
+  bool has_bias = node->inputs->size == 4;
   // Check number of inputs/outputs
-  TF_LITE_ENSURE(context, has_bias || node->inputs->size == 2);
+  TF_LITE_ENSURE(context, has_bias || node->inputs->size == 3);
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
 
   // Matching GetWindowedOutputSize in TensorFlow.
@@ -198,7 +202,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteEvalTensor* filter =
       tflite::micro::GetEvalInput(context, node, kFilterTensor);
   const TfLiteEvalTensor* bias =
-      (NumInputs(node) == 3)
+      (NumInputs(node) == 4)
           ? tflite::micro::GetEvalInput(context, node, kBiasTensor)
           : nullptr;
   TfLiteEvalTensor* output =
@@ -251,7 +255,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace
 
-TfLiteRegistration Register_TRANSPOSE_CONV_2D() {
+TfLiteRegistration Register_TRANSPOSE_CONV() {
   return {/*init=*/Init,
           /*free=*/nullptr,
           /*prepare=*/Prepare,

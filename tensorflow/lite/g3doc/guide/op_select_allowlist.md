@@ -556,6 +556,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.StridedSlice`
 *   `raw_ops.StridedSliceAssign`
 *   `raw_ops.StridedSliceGrad`
+*   `raw_ops.StringFormat`
 *   `raw_ops.StringJoin`
 *   `raw_ops.StringLength`
 *   `raw_ops.StringLower`

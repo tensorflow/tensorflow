@@ -81,14 +81,14 @@ class TensorFlowDialect : public Dialect {
   void printType(Type ty, DialectAsmPrinter &os) const override;
 
   // Parses resource type with potential subtypes.
-  Type ParseResourceType(DialectAsmParser &parser, Location loc) const;
+  Type ParseResourceType(DialectAsmParser &parser) const;
 
   // Prints resource type with potential subtypes.
   void PrintResourceType(ResourceType ty, DialectAsmPrinter &os) const;
 
   // Parse and print variant type. It may have subtypes inferred using shape
   // inference.
-  Type ParseVariantType(DialectAsmParser &parser, Location loc) const;
+  Type ParseVariantType(DialectAsmParser &parser) const;
   void PrintVariantType(VariantType ty, DialectAsmPrinter &os) const;
 
   // Registered hook to materialize a constant operation from a given attribute

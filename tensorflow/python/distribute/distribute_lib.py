@@ -621,9 +621,12 @@ class RunOptions(
 @tf_export("distribute.InputOptions", v1=[])
 class InputOptions(
     collections.namedtuple("InputOptions", [
+        # TODO(b/180518705): Rename `experimental_prefetch_to_device` to
+        # `experimental_fetch_to_device` to better reflect its functionality.
         "experimental_prefetch_to_device",
         "experimental_replication_mode",
         "experimental_place_dataset_on_device",
+        "experimental_per_replica_buffer_size",
     ])):
   """Run options for `experimental_distribute_dataset(s_from_function)`.
 
@@ -643,7 +646,8 @@ class InputOptions(
           tf.distribute.InputOptions(
               experimental_replication_mode=
               experimental_replication_mode.PER_WORKER,
-              experimental_place_dataset_on_device=False)))
+              experimental_place_dataset_on_device=False,
+              experimental_per_replica_buffer_size=1)))
   ```
 
   Attributes:
@@ -661,16 +665,23 @@ class InputOptions(
       dataset will be placed on the device, otherwise it will remain on the
       host. experimental_place_dataset_on_device=True can only be used with
       experimental_replication_mode=PER_REPLICA
+    experimental_per_replica_buffer_size: Integer. Default to 1. Indicates the
+      prefetch buffer size in the replica device memory. Users can set it
+      to 0 to completely disable prefetching behavior, or a number greater than
+      1 to enable larger buffer size. Note that this option is still
+      valid with `experimental_prefetch_to_device=False`.
   """
 
   def __new__(cls,
               experimental_prefetch_to_device=True,
               experimental_replication_mode=InputReplicationMode.PER_WORKER,
-              experimental_place_dataset_on_device=False):
+              experimental_place_dataset_on_device=False,
+              experimental_per_replica_buffer_size=1):
     return super(InputOptions,
                  cls).__new__(cls, experimental_prefetch_to_device,
                               experimental_replication_mode,
-                              experimental_place_dataset_on_device)
+                              experimental_place_dataset_on_device,
+                              experimental_per_replica_buffer_size)
 
 # ------------------------------------------------------------------------------
 # Base classes for all distribution strategies.

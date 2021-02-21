@@ -450,7 +450,8 @@ cuda_py_test(
     ],
     python_version = "PY3",
     tags = [
-        "notap",  # TODO(b/171355671)
+        "noasan",  # TODO(b/180630068)
+        "nomsan",  # TODO(b/180630068)
         "notsan",  # TODO(b/151841995)
     ],
     deps = [

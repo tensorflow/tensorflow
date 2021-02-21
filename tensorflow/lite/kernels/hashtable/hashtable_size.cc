@@ -79,6 +79,11 @@ TfLiteRegistration* Register_HASHTABLE_SIZE() {
   return &r;
 }
 
+// Alias for selective build.
+TfLiteRegistration* Register_LOOKUP_TABLE_SIZE_V2() {
+  return Register_HASHTABLE_SIZE();
+}
+
 }  // namespace custom
 }  // namespace ops
 }  // namespace tflite
