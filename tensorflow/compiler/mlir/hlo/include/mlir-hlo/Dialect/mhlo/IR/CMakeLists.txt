@@ -25,7 +25,6 @@ function(add_mlir_hlo_dialect dialect dialect_namespace)
 endfunction()
 
 add_mlir_hlo_dialect(chlo_ops chlo)
-add_mlir_hlo_dialect(lhlo_ops lmhlo)
 
 set(LLVM_TARGET_DEFINITIONS hlo_ops.td)
 mlir_tablegen(hlo_ops.h.inc -gen-op-decls)
@@ -35,6 +34,15 @@ mlir_tablegen(hlo_ops_base_structs.cc.inc -gen-struct-attr-defs)
 mlir_tablegen(hlo_ops_base_enums.h.inc -gen-enum-decls)
 mlir_tablegen(hlo_ops_base_enums.cc.inc -gen-enum-defs)
 add_public_tablegen_target(MLIRhlo_opsIncGen)
+
+set(LLVM_TARGET_DEFINITIONS lhlo_ops.td)
+mlir_tablegen(lhlo_ops.h.inc -gen-op-decls)
+mlir_tablegen(lhlo_ops.cc.inc -gen-op-defs)
+set(LLVM_TARGET_DEFINITIONS lhlo_ops_structs.td)
+mlir_tablegen(lhlo_ops_structs.h.inc -gen-struct-attr-decls)
+mlir_tablegen(lhlo_ops_structs.cc.inc -gen-struct-attr-defs)
+add_public_tablegen_target(MLIRlhlo_opsIncGen)
+add_dependencies(mlir-headers MLIRlhlo_opsIncGen)
 
 set(LLVM_TARGET_DEFINITIONS lhlo_gpu_ops.td)
 mlir_tablegen(lhlo_gpu_ops.h.inc -gen-op-decls)

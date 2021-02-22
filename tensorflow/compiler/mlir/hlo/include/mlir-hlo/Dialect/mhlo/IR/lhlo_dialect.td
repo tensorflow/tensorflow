@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,6 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.h"
+#ifndef LHLO_DIALECT
+#define LHLO_DIALECT
 
-#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.cc.inc"
+include "mlir/IR/OpBase.td"
+
+// We define the dialect here so that both structs and ops can refer to it.
+def LHLO_Dialect : Dialect {
+  let name = "lmhlo";
+  let cppNamespace = "::mlir::lmhlo";
+}
+
+#endif  // LHLO_DIALECT
