@@ -329,7 +329,7 @@ def is_symbolic_tensor(tensor):
     return (getattr(tensor, '_keras_history', False) or
             not context.executing_eagerly())
   elif isinstance(tensor, tuple(_user_convertible_tensor_types)):
-    tensor = ops.convert_to_tensor_v2_with_dispatch(tensor)
+    tensor = ops.convert_to_tensor_or_composite(tensor)
     return is_symbolic_tensor(tensor)
   else:
     return False
