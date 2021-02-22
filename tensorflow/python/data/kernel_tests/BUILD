@@ -8,7 +8,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-
 py_library(
     name = "checkpoint_test_base",
     srcs = [
