@@ -53,7 +53,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Padding can result in a larger output than input.
   TF_LITE_ENSURE(context,
-                 ElementCount(*output->dims) >= ElementCount(*input->dims));
+                 ElementCount(*output->dims) <= ElementCount(*input->dims));
 
   return kTfLiteOk;
 }
