@@ -61,6 +61,7 @@ tensorflow/third_party/curl.BUILD
 tensorflow/third_party/cython.BUILD
 tensorflow/third_party/dill.BUILD
 tensorflow/third_party/double_conversion.BUILD
+tensorflow/third_party/eigen.BUILD
 tensorflow/third_party/eigen3/BUILD
 tensorflow/third_party/eigen3/Eigen/Cholesky
 tensorflow/third_party/eigen3/Eigen/Core
@@ -72,7 +73,6 @@ tensorflow/third_party/eigen3/Eigen/SVD
 tensorflow/third_party/eigen3/Eigen/SparseCholesky
 tensorflow/third_party/eigen3/Eigen/SparseCore
 tensorflow/third_party/eigen3/LICENSE
-tensorflow/third_party/eigen3/eigen_archive.BUILD
 tensorflow/third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint
 tensorflow/third_party/eigen3/unsupported/Eigen/CXX11/Tensor
 tensorflow/third_party/eigen3/unsupported/Eigen/CXX11/ThreadPool
