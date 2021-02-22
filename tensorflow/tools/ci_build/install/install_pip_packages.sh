@@ -19,12 +19,6 @@ set -e
 # Get the latest version of pip so it recognize manylinux2010
 wget https://bootstrap.pypa.io/get-pip.py
 python3.6 get-pip.py
-<<<<<<< HEAD
-rm -f get-pip.py
-wget https://bootstrap.pypa.io/2.7/get-pip.py
-python get-pip.py
-=======
->>>>>>> upstream/master
 rm -f get-pip.py
 
 # Install pip packages from whl files to avoid the time-consuming process of

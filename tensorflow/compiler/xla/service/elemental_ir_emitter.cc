@@ -528,17 +528,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       // log(a+bi) = log(abs(a+bi)) + i*atan2(b,a)
       auto a = EmitExtractReal(operand_value);
       auto b = EmitExtractImag(operand_value);
-<<<<<<< HEAD
-      TF_ASSIGN_OR_RETURN(llvm::Value * angle, EmitAtan2(component_type, b, a));
-      TF_ASSIGN_OR_RETURN(llvm::Value * log_abs,
-                          EmitLogComplexAbs(component_type, operand_value));
-=======
       TF_ASSIGN_OR_RETURN(llvm::Value * angle,
                           EmitAtan2(component_type, b, a, ""));
       TF_ASSIGN_OR_RETURN(llvm::Value * abs,
                           EmitComplexAbs(component_type, operand_value));
       TF_ASSIGN_OR_RETURN(llvm::Value * log_abs, EmitLog(component_type, abs));
->>>>>>> upstream/master
       return EmitComposeComplex(op, log_abs, angle);
     }
     case HloOpcode::kLog1p: {
