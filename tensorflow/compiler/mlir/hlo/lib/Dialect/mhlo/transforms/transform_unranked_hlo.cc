@@ -475,6 +475,25 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
   }
 };
 
+// Rank-specialize chlo.broadcast_select ops.
+struct ConvertUnrankedDynamicBroadcastSelectOp
+    : public OpConversionPattern<chlo::BroadcastSelectOp> {
+  using OpConversionPattern<chlo::BroadcastSelectOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      chlo::BroadcastSelectOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    // For now only do the bare minimum and specialize for every rank. There is
+    // more potential for optimization here. This also is missing the
+    // specialization for rank 0.
+    rewriter.replaceOp(
+        op, {ConvertUnrankedDynamicBroadcastOpHelper<
+                chlo::BroadcastSelectOp,
+                mhlo::SelectOp>::HandleBroadcastAndOp(rewriter, op, operands)});
+    return success();
+  }
+};
+
 struct TransformUnrankedHloPass
     : public PassWrapper<TransformUnrankedHloPass, FunctionPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -539,6 +558,7 @@ void PopulateTransformUnrankedHloPatterns(MLIRContext *context,
       ConvertUnrankedDynamicBroadcastBinaryOp>(context, patterns);
   chlo::PopulateForBroadcastingBinaryOp<
       ConvertUnrankedScalarDynamicBroadcastBinaryOp>(context, patterns);
+  patterns->insert<ConvertUnrankedDynamicBroadcastSelectOp>(context);
 }
 
 std::unique_ptr<FunctionPass> createTransformUnrankedHloPass() {
