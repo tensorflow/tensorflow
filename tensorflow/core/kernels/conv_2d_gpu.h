@@ -903,7 +903,7 @@ struct TransposeElemType<8> {
 };
 template <>
 struct TransposeElemType<16> {
-  using type = float4;
+  using type = double2;
 };
 
 // A helper function to make RunSwapDimension1And2InTensor3 concise. This
