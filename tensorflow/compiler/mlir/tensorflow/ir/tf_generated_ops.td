@@ -17682,6 +17682,37 @@ https://www.tensorflow.org/performance/xla/operation_semantics#conv_convolution
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_XlaConvV2Op : TF_Op<"XlaConvV2", [NoSideEffect]> {
+  let summary = "Wraps the XLA ConvGeneralDilated operator, documented at";
+
+  let description = [{
+https://www.tensorflow.org/performance/xla/operation_semantics#conv_convolution
+.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{the input tensor}]>:$lhs,
+    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{the kernel tensor}]>:$rhs,
+    Arg<TF_I32OrI64Tensor, [{the inter-window strides}]>:$window_strides,
+    Arg<TF_I32OrI64Tensor, [{the padding to apply at the start and end of each input dimensions}]>:$padding,
+    Arg<TF_I32OrI64Tensor, [{dilation to apply between input elements}]>:$lhs_dilation,
+    Arg<TF_I32OrI64Tensor, [{dilation to apply between kernel elements}]>:$rhs_dilation,
+    Arg<TF_I32OrI64Tensor, [{number of feature groups for grouped convolution.}]>:$feature_group_count,
+
+    StrAttr:$dimension_numbers,
+    StrAttr:$precision_config
+  );
+
+  let results = (outs
+    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedOperandTypeAttr LhsT = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr RhsT = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr preferred_element_type = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_XlaDotOp : TF_Op<"XlaDot", [NoSideEffect]> {
   let summary = "Wraps the XLA DotGeneral operator, documented at";
 
@@ -17703,6 +17734,31 @@ https://www.tensorflow.org/performance/xla/operation_semantics#dotgeneral
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_XlaDotV2Op : TF_Op<"XlaDotV2", [NoSideEffect]> {
+  let summary = "Wraps the XLA DotGeneral operator, documented at";
+
+  let description = [{
+https://www.tensorflow.org/performance/xla/operation_semantics#dotgeneral
+.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{the LHS tensor}]>:$lhs,
+    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{the RHS tensor}]>:$rhs,
+
+    StrAttr:$dimension_numbers,
+    StrAttr:$precision_config
+  );
+
+  let results = (outs
+    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr LhsT = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr RhsT = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr preferred_element_type = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_XlaDynamicSliceOp : TF_Op<"XlaDynamicSlice", [NoSideEffect]> {
