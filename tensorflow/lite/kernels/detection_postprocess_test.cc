@@ -856,69 +856,6 @@ TEST(DetectionPostprocessOpTest, FloatTestwithNoBackgroundClassAndKeypoints) {
   EXPECT_THAT(m.GetOutput4<float>(),
               ElementsAreArray(ArrayFloatNear({3.0}, 1e-4)));
 }
-
-TEST(DetectionPostprocessOpTest,
-     QuantizedTestwithNoBackgroundClassAndKeypointsStableSort) {
-  DetectionPostprocessOpModelwithRegularNMS m(
-      {TensorType_UINT8, {1, 6, 5}, -1.0, 1.0},
-      {TensorType_UINT8, {1, 6, 2}, 0.0, 1.0},
-      {TensorType_UINT8, {6, 4}, 0.0, 100.5}, {TensorType_FLOAT32, {}},
-      {TensorType_FLOAT32, {}}, {TensorType_FLOAT32, {}},
-      {TensorType_FLOAT32, {}}, false);
-  // six boxes in center-size encoding
-  std::vector<std::vector<float>> inputs1 = {{
-      0.0, 0.0,  0.0, 0.0, 1.0,  // box #1
-      0.0, 1.0,  0.0, 0.0, 1.0,  // box #2
-      0.0, -1.0, 0.0, 0.0, 1.0,  // box #3
-      0.0, 0.0,  0.0, 0.0, 1.0,  // box #4
-      0.0, 1.0,  0.0, 0.0, 1.0,  // box #5
-      0.0, 0.0,  0.0, 0.0, 1.0   // box #6
-  }};
-  m.QuantizeAndPopulate<uint8_t>(m.input1(), inputs1[0]);
-  // class scores - two classes with background
-  // inputs2 values taken from ssd mobilenet v1 - a stable sort is required to
-  // retain order of equal elements
-  std::vector<std::vector<float>> inputs2 = {
-      {0.015625, 0.007812, 0.003906, 0.015625, 0.015625, 0.007812, 0.019531,
-       0.019531, 0.007812, 0.003906, 0.003906, 0.003906}};
-  m.QuantizeAndPopulate<uint8_t>(m.input2(), inputs2[0]);
-  // six anchors in center-size encoding
-  std::vector<std::vector<float>> inputs3 = {{
-      0.5, 0.5,   1.0, 1.0,  // anchor #1
-      0.5, 0.5,   1.0, 1.0,  // anchor #2
-      0.5, 0.5,   1.0, 1.0,  // anchor #3
-      0.5, 10.5,  1.0, 1.0,  // anchor #4
-      0.5, 10.5,  1.0, 1.0,  // anchor #5
-      0.5, 100.5, 1.0, 1.0   // anchor #6
-  }};
-  m.QuantizeAndPopulate<uint8_t>(m.input3(), inputs3[0]);
-  m.Invoke();
-  // detection_boxes
-  // in center-size
-  std::vector<int> output_shape1 = m.GetOutputShape1();
-  EXPECT_THAT(output_shape1, ElementsAre(1, 3, 4));
-  EXPECT_THAT(
-      m.GetOutput1<float>(),
-      ElementsAreArray(ArrayFloatNear(
-          {0.0, 10.0, 1.0, 11.0, 0.0, 0.0, 1.0, 1.0, 0.0, 100.0, 1.0, 101.0},
-          3e-1)));
-  // detection_classes
-  std::vector<int> output_shape2 = m.GetOutputShape2();
-  EXPECT_THAT(output_shape2, ElementsAre(1, 3));
-  EXPECT_THAT(m.GetOutput2<float>(),
-              ElementsAreArray(ArrayFloatNear({0, 0, 0}, 1e-1)));
-  // detection_scores
-  std::vector<int> output_shape3 = m.GetOutputShape3();
-  EXPECT_THAT(output_shape3, ElementsAre(1, 3));
-  EXPECT_THAT(m.GetOutput3<float>(),
-              ElementsAreArray(
-                  ArrayFloatNear({0.0196078, 0.0156863, 0.00392157}, 1e-7)));
-  // num_detections
-  std::vector<int> output_shape4 = m.GetOutputShape4();
-  EXPECT_THAT(output_shape4, ElementsAre(1));
-  EXPECT_THAT(m.GetOutput4<float>(),
-              ElementsAreArray(ArrayFloatNear({3.0}, 1e-1)));
-}
 }  // namespace
 }  // namespace custom
 }  // namespace ops
