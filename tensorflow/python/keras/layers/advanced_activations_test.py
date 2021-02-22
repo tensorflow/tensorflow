@@ -31,7 +31,7 @@ from tensorflow.python.platform import test
 class AdvancedActivationsTest(keras_parameterized.TestCase):
 
   def test_leaky_relu(self):
-    for alpha in [0., .5, -1.]:
+    for alpha in [0., .5]:
       testing_utils.layer_test(keras.layers.LeakyReLU,
                                kwargs={'alpha': alpha},
                                input_shape=(2, 3, 4),
