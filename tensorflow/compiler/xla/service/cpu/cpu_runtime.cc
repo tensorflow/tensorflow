@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 
+#include <cstdarg>
 #include <cstddef>
 #include <cstring>
 #include <functional>
@@ -116,6 +117,8 @@ extern const char* const kReleaseOutfeedBufferAfterPopulationSymbolName =
     "__xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation";
 extern const char* const kParallelForkJoinSymbolName =
     "__xla_cpu_runtime_ParallelForkJoin";
+extern const char* const kPrintfToStderrSymbolName =
+    "__xla_cpu_runtime_PrintfToStderr";
 extern const char* const kKeyValueSortSymbolName =
     "__xla_cpu_runtime_KeyValueSort";
 extern const char* const kTopKF32SymbolName = "__xla_cpu_runtime_TopKF32";
@@ -212,6 +215,16 @@ tensorflow::string ShapeString(const void* shape_ptr, xla::int32 shape_length) {
 }  // namespace
 
 extern "C" {
+
+TF_ATTRIBUTE_NO_SANITIZE_MEMORY int __xla_cpu_runtime_PrintfToStderr(
+    const char* format, ...) {
+  VLOG(3) << "__xla_cpu_runtime_PrintfToStderr " << format;
+  va_list args;
+  va_start(args, format);
+  int result = vfprintf(stderr, format, args);
+  va_end(args);
+  return result;
+}
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY xla::int64 __xla_cpu_runtime_TracingStart(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
