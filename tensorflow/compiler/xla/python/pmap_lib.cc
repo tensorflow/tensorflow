@@ -38,64 +38,6 @@ namespace jax {
 
 namespace py = pybind11;
 
-// TODO(jblespiau): Using `NoSharding` instead of `None` would allow us to
-// simplify the conversion logic.
-std::vector<AvalDimSharding> PyShardingToCpp(pybind11::tuple py_sharding) {
-  std::vector<AvalDimSharding> cpp_sharding;
-  cpp_sharding.reserve(py_sharding.size());
-  for (py::handle value : py_sharding) {
-    if (value.is_none()) {
-      cpp_sharding.push_back(NoSharding());
-    } else if (py::isinstance<Chunked>(value)) {
-      cpp_sharding.push_back(py::cast<Chunked>(value));
-    } else if (py::isinstance<Unstacked>(value)) {
-      cpp_sharding.push_back(py::cast<Unstacked>(value));
-    } else {
-      throw std::runtime_error(
-          absl::StrCat("Not supported Python object in PyShardingToCpp in "
-                       "pmap_lib.cc. The object was of type ",
-                       py::cast<std::string>(py::str(value.get_type())),
-                       "\n:", py::cast<std::string>(py::str(value))));
-    }
-  }
-  return cpp_sharding;
-}
-
-pybind11::tuple CppShardingToPy(std::vector<AvalDimSharding> sharding) {
-  py::tuple result(sharding.size());
-  int counter = 0;
-  for (auto value : sharding) {
-    if (absl::holds_alternative<NoSharding>(value)) {
-      result[counter++] = py::none();
-    } else if (absl::holds_alternative<Chunked>(value)) {
-      py::handle handle = py::cast(absl::get<Chunked>(value));
-      result[counter++] = py::cast<py::object>(handle);
-    } else if (absl::holds_alternative<Unstacked>(value)) {
-      py::handle handle = py::cast(absl::get<Unstacked>(value));
-      result[counter++] = py::cast<py::object>(handle);
-    } else {
-      LOG(FATAL) << "Unhandled CPP type in CppShardingToPy.";
-    }
-  }
-  return result;
-}
-
-std::vector<MeshDimAssignment> PyMeshShardingToCpp(
-    pybind11::tuple py_mesh_mapping) {
-  return py::cast<std::vector<MeshDimAssignment>>(py_mesh_mapping);
-}
-
-pybind11::tuple CppMeshMappingToPy(
-    std::vector<MeshDimAssignment> mesh_mapping) {
-  py::tuple result(mesh_mapping.size());
-  int counter = 0;
-  for (auto& value : mesh_mapping) {
-    result[counter] = py::cast(value);
-    ++counter;
-  }
-  return result;
-}
-
 namespace {
 
 struct PmapCacheEntry {
