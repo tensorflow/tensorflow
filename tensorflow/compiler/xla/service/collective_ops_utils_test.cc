@@ -140,20 +140,7 @@ std::string TestCase::ToString() const {
   StatusOr<CollectiveOpGroupMode> group_mode =
       GetCollectiveOpGroupMode(has_channel_id, use_global_device_ids);
   if (group_mode.ok()) {
-    switch (*group_mode) {
-      case CollectiveOpGroupMode::kCrossReplica:
-        s << "kCrossReplica";
-        break;
-      case CollectiveOpGroupMode::kCrossReplicaAndPartition:
-        s << "kCrossReplicaAndPartition";
-        break;
-      case CollectiveOpGroupMode::kFlattenedID:
-        s << "kFlattenedID";
-        break;
-      case CollectiveOpGroupMode::kCrossPartition:
-        s << "kCrossPartition";
-        break;
-    }
+    s << CollectiveOpGroupModeToString(*group_mode);
   } else {
     s << "Invalid";
   }
@@ -191,7 +178,7 @@ std::vector<TestCase> GetTestCases() {
     {
       {{33, 34}, {44, 45}, {55, 56}},  // 3r, 2p
       {},                              // empty replica groups
-      false,                           // has_chanel_id
+      false,                           // has_channel_id
       false,                           // use_global_device_ids
       // for empty replica group, any id should return all replicas within that
       // partition.

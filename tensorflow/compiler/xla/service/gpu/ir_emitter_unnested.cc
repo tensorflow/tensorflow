@@ -60,6 +60,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
@@ -3146,14 +3147,19 @@ template <typename NcclThunkType, typename OpTy>
 Status IrEmitterUnnested::EmitNcclThunkFromMlir(MlirEmitterInput input) {
   OpTy op = mlir::cast<OpTy>(input.op);
   int64 replica_count = hlo_module_config_.replica_count();
+  int64 partition_count = hlo_module_config_.num_partitions();
   VLOG(2) << NcclThunkType::GetName() << "; replica count: " << replica_count
+          << "; partition count: " << partition_count
           << "; operand count: " << op.operands().size()
           << "; NCCL is enabled: " << NcclThunkType::NcclIsEnabled();
 
-  // Note the replica_count == 1 case is handled via device-to-device copy
-  // below.
+  // A given collective op can be degenerate if across all groups formed
+  // by it are singleton. In such a case, we don't need to do any communication
+  // and we can just copy the input to the output.
+  bool is_degenerate =
+      NcclThunkType::IsDegenerate(op, replica_count, partition_count);
   bool should_use_nccl_thunk =
-      replica_count > 1 && NcclThunkType::CanImplement(op);
+      !is_degenerate && NcclThunkType::CanImplement(op);
 
   // Stash relevant information in NcclAllGatherThunk::Buffer even if we may
   // not generate an NcclAllGatherThunk.
@@ -3173,17 +3179,21 @@ Status IrEmitterUnnested::EmitNcclThunkFromMlir(MlirEmitterInput input) {
 
   if (should_use_nccl_thunk) {
     auto nccl_thunk =
-        absl::make_unique<NcclThunkType>(input.thunk_info, op, replica_count,
+        absl::make_unique<NcclThunkType>(input.thunk_info, op,
                                          /*buffers=*/std::move(buffers));
     AddThunkToThunkSequence(std::move(nccl_thunk));
     return Status::OK();
   }
 
   if (replica_count != 1) {
+    CollectiveOpGroupMode group_mode = NcclThunkType::GetGroupMode(op);
+
     string message = absl::StrFormat(
         "Requested %s not implemented on GPU; replica_count: %d; "
-        "operand_count: %d; NCCL support: %d",
-        NcclThunkType::GetName(), replica_count, op.operands().size(),
+        "partition_count: %d, group_mode: %s, operand_count: %d; NCCL support: "
+        "%d",
+        NcclThunkType::GetName(), replica_count, partition_count,
+        CollectiveOpGroupModeToString(group_mode), op.operands().size(),
         NcclThunkType::NcclIsEnabled());
     if (!op.operands().empty()) {
       const Shape shape = TypeToShape(op.operands().front().getType());

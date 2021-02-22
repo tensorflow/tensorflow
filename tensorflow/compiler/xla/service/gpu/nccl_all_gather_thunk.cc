@@ -30,10 +30,11 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-static NcclAllGatherConfig GetNcclAllGatherConfig(mlir::lmhlo::AllGatherOp op,
-                                                  int64 replica_count) {
+/*static*/ NcclAllGatherConfig NcclAllGatherThunk::GetNcclAllGatherConfig(
+    mlir::lmhlo::AllGatherOp op) {
   NcclAllGatherConfig config;
-  config.config = GetNcclCollectiveConfigForMlir(op, replica_count);
+  config.config =
+      GetNcclCollectiveConfigForMlir(op, op.use_global_device_ids());
   return config;
 }
 
@@ -59,10 +60,10 @@ static NcclAllGatherConfig GetNcclAllGatherConfig(mlir::lmhlo::AllGatherOp op,
 }
 
 NcclAllGatherThunk::NcclAllGatherThunk(
-    ThunkInfo thunk_info, mlir::lmhlo::AllGatherOp op, int64 replica_count,
+    ThunkInfo thunk_info, mlir::lmhlo::AllGatherOp op,
     std::vector<NcclAllGatherThunk::Buffer> buffers)
     : NcclCollectiveThunk(Thunk::kNcclAllGather, thunk_info),
-      config_(GetNcclAllGatherConfig(op, replica_count)),
+      config_(GetNcclAllGatherConfig(op)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());
 }

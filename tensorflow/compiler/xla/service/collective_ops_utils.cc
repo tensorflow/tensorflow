@@ -99,6 +99,20 @@ StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
   }
 }
 
+absl::string_view CollectiveOpGroupModeToString(
+    CollectiveOpGroupMode group_mode) {
+  switch (group_mode) {
+    case CollectiveOpGroupMode::kCrossReplica:
+      return "kCrossReplica";
+    case CollectiveOpGroupMode::kCrossPartition:
+      return "kCrossPartition";
+    case CollectiveOpGroupMode::kCrossReplicaAndPartition:
+      return "kCrossReplicAndPartition";
+    case CollectiveOpGroupMode::kFlattenedID:
+      return "kFlattenedID";
+  }
+}
+
 StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
     GlobalDeviceId device_id, const DeviceAssignment& device_assignment,
     absl::Span<const ReplicaGroup> replica_groups,

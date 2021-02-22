@@ -85,6 +85,9 @@ enum class CollectiveOpGroupMode {
   kFlattenedID,
 };
 
+absl::string_view CollectiveOpGroupModeToString(
+    CollectiveOpGroupMode group_mode);
+
 // Returns the group formation mode implied by (a) whether the operation has
 // channel_id and (b) if it has use_global_device_ids and if yes, its value.
 StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(

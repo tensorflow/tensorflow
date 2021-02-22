@@ -53,6 +53,54 @@ NcclCollectiveConfig::~NcclCollectiveConfig() = default;
 NcclCollectiveConfig& NcclCollectiveConfig::operator=(NcclCollectiveConfig&&) =
     default;
 
+// Returns if the collective communication operation is degenerate because all
+// the groups formed by the operation are singleton. A given op can be
+// degenerate under several conditions, corresponding to the modes supported
+// in GetParticipatingDevices().
+//   1. no channel id, use_global_device_ids = false:
+//         degenerate if replica_groups are singleton, or groups empty and
+//         replica_count == 1.
+//   2. channel_id is set, use_global_device_ids = false:
+//         degenerate if replica_groups are singleton and num_partitions == 1,
+//         or groups empty and num_replicas == 1 && num_partitions == 1.
+//   3. channel_id is set, use_global_device_ids = true (flattened-ids):
+//         degenerate if replica_groups are singleton (groups cannot be empty).
+//   4. no channel_id, no use_global_device_ids:
+//         identical to 1.
+//   5. channel_id is set, no use_global_device_ids:
+//         degenerate if replica_groups are singleton or group emty and
+//         num_partitions == 1 (since replica groups contain partition ids).
+//
+bool NcclCollectiveConfig::IsDegenerate(int64_t replica_count,
+                                        int64_t partition_count) const {
+  bool groups_empty = replica_groups.empty();
+
+  // check if all replica_groups are singleton. If not, then the operation is
+  // not degenerate.
+  bool all_groups_singleton =
+      !groups_empty &&
+      absl::c_all_of(replica_groups, [](const ReplicaGroup& group) {
+        return group.replica_ids_size() == 1;
+      });
+
+  switch (group_mode) {
+    case CollectiveOpGroupMode::kCrossReplica:
+      return all_groups_singleton || (groups_empty && replica_count == 1);
+    case CollectiveOpGroupMode::kCrossPartition:
+      return all_groups_singleton || (groups_empty && partition_count == 1);
+    case CollectiveOpGroupMode::kCrossReplicaAndPartition:
+      return (all_groups_singleton && partition_count == 1) ||
+             (groups_empty && replica_count == 1 && partition_count == 1);
+    case CollectiveOpGroupMode::kFlattenedID:
+      CHECK(!groups_empty)
+          << "replica groups cannot be empty if use_global_device_ids = true";
+      return all_groups_singleton;
+    default:
+      CHECK(0) << "Invalid collective op mode";
+      return false;
+  }
+}
+
 /* static */ bool NcclCollectiveThunk::NcclIsEnabled() {
 #if XLA_ENABLE_XCCL
   return true;
@@ -73,10 +121,10 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(
       std::vector<GlobalDeviceId> participants,
       GetParticipatingDevices(global_device_id, *params.device_assn,
-                              config().replica_groups,
-                              CollectiveOpGroupMode::kCrossReplica));
+                              config().replica_groups, config().group_mode));
 
-  if (IsGlobalNcclConfig() && (participants.size() != config().replica_count)) {
+  if (IsGlobalNcclConfig() &&
+      (participants.size() != params.device_assn->replica_count())) {
     return InvalidArgument(
         "Partial replica groups are not allowed when using NCCL_COMM_ID "
         "environment configuration.");
