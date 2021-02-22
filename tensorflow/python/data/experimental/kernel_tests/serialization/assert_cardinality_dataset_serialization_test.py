@@ -27,7 +27,7 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
-class AssertCardinalityCheckpointTest(
+class AssertCardinalityDatasetCheckpointTest(
     checkpoint_test_base.CheckpointTestBase,
     parameterized.TestCase):
 
