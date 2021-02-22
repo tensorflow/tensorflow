@@ -154,12 +154,21 @@ struct RendezvousKey {
     return !(a == b);
   }
 
+  absl::string_view CollectiveOpKindString() const {
+    switch (collective_op_kind) {
+      case kCrossModule:
+        return "cross_module";
+      case kCrossReplica:
+        return "cross_replica";
+    }
+  }
+
   string ToString() const {
     return absl::StrFormat(
         "RendezvousKey{run_id=%s, global_devices=[%s], "
-        "num_local_participants=%d, collective_op_kind=%d, op_id=%d}",
+        "num_local_participants=%d, collective_op_kind=%s, op_id=%d}",
         run_id.ToString(), GlobalDeviceIdsToString(global_devices),
-        num_local_participants, static_cast<int>(collective_op_kind), op_id);
+        num_local_participants, CollectiveOpKindString(), op_id);
   }
 
   RunId run_id;
