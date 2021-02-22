@@ -19,15 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-from io import BytesIO
 import itertools
 import json
 import os
-import tempfile
 import warnings
-import zipfile
 
-import numpy as np
 import six
 
 from tensorflow.python.autograph.lang import directives
@@ -58,6 +54,7 @@ from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.mixed_precision import loss_scale_optimizer as lso
 from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.saving import hdf5_format
+from tensorflow.python.keras.saving import pack_model
 from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.saving.saved_model import json_utils
@@ -70,15 +67,12 @@ from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.keras.utils.io_utils import path_to_string
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
-from tensorflow.python.lib.io import file_io as io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.platform.gfile import GFile
 from tensorflow.python.profiler import trace
 from tensorflow.python.saved_model import constants as sm_constants
 from tensorflow.python.saved_model import loader_impl as sm_loader
@@ -143,28 +137,6 @@ def is_functional_model_init_params(args, kwargs):
   return (len(args) == 2 or
           len(args) == 1 and 'outputs' in kwargs or
           'inputs' in kwargs and 'outputs' in kwargs)
-
-
-def unpack_keras_model(packed_keras_model):
-  """Reconstruct a model from the result of __reduce__
-  """
-  b = BytesIO(packed_keras_model)
-  with tempfile.TemporaryDirectory() as tmpdirname:
-    # use tmpdirname to create directory name that
-    # avoids race conditions and other issues
-    temp_dir = "ram://{}".format(tmpdirname)
-    with zipfile.ZipFile(b, "r") as zf:
-      for path in zf.namelist():
-        dest = os.path.join(temp_dir, path)
-        io.create_dir_v2(os.path.dirname(dest))
-        with GFile(dest, "wb") as f:
-          f.write(zf.read(path))
-    model = save.load_model(temp_dir)
-    for root, _, filenames in io.walk_v2(temp_dir):
-      for filename in filenames:
-        dest = os.path.join(root, filename)
-        io.delete_file_v2(dest)
-    return model
 
 
 @keras_export('keras.Model', 'keras.models.Model')
@@ -254,28 +226,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       return functional.Functional(skip_init=True, *args, **kwargs)
     else:
       return super(Model, cls).__new__(cls, *args, **kwargs)
-
-  def __reduce__(self):
-    """Support for Pythons's Pickle protocol.
-    """
-    with tempfile.TemporaryDirectory() as tmpdirname:
-      # use tmpdirname to create directory name that
-      # avoids race conditions and other issues
-      temp_dir = "ram://{}".format(tmpdirname)
-      b = BytesIO()
-      self.save(temp_dir)
-      with zipfile.ZipFile(b, "w") as zf:
-        for root, _, filenames in io.walk_v2(temp_dir):
-          for filename in filenames:
-            dest = os.path.join(root, filename)
-            with GFile(dest, "rb") as f:
-              zf.writestr(os.path.relpath(dest, temp_dir), f.read())
-            io.delete_file_v2(dest)
-      b.seek(0)
-      return (
-        unpack_keras_model,
-        (np.asarray(memoryview(b.read())), ),
-      )
 
   @trackable.no_automatic_dependency_tracking
   def __init__(self, *args, **kwargs):
@@ -2126,6 +2076,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     # pylint: enable=line-too-long
     save.save_model(self, filepath, overwrite, include_optimizer, save_format,
                     signatures, options, save_traces)
+    
+  def __reduce__(self):
+    return pack_model(self)
 
   def save_weights(self,
                    filepath,
