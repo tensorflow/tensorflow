@@ -22,10 +22,25 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/service/worker.pb.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace data {
+
+// The result of a GetElement request. Exactly one of the following will be
+// true: (1) `components` is nonempty (2) `end_of_sequence` is true (3) `skip`
+// is true.
+struct GetElementResult {
+  // A dataset element produced by a GetElement request.
+  std::vector<Tensor> components;
+  // If true, indicates that there is no more data to read.
+  bool end_of_sequence;
+  // If true, indicates that there is still data, but the caller should skip
+  // reading from the worker. This is used for load balancing when doing round
+  // robin reads.
+  bool skip;
+};
 
 // Client for communicating with the tf.data service transfer server.
 class DataTransferClient {
@@ -40,7 +55,7 @@ class DataTransferClient {
 
   // Fetches the next element.
   virtual Status GetElement(const GetElementRequest& req,
-                            GetElementResponse& resp) = 0;
+                            GetElementResult& result) = 0;
 
   // Makes a best effort to cancel all outstanding calls in progress for the
   // client, and causes further calls to return Cancelled status.
@@ -58,7 +73,7 @@ class DataTransferClient {
 class DataTransferServer {
  public:
   using GetElementT =
-      std::function<Status(const GetElementRequest*, GetElementResponse*)>;
+      std::function<Status(const GetElementRequest*, GetElementResult*)>;
   virtual ~DataTransferServer() = default;
 
   // Starts DataTransferServer, it should be available for requests afterwards.

@@ -676,7 +676,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    Status TryGetElement(const Task& task, GetElementResponse& resp) {
+    Status TryGetElement(const Task& task, GetElementResult& result) {
       GetElementRequest req;
       req.set_task_id(task.info.task_id());
       req.set_skipped_previous_round(task.skipped_previous_round);
@@ -687,34 +687,28 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         req.set_round_index(task.round);
         req.set_allow_skip(true);
       }
-      return task.worker->GetElement(req, resp);
+      return task.worker->GetElement(req, result);
     }
 
     void ProcessGetElementResponse(bool enqueue_result,
-                                   GetElementResponse& resp, Result& result,
-                                   Task& task) {
-      std::vector<Tensor> element;
-      if (resp.has_compressed_element()) {
-        Tensor tensor(DT_VARIANT, TensorShape{});
-        tensor.scalar<Variant>()() = std::move(resp.compressed_element());
-        element.push_back(tensor);
-      }
+                                   GetElementResult& get_element_result,
+                                   Result& result, Task& task) {
       mutex_lock l(mu_);
       result.ready = true;
-      result.end_of_sequence = resp.end_of_sequence();
-      if (resp.has_compressed_element()) {
+      result.end_of_sequence = get_element_result.end_of_sequence;
+      result.skip = get_element_result.skip;
+      if (!get_element_result.end_of_sequence && !get_element_result.skip) {
         task.skipped_previous_round = false;
         task.round++;
-        result.element = std::move(element);
-      } else if (resp.skip_task()) {
+        result.element = std::move(get_element_result.components);
+      } else if (result.skip) {
         task.skipped_previous_round = true;
         task.round++;
-        result.skip = true;
       } else {
         task.end_of_sequence = true;
         finished_tasks_++;
       }
-      if (enqueue_result && !resp.end_of_sequence()) {
+      if (enqueue_result && !result.end_of_sequence) {
         results_.push(std::move(result));
       }
       get_next_cv_.notify_all();
@@ -730,9 +724,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         return profiler::TraceMeEncode(
             {{"address", task->info.worker_address()}});
       });
-      GetElementResponse resp;
+      GetElementResult get_element_result;
       for (int num_retries = 0;; ++num_retries) {
-        Status s = TryGetElement(*task, resp);
+        Status s = TryGetElement(*task, get_element_result);
         if (s.ok()) break;
         // Retry all errors that could indicate preemption.
         if (!errors::IsUnavailable(s) && !errors::IsCancelled(s) &&
@@ -758,7 +752,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                 << " microseconds";
         Env::Default()->SleepForMicroseconds(backoff_until - now_micros);
       }
-      ProcessGetElementResponse(enqueue_result, resp, result, *task);
+      ProcessGetElementResponse(enqueue_result, get_element_result, result,
+                                *task);
       return Status::OK();
     }
 

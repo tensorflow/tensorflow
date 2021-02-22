@@ -211,7 +211,8 @@ class TestBase(test_base.DatasetTestBase):
                                job_name=None,
                                consumer_index=None,
                                num_consumers=None,
-                               max_outstanding_requests=None):
+                               max_outstanding_requests=None,
+                               compression="AUTO"):
     # pylint: disable=protected-access
     return dataset.apply(
         data_service_ops._distribute(
@@ -221,18 +222,21 @@ class TestBase(test_base.DatasetTestBase):
             consumer_index=consumer_index,
             num_consumers=num_consumers,
             max_outstanding_requests=max_outstanding_requests,
-            task_refresh_interval_hint_ms=20))
+            task_refresh_interval_hint_ms=20,
+            compression=compression))
 
   def make_distributed_range_dataset(self,
                                      num_elements,
                                      cluster,
                                      processing_mode="parallel_epochs",
                                      job_name=None,
-                                     max_outstanding_requests=None):
+                                     max_outstanding_requests=None,
+                                     compression="AUTO"):
     dataset = dataset_ops.Dataset.range(num_elements)
     return self.make_distributed_dataset(
         dataset,
         cluster,
         processing_mode=processing_mode,
         job_name=job_name,
-        max_outstanding_requests=max_outstanding_requests)
+        max_outstanding_requests=max_outstanding_requests,
+        compression=compression)

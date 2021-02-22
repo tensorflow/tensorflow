@@ -36,12 +36,11 @@ class GrpcWorkerImpl : public WorkerService::Service {
   Status Start(const std::string& worker_address,
                const std::string& transfer_address);
 
-  std::function<Status(const GetElementRequest*, GetElementResponse*)>
+  std::function<Status(const GetElementRequest*, GetElementResult*)>
   get_element_getter() {
-    return
-        [this](const GetElementRequest* request, GetElementResponse* response) {
-          return impl_.GetElement(request, response);
-        };
+    return [this](const GetElementRequest* request, GetElementResult* result) {
+      return impl_.GetElementResult(request, result);
+    };
   }
 
 #define HANDLER(method)                                 \

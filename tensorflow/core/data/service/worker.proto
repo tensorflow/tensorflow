@@ -32,7 +32,10 @@ message GetElementRequest {
 
 message GetElementResponse {
   // The produced element.
-  CompressedElement compressed_element = 3;
+  oneof element {
+    CompressedElement compressed = 3;
+    UncompressedElement uncompressed = 5;
+  }
   // Boolean to indicate whether the iterator has been exhausted.
   bool end_of_sequence = 2;
   // Indicates whether the round was skipped.

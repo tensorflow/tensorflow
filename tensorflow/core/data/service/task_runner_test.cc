@@ -13,7 +13,6 @@ limitations under the License.
 #include "tensorflow/core/data/service/task_runner.h"
 
 #include "absl/memory/memory.h"
-#include "tensorflow/core/data/compression_utils.h"
 #include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -34,10 +33,7 @@ class TestTaskIterator : public TaskIterator {
   Status GetNext(std::vector<Tensor>& element, bool& end_of_sequence) override {
     end_of_sequence = index_ >= elements_.size();
     if (!end_of_sequence) {
-      CompressedElement compressed;
-      TF_RETURN_IF_ERROR(CompressElement(elements_[index_], &compressed));
-      element.emplace_back(DT_VARIANT, TensorShape({}));
-      element[0].scalar<Variant>()() = std::move(compressed);
+      element = elements_[index_];
       index_ = (index_ + 1) % elements_.size();
     }
     return Status::OK();
@@ -59,16 +55,13 @@ Status RunConsumer(int64 consumer_index, int64 start_index, int64 end_index,
     request.set_consumer_index(consumer_index);
     request.set_skipped_previous_round(false);
     request.set_allow_skip(false);
-    GetElementResponse response;
+    GetElementResult result;
     do {
-      TF_RETURN_IF_ERROR(task_runner.GetNext(request, response));
-      if (!response.end_of_sequence()) {
-        std::vector<Tensor> uncompressed;
-        TF_RETURN_IF_ERROR(
-            UncompressElement(response.compressed_element(), &uncompressed));
-        output.push_back(uncompressed[0].flat<int64>()(0));
+      TF_RETURN_IF_ERROR(task_runner.GetNext(request, result));
+      if (!result.end_of_sequence) {
+        output.push_back(result.components[0].flat<int64>()(0));
       }
-    } while (response.skip_task());
+    } while (result.skip);
   }
   return Status::OK();
 }
@@ -84,14 +77,12 @@ TEST(FirstComeFirstServedTaskRunner, GetNext) {
   FirstComeFirstServedTaskRunner runner(
       absl::make_unique<TestTaskIterator>(elements));
   GetElementRequest request;
-  GetElementResponse response;
+  GetElementResult result;
   for (auto& expected_element : elements) {
-    TF_ASSERT_OK(runner.GetNext(request, response));
-    ASSERT_FALSE(response.end_of_sequence());
-    std::vector<Tensor> element;
-    TF_ASSERT_OK(UncompressElement(response.compressed_element(), &element));
-    ASSERT_EQ(element.size(), 1);
-    test::ExpectEqual(element[0], expected_element[0]);
+    TF_ASSERT_OK(runner.GetNext(request, result));
+    ASSERT_FALSE(result.end_of_sequence);
+    ASSERT_EQ(result.components.size(), 1);
+    test::ExpectEqual(result.components[0], expected_element[0]);
   }
 }
 

@@ -30,7 +30,7 @@ namespace data {
 
 // Increment this when making backwards-incompatible changes to communication
 // between tf.data servers.
-constexpr int kDataServiceVersion = 1;
+constexpr int kDataServiceVersion = 2;
 
 // Modes for how a tf.data service job should process a dataset.
 enum class ProcessingMode : int64 {
@@ -150,7 +150,7 @@ class DataServiceWorkerClient : public DataServiceClientBase {
         transfer_protocol_(transfer_protocol) {}
 
   // Fetches an element from the worker.
-  Status GetElement(const GetElementRequest& req, GetElementResponse& resp);
+  Status GetElement(const GetElementRequest& req, GetElementResult& result);
 
   // Makes a best effort to cancel all outstanding calls in progress for the
   // client, and causes further calls to return Cancelled status.

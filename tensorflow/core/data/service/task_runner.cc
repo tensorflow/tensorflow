@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/task_runner.h"
 
-#include "tensorflow/core/data/compression_utils.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor_util.h"
@@ -32,40 +31,6 @@ const int64 kTimeoutUs = 60 * 1000 * 1000;  // 1 minute.
 // Time to wait before skipping a round if data still isn't available.
 const int64 kWaitBeforeSkipUs = 100 * 1000;  // 100ms.
 
-// Interprets `element` as a size-1 vector containing a CompressedElement, and
-// moves the element into `resp`. Returns an error if `element` is of unexpected
-// size, type, or shape.
-Status MoveCompressedElement(std::vector<Tensor>&& element,
-                             GetElementResponse& resp) {
-  if (element.size() != 1) {
-    return errors::FailedPrecondition(
-        "Expected dataset to produce a single scalar variant tensor, but the "
-        "dataset produced ",
-        element.size(), " outputs");
-  }
-  if (element[0].dtype() != DT_VARIANT) {
-    return errors::FailedPrecondition(
-        "Expected dataset to produce a single scalar variant tensor, but "
-        "the dataset produced a tensor with type ",
-        DataTypeString(element[0].dtype()));
-  }
-  if (!TensorShapeUtils::IsScalar(element[0].shape())) {
-    return errors::FailedPrecondition(
-        "Expected dataset to produce a single scalar variant tensor, but "
-        "the dataset produced a tensor with shape ",
-        element[0].shape());
-  }
-  Variant& variant = element[0].scalar<Variant>()();
-  CompressedElement* compressed = variant.get<CompressedElement>();
-  if (compressed == nullptr) {
-    return errors::FailedPrecondition(
-        "Expected dataset to produce a CompressedElement variant tensor, but "
-        "it produced ",
-        variant.TypeName());
-  }
-  *resp.mutable_compressed_element() = *compressed;
-  return Status::OK();
-}
 }  // namespace
 
 StandaloneTaskIterator::StandaloneTaskIterator(
@@ -109,14 +74,14 @@ FirstComeFirstServedTaskRunner::FirstComeFirstServedTaskRunner(
     : iterator_(std::move(iterator)) {}
 
 Status FirstComeFirstServedTaskRunner::GetNext(const GetElementRequest& req,
-                                               GetElementResponse& resp) {
+                                               GetElementResult& result) {
   std::vector<Tensor> element;
   bool end_of_task;
-  resp.set_skip_task(false);
+  result.skip = false;
   TF_RETURN_IF_ERROR(iterator_->GetNext(element, end_of_task));
-  resp.set_end_of_sequence(end_of_task);
+  result.end_of_sequence = end_of_task;
   if (!end_of_task) {
-    return MoveCompressedElement(std::move(element), resp);
+    result.components = std::move(element);
   }
   return Status::OK();
 }
@@ -208,14 +173,14 @@ Status RoundRobinTaskRunner::PrepareRound(const GetElementRequest& req) {
 }
 
 Status RoundRobinTaskRunner::GetNext(const GetElementRequest& req,
-                                     GetElementResponse& resp) {
+                                     GetElementResult& result) {
   TF_RETURN_IF_ERROR(ValidateRequest(req));
-  resp.set_end_of_sequence(false);
+  result.end_of_sequence = false;
   VLOG(2) << "Received request from consumer index " << req.consumer_index()
           << " for round " << req.round_index();
   TF_RETURN_IF_ERROR(PrepareRound(req));
   tf_shared_lock l(mu_);
-  resp.set_skip_task(round_skipped_);
+  result.skip = round_skipped_;
   if (round_skipped_) {
     VLOG(1) << "Buffer not ready, skipping round " << current_round_
             << " for consumer " << req.consumer_index();
@@ -233,7 +198,8 @@ Status RoundRobinTaskRunner::GetNext(const GetElementRequest& req,
     VLOG(2) << "Returning to consumer " << req.consumer_index() << " for round "
             << req.round_index() << ". element size " << size;
   }
-  return MoveCompressedElement(std::move(element), resp);
+  result.components = std::move(element);
+  return Status::OK();
 }
 
 PrefetchThread::PrefetchThread(std::unique_ptr<TaskIterator> iterator,

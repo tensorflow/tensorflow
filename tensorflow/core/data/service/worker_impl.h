@@ -44,6 +44,11 @@ class DataServiceWorkerImpl {
   Status Start(const std::string& worker_address,
                const std::string& transfer_address);
 
+  // Serves a GetElement request, storing the result in `*result`. See
+  // worker.proto for GetElement API documentation.
+  Status GetElementResult(const GetElementRequest* request,
+                          GetElementResult* result);
+
   // See worker.proto for API documentation.
 
   /// Dispatcher-facing API.

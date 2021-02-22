@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_TASK_RUNNER_H_
 
 #include "tensorflow/core/data/service/common.pb.h"
+#include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/platform/status.h"
@@ -62,7 +63,7 @@ class TaskRunner {
   virtual ~TaskRunner() = default;
   // Gets the next element for the given request.
   virtual Status GetNext(const GetElementRequest& req,
-                         GetElementResponse& resp) = 0;
+                         GetElementResult& result) = 0;
 };
 
 // A task runner which provides elements on a first-come first-served basis.
@@ -72,7 +73,7 @@ class FirstComeFirstServedTaskRunner : public TaskRunner {
   explicit FirstComeFirstServedTaskRunner(
       std::unique_ptr<TaskIterator> iterator);
   Status GetNext(const GetElementRequest& req,
-                 GetElementResponse& resp) override;
+                 GetElementResult& result) override;
 
  private:
   std::unique_ptr<TaskIterator> iterator_;
@@ -134,7 +135,7 @@ class RoundRobinTaskRunner : public TaskRunner {
                        int64 num_consumers);
 
   Status GetNext(const GetElementRequest& req,
-                 GetElementResponse& resp) override;
+                 GetElementResult& result) override;
 
  private:
   // Prepares a full round of data. `wait_us` indicates how long to wait before

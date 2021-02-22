@@ -61,9 +61,27 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
         work_dir=work_dir,
         fault_tolerant_mode=fault_tolerant_mode)
     num_elements = 10
-    ds = self.make_distributed_range_dataset(10, cluster)
+    ds = self.make_distributed_range_dataset(num_elements, cluster)
     results = [elem.numpy() for elem in ds]
     self.assertEqual(list(range(num_elements)), results)
+
+  @combinations.generate(
+      combinations.times(test_base.eager_only_combinations(),
+                         combinations.combine(compression=[None, "AUTO"])))
+  def testDistributeCompression(self, compression):
+    cluster = self.create_cluster(num_workers=1)
+    num_elements = 10
+    ds = self.make_distributed_range_dataset(
+        num_elements, cluster, compression=compression)
+    results = [elem.numpy() for elem in ds]
+    self.assertEqual(list(range(num_elements)), results)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDistributeInvalidCompression(self):
+    cluster = self.create_cluster(num_workers=1)
+    with self.assertRaisesRegex(ValueError,
+                                "Invalid compression argument"):
+      self.make_distributed_range_dataset(10, cluster, compression="foo")
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeSparse(self):
