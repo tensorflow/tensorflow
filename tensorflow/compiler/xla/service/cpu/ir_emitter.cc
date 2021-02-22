@@ -2551,6 +2551,23 @@ llvm::Value* IrEmitter::EmitPrintf(absl::string_view fmt,
       call_args);
 }
 
+llvm::Value* IrEmitter::EmitFprintf(absl::string_view fmt,
+                                    absl::Span<llvm::Value* const> arguments) {
+  llvm::Type* ptr_ty = b_.getInt8Ty()->getPointerTo();
+  auto stderr_symbol =
+      b_.GetInsertBlock()->getParent()->getParent()->getOrInsertGlobal("stderr",
+                                                                       ptr_ty);
+  std::vector<llvm::Value*> call_args;
+  call_args.push_back(b_.CreateLoad(stderr_symbol));
+  call_args.push_back(b_.CreateGlobalStringPtr(llvm_ir::AsStringRef(fmt)));
+  absl::c_copy(arguments, std::back_inserter(call_args));
+  return b_.CreateCall(
+      b_.GetInsertBlock()->getParent()->getParent()->getOrInsertFunction(
+          "fprintf", llvm::FunctionType::get(b_.getInt32Ty(), {ptr_ty, ptr_ty},
+                                             /*isVarArg=*/true)),
+      call_args);
+}
+
 llvm::Value* IrEmitter::EmitCallToFunc(
     std::string func_name, const std::vector<llvm::Value*>& arguments,
     llvm::Type* return_type, bool does_not_throw, bool only_accesses_arg_memory,

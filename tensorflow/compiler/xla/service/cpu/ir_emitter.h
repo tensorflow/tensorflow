@@ -418,6 +418,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Emits printing during the execution.
   llvm::Value* EmitPrintf(absl::string_view fmt,
                           absl::Span<llvm::Value* const> arguments);
+  llvm::Value* EmitFprintf(absl::string_view fmt,
+                           absl::Span<llvm::Value* const> arguments);
 
   // Emits a call to a non-variadic function `func_name` with arguments
   // `arguments` assuming C calling convention.

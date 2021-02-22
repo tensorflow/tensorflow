@@ -237,7 +237,10 @@ namespace {
 bool RegisterKnownJITSymbols() {
   xla::CustomCallTargetRegistry* registry =
       xla::CustomCallTargetRegistry::Global();
+  registry->Register("fprintf", reinterpret_cast<void*>(&fprintf), "Host");
   registry->Register("printf", reinterpret_cast<void*>(&printf), "Host");
+  registry->Register("stderr", reinterpret_cast<void*>(&stderr), "Host");
+  registry->Register("puts", reinterpret_cast<void*>(&puts), "Host");
 
 #define REGISTER_CPU_RUNTIME_SYMBOL(base_name)                               \
   do {                                                                       \
