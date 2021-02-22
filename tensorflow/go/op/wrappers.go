@@ -14995,6 +14995,38 @@ func DebugNumericSummaryV2(scope *Scope, input tf.Output, optional ...DebugNumer
 	return op.Output(0)
 }
 
+// Wraps the XLA ConvGeneralDilated operator, documented at
+//
+//  https://www.tensorflow.org/performance/xla/operation_semantics#conv_convolution
+// .
+//
+// Arguments:
+//	lhs: the input tensor
+//	rhs: the kernel tensor
+//	window_strides: the inter-window strides
+//	padding: the padding to apply at the start and end of each input dimensions
+//	lhs_dilation: dilation to apply between input elements
+//	rhs_dilation: dilation to apply between kernel elements
+//	feature_group_count: number of feature groups for grouped convolution.
+//	dimension_numbers: a serialized xla::ConvolutionDimensionNumbers proto.
+//	precision_config: a serialized xla::PrecisionConfig proto.
+//	preferred_element_type: The type of the tensor.
+func XlaConvV2(scope *Scope, lhs tf.Output, rhs tf.Output, window_strides tf.Output, padding tf.Output, lhs_dilation tf.Output, rhs_dilation tf.Output, feature_group_count tf.Output, dimension_numbers string, precision_config string, preferred_element_type tf.DataType) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dimension_numbers": dimension_numbers, "precision_config": precision_config, "preferred_element_type": preferred_element_type}
+	opspec := tf.OpSpec{
+		Type: "XlaConvV2",
+		Input: []tf.Input{
+			lhs, rhs, window_strides, padding, lhs_dilation, rhs_dilation, feature_group_count,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Calculate product with tridiagonal matrix.
 //
 // Calculates product of two matrices, where left matrix is a tridiagonal matrix.
@@ -22117,6 +22149,33 @@ func ComplexAbs(scope *Scope, x tf.Output, optional ...ComplexAbsAttr) (y tf.Out
 		Type: "ComplexAbs",
 		Input: []tf.Input{
 			x,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Wraps the XLA DotGeneral operator, documented at
+//
+//  https://www.tensorflow.org/performance/xla/operation_semantics#dotgeneral
+// .
+//
+// Arguments:
+//	lhs: the LHS tensor
+//	rhs: the RHS tensor
+//	dimension_numbers: a serialized xla::DotDimensionNumbers proto.
+//	precision_config: a serialized xla::PrecisionConfig proto.
+//	preferred_element_type: The type of the tensor.
+func XlaDotV2(scope *Scope, lhs tf.Output, rhs tf.Output, dimension_numbers string, precision_config string, preferred_element_type tf.DataType) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dimension_numbers": dimension_numbers, "precision_config": precision_config, "preferred_element_type": preferred_element_type}
+	opspec := tf.OpSpec{
+		Type: "XlaDotV2",
+		Input: []tf.Input{
+			lhs, rhs,
 		},
 		Attrs: attrs,
 	}
