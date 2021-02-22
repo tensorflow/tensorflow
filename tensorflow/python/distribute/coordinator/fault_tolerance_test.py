@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import gc
 import os
+import sys
 import threading
 import time
 
@@ -29,6 +30,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
+from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.coordinator import cluster_coordinator
 from tensorflow.python.eager import context
@@ -159,27 +161,19 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
 
   def _ensure_threads_closed(self):
     """Ensures worker and preemption threads are closed."""
-
-    def _get_running_threads():
-      """Returns a set of all running thread names."""
-      running_threads = set()
-      for thread in threading.enumerate():
-        if thread.name is not None:
-          running_threads.add(thread.name)
-      return running_threads
-
-    def _has_thread(prefix, running_threads):
-      """Returns whether any 'running_threads' is prefixed with 'prefix'."""
-      for thread in running_threads:
-        if thread.startswith(prefix):
-          return True
-      return False
-
     # Worker and preemption threads should exist before releasing
     # ClusterCoordinator.
-    running_threads = _get_running_threads()
-    self.assertTrue(_has_thread(_WORKER_THREAD_PREFIX, running_threads))
+    running_threads = test_util.get_running_threads()
+    self.assertTrue(
+        test_util.has_thread(_WORKER_THREAD_PREFIX, running_threads))
     self.assertIn(_WORKER_PREEMPTION_THREAD_NAME, running_threads)
+
+    # Print object graph if ClusterCoordinator may leak.
+    if sys.getrefcount(self.cluster_coord) > 2:
+      try:
+        test_util.show_backref(self.cluster_coord)
+      except:  # pylint: disable=bare-except
+        pass
 
     # Wait for threads to close.
     self.cluster_coord = None
@@ -188,9 +182,11 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
     time.sleep(1)
 
     # Verify thread names.
-    running_threads = _get_running_threads()
+    running_threads = test_util.get_running_threads()
     self.assertNotIn(_WORKER_PREEMPTION_THREAD_NAME, running_threads)
-    self.assertFalse(_has_thread(_WORKER_THREAD_PREFIX, running_threads))
+    self.assertFalse(
+        test_util.has_thread(_WORKER_THREAD_PREFIX, running_threads),
+        "Worker thread is not stopped properly.")
 
   def _create_model_and_run_indefinitely(self):
     model = Model(self.cluster_coord)
