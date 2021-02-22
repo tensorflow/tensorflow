@@ -1008,6 +1008,7 @@ TfLiteStatus Subgraph::Invoke() {
     ReportError("Non-persistent memory is not available.");
     return kTfLiteError;
   }
+  TFLITE_SCOPED_TAGGED_DEFAULT_PROFILE(profiler_.get(), "Invoke");
 
   // Invocations are always done in node order.
   // Note that calling Invoke repeatedly will cause the original memory plan to

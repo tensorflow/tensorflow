@@ -288,8 +288,8 @@ Status DumpOpGraphToFile(mlir::ModuleOp module, const std::string& filename) {
 }
 
 Status ConvertMLIRToTFLiteFlatBuffer(
-    const toco::TocoFlags& toco_flags, mlir::OwningModuleRef module,
-    const mlir::TFL::PassConfig& pass_config,
+    const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
+    mlir::OwningModuleRef module, const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags, string* result,
     llvm::Optional<tensorflow::Session*> session) {
   bool emit_builtin_tflite_ops = !toco_flags.force_select_tf_ops();
@@ -311,7 +311,8 @@ Status ConvertMLIRToTFLiteFlatBuffer(
                        mlir::OpPassManager::Nesting::Implicit);
   ::tensorflow::SetCrashReproducer(pm);
 
-  tensorflow::AddTFToTFLConversionPasses(pass_config, &pm, session);
+  tensorflow::AddTFToTFLConversionPasses(model_flags, pass_config, &pm,
+                                         session);
   // Convert back to outlined while format for export back to flatbuffer.
   if (pass_config.legalize_tf_while) {
     pm.addPass(mlir::TFL::CreateWhileOutlinePass());

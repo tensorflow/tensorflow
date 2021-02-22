@@ -71,13 +71,13 @@ Status BatchOpRewriter::Init(
     return ::tensorflow::errors::Internal(
         "Failed to parse batch_op_rewrite_config from params.");
   }
-  LOG(INFO) << "BatchOp Rewrite config is " << config_.DebugString();
+  VLOG(2) << "BatchOp Rewrite config is " << config_.DebugString();
   return ::tensorflow::Status::OK();
 }
 
 Status BatchOpRewriter::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* optimized_graph) {
-  LOG(INFO) << "Running BatchOp Rewriter";
+  VLOG(2) << "Running BatchOp Rewriter";
   *optimized_graph = item.graph;
 
   if (config_.enable_adaptive_shared_batching_thread_pool()) {

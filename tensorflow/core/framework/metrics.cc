@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/metrics.h"
+
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
 
@@ -157,6 +159,10 @@ auto* xla_compilation_time_usecs = monitoring::Counter<0>::New(
     "/tensorflow/core/xla_compilation_time_usecs",
     "The total time spent on compiling XLA graphs in microseconds.");
 
+auto* xla_tpu_spmd_cores_per_replica = monitoring::Counter<1>::New(
+    "/tensorflow/tpu/xla_spmd_cores_per_replica",
+    "The number of cores used by XLA SPMD-replicated models.", "cores");
+
 auto* mlir_import_failure_count = monitoring::Counter<0>::New(
     "/tensorflow/mlir/import_failure_count",
     "The number of jobs that failed during mlir import or verification.");
@@ -254,6 +260,11 @@ void RecordGraphOutputTensors(const size_t size) {
   static auto* graph_run_output_tensor_bytes_cell =
       graph_run_output_tensor_bytes->GetCell();
   graph_run_output_tensor_bytes_cell->Add(size);
+}
+
+void RecordTPUXlaSpmdCoresPerReplica(int64 cores_per_replica) {
+  xla_tpu_spmd_cores_per_replica->GetCell(absl::StrCat(cores_per_replica))
+      ->IncrementBy(1);
 }
 
 void UpdateGraphExecTime(const uint64 running_time_usecs) {

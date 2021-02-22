@@ -993,6 +993,90 @@ struct ConvertZetaOp : public OpConversionPattern<ZetaOp> {
   }
 };
 
+struct ConvertSelectOp : public OpConversionPattern<BroadcastSelectOp> {
+  using OpConversionPattern<BroadcastSelectOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      BroadcastSelectOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    // Only support ranked operands.
+    typename BroadcastSelectOp::Adaptor transformed(operands);
+    Value pred = transformed.pred();
+    Value on_true = transformed.on_true();
+    Value on_false = transformed.on_false();
+    auto pred_type = pred.getType().dyn_cast<RankedTensorType>();
+    auto on_true_type = on_true.getType().dyn_cast<RankedTensorType>();
+    auto on_false_type = on_false.getType().dyn_cast<RankedTensorType>();
+    auto result_type = op.getResult().getType().dyn_cast<RankedTensorType>();
+    if (!pred_type || !on_true_type || !on_false_type || !result_type) {
+      return failure();
+    }
+
+    auto loc = op.getLoc();
+
+    Value pred_shape = rewriter.createOrFold<shape::ShapeOfOp>(loc, pred);
+    Value on_true_shape = rewriter.createOrFold<shape::ShapeOfOp>(loc, on_true);
+    Value on_false_shape =
+        rewriter.createOrFold<shape::ShapeOfOp>(loc, on_false);
+    int64_t result_rank = std::max(
+        {pred_type.getRank(), on_true_type.getRank(), on_false_type.getRank()});
+
+    Value broadcastable_cstr =
+        rewriter.createOrFold<shape::CstrBroadcastableOp>(
+            loc, ValueRange{pred_shape, on_true_shape, on_false_shape});
+    auto assuming_op = rewriter.create<shape::AssumingOp>(
+        loc, ArrayRef<Type>{result_type}, broadcastable_cstr);
+
+    OpBuilder::InsertionGuard guard(rewriter);
+    rewriter.createBlock(&assuming_op.doRegion());
+
+    Value result_extents = rewriter.createOrFold<shape::BroadcastOp>(
+        loc, shape::getExtentTensorType(op.getContext()),
+        ValueRange{pred_shape, on_true_shape, on_false_shape},
+        /*error=*/nullptr);
+    auto shape_type =
+        RankedTensorType::get({result_rank}, rewriter.getIndexType());
+    result_extents =
+        rewriter.createOrFold<tensor::CastOp>(loc, shape_type, result_extents);
+
+    Value broadcasted_pred = pred;
+    // Pred has an implicit broadcast for scalars, so use that when convenient.
+    if (pred_type.getRank() > 0) {
+      auto pred_broadcast_dimensions = llvm::to_vector<4>(
+          llvm::seq<int64_t>(result_rank - pred_type.getRank(), result_rank));
+      broadcasted_pred = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
+          loc,
+          RankedTensorType::get(result_type.getShape(),
+                                pred_type.getElementType()),
+          pred, result_extents,
+          rewriter.getI64TensorAttr(pred_broadcast_dimensions));
+    }
+    auto on_true_broadcast_dimensions = llvm::to_vector<4>(
+        llvm::seq<int64_t>(result_rank - on_true_type.getRank(), result_rank));
+    Value broadcasted_on_true = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
+        loc,
+        RankedTensorType::get(result_type.getShape(),
+                              on_true_type.getElementType()),
+        on_true, result_extents,
+        rewriter.getI64TensorAttr(on_true_broadcast_dimensions));
+    auto on_false_broadcast_dimensions = llvm::to_vector<4>(
+        llvm::seq<int64_t>(result_rank - on_false_type.getRank(), result_rank));
+    Value broadcasted_on_false = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
+        loc,
+        RankedTensorType::get(result_type.getShape(),
+                              on_false_type.getElementType()),
+        on_false, result_extents,
+        rewriter.getI64TensorAttr(on_false_broadcast_dimensions));
+
+    // And generate the final non-broadcasted ternary op.
+    Value final_result = rewriter.create<mhlo::SelectOp>(
+        loc, result_type, broadcasted_pred, broadcasted_on_true,
+        broadcasted_on_false);
+    rewriter.create<shape::AssumingYieldOp>(loc, final_result);
+    rewriter.replaceOp(op, {assuming_op.getResult(0)});
+    return success();
+  }
+};
+
 // Converts binary ops that statically are determined to not broadcast directly
 // to the corresponding mhlo non-broadcasting op.
 template <typename ChloOpTy, typename HloOpTy, typename Adaptor>
@@ -1140,6 +1224,7 @@ void PopulateChloBroadcastingPatterns(MLIRContext *context,
       context, patterns, 10);
   PopulateForBroadcastingBinaryOp<ConvertRankedDynamicBroadcastBinaryOp>(
       context, patterns, 5);
+  patterns->insert<ConvertSelectOp>(context);
 }
 
 void PopulateLegalizeChloToHloPatterns(MLIRContext *context,

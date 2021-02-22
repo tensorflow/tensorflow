@@ -84,18 +84,22 @@ struct PerThreadEvents {
   std::stack<PythonTraceEntry> active;
 };
 
+class PythonHooks;
+
 class PythonHookContext {
  public:
-  void Start(const PythonHooksOptions& option);
-  void Stop();
   void Finalize(XSpace* space);
-  void ProfileFast(PyFrameObject* frame, int what, PyObject* arg);
+
+  friend class ::tensorflow::profiler::PythonHooks;
 
  private:
+  void Start(const PythonHooksOptions& option);
+  void Stop();
+  void ProfileFast(PyFrameObject* frame, int what, PyObject* arg);
   void CollectData(XPlane* raw_plane);
   static void EnableTraceMe(bool enable);
 
-  void SetProfilerInAllThreads();
+  static void SetProfilerInAllThreads();
   static void ClearProfilerInAllThreads();
 
   void operator=(const PythonHookContext&) = delete;
@@ -134,6 +138,9 @@ class PythonHooks {
     return output;
   }
 
+  friend class ::tensorflow::profiler::PythonHookContext;
+
+ private:
   void ProfileSlow(const py::object& frame, const string& event,
                    const py::object& arg);
 
@@ -149,7 +156,9 @@ class PythonHooks {
 
   static PythonHookContext* e2e_context() { return e2e_context_; }
 
- private:
+  static int ProfileFunction(PyObject* obj, PyFrameObject* frame, int what,
+                             PyObject* arg);
+
   // active_context_ are accessed when GIL is held, therefore no race
   // conditions.
   std::unique_ptr<PythonHookContext> active_context_;

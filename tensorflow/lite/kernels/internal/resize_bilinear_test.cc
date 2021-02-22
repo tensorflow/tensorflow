@@ -15,6 +15,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <list>
+#include <typeinfo>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -43,8 +44,11 @@ void TestOneResizeBilinear(const tflite::ResizeBilinearParams& op_params,
   // issue with kernels failing to initialize the output.
   std::vector<T> output_data(output_buffer_size, 3);
 
-  const T min_amplitude = static_cast<T>(0);
-  const T max_amplitude = static_cast<T>(255);
+  // For typical integers, use full range. Clip to moderate range for floating.
+  const T min_amplitude = static_cast<T>(
+      std::max(-32768.0, static_cast<double>(std::numeric_limits<T>::min())));
+  const T max_amplitude = static_cast<T>(
+      std::min(65535.0, static_cast<double>(std::numeric_limits<T>::max())));
   FillRandom(&input_data, min_amplitude, max_amplitude);
 
   RuntimeShape output_size_dims({1, 1, 1, 2});
@@ -80,7 +84,7 @@ class ResizeBilinearImplTest
 
 TEST_P(ResizeBilinearImplTest, TestResizeBilinearUint8) {
   RandomEngine().seed(38291);
-  const int kTestsToRun = 1000;
+  const int kTestsToRun = 500;
   const tflite::ResizeBilinearParams op_params = GetParam();
 
   for (int i = 0; i < kTestsToRun; i++) {
@@ -99,7 +103,7 @@ TEST_P(ResizeBilinearImplTest, TestResizeBilinearUint8) {
 
 TEST_P(ResizeBilinearImplTest, TestResizeBilinearUint8_2x2) {
   RandomEngine().seed(96743);
-  const int kTestsToRun = 1000;
+  const int kTestsToRun = 500;
   const tflite::ResizeBilinearParams op_params = GetParam();
 
   for (int i = 0; i < kTestsToRun; i++) {
@@ -124,7 +128,7 @@ TEST_P(ResizeBilinearImplTest, TestResizeBilinearUint8_2x2) {
 
 TEST_P(ResizeBilinearImplTest, TestResizeBilinearFloat) {
   RandomEngine().seed(38291);
-  const int kTestsToRun = 1000;
+  const int kTestsToRun = 500;
   const tflite::ResizeBilinearParams op_params = GetParam();
 
   for (int i = 0; i < kTestsToRun; i++) {
@@ -149,7 +153,7 @@ TEST_P(ResizeBilinearImplTest, TestResizeBilinearFloat) {
 
 TEST_P(ResizeBilinearImplTest, TestResizeBilinearFloat_2x2) {
   RandomEngine().seed(38291);
-  const int kTestsToRun = 1000;
+  const int kTestsToRun = 500;
   const tflite::ResizeBilinearParams op_params = GetParam();
 
   for (int i = 0; i < kTestsToRun; i++) {
@@ -351,6 +355,67 @@ TEST(ResizeBilinear, TestResizeBilinearHalfPixelCenters_2x2to4x6_Int8) {
 TEST(ResizeBilinear, TestResizeBilinearHalfPixelCenters_2x2to4x6_Int16) {
   TestResizeBilinearHalfPixelCenters_2x2to4x6<int16_t>();
 }
+
+class ResizeBilinearImplX8ChannelTest
+    : public ::testing::Test,
+      public ::testing::WithParamInterface<tflite::ResizeBilinearParams> {};
+
+// Test when channel count is multiple of 8, and scaling is 2, 4, 8, same in
+// both directions.
+//
+// Version for uint8.
+TEST_P(ResizeBilinearImplX8ChannelTest, TestResizeBilinearX8ChannelUint8) {
+  RandomEngine().seed(85935);
+  const int kTestsToRun = 500;
+  const tflite::ResizeBilinearParams op_params = GetParam();
+
+  for (int i = 0; i < kTestsToRun; i++) {
+    const int batch = UniformRandomInt(1, 2);
+    const int depth = ExponentialRandomPositiveInt(0.4f, 1, 6) * 8;
+    const int input_width = ExponentialRandomPositiveInt(0.9f, 20, 100);
+    const int input_height = ExponentialRandomPositiveInt(0.9f, 20, 100);
+    const int scale_factor = 1 << UniformRandomInt(1, 3);  // 2, 4, 8;
+    const int output_width = input_width * scale_factor;
+    const int output_height = input_height * scale_factor;
+
+    TestOneResizeBilinear<uint8>(op_params, batch, depth, input_width,
+                                 input_height, output_width, output_height,
+                                 0.025);
+  }
+}
+
+// Test when channel count is multiple of 8, and scaling is 2, 4, 8, same in
+// both directions.
+//
+// Version for int8.
+TEST_P(ResizeBilinearImplX8ChannelTest, TestResizeBilinearX8ChannelInt8) {
+  RandomEngine().seed(27496);
+  const int kTestsToRun = 500;
+  const tflite::ResizeBilinearParams op_params = GetParam();
+
+  for (int i = 0; i < kTestsToRun; i++) {
+    const int batch = UniformRandomInt(1, 2);
+    const int depth = ExponentialRandomPositiveInt(0.4f, 1, 6) * 8;
+    const int input_width = ExponentialRandomPositiveInt(0.9f, 20, 100);
+    const int input_height = ExponentialRandomPositiveInt(0.9f, 20, 100);
+    const int scale_factor = 1 << UniformRandomInt(1, 3);  // 2, 4, 8;
+    const int output_width = input_width * scale_factor;
+    const int output_height = input_height * scale_factor;
+
+    TestOneResizeBilinear<int8>(op_params, batch, depth, input_width,
+                                input_height, output_width, output_height,
+                                0.025);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ResizeBilinear, ResizeBilinearImplX8ChannelTest,
+    ::testing::ValuesIn(std::list<tflite::ResizeBilinearParams>({
+        // For present purposes we do not test align_corners=true, because
+        // that configuration is becoming less popular and so we are likely not
+        // to optimize for it.
+        {/**align_corners**/ false, /**half_pixel_centers**/ true},
+    })));
 
 }  // namespace
 }  // namespace tflite
