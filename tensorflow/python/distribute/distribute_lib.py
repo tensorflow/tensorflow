@@ -2409,8 +2409,7 @@ class StrategyExtendedV2(object):
 
     Args:
       reduce_op: A `tf.distribute.ReduceOp` value specifying how values should
-        be combined. Allows using string representation of the enum such as
-        "SUM", "MEAN".
+        be combined.
       value: Value to be reduced. A tensor or a nested structure of tensors.
       options: A `tf.distribute.experimental.CommunicationOptions`. Options to
         perform collective operations. This overrides the default options if the
