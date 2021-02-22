@@ -41,9 +41,9 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "@absl_py//absl/testing:parameterized",
     ],
