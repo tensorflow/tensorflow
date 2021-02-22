@@ -55,7 +55,7 @@ class EigTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testConcurrentExecutesWithoutError(self):
     all_ops = []
-    with self.session() as sess:
+    with self.session():
       for compute_v_ in True, False:
         matrix1 = random_ops.random_normal([5, 5], seed=42)
         matrix2 = random_ops.random_normal([5, 5], seed=42)

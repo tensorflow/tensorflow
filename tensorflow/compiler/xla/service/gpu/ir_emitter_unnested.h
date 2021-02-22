@@ -454,7 +454,7 @@ class IrEmitterUnnested : public IrEmitter,
   Status EmitInputFusibleNonStridedSlices(MlirEmitterInput mlir_input);
 
   Status EmitElementForInputFusibleSlices(
-      mlir::lmhlo::FusionOp fusion,
+      const HloComputation* fused_computation,
       absl::Span<const llvm_ir::IrArray> ir_arrays,
       const llvm_ir::IrArray::Index& index);
 

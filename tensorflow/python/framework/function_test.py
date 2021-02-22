@@ -462,7 +462,7 @@ class FunctionTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testWhileLoopCallsFunc(self):
-    with self.session() as sess:
+    with self.session():
 
       @function.Defun(dtypes.float32)
       def Times2(x):

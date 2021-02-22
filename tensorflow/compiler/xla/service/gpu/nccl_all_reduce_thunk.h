@@ -48,7 +48,7 @@ class NcclAllReduceThunk : public NcclCollectiveThunk {
   Status RunNcclCollective(const ExecuteParams& params,
                            ncclComm_t comm) override;
 
-  const NcclCollectiveConfig& config() const override;
+  const NcclCollectiveConfig& config() const override { return config_.config; }
 
  private:
   const NcclAllReduceConfig config_;

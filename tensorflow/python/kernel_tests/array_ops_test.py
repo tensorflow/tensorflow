@@ -1001,7 +1001,7 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1
   def testInt64Indices(self):
-    with self.session() as sess:
+    with self.session():
       a = math_ops.range(3, dtype=dtypes.float32)
       index = constant_op.constant(1, dtype=dtypes.int64)
       b = 2. * a[index]

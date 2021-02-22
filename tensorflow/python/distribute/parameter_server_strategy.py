@@ -343,7 +343,8 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         dataset,
         self._input_workers_with_options(options),
         self._container_strategy(),
-        num_replicas_in_sync=self._num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync,
+        options=options)
 
   def _make_dataset_iterator(self, dataset):
     return input_lib.DatasetIterator(
@@ -394,9 +395,9 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
 
     return input_lib.get_distributed_datasets_from_function(
         dataset_fn,
-        self._input_workers_with_options(options),
-        [input_context],
-        self._container_strategy())
+        self._input_workers_with_options(options), [input_context],
+        self._container_strategy(),
+        options=options)
 
   def _experimental_distribute_values_from_function(self, value_fn):
     per_replica_values = []

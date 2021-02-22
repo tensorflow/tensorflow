@@ -837,6 +837,41 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
     self.evaluate(variables.variables_initializer(loaded.variables))
     self.assertAllClose(model.predict(f), loaded.predict(f))
 
+  def testSaveLayerMultipleInputs(self):
+    class CustomLayer(keras.layers.Layer):
+
+      def call(self, *input_list):
+        self.add_loss(input_list[-2] * 2, inputs=True)
+        return sum(input_list[:-1])  # The test's last input is a non-tensor arg
+
+    # TODO(b/175902133): Models only support one input argument. Also, create a
+    # subclassed model because functional/sequential models still have funky
+    # behavior when calling with multiple non-nested arguments.
+    class CustomModel(keras.Model):
+
+      def build(self, _):
+        self.layer = CustomLayer()
+
+      def call(self, inputs):
+        inputs = inputs[:]
+        inputs.append(object())  # Test that the layer handles non-tensor inputs
+        return self.layer(*inputs)
+
+    model = CustomModel()
+    inp = [constant_op.constant(i, shape=[1, 1], dtype=dtypes.float32)
+           for i in range(1, 5)]
+    expected = model(inp)
+    expected_loss = model.get_losses_for(inp)
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf')
+    loaded = keras_load.load(saved_model_dir)
+    actual = loaded(inp)
+    actual_loss = loaded.get_losses_for(inp)
+    self.assertAllEqual(self.evaluate(expected),
+                        self.evaluate(actual))
+    self.assertAllEqual(self.evaluate(expected_loss),
+                        self.evaluate(actual_loss))
+
 
 class TestSavedModelFormat(test.TestCase):
 

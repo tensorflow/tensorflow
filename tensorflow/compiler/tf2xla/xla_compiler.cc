@@ -804,8 +804,9 @@ Status XlaCompiler::CompileFunction(
   }
 
   VLOG(1) << "====================================================";
-  MlirBridgeRolloutPolicy policy =
-      GetMlirBridgeRolloutPolicy(*graph, config_proto);
+  MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
+      *graph, config_proto,
+      /*uses_uninitialized_resource_args=*/AnyUninitializedResourceArg(args));
   if (policy == MlirBridgeRolloutPolicy::kEnabledByUser) {
     VLOG(1) << "Using MLIR bridge";
     GraphDebugInfo debug_info;
@@ -1158,6 +1159,10 @@ Status XlaCompiler::BuildArguments(
               xla::Reshape(arg_handles[i], arg.DimensionSizes()), arg.type);
         } else {
           arg_expression = XlaExpression::XlaOp(arg_handles[i], arg.type);
+          if (arg.value_bound) {
+            // Propagate upper bound to arg_expression.
+            arg_expression.set_value_bound(arg.value_bound.value());
+          }
         }
         break;
       case XlaCompiler::Argument::kTensorList: {

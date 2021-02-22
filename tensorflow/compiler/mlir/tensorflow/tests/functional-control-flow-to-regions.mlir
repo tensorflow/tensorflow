@@ -20,6 +20,8 @@ func @testIf1Result(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: "tf.Yield"([[Result1]])
   // CHECK: _attr0 = 10
   // CHECK-SAME: _attr1 = true
+  // CHECK-SAME: _else_func_name = "testIf1Else"
+  // CHECK-SAME: _then_func_name = "testIf1Then"
   // CHECK-NOT: attr2 =
   // CHECK-NOT: else_branch
   // CHECK-SAME: is_stateless = false

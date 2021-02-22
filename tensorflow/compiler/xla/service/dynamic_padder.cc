@@ -1282,6 +1282,109 @@ StatusOr<bool> RewriteDynamicSort(
   return true;
 }
 
+StatusOr<bool> RewriteDynamicUpdateSlice(
+    HloInstruction* hlo,
+    DynamicDimensionInference* dynamic_dimension_inference) {
+  HloDynamicUpdateSliceInstruction* dus =
+      Cast<HloDynamicUpdateSliceInstruction>(hlo);
+  HloComputation* comp = hlo->parent();
+  // Suppose we have a base area that we want to update:
+  // +------------------------+
+  // |                        |
+  // |                  base  |
+  // |                        |
+  // +------------------------+
+  //
+  // A partial update with dynamic padding looks like this:
+  //
+  //           +------+-------+
+  //           |update|padding|
+  //           +------+-------+
+  //
+  // We don't want the padding to overwrite the base area:
+  //
+  // +------------------------+
+  // |         +------+-------+
+  // |<-begin->|update|padding| (what we want to avoid)
+  // |         +------+-------+
+  // +------------------------+
+  //
+  // Instead we want to keep the base area untouched except for the update
+  // region:
+  //
+  // +------------------------+
+  // |         +------+       |
+  // |<-begin->|update|  base | (what we want)
+  // |         +------+       |
+  // +------------------------+
+  //
+  // We do this by dynamic slicing the base area out first with the same begin
+  // index:
+  //
+  //           +--------------+
+  // <-begin-> |         base |
+  //           +--------------+
+  //
+  // Then replace the update's padding part with base:
+  //
+  //           +------+-------+
+  //           |update|  base |
+  //           +------+-------+
+  //
+  // Then do the DUS.
+
+  HloInstruction* update = dus->mutable_operand(1);
+  HloInstruction* base = dus->mutable_operand(0);
+  std::vector<HloInstruction*> dynamic_dims_in_partial_update(
+      update->shape().rank(), nullptr);
+  bool needs_rewrite = false;
+  for (int64 i = 0; i < update->shape().rank(); ++i) {
+    if (update->shape().dimensions(i) < base->shape().dimensions(i)) {
+      HloInstruction* dynamic_dim =
+          dynamic_dimension_inference->GetDynamicSize(update, {}, i);
+
+      if (dynamic_dim != nullptr) {
+        dynamic_dims_in_partial_update[i] = dynamic_dim;
+        needs_rewrite = true;
+      }
+    }
+  }
+
+  if (!needs_rewrite) {
+    return false;
+  }
+  std::vector<HloInstruction*> indices;
+  indices.reserve(dus->operand_count() - 2);
+  for (int64 i = 2; i < dus->operand_count(); ++i) {
+    indices.push_back(dus->mutable_operand(i));
+  }
+  HloInstruction* base_slice =
+      comp->AddInstruction(HloInstruction::CreateDynamicSlice(
+          update->shape(), base, indices, update->shape().dimensions()));
+
+  for (int64 i = 0; i < dynamic_dims_in_partial_update.size(); ++i) {
+    HloInstruction* dynamic_dim = dynamic_dims_in_partial_update[i];
+    if (dynamic_dim != nullptr) {
+      Shape mask_shape_int = ShapeUtil::ChangeElementType(update->shape(), S32);
+      Shape mask_shape_pred =
+          ShapeUtil::ChangeElementType(update->shape(), PRED);
+      // Generate mask using iota and dynamic_dim.
+      HloInstruction* iota =
+          comp->AddInstruction(HloInstruction::CreateIota(mask_shape_int, i));
+      HloInstruction* broadcast_dim = comp->AddInstruction(
+          HloInstruction::CreateBroadcast(mask_shape_int, dynamic_dim, {}));
+      HloInstruction* pred = comp->AddInstruction(HloInstruction::CreateCompare(
+          mask_shape_pred, iota, broadcast_dim, ComparisonDirection::kLt));
+      // Update `update` to include base.
+      update = comp->AddInstruction(HloInstruction::CreateTernary(
+          update->shape(), HloOpcode::kSelect, pred, update, base_slice));
+    }
+  }
+  TF_RETURN_IF_ERROR(dus->ReplaceOperandWith(1, update));
+
+  return true;
+}
+
 StatusOr<bool> RewriteDynamicReshape(
     HloInstruction* reshape,
     DynamicDimensionInference* dynamic_dimension_inference) {
@@ -1729,6 +1832,12 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
       if (inst->opcode() == HloOpcode::kReshape) {
         TF_ASSIGN_OR_RETURN(
             changed, RewriteDynamicReshape(inst, &dynamic_dimension_inference));
+        continue;
+      }
+
+      if (inst->opcode() == HloOpcode::kDynamicUpdateSlice) {
+        TF_ASSIGN_OR_RETURN(changed, RewriteDynamicUpdateSlice(
+                                         inst, &dynamic_dimension_inference));
         continue;
       }
 

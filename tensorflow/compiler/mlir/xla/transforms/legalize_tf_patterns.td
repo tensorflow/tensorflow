@@ -550,6 +550,14 @@ def : Pat<(TF_SliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
             $slice_sizes)]>;
 
 //===----------------------------------------------------------------------===//
+// Select op patterns.
+//===----------------------------------------------------------------------===//
+
+ def : Pat<(TF_SelectV2Op HLO_Tensor:$pred, HLO_Tensor:$on_true,
+            HLO_Tensor:$on_false),
+           (HLOClient_BroadcastSelectOp $pred, $on_true, $on_false)>;
+
+//===----------------------------------------------------------------------===//
 // PartitionedCall and LegacyCall op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -598,6 +606,7 @@ foreach Mapping = [
                    [TF_CosOp, HLO_CosOp],
                    [TF_DigammaOp, HLOClient_DigammaOp],
                    [TF_ExpOp, HLO_ExpOp],
+                   [TF_Expm1Op, HLO_Expm1Op],
                    [TF_ErfOp, HLOClient_ErfOp],
                    [TF_ErfcOp, HLOClient_ErfcOp],
                    [TF_FloorOp, HLO_FloorOp],

@@ -972,6 +972,7 @@ cc_library(
         ":chlo_legalize_to_hlo_inc_gen",
         ":hlo",
         ":map_chlo_to_hlo_op",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Shape",

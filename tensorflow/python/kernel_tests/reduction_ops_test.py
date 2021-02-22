@@ -208,7 +208,7 @@ class SumReductionTest(BaseReductionTest):
 
   def testAxesType(self):
     for dtype in [dtypes.int64, dtypes.int32]:
-      with self.cached_session() as sess:
+      with self.cached_session():
         v = math_ops.reduce_sum([0, 0], constant_op.constant(0, dtype=dtype))
         tf_v = self.evaluate(v)
       self.assertAllEqual(tf_v, 0)
@@ -447,7 +447,7 @@ class MeanReductionTest(BaseReductionTest):
 
   def testAxesType(self):
     for dtype in [dtypes.int64, dtypes.int32]:
-      with self.cached_session() as sess:
+      with self.cached_session():
         v = math_ops.reduce_mean([0, 0], constant_op.constant(0, dtype=dtype))
         tf_v = self.evaluate(v)
       self.assertAllEqual(tf_v, 0)
@@ -641,7 +641,7 @@ class ProdReductionTest(BaseReductionTest):
 
   def testAxesType(self):
     for dtype in [dtypes.int64, dtypes.int32]:
-      with self.cached_session() as sess:
+      with self.cached_session():
         v = math_ops.reduce_prod([0, 0], constant_op.constant(0, dtype=dtype))
         tf_v = self.evaluate(v)
       self.assertAllEqual(tf_v, 0)
@@ -751,7 +751,7 @@ class MinReductionTest(test.TestCase):
 
   def testAxesType(self):
     for dtype in [dtypes.int64, dtypes.int32]:
-      with self.cached_session() as sess:
+      with self.cached_session():
         v = math_ops.reduce_min([0, 0], constant_op.constant(0, dtype=dtype))
         tf_v = self.evaluate(v)
       self.assertAllEqual(tf_v, 0)
@@ -867,7 +867,7 @@ class MaxReductionTest(test.TestCase):
 
   def testAxesType(self):
     for dtype in [dtypes.int64, dtypes.int32]:
-      with self.cached_session() as sess:
+      with self.cached_session():
         v = math_ops.reduce_max([0, 0], constant_op.constant(0, dtype=dtype))
         tf_v = self.evaluate(v)
       self.assertAllEqual(tf_v, 0)
@@ -999,7 +999,7 @@ class AllReductionTest(test.TestCase):
 
   def testAxesType(self):
     for dtype in [dtypes.int64, dtypes.int32]:
-      with self.session() as sess:
+      with self.session():
         v = math_ops.reduce_all([True, True],
                                 constant_op.constant(0, dtype=dtype))
         tf_v = self.evaluate(v)
@@ -1048,7 +1048,7 @@ class AnyReductionTest(test.TestCase):
 
   def testAxesType(self):
     for dtype in [dtypes.int64, dtypes.int32]:
-      with self.session() as sess:
+      with self.session():
         v = math_ops.reduce_any([True, True],
                                 constant_op.constant(0, dtype=dtype))
         tf_v = self.evaluate(v)

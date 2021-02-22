@@ -296,6 +296,7 @@ typedef union TfLitePtrUnion {
    * GetTensorData<TYPE>(tensor) instead, otherwise only access .data, as other
    * members are deprecated. */
   int32_t* i32;
+  uint32_t* u32;
   int64_t* i64;
   uint64_t* u64;
   float* f;

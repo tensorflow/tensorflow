@@ -740,6 +740,12 @@ static LogicalResult Verify(BroadcastOp op) {
 
 static LogicalResult Verify(BroadcastInDimOp op) {
   auto operandType = op.operand().getType().dyn_cast<RankedTensorType>();
+  if (!operandType) {
+    // The following verification checks all depend on knowing the rank of
+    // the operand. Bail out now if we don't know the rank of the operand.
+    return success();
+  }
+
   auto operandRank = operandType.getRank();
   if (!op.broadcast_dimensions()) {
     if (operandRank == 0) {
@@ -783,13 +789,15 @@ static LogicalResult Verify(BroadcastInDimOp op) {
                         dimIndex, resultRank));
     }
 
-    auto dimSize = operandType.getDimSize(i);
-    auto resultDimSize = resultType.getDimSize(dimIndex);
-    if (dimSize != 1 && dimSize != resultDimSize) {
-      return op.emitOpError(
-          llvm::formatv("size of operand dimension {0} ({1}) is not equal to "
-                        "1 or size of result dimension {2} ({3})",
-                        i, dimSize, dimIndex, resultDimSize));
+    if (!operandType.isDynamicDim(i)) {
+      auto dimSize = operandType.getDimSize(i);
+      auto resultDimSize = resultType.getDimSize(dimIndex);
+      if (dimSize != 1 && dimSize != resultDimSize) {
+        return op.emitOpError(
+            llvm::formatv("size of operand dimension {0} ({1}) is not equal to "
+                          "1 or size of result dimension {2} ({3})",
+                          i, dimSize, dimIndex, resultDimSize));
+      }
     }
   }
 

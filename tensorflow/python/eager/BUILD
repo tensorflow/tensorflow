@@ -1046,6 +1046,7 @@ cuda_py_test(
         "//tensorflow/python:functional_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:test_ops",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
     ],

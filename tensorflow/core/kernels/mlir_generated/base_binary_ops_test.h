@@ -43,16 +43,16 @@ class BinaryOpsTestBase : public OpsTestBase {
   void SetOpKernel(const std::string& op_name, const TensorShape& lhs_shape,
                    const absl::InlinedVector<T, 10>& lhs_input,
                    const TensorShape& rhs_shape,
-                   const absl::InlinedVector<T, 10>& rhs_input, bool add_t,
-                   bool add_tout) {
+                   const absl::InlinedVector<T, 10>& rhs_input,
+                   const test::OpsTestConfig& config) {
     auto builder = NodeDefBuilder("some_name", op_name)
                        .Input(FakeInput(DataTypeToEnum<T>::v()))
                        .Input(FakeInput(DataTypeToEnum<T>::v()));
-    if (add_t) {
-      builder.Attr("T", DataTypeToEnum<T>::v());
+    if (config.add_t) {
+      builder.Attr(config.input_attribute, DataTypeToEnum<T>::v());
     }
-    if (add_tout) {
-      builder.Attr("Tout", DataTypeToEnum<OutT>::v());
+    if (config.add_tout) {
+      builder.Attr(config.output_attribute, DataTypeToEnum<OutT>::v());
     }
     TF_ASSERT_OK(builder.Finalize(node_def()));
 
@@ -73,7 +73,7 @@ class BinaryOpsTestBase : public OpsTestBase {
                           const absl::InlinedVector<OutT, 10>& expected_output,
                           const test::OpsTestConfig& config) {
     SetOpKernel<T, OutT>(op_name, lhs_shape, lhs_input, rhs_shape, rhs_input,
-                         config.add_t, config.add_tout);
+                         config);
     TF_ASSERT_OK(RunOpKernel());
 
     // Compare output to expectation.
@@ -96,7 +96,7 @@ class BinaryOpsTestBase : public OpsTestBase {
                                    const absl::InlinedVector<T, 10>& rhs_input,
                                    const test::OpsTestConfig& config) {
     SetOpKernel<T, OutT>(op_name, lhs_shape, lhs_input, rhs_shape, rhs_input,
-                         config.add_t, config.add_tout);
+                         config);
     auto status = RunOpKernel();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);

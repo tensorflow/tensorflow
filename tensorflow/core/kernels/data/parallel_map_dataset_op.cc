@@ -547,7 +547,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         return false;
       }
       if (!deterministic_) {
-        // Iterate through in-flight results and returns the first one that is
+        // Iterate through in-flight results and return the first one that is
         // found to be available and not end-of-input. If the first result (in
         // order) is end-of-input, we know that all earlier iterations have
         // already been completed, so it is safe to return that result for the

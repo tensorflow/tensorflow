@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
@@ -63,7 +64,7 @@ class MiniModel(keras_training.Model):
             strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
         ],
         mode=["eager"]))
-class MirroredStrategyDefunTest(test.TestCase):
+class MirroredStrategyDefunTest(test.TestCase, parameterized.TestCase):
 
   def testTrain(self, distribution):
     with distribution.scope():
@@ -109,7 +110,7 @@ class MirroredStrategyDefunTest(test.TestCase):
         """The step function for one training step."""
 
         def step_fn(inputs):
-          """The computation to run on each TPU device."""
+          """The computation to run on each replica(GPU)."""
           features, labels = inputs
           with backprop.GradientTape() as tape:
             pred = model(features, training=True)
@@ -135,6 +136,10 @@ class MirroredStrategyDefunTest(test.TestCase):
 
       self.assertGreater(accuracy.result().numpy(), 0.5)
       self.assertEqual(optimizer.iterations.numpy(), num_epochs * num_steps)
+
+    # Test save/load/serving the trained model.
+    test_utils_obj.test_save_load_serving_model(
+        model, feature_mapper, test_utils_obj.define_reverse_lookup_layer())
 
 
 if __name__ == "__main__":

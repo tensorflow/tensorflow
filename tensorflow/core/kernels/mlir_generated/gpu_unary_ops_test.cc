@@ -124,6 +124,43 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Atanh, DT_DOUBLE, DT_DOUBLE, test::DefaultInputBetweenZeroAndOne<double>(),
     std::atanh, test::OpsTestConfig())
 
+/// Test `tf.Cast`.
+
+template <typename SrcT, typename DstT>
+DstT baseline_cast(SrcT x) {
+  return static_cast<DstT>(x);
+}
+
+#define TEST_CAST_FROM_TO(from_type, to_type)                    \
+  GENERATE_DEFAULT_TEST(Cast, from_type, to_type, baseline_cast, \
+                        test::OpsTestConfig()                    \
+                            .AddTout()                           \
+                            .NoBufferReuse()                     \
+                            .ExpectStrictlyEqual()               \
+                            .InputAttribute("SrcT")              \
+                            .OutputAttribute("DstT"))
+
+#define TEST_CAST_TO(from_type)          \
+  TEST_CAST_FROM_TO(from_type, DT_BOOL)  \
+  TEST_CAST_FROM_TO(from_type, DT_INT8)  \
+  TEST_CAST_FROM_TO(from_type, DT_INT16) \
+  TEST_CAST_FROM_TO(from_type, DT_INT32) \
+  TEST_CAST_FROM_TO(from_type, DT_INT64) \
+  TEST_CAST_FROM_TO(from_type, DT_FLOAT) \
+  TEST_CAST_FROM_TO(from_type, DT_DOUBLE)
+
+TEST_CAST_TO(DT_BOOL)
+TEST_CAST_TO(DT_INT8)
+TEST_CAST_TO(DT_INT16)
+TEST_CAST_TO(DT_INT32)
+TEST_CAST_TO(DT_INT64)
+TEST_CAST_TO(DT_HALF)
+TEST_CAST_TO(DT_FLOAT)
+TEST_CAST_TO(DT_DOUBLE)
+
+#undef TEST_CAST_FROM_TO
+#undef TEST_CAST_TO
+
 /// Test `tf.Ceil`.
 
 GENERATE_DEFAULT_TEST(Ceil, DT_FLOAT, DT_FLOAT, std::ceil,
