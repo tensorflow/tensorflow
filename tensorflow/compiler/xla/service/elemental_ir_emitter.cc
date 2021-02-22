@@ -948,8 +948,8 @@ ElementalIrEmitter::EmitLogComplexAbsHelper(PrimitiveType prim_type,
       llvm::Intrinsic::fabs, {real}, {real->getType()}, b_);
   llvm::Value* abs_imag = llvm_ir::EmitCallToIntrinsic(
       llvm::Intrinsic::fabs, {imag}, {imag->getType()}, b_);
-  llvm::Value* max = EmitFloatMax(abs_real, abs_imag);
-  llvm::Value* min = EmitFloatMin(abs_real, abs_imag);
+  llvm::Value* max = EmitFloatMax(abs_real, abs_imag, "");
+  llvm::Value* min = EmitFloatMin(abs_real, abs_imag, "");
   llvm::Value* div = FDiv(min, max);
   llvm::Value* div_sq = FMul(div, div);
   return std::make_tuple(min, max, div_sq);
