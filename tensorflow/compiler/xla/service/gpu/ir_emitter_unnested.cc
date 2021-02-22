@@ -1533,28 +1533,63 @@ Status IrEmitterUnnested::EmitCustomCallThunkFromMlir(MlirEmitterInput input) {
 
   void* call_target = CustomCallTargetRegistry::Global()->Lookup(
       call_target_name, std::string(platform_name()));
-  if (call_target) {
-    std::vector<BufferAllocation::Slice> operands;
-    for (mlir::Value arg : custom_call.args()) {
-      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice arg_slice,
-                          GetAllocationSliceForMlir(arg));
-      operands.push_back(arg_slice);
-    }
-
-    std::vector<BufferAllocation::Slice> results;
-    for (mlir::Value output : custom_call.output()) {
-      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
-                          GetAllocationSliceForMlir(output));
-      results.push_back(output_slice);
-    }
-
-    AddThunkToThunkSequence(absl::make_unique<CustomCallThunk>(
-        input.thunk_info, call_target, std::move(operands), std::move(results),
-        custom_call.backend_config().str()));
-    return Status::OK();
+  if (!call_target) {
+    return Unimplemented(
+        "No registered implementation for custom call to \"%s\"",
+        call_target_name);
   }
-  return Unimplemented("No registered implementation for custom call to \"%s\"",
-                       call_target_name);
+
+  std::vector<CustomCallThunk::OptionalSlice> operands;
+  std::vector<CustomCallThunk::OptionalSlice> results;
+
+  if (custom_call.target_arg_mapping()) {
+    auto values_to_slices_with_token_holes =
+        [&](mlir::ValueRange operands, mlir::ArrayAttr op_to_target_mapping,
+            mlir::IntegerAttr num_target)
+        -> StatusOr<std::vector<CustomCallThunk::OptionalSlice>> {
+      std::vector<CustomCallThunk::OptionalSlice> slices(num_target.getInt());
+      for (auto index_and_value_it :
+           llvm::zip(op_to_target_mapping, operands)) {
+        mlir::Attribute index_attr = std::get<0>(index_and_value_it);
+        mlir::Value value = std::get<1>(index_and_value_it);
+        int64 index = index_attr.cast<mlir::IntegerAttr>().getInt();
+        TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                            GetAllocationSliceForMlir(value));
+        slices[index] = slice;
+      }
+      return slices;
+    };
+
+    mlir::lmhlo::CustomCallTargetArgMapping target_mapping =
+        *custom_call.target_arg_mapping();
+    TF_ASSIGN_OR_RETURN(
+        operands, values_to_slices_with_token_holes(
+                      custom_call.args(), target_mapping.args_to_target_args(),
+                      target_mapping.num_args()));
+    TF_ASSIGN_OR_RETURN(results, values_to_slices_with_token_holes(
+                                     custom_call.output(),
+                                     target_mapping.results_to_target_results(),
+                                     target_mapping.num_results()));
+  } else {
+    auto values_to_slices = [&](mlir::ValueRange values)
+        -> StatusOr<std::vector<CustomCallThunk::OptionalSlice>> {
+      std::vector<CustomCallThunk::OptionalSlice> slices;
+      for (mlir::Value value : values) {
+        TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                            GetAllocationSliceForMlir(value));
+        slices.push_back(slice);
+      }
+      return slices;
+    };
+
+    TF_ASSIGN_OR_RETURN(operands, values_to_slices(custom_call.args()));
+    TF_ASSIGN_OR_RETURN(results, values_to_slices(custom_call.output()));
+  }
+
+  AddThunkToThunkSequence(absl::make_unique<CustomCallThunk>(
+      input.thunk_info, call_target, std::move(operands), std::move(results),
+      custom_call.backend_config().str()));
+  return Status::OK();
 }
 
 Status IrEmitterUnnested::HandleFft(HloInstruction* fft) {
