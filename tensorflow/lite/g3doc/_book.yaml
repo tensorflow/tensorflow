@@ -206,36 +206,31 @@ upper_tabs:
 
     - name: "Examples"
       contents:
-      - title: "Examples"
-        path: /lite/examples
-
-    - name: "Models"
-      contents:
       - title: "Overview"
-        path: /lite/models/
+        path: /lite/examples/
       - heading: "Vision"
       - title: "Image classification"
-        path: /lite/models/image_classification/overview
+        path: /lite/examples/image_classification/overview
       - title: "Object detection"
-        path: /lite/models/object_detection/overview
+        path: /lite/examples/object_detection/overview
       - title: "Pose estimation"
-        path: /lite/models/pose_estimation/overview
+        path: /lite/examples/pose_estimation/overview
       - title: "Segmentation"
-        path: /lite/models/segmentation/overview
+        path: /lite/examples/segmentation/overview
       - title: "Style transfer"
-        path: /lite/models/style_transfer/overview
+        path: /lite/examples/style_transfer/overview
       - title: "Super resolution"
-        path: /lite/models/super_resolution/overview
+        path: /lite/examples/super_resolution/overview
       - heading: "Text"
       - title: "BERT Question Answer"
-        path: /lite/models/bert_qa/overview
+        path: /lite/examples/bert_qa/overview
       - title: "Smart reply"
-        path: /lite/models/smart_reply/overview
+        path: /lite/examples/smart_reply/overview
       - title: "Text classification"
-        path: /lite/models/text_classification/overview
+        path: /lite/examples/text_classification/overview
       - heading: "Others"
       - title: "Recommendation"
-        path: /lite/models/recommendation/overview
+        path: /lite/examples/recommendation/overview
 
     - name: "API"
       skip_translation: true
