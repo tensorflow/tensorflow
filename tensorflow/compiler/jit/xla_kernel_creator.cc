@@ -32,44 +32,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Returns true iff 'ndef' is a call to a function that is compilable.  A
-// function is compilable iff every operator in the function body is
-// compilable. If 'ndef' is not compilable and 'uncompilable_node_info' is not
-// null, we will populate 'uncompilable_node_info' with uncompilable node info.
-static bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef,
-                         RecursiveCompilabilityChecker::UncompilableNodesMap*
-                             uncompilable_node_info) {
-  Device* device = flr->device();
-  const XlaOpRegistry::DeviceRegistration* registration;
-  CHECK(XlaOpRegistry::GetCompilationDevice(device->device_type(),
-                                            &registration));
-
-  // We can always *compile* resource operations, stateful RNGs and dummy ops,
-  // even if we are sometimes unable to auto-cluster them.
-  RecursiveCompilabilityChecker::OperationFilter op_filter;
-  op_filter.allow_resource_ops_in_called_functions = true;
-  op_filter.allow_stack_ops = true;
-  op_filter.allow_tensor_array_ops = true;
-  op_filter.allow_stateful_rng_ops = true;
-  op_filter.allow_control_trigger = true;
-  op_filter.allow_eliding_assert_and_checknumerics_ops = true;
-  op_filter.allow_ops_producing_or_consuming_variant = true;
-  op_filter.allow_slow_ops = true;
-  op_filter.allow_inaccurate_ops = true;
-
-  RecursiveCompilabilityChecker checker{
-      op_filter, DeviceType{registration->compilation_device_name}};
-  if (!uncompilable_node_info) {
-    // We do not need uncompilable node info. Just return the result.
-    return checker.IsCompilableCall(ndef, flr);
-  }
-
-  RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_node_result =
-      checker.FindUncompilableNodes(ndef, flr);
-  uncompilable_node_info->swap(uncompilable_node_result);
-  return uncompilable_node_info->empty();
-}
-
 bool XlaKernelCreator::CanCreateKernel(
     const FunctionLibraryRuntime& flr,
     const std::shared_ptr<const NodeProperties>& props) const {
@@ -97,56 +59,6 @@ static Status CreateXlaKernel(FunctionLibraryRuntime* flr,
   std::vector<int> resource_arg_indices;
   TF_RETURN_IF_ERROR(GetBodyAndConstantsAndResources(
       flr, function, &fbody, &constant_arg_indices, &resource_arg_indices));
-
-  // Only check for compilability if the MLIR bridge is not enabled.
-  absl::optional<ConfigProto> config_proto;
-  if (flr->config_proto()) {
-    config_proto = *flr->config_proto();
-  }
-  // There is no easy way to check if we have uninitialized resource args here
-  // so we assume there are uninitialized resource args. This means that we
-  // might run the compilability checker in cases where we don't need to (when
-  // MLIR bridge is run later). Note that this is just temporary until
-  // b/171732021 gets fixed.
-  // We should also revisit if this check provides any value, otherwise we
-  // should remove it.
-  MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
-      *fbody->graph, config_proto, /*uses_uninitialized_resource_args=*/true);
-  if (policy != MlirBridgeRolloutPolicy::kEnabledByUser) {
-    RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_nodes_map;
-    if (!IsCompilable(flr, node_def, &uncompilable_nodes_map)) {
-      std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>
-          uncompilable_node_info;
-      for (const auto& it : uncompilable_nodes_map) {
-        for (const auto& info : it.second.second) {
-          uncompilable_node_info.emplace_back(info);
-        }
-      }
-      std::string message = absl::StrCat(
-          "Function invoked by the following node is not compilable: ",
-          SummarizeNodeDef(node_def, /*max_inputs_in_summary=*/10), ".\n");
-      absl::StrAppend(&message, "Uncompilable operations:");
-      for (const auto& node_info : uncompilable_node_info) {
-        std::string node_message = absl::StrCat(
-            "\n", node_info.name, ": ", node_info.uncompilable_reason, "\n",
-            "The op is created at:\n");
-        if (node_info.stack_trace.back().stack_trace) {
-          AbstractStackTrace::TracePrintingOptions opts;
-          opts.show_line_contents = true;
-          opts.filter_common_prefix = true;
-          opts.drop_internal_frames = true;
-          absl::StrAppend(
-              &node_message,
-              node_info.stack_trace.back().stack_trace->ToString(opts));
-        } else {
-          absl::StrAppend(&node_message, "<Unavailable>\n");
-        }
-        absl::StrAppend(&message, node_message);
-      }
-      VLOG(1) << message;
-      return errors::InvalidArgument(message);
-    }
-  }
 
   MemoryTypeVector input_memory_types =
       GetInputMemoryTypes(fbody, constant_arg_indices, resource_arg_indices);

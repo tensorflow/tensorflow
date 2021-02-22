@@ -164,29 +164,6 @@ RecursiveCompilabilityChecker::FindUncompilableNodes(
   return uncompilable_nodes;
 }
 
-RecursiveCompilabilityChecker::UncompilableNodesMap
-RecursiveCompilabilityChecker::FindUncompilableNodes(
-    const NodeDef& call_def, FunctionLibraryRuntime* lib_runtime,
-    const std::vector<RecursiveCompilabilityChecker::StackFrame>*
-        node_stack_trace) const {
-  // If `node_stack_trace` is provided, that means `call_def` is inside
-  // a function body, and therefore, arg nodes and retval nodes are
-  // not considered uncompilable.
-  std::vector<StackFrameView> stack_trace;
-  if (node_stack_trace != nullptr) {
-    for (const auto& frame : *node_stack_trace) {
-      stack_trace.emplace_back(
-          StackFrameView{frame.name, frame.function_name, frame.stack_trace});
-    }
-  }
-  stack_trace.emplace_back(StackFrameView{call_def.name(), "", nullptr});
-
-  RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_nodes;
-  IsCompilableCall(call_def, lib_runtime, &stack_trace,
-                   /*encapsulating_function=*/nullptr, &uncompilable_nodes);
-  return uncompilable_nodes;
-}
-
 bool RecursiveCompilabilityChecker::HasXLAKernel(
     const Node& node, string* uncompilable_reason) const {
   // There is a SymbolicGradient kernel on the XLA_JIT device, but the gradient
