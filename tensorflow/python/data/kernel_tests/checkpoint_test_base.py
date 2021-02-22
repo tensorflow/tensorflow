@@ -52,7 +52,7 @@ def remove_variants(get_next_op):
 
 
 class CheckpointTestBase(test.TestCase):
-  """Base class for checkpoint tests of serializable datasets."""
+  """Base test class for checkpointing datasets."""
 
   def tearDown(self):
     self._delete_ckpt()
@@ -72,7 +72,7 @@ class CheckpointTestBase(test.TestCase):
     Raises:
       AssertionError if any test fails.
     """
-    # NOTE: We disable all default optimizations in serialization tests in order
+    # NOTE: We disable all default optimizations in checkpoint tests in order
     # to test the actual dataset in question.
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
@@ -222,6 +222,7 @@ class CheckpointTestBase(test.TestCase):
         verify_exhausted=False)
 
     actual = []
+    # TODO(vikoth18): implement eager mode compatible checkpointing
     # Restore from checkpoint and then run init_op.
     with ops.Graph().as_default() as g:
       saver = self._import_meta_graph()
@@ -259,6 +260,7 @@ class CheckpointTestBase(test.TestCase):
     """
 
     break_point = num_outputs // 2 if not break_point else break_point
+    # TODO(vikoth18): implement eager mode compatible checkpointing
     with ops.Graph().as_default() as g:
       init_op, get_next_op, saver = self._build_graph(
           ds_fn, sparse_tensors=sparse_tensors)
@@ -356,6 +358,7 @@ class CheckpointTestBase(test.TestCase):
             ds_fn, sparse_tensors=sparse_tensors)
       return init_op, get_next_op, saver
 
+    # TODO(vikoth18): implement eager mode compatible checkpointing
     for i in range(len(break_points) + 1):
       with ops.Graph().as_default() as g:
         init_op, get_next_op, saver = get_ops()
@@ -486,14 +489,17 @@ class CheckpointTestBase(test.TestCase):
         self._get_output_types(ds_fn), get_next_list)
 
   def _get_output_types(self, ds_fn):
+    # TODO(vikoth18): implement eager mode compatible retrieval of output_types
     with ops.Graph().as_default():
       return dataset_ops.get_legacy_output_types(ds_fn())
 
   def _get_output_shapes(self, ds_fn):
+    # TODO(vikoth18): implement eager mode compatible retrieval of output_shapes
     with ops.Graph().as_default():
       return dataset_ops.get_legacy_output_shapes(ds_fn())
 
   def _get_output_classes(self, ds_fn):
+    # TODO(vikoth18): implement eager mode compatible retrieval of output_classes
     with ops.Graph().as_default():
       return dataset_ops.get_legacy_output_classes(ds_fn())
 
