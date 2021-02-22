@@ -486,13 +486,6 @@ static LogicalResult Verify(BiasAddOp op) {
   return success();
 }
 
-Optional<ContractionFusion> BiasAddOp::GetContractionFusion() {
-  // Only NHWC in f32 is supported for fusion.
-  if (data_format() != "NHWC" || !T().isF32()) return None;
-
-  return ContractionFusion("BiasAdd", /*additional_arguments=*/{1});
-}
-
 LogicalResult BiasAddOp::UpdateDataFormat(StringRef data_format) {
   return ::mlir::TF::UpdateDataFormat(data_format, this);
 }
@@ -2631,15 +2624,6 @@ OpFoldResult LeakyReluOp::fold(ArrayRef<Attribute> operands) {
       return DenseElementsAttr::get(arg.getType(), calculate(elementAttr));
   }
   return {};
-}
-
-Optional<ContractionFusion> LeakyReluOp::GetContractionFusion() {
-  // Only f32 is supported for fusion.
-  if (!T().isF32()) return None;
-
-  NamedAttribute alpha(Identifier::get("alpha", getContext()), alphaAttr());
-  return ContractionFusion("LeakyRelu", /*additional_arguments=*/{},
-                           /*additional_attributes=*/{alpha});
 }
 
 //===----------------------------------------------------------------------===//
