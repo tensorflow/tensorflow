@@ -93,6 +93,7 @@ HloModule SliceToDynamic
 // CHECK: "lmhlo.custom_call"
 // CHECK: backend_config = "", call_target_name = "SliceToDynamic"
 // CHECK-SAME: operand_segment_sizes = dense<[4, 1]> : vector<2xi32>
+// CHECK-NOT: target_arg_mapping
 // CHECK: (memref<2x2x2xi32>, memref<i32>, memref<i32>, memref<i32>, memref<2x2x2xi32>) -> ()
 ENTRY main {
   %param = s32[2,2,2] parameter(0)
@@ -681,4 +682,73 @@ ENTRY main {
   %a = f32[4,4]{1,0} parameter(0)
   %b = f32[3,4]{1,0} parameter(1)
   ROOT %triangular-solve = f32[3,4]{1,0} triangular-solve(f32[4,4]{1,0} %a, f32[3,4]{1,0} %b), lower=true, transpose_a=NO_TRANSPOSE
+}
+
+// -----
+
+HloModule CustomCallWithTokens
+
+// CHECK: func @main
+// CHECK: "lmhlo.custom_call"
+// CHECK-SAME: args_to_target_args = []
+// CHECK-SAME: num_args = 1
+// CHECK-SAME: num_results = 2
+// CHECK-SAME: results_to_target_results = [0]
+ENTRY main {
+  %tok = token[] parameter(0)
+  ROOT %call = (f32[3], token[]) custom-call (%tok), custom_call_target="foo",
+                                                     backend_config=""
+}
+
+// -----
+
+HloModule CustomCallWithTokens
+
+// CHECK: func @main
+// CHECK: "lmhlo.custom_call"
+// CHECK-SAME: args_to_target_args = [1]
+// CHECK-SAME: num_args = 3
+// CHECK-SAME: num_results = 3
+// CHECK-SAME: results_to_target_results = [0, 2]
+ENTRY main {
+  %tok = token[] parameter(0)
+  %input = f32[5,8,32] parameter(1)
+  ROOT %call = (f32[3]{0}, token[], f32[3]) custom-call (%tok, %input, %tok),
+                                      custom_call_target="foo",
+                                      backend_config=""
+}
+
+// -----
+
+HloModule CustomCallWithTokens
+
+// CHECK: func @main
+// CHECK: "lmhlo.custom_call"
+// CHECK-SAME: args_to_target_args = [1]
+// CHECK-SAME: num_args = 3
+// CHECK-SAME: num_results = 1
+// CHECK-SAME: results_to_target_results = [0]
+ENTRY main {
+  %tok = token[] parameter(0)
+  %input = f32[5,8,32] parameter(1)
+  ROOT %call =  f32[3] custom-call (%tok, %input, %tok),
+                                    custom_call_target="foo",
+                                    backend_config=""
+}
+
+// -----
+
+HloModule CustomCallWithTokens
+
+// CHECK: func @main
+// CHECK: "lmhlo.custom_call"
+// CHECK-SAME: args_to_target_args = [0]
+// CHECK-SAME: num_args = 1
+// CHECK-SAME: num_results = 4
+// CHECK-SAME: results_to_target_results = [1]
+ENTRY main {
+  %input = f32[5,8,32] parameter(0)
+  ROOT %call = (token[], f32[3]{0}, token[], token[]) custom-call (%input),
+                                      custom_call_target="foo",
+                                      backend_config=""
 }
