@@ -106,6 +106,9 @@
     *  Add nominal support for unsigned 32-bit integer tensor types. Note that
        very few TFLite kernels support this type natively, so its use in mobile
        ML authoring is generally discouraged.
+    *  Add support for static hash tables through
+         `TFLiteConverter.from_saved_model`.
+
 *   TF Core:
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,
         `tf.while_loop`, and compositions like `tf.foldl`) computed with

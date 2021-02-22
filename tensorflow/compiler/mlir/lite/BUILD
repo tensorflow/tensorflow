@@ -526,7 +526,7 @@ cc_library(
         "transforms/passes.h",
     ],
     deps = [
-        "convert_type",
+        ":convert_type",
         ":tensorflow_lite",
         ":validators",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
@@ -665,6 +665,7 @@ cc_library(
         "flatbuffer_operator.h",
     ],
     deps = [
+        ":convert_type",
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/xla:statusor",

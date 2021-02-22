@@ -27,13 +27,11 @@ from six.moves import range
 from six.moves import zip
 import tensorflow as tf
 
-from tensorflow.lite.kernels.hashtable import pywrap_hashtable_ops as hashtable_ops_registerer
 from tensorflow.lite.python import convert
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_v2_test_util
 from tensorflow.lite.python.convert import mlir_quantize
 from tensorflow.lite.python.interpreter import Interpreter
-from tensorflow.lite.python.interpreter import InterpreterWithCustomOps
 from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -877,9 +875,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     tflite_model = converter.convert()
 
     # Check values from converted model.
-    interpreter = InterpreterWithCustomOps(
-        model_content=tflite_model,
-        custom_op_registerers=[hashtable_ops_registerer.HashtableOpsRegisterer])
+    interpreter = Interpreter(model_content=tflite_model)
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
 

@@ -25,6 +25,7 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_structs.td"
 include "tensorflow/compiler/mlir/lite/quantization/quantization.td"
+include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 
 //===----------------------------------------------------------------------===//
 // TFLite dialect string type - uses the TF string type as implementation
@@ -157,6 +158,7 @@ def TFL_I32OrI64Tensor : TFL_TensorOf<[TFL_Int32Or64]>;
 def TFL_I32Tensor : TFL_TensorOf<[I32]>;
 def TFL_I64Tensor : TFL_TensorOf<[I64]>;
 def TFL_Complex64Tensor : TFL_TensorOf<[Complex<F<32>>]>;
+def TFL_ResourceTensor : TFL_TensorOf<[TF_Resource]>;
 
 // TODO(jpienaar): Expand to all int types.
 def TFL_IntTensor : TypeAlias<TFL_I32Tensor, "tensor of any integer type">;
@@ -4715,6 +4717,77 @@ is the real part and *b* is the imaginary part returned by this operation.
 
   let results = (outs
     TFL_TensorOf<[F32, F64]>:$output
+  );
+}
+
+def TFL_HashtableOp: TFL_Op<"hashtable", []> {
+  let summary = "Creates a non-initialized hash table.";
+  let description = [{
+This op creates a hash table, specifying the type of its keys and values.
+Before using the table you will have to initialize it.  After initialization the
+table will be immutable.
+  }];
+
+  let arguments = (ins
+    I32Attr:$table_id,
+    TypeAttr:$key_dtype,
+    TypeAttr:$value_dtype
+  );
+
+  let results = (outs TFL_ResourceTensor:$out);
+
+  let hasOptions = 1;
+}
+
+def TFL_HashtableFindOp: TFL_Op<"hashtable_find", []> {
+  let summary = "Looks up keys in a table, outputs the corresponding values.";
+
+  let description = [{
+The tensor `keys` must of the same type as the keys of the table.
+The output `values` is of the type of the table values.
+
+The scalar `default_value` is the value output for keys not present in the
+table. It must also be of the same type as the table values.
+  }];
+
+  let arguments = (ins
+    TFL_ResourceTensor:$hash_table,
+    TFL_TensorOf<[I32, TFL_Str, I64]>:$keys,
+    TFL_TensorOf<[F32, I32, TFL_Str, I64]>:$default_value
+  );
+
+  let results = (outs TFL_TensorOf<[F32, I32, TFL_Str, I64]>:$out);
+}
+
+def TFL_HashtableImportOp: TFL_Op<"hashtable_import", []> {
+  let summary = [{
+Replaces the contents of the table with the specified keys and values.
+  }];
+
+  let description = [{
+The tensor `keys` must be of the same type as the keys of the table.
+The tensor `values` must be of the type of the table values.
+  }];
+
+  let arguments = (ins
+    TFL_ResourceTensor:$hash_table,
+    TFL_TensorOf<[I32, TFL_Str, I64]>:$keys,
+    TFL_TensorOf<[F32, I32, TFL_Str, I64]>:$values
+  );
+
+  let results = (outs);
+}
+
+
+def TFL_HashtableSizeOp: TFL_Op<"hashtable_size", []> {
+  let summary = "Computes the number of elements in the given table.";
+
+  let arguments = (ins
+    TFL_ResourceTensor:$hash_table
+  );
+
+  let results = (outs
+    TFL_I64Tensor:$out
   );
 }
 
