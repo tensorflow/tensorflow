@@ -54,9 +54,9 @@ from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.mixed_precision import loss_scale_optimizer as lso
 from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.saving import hdf5_format
-from tensorflow.python.keras.saving import pack_model
 from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.saving import saving_utils
+from tensorflow.python.keras.saving.pickle import pack_model
 from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import generic_utils

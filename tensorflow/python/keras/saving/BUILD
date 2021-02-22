@@ -29,6 +29,7 @@ py_library(
         "__init__.py",
         "hdf5_format.py",
         "model_config.py",
+        "pickle.py",
         "save.py",
         "saved_model/base_serialization.py",
         "saved_model/constants.py",

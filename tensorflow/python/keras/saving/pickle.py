@@ -26,7 +26,7 @@ from uuid import uuid4
 import numpy as np
 
 from tensorflow.python.platform import gfile
-from tensorflow.python.keras.models import load_model
+from tensorflow.python.keras.saving.save import load_model
 
 
 
