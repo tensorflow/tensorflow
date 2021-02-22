@@ -300,7 +300,11 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Exp, {
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Expm1, {
   ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
   if (ty_ == F32) {
-    error_spec_gen = +[](NativeT x) { return ErrorSpec{0, 0.00015}; };
+    if (platform_ == "Host") {
+      error_spec_gen = +[](NativeT x) { return ErrorSpec{0.0, 5e-7}; };
+    } else {
+      error_spec_gen = +[](NativeT x) { return ErrorSpec{0, 0.00015}; };
+    }
   }
 
   // Our CPU implementation of expm1 returns one incorrect value: says

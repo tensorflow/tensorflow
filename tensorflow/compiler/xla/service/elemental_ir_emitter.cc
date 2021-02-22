@@ -1424,25 +1424,17 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitExpm1(PrimitiveType prim_type,
   auto type = llvm_ir::PrimitiveTypeToIrType(prim_type, module_);
   auto one = llvm::ConstantFP::get(type, 1.0);
   auto half = llvm::ConstantFP::get(type, 0.5);
-  // When the exponent is large, the naive evaluation of e^(x) - 1 is more
-  // accurate than the Taylor series.
-  TF_ASSIGN_OR_RETURN(auto exp_x, EmitExp(prim_type, value, ""));
-  auto for_large_x = FSub(exp_x, one);
-  // The Taylor series for exp(x) is 1 + x + x^2/2 + x^3/6 + ….
-  // We want exp(x)-1 which is x + x^2/2 + x^3/6 + ….
-  // We use the second degree approximation of exp(x)-1 = x + x^2/2.
-  auto x_squared = FMul(x, x);
-  auto x_squared_over_two = FMul(x_squared, half);
-  auto for_small_x = FAdd(x, x_squared_over_two);
-  // At this point, the relative errors due to floating point precision loss of
-  // calculating exp(x) - 1 and the polynomial exp(x)-1 = x + x^2/2 are about
-  // equal, with a value of approximately 2^-16.
-  const auto kExponentIsSmallThreshold = 0.009;
-  auto abs_x =
-      llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {value}, {type}, b_);
-  auto x_is_small =
-      FCmpOLT(abs_x, llvm::ConstantFP::get(type, kExponentIsSmallThreshold));
-  return Select(x_is_small, for_small_x, for_large_x);
+  auto zero = llvm::ConstantFP::get(type, 0.0);
+
+  // expm1(x) == tanh(x/2)*(exp(x)+1)
+  // x/2 can underflow, if it does we approximate expm1 with x.
+  auto x_over_two = FMul(x, half);
+  auto x_over_two_is_zero = FCmpOEQ(x_over_two, zero);
+  TF_ASSIGN_OR_RETURN(auto tanh_of_x_over_two, EmitTanh(prim_type, x_over_two));
+  TF_ASSIGN_OR_RETURN(auto exp_of_x, EmitExp(prim_type, value, ""));
+  auto exp_of_x_plus_one = FAdd(exp_of_x, one);
+  auto expm1 = FMul(tanh_of_x_over_two, exp_of_x_plus_one);
+  return Select(x_over_two_is_zero, x, expm1);
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitPow(PrimitiveType prim_type,
