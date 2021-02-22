@@ -343,7 +343,7 @@ class _SupervisedOutput(ExportOutput):
         raise ValueError(
             '{} output value must be a Tensor; got {}.'.format(
                 key, metric_val))
-      if not (tensor_util.is_tensor(metric_op) or
+      if not (tensor_util.is_tf_type(metric_op) or
               isinstance(metric_op, ops.Operation)):
         raise ValueError(
             '{} update_op must be a Tensor or Operation; got {}.'.format(

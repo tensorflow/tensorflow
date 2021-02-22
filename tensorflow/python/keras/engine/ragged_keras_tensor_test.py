@@ -28,7 +28,6 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import layers
-from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import training
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -53,14 +52,13 @@ class RaggedKerasTensorTest(keras_parameterized.TestCase):
       {'batch_size': 12, 'shape': (2, 3, None, 4, 5, None), 'ragged_rank': 6},
   )
   def test_to_placeholder(self, shape, batch_size, ragged_rank):
-    with testing_utils.use_keras_tensors_scope(True):
-      inp = layers.Input(shape=shape, batch_size=batch_size, ragged=True)
-      self.assertEqual(inp.ragged_rank, ragged_rank)
-      self.assertAllEqual(inp.shape, [batch_size] + list(shape))
-      with func_graph.FuncGraph('test').as_default():
-        placeholder = inp._to_placeholder()
-        self.assertEqual(placeholder.ragged_rank, ragged_rank)
-        self.assertAllEqual(placeholder.shape, [batch_size] + list(shape))
+    inp = layers.Input(shape=shape, batch_size=batch_size, ragged=True)
+    self.assertEqual(inp.ragged_rank, ragged_rank)
+    self.assertAllEqual(inp.shape, [batch_size] + list(shape))
+    with func_graph.FuncGraph('test').as_default():
+      placeholder = inp._to_placeholder()
+      self.assertEqual(placeholder.ragged_rank, ragged_rank)
+      self.assertAllEqual(placeholder.shape, [batch_size] + list(shape))
 
   def test_add(self):
     inp = layers.Input(shape=[None], ragged=True)

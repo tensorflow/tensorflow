@@ -42,7 +42,8 @@ const absl::string_view kMemcpyHToDOp = "MemcpyHToD";
 const absl::string_view kMemcpyDToHOp = "MemcpyDToH";
 
 bool IsTfOpName(absl::string_view op_name) {
-  static const LazyRE2 kTfOpNameRegEx = {"[A-Za-z0-9.][A-Za-z0-9_./]*"};
+  // TODO(b/177602927): Confirm the naming convention with the TF team.
+  static const LazyRE2 kTfOpNameRegEx = {"[A-Za-z0-9.][A-Za-z0-9_.\\/>-]*"};
   return RE2::FullMatch(op_name, *kTfOpNameRegEx);
 }
 
@@ -52,7 +53,7 @@ bool IsTfOpType(absl::string_view op_type) {
 }
 
 bool IsJaxOpType(absl::string_view op_type) {
-  static const LazyRE2 kJaxOpTypeRegEx = {"[a-z_][a-z_]*"};
+  static const LazyRE2 kJaxOpTypeRegEx = {"[a-z_][a-z0-9_]*"};
   return RE2::FullMatch(op_type, *kJaxOpTypeRegEx);
 }
 

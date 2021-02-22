@@ -17,6 +17,7 @@ limitations under the License.
 calls _main() which is the entry point into the application */
 
 #include <stdint.h>
+
 #include "eta_chip.h"
 #include "memio.h"
 
@@ -30,9 +31,9 @@ calls _main() which is the entry point into the application */
 //
 //*****************************************************************************
 
-int _main(int argc, char *argv[]);
+int _main(int argc, char* argv[]);
 void set_vtor(void);
-void *startup_get_my_pc(void);
+void* startup_get_my_pc(void);
 
 //*****************************************************************************
 // Forward DECLS for interrupt service routines (ISR)
@@ -94,7 +95,7 @@ extern uint32_t _stack_top;
 __attribute__((section(".vectors"), used)) void (*const gVectors[])(void) = {
     //(void (*)(void))((uint32_t)pui32Stack + sizeof(pui32Stack)), // Stack
     // pointer
-    (void *)STARTUP_STACK_TOP,
+    (void*)STARTUP_STACK_TOP,
     ResetISR,           // Reset handler
     NmiSR,              // The NMI handler
     FaultISR,           // The hard fault handler
@@ -402,8 +403,8 @@ void default_ResetISR(void) {
 ////////////////////////////////////////////////////////////////////////////////
 // get my PC
 ////////////////////////////////////////////////////////////////////////////////
-void *startup_get_my_pc(void) {
-  void *pc;
+void* startup_get_my_pc(void) {
+  void* pc;
   asm("mov %0, pc" : "=r"(pc));
   return pc;
 }
@@ -411,8 +412,8 @@ void *startup_get_my_pc(void) {
 ////////////////////////////////////////////////////////////////////////////////
 // get my SP
 ////////////////////////////////////////////////////////////////////////////////
-void *startup_get_my_sp(void) {
-  void *sp;
+void* startup_get_my_sp(void) {
+  void* sp;
   asm("mov %0, sp" : "=r"(sp));
   return sp;
 }

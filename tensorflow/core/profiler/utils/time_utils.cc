@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/time_utils.h"
 
 #include "absl/time/clock.h"
+#include "absl/time/time.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -25,6 +26,15 @@ int64 GetCurrentTimeNanos() {
   // It is wrapped under tensorflow::profiler::GetCurrentTimeNanos to avoid ODR
   // violation and to allow switching to yet another implementation if required.
   return absl::GetCurrentTimeNanos();
+}
+
+void SleepForNanos(int64 ns) { absl::SleepFor(absl::Nanoseconds(ns)); }
+
+void SpinForNanos(int64 ns) {
+  if (ns <= 0) return;
+  int64 deadline = GetCurrentTimeNanos() + ns;
+  while (GetCurrentTimeNanos() < deadline) {
+  }
 }
 
 }  // namespace profiler

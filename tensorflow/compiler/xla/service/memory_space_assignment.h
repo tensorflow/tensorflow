@@ -123,12 +123,6 @@ class MemorySpaceAssignmentCostAnalysis {
       absl::optional<int64> operand_in_alternate_mem = absl::nullopt,
       bool output_in_alternate_mem = false) const;
 
-  // Returns the elapsed time in seconds that other BufferIntervals are slowed
-  // down, due to the prefetching of current bytes. Assuming other
-  // BufferIntervals needs default memory bandwidth, and only current
-  // BufferInterval is prefetched.
-  float GetInstructionElapsedDueToMemorySlowdown(int64 bytes) const;
-
   // Returns the estimated elapsed duration of the instruction in seconds.  It
   // assumes all operands and outputs of the instruction are in the default
   // memory.
@@ -400,6 +394,8 @@ class MemorySpaceAssignment {
       GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare;
   using IsAllowedInAlternateMemoryFunction =
       std::function<bool(const HloValue&)>;
+  using IsUseAllowedInAlternateMemoryFunction =
+      std::function<bool(const HloUse&)>;
 
   // MemorySpaceAssignment uses a notion of a slow and large default memory
   // space and a fast and small alternate memory space.
@@ -433,6 +429,11 @@ class MemorySpaceAssignment {
     // This function can be used to prevent certain HloValues (e.g., based on
     // the opcode) to be placed on the alternate memory.
     IsAllowedInAlternateMemoryFunction is_allowed_in_alternate_mem_fn;
+
+    // This function can be used to prevent certain HloUses (e.g., based on
+    // the opcode) to be placed on the alternate memory.
+    IsUseAllowedInAlternateMemoryFunction is_use_allowed_in_alternate_mem_fn =
+        [](const HloUse&) { return true; };
 
     // Specifies the upper bound for number of outstanding prefetches and
     // evictions, -1 for unlimited.

@@ -1,4 +1,6 @@
 // RUN: tf-mlir-translate -mlir-tf-to-hlo-text %s -tf-input-shapes=: -emit-use-tuple-args -emit-return-tuple | FileCheck %s
+// RUN: tf-mlir-translate -mlir-tf-to-hlo-text %s -tf-input-shapes=: | FileCheck -check-prefix=NO_TUPLES %s
+// RUN: tf-mlir-translate -mlir-tf-to-hlo-text-via-builder %s -tf-input-shapes=: | FileCheck -check-prefix=NO_TUPLES %s
 
 module attributes {tf.versions = {producer = 179 : i32}} {
   func @main() -> (tensor<0xi32>, tensor<0xi32>) {
@@ -14,3 +16,9 @@ module attributes {tf.versions = {producer = 179 : i32}} {
 // CHECK:         [[CONSTANT:%.*]] = s32[0]{0} constant({})
 // CHECK:         ROOT %tuple.{{[0-9]+}} = (s32[0]{0}, s32[0]{0}) tuple(s32[0]{0} [[CONSTANT]], s32[0]{0} [[CONSTANT]])
 // CHECK:       }
+
+// NO_TUPLES-LABEL: HloModule main{{.[0-9+]}}
+// NO_TUPLES:       ENTRY %main.{{[0-9+]}} () -> (s32[0], s32[0]) {
+// NO_TUPLES:         [[CONSTANT:%.*]] = s32[0]{0} constant({})
+// NO_TUPLES:         ROOT %tuple.{{[0-9]+}} = (s32[0]{0}, s32[0]{0}) tuple(s32[0]{0} [[CONSTANT]], s32[0]{0} [[CONSTANT]])
+// NO_TUPLES:       }

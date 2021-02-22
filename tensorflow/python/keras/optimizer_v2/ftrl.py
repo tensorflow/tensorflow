@@ -234,7 +234,7 @@ class Ftrl(optimizer_v2.OptimizerV2):
         'learning_rate':
             self._serialize_hyperparameter('learning_rate'),
         'decay':
-            self._serialize_hyperparameter('decay'),
+            self._initial_decay,
         'initial_accumulator_value':
             self._initial_accumulator_value,
         'learning_rate_power':

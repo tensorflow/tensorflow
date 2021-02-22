@@ -56,9 +56,29 @@ You can get further latency improvements, reductions in peak memory usage, and
 compatibility with integer only hardware devices or accelerators by making sure
 all model math is integer quantized.
 
-For full integer quantization, you need to measure the dynamic range of
-activations and inputs by supplying sample input data to the converter. Refer to
-the `representative_dataset_gen()` function used in the following code.
+For full integer quantization, you need to calibrate or estimate the range, i.e,
+(min, max) of all floating-point tensors in the model. Unlike constant tensors
+such as weights and biases, variable tensors such as model input, activations
+(outputs of intermediate layers) and model output cannot be calibrated unless we
+run a few inference cycles. As a result, the converter requires a representative
+dataset to calibrate them. This dataset can be a small subset (around ~100-500
+samples) of the training or validation data. Refer to the
+`representative_dataset()` function below.
+
+<pre>
+def representative_dataset():
+  for data in tf.data.Dataset.from_tensor_slices((images)).batch(1).take(100):
+    yield [data.astype(tf.float32)]
+</pre>
+
+For testing purposes, you can use a dummy dataset as follows:
+
+<pre>
+def representative_dataset():
+    for _ in range(100):
+      data = np.random.rand(1, 244, 244, 3)
+      yield [data.astype(np.float32)]
+ </pre>
 
 #### Integer with float fallback (using default float input/output)
 
@@ -70,11 +90,7 @@ the following steps:
 import tensorflow as tf
 converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
 <b>converter.optimizations = [tf.lite.Optimize.DEFAULT]
-def representative_dataset_gen():
-  for _ in range(num_calibration_steps):
-    # Get sample input data as a numpy array in a method of your choosing.
-    yield [input]
-converter.representative_dataset = representative_dataset_gen</b>
+converter.representative_dataset = representative_dataset</b>
 tflite_quant_model = converter.convert()
 </pre>
 
@@ -101,11 +117,7 @@ the following steps:
 import tensorflow as tf
 converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
 converter.optimizations = [tf.lite.Optimize.DEFAULT]
-def representative_dataset_gen():
-  for _ in range(num_calibration_steps):
-    # Get sample input data as a numpy array in a method of your choosing.
-    yield [input]
-converter.representative_dataset = representative_dataset_gen
+converter.representative_dataset = representative_dataset
 <b>converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]</b>
 <b>converter.inference_input_type = tf.int8</b>  # or tf.uint8
 <b>converter.inference_output_type = tf.int8</b>  # or tf.uint8
@@ -158,11 +170,7 @@ significantly, but only slightly increase model size.
 <pre>
 import tensorflow as tf
 converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
-def representative_dataset_gen():
-  for _ in range(num_calibration_steps):
-    # Get sample input data as a numpy array in a method of your choosing.
-    yield [input]
-converter.representative_dataset = representative_dataset_gen
+converter.representative_dataset = representative_dataset
 <b>converter.optimizations = [tf.lite.Optimize.DEFAULT]
 converter.target_spec.supported_ops = [tf.lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8]</b>
 tflite_quant_model = converter.convert()
@@ -174,11 +182,7 @@ The following option should be added to the target_spec to allow this.
 <pre>
 import tensorflow as tf
 converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
-def representative_dataset_gen():
-  for _ in range(num_calibration_steps):
-    # Get sample input data as a numpy array in a method of your choosing.
-    yield [input]
-converter.representative_dataset = representative_dataset_gen
+converter.representative_dataset = representative_dataset
 converter.optimizations = [tf.lite.Optimize.DEFAULT]
 converter.target_spec.supported_ops = [tf.lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
 <b>tf.lite.OpsSet.TFLITE_BUILTINS</b>]

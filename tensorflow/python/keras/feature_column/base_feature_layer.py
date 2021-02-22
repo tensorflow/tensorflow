@@ -72,10 +72,9 @@ class _BaseFeaturesLayer(Layer):
 
   def build(self, _):
     for column in self._feature_columns:
-      with variable_scope._pure_variable_scope(  # pylint: disable=protected-access
-          self.name,
-          partitioner=self._partitioner):
-        with variable_scope._pure_variable_scope(  # pylint: disable=protected-access
+      with variable_scope.variable_scope(
+          self.name, partitioner=self._partitioner):
+        with variable_scope.variable_scope(
             feature_column_v2._sanitize_column_name_for_variable_scope(  # pylint: disable=protected-access
                 column.name)):
           column.create_state(self._state_manager)

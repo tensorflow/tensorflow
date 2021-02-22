@@ -20,8 +20,8 @@ limitations under the License.
 
 #include "llvm/ADT/None.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/ViewOpGraph.h"  // from @llvm-project
@@ -96,8 +96,8 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   }
 
   return internal::ConvertMLIRToTFLiteFlatBuffer(
-      toco_flags, std::move(module), pass_config, /*saved_model_tags=*/{},
-      result,
+      model_flags, toco_flags, std::move(module), pass_config,
+      /*saved_model_tags=*/{}, result,
       /*session=*/llvm::None);
 }
 

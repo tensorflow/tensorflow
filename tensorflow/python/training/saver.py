@@ -228,7 +228,8 @@ class BaseSaverBuilder(object):
     # Transformations:
     # * Users pass in "save_path" in save() and restore().  Say "myckpt".
     # * checkpoint_prefix gets fed <save_path><_SHARDED_SUFFIX>.
-    #
+    # * If checkpoint_prefix is a S3 bucket path ".part" is appended to it
+    # * Otherwise _temp/part is appended which is normalized relative to the OS
     # Example:
     #   During runtime, a temporary directory is first created, which contains
     #   files
@@ -254,7 +255,7 @@ class BaseSaverBuilder(object):
       _SHARDED_SUFFIX = array_ops.where(
           string_ops.regex_full_match(checkpoint_prefix, "^s3://.*"),
           constant_op.constant(".part"),
-          constant_op.constant("_temp/part"))
+          constant_op.constant(os.path.normpath("_temp/part")))
       tmp_checkpoint_prefix = string_ops.string_join(
           [checkpoint_prefix, _SHARDED_SUFFIX])
 

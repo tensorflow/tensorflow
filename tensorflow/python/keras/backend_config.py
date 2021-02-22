@@ -49,7 +49,7 @@ def epsilon():
 def set_epsilon(value):
   """Sets the value of the fuzz factor used in numeric expressions.
 
-  Arguments:
+  Args:
       value: float. New value of epsilon.
 
   Example:
@@ -91,7 +91,7 @@ def set_floatx(value):
   [mixed precision guide](
     https://www.tensorflow.org/guide/keras/mixed_precision) for details.
 
-  Arguments:
+  Args:
       value: String; `'float16'`, `'float32'`, or `'float64'`.
 
   Example:
@@ -130,7 +130,7 @@ def image_data_format():
 def set_image_data_format(data_format):
   """Sets the value of the image data format convention.
 
-  Arguments:
+  Args:
       data_format: string. `'channels_first'` or `'channels_last'`.
 
   Example:

@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,13 +21,5 @@ machine LoadPlatformDescription @platforms/cpus/stm32f4.repl
 # These lines are needed to show the results of DebugLog calls in the output.
 machine LoadPlatformDescriptionFromString "uartSemihosting: UART.SemihostingUart @ cpu"
 showAnalyzer cpu.uartSemihosting Antmicro.Renode.Analyzers.LoggingUartAnalyzer
-
-logFile @/tmp/renode_stm32f4_log.txt
-
-macro reset
-"""
-    sysbus LoadELF $bin
-"""
-
-runMacro $reset
+cpu.uartSemihosting CreateFileBackend $logfile true
 

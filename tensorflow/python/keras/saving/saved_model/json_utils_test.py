@@ -19,7 +19,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import enum
+
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.platform import test
 
@@ -50,6 +54,26 @@ class JsonUtilsTest(test.TestCase):
     self.assertAllEqual(loaded['key1'], (3, 5))
     self.assertAllEqual(loaded['key2'], [(1, (3, 4)), (1,)])
 
+  def test_encode_decode_type_spec(self):
+    spec = tensor_spec.TensorSpec((1, 5), dtypes.float32)
+    string = json_utils.Encoder().encode(spec)
+    loaded = json_utils.decode(string)
+    self.assertEqual(spec, loaded)
+
+    invalid_type_spec = {'class_name': 'TypeSpec', 'type_spec': 'Invalid Type',
+                         'serialized': None}
+    string = json_utils.Encoder().encode(invalid_type_spec)
+    with self.assertRaisesRegexp(ValueError, 'No TypeSpec has been registered'):
+      loaded = json_utils.decode(string)
+
+  def test_encode_decode_enum(self):
+    class Enum(enum.Enum):
+      CLASS_A = 'a'
+      CLASS_B = 'b'
+    config = {'key': Enum.CLASS_A, 'key2': Enum.CLASS_B}
+    string = json_utils.Encoder().encode(config)
+    loaded = json_utils.decode(string)
+    self.assertAllEqual({'key': 'a', 'key2': 'b'}, loaded)
 
 if __name__ == '__main__':
   test.main()

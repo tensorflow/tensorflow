@@ -485,6 +485,12 @@ BenchmarkTfLiteModel::CreateRandomTensorData(const TfLiteTensor& t,
       return CreateInputTensorData<int32_t>(
           num_elements, std::uniform_int_distribution<int32_t>(low, high));
     }
+    case kTfLiteUInt32: {
+      int low = has_value_range ? low_range : 0;
+      int high = has_value_range ? high_range : 99;
+      return CreateInputTensorData<uint32_t>(
+          num_elements, std::uniform_int_distribution<uint32_t>(low, high));
+    }
     case kTfLiteInt16: {
       int low = has_value_range ? low_range : 0;
       int high = has_value_range ? high_range : 99;
@@ -508,6 +514,12 @@ BenchmarkTfLiteModel::CreateRandomTensorData(const TfLiteTensor& t,
     case kTfLiteString: {
       // TODO(haoliang): No need to cache string tensors right now.
       break;
+    }
+    case kTfLiteBool: {
+      // According to std::uniform_int_distribution specification, non-int type
+      // is not supported.
+      return CreateInputTensorData<bool>(
+          num_elements, std::uniform_int_distribution<uint32_t>(0, 1));
     }
     default: {
       TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t.name
@@ -610,6 +622,10 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
   owned_delegates_.clear();
+
+  // Contains all ids of TfLiteNodes that have been checked to see whether it's
+  // delegated or not.
+  std::unordered_set<int> checked_node_ids;
   for (const auto& delegate_provider :
        tools::GetRegisteredDelegateProviders()) {
     auto delegate = delegate_provider->CreateTfLiteDelegate(params_);
@@ -626,10 +642,19 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
       int num_delegated_kernels = 0;
       for (int i = 0; i < interpreter_->execution_plan().size(); ++i) {
         int node_id = interpreter_->execution_plan()[i];
+        if (checked_node_ids.find(node_id) != checked_node_ids.end()) {
+          continue;
+        }
         const TfLiteNode& node =
             interpreter_->node_and_registration(node_id)->first;
-        if (delegate.get() == node.delegate) {
+
+        // Note that the 'delegate' here could be an ExternalDelegateWrapper
+        // object that wraps an actual external delegate, in which case,
+        // 'node.delegate' will be different from 'delegate' because
+        // 'node.delegate' refers to the actual external delegate.
+        if (node.delegate != nullptr) {
           num_delegated_kernels++;
+          checked_node_ids.insert(node_id);
         }
       }
       bool fully_delegated = (num_delegated_kernels == 1 &&
@@ -678,6 +703,12 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     if (input.name != t->name) {
       TFLITE_LOG(WARN) << "Tensor # " << i << " is named " << t->name
                        << " but flags call it " << input.name;
+    }
+
+    if (input.shape.size() != t->dims->size) {
+      TFLITE_LOG(ERROR) << "Input tensor #" << i << " should have "
+                        << t->dims->size << " dimensions!";
+      return kTfLiteError;
     }
   }
 

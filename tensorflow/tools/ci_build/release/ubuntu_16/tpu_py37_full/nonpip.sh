@@ -19,7 +19,7 @@ set -x
 source tensorflow/tools/ci_build/release/common.sh
 source tensorflow/tools/ci_build/ctpu/ctpu.sh
 
-install_ubuntu_16_pip_deps pip3.7
+install_ubuntu_16_python_pip_deps python3.7
 install_bazelisk
 install_ctpu pip3.7
 

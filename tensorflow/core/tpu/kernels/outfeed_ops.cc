@@ -53,8 +53,8 @@ Status TpuOutfeedDequeueOp<T>::DoWork(
   VLOG(1) << "TransferLiteralFromOutfeed "
           << xla::ShapeUtil::HumanStringWithLayout(xla_shape_);
 
-  TF_RETURN_IF_ERROR(transfer_manager->TransferLiteralFromOutfeed(
-      stream_executor, xla_shape_, literal));
+  TF_RETURN_IF_ERROR(
+      transfer_manager->TransferLiteralFromOutfeed(stream_executor, literal));
 
   VLOG(1) << "TransferLiteralFromOutfeed complete.";
 
@@ -96,8 +96,8 @@ Status TpuOutfeedDequeueTupleOp<T>::DoWork(
     xla::MutableBorrowingLiteral literal;
     TF_RETURN_IF_ERROR(
         HostTensorToMutableBorrowingLiteral(xla_shapes_[i], output, &literal));
-    TF_RETURN_IF_ERROR(transfer_manager->TransferLiteralFromOutfeed(
-        stream_executor, xla_shapes_[i], literal));
+    TF_RETURN_IF_ERROR(
+        transfer_manager->TransferLiteralFromOutfeed(stream_executor, literal));
   }
   return Status::OK();
 }

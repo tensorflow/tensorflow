@@ -17,8 +17,8 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/StandardTypes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "absl/memory/memory.h"
@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/lite/transforms/prepare_quantize_helper.h"
 
 //===----------------------------------------------------------------------===//
 // The Pass to add default quantization parameters for the activations which
@@ -108,7 +109,7 @@ void DefaultQuantParamsPass::runOnFunction() {
   }
 
   func.walk([&](Operation *op) {
-    if (op->isKnownTerminator() ||
+    if (op->hasTrait<OpTrait::IsTerminator>() ||
         op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
         llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp>(op))
       return;
@@ -208,7 +209,7 @@ quant::QuantParams DefaultQuantParamsPass::GetQuantParamsForBias(
   // The non-bias hasn't been quantized, let's skip this bias.
   if (non_bias_types.size() != non_biases.size()) return {};
 
-  return func(non_bias_types);
+  return func(non_bias_types, false);
 }
 
 quant::QuantParams DefaultQuantParamsPass::GetDefaultQuantParams(

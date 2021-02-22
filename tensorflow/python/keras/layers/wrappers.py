@@ -45,7 +45,7 @@ class Wrapper(Layer):
   Do not use this class as a layer, it is only an abstract base class.
   Two usable wrappers are the `TimeDistributed` and `Bidirectional` wrappers.
 
-  Arguments:
+  Args:
     layer: The layer to be wrapped.
   """
 
@@ -105,7 +105,7 @@ class TimeDistributed(Wrapper):
   Because `TimeDistributed` applies the same instance of `Conv2D` to each of the
   timestamps, the same set of weights are used at each timestamp.
 
-  Arguments:
+  Args:
     layer: a `tf.keras.layers.Layer` instance.
 
   Call arguments:
@@ -142,7 +142,7 @@ class TimeDistributed(Wrapper):
 
     The static shapes are replaced with the corresponding dynamic shapes of the
     tensor.
-    Arguments:
+    Args:
       init_tuple: a tuple, the first part of the output shape
       tensor: the tensor from which to get the (static and dynamic) shapes
         as the last part of the output shape
@@ -310,7 +310,7 @@ class TimeDistributed(Wrapper):
     (E.g., `mask` is not used at all)
     Return `None`.
 
-    Arguments:
+    Args:
       inputs: Tensor with shape [batch size, timesteps, ...] indicating the
         input to TimeDistributed. If static shape information is available for
         "batch size", `mask` is returned unmodified.
@@ -384,7 +384,7 @@ class TimeDistributed(Wrapper):
 class Bidirectional(Wrapper):
   """Bidirectional wrapper for RNNs.
 
-  Arguments:
+  Args:
     layer: `keras.layers.RNN` instance, such as `keras.layers.LSTM` or
       `keras.layers.GRU`. It could also be a `keras.layers.Layer` instance
       that meets the following criteria:
@@ -555,17 +555,16 @@ class Bidirectional(Wrapper):
   @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     output_shape = self.forward_layer.compute_output_shape(input_shape)
-    if not isinstance(output_shape, tensor_shape.TensorShape):
-      output_shape = tensor_shape.TensorShape(output_shape)
-    output_shape = tuple(output_shape.as_list())
     if self.return_state:
-      state_shape = output_shape[1:]
-      output_shape = output_shape[0]
+      state_shape = tf_utils.convert_shapes(output_shape[1:], to_tuples=False)
+      output_shape = tf_utils.convert_shapes(output_shape[0], to_tuples=False)
+    else:
+      output_shape = tf_utils.convert_shapes(output_shape, to_tuples=False)
 
     if self.merge_mode == 'concat':
-      output_shape = list(output_shape)
+      output_shape = output_shape.as_list()
       output_shape[-1] *= 2
-      output_shape = tuple(output_shape)
+      output_shape = tensor_shape.TensorShape(output_shape)
     elif self.merge_mode is None:
       output_shape = [output_shape, copy.copy(output_shape)]
 

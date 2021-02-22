@@ -37,5 +37,17 @@ const RuntimeShape GetTensorShape(const TfLiteEvalTensor* tensor) {
   return RuntimeShape(dims_size, dims_data);
 }
 
+PaddingType RuntimePaddingType(TfLitePadding padding) {
+  switch (padding) {
+    case TfLitePadding::kTfLitePaddingSame:
+      return PaddingType::kSame;
+    case TfLitePadding::kTfLitePaddingValid:
+      return PaddingType::kValid;
+    case TfLitePadding::kTfLitePaddingUnknown:
+    default:
+      return PaddingType::kNone;
+  }
+}
+
 }  // namespace micro
 }  // namespace tflite

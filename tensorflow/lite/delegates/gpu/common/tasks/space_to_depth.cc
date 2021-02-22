@@ -27,30 +27,29 @@ namespace gpu {
 namespace {
 std::string GetSpaceToDepthCode(const OperationDef& op_def) {
   std::string c;
-  c += "__kernel void main_function(\n";
-  c += "$0) {\n";
+  c += "MAIN_FUNCTION($0) {\n";
   if (op_def.IsBatchSupported()) {
-    c += "  int linear_id = get_global_id(0);\n";
+    c += "  int linear_id = GLOBAL_ID_0;\n";
     c += "  int X = linear_id / args.dst_tensor.Batch();\n";
     c += "  int B = linear_id % args.dst_tensor.Batch();\n";
     c += "  args.dst_tensor.SetBatchRef(B);\n";
     c += "  args.src_tensor.SetBatchRef(B);\n";
   } else {
-    c += "  int X = get_global_id(0);\n";
+    c += "  int X = GLOBAL_ID_0;\n";
   }
-  c += "  int Y = get_global_id(1);\n";
-  c += "  int Z = get_global_id(2);\n";
+  c += "  int Y = GLOBAL_ID_1;\n";
+  c += "  int S = GLOBAL_ID_2;\n";
   c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || "
-       "Z >= args.dst_tensor.Slices()) { \n";
+       "S >= args.dst_tensor.Slices()) { \n";
   c += "    return; \n";
   c += "  } \n";
   c += "  FLT tmp[4];\n";
-  c += "  tmp[0] = (FLT)(0.0f);\n";
-  c += "  tmp[1] = (FLT)(0.0f);\n";
-  c += "  tmp[2] = (FLT)(0.0f);\n";
-  c += "  tmp[3] = (FLT)(0.0f);\n";
+  c += "  tmp[0] = INIT_FLT(0.0f);\n";
+  c += "  tmp[1] = INIT_FLT(0.0f);\n";
+  c += "  tmp[2] = INIT_FLT(0.0f);\n";
+  c += "  tmp[3] = INIT_FLT(0.0f);\n";
   c += "  for (int i = 0; i < 4; ++i) {\n";
-  c += "    int dst_c = 4 * Z + i;\n";
+  c += "    int dst_c = 4 * S + i;\n";
   c += "    int block_id = dst_c / args.src_tensor.Channels();\n";
   c += "    int src_x = X * args.block_size + block_id % args.block_size;\n";
   c += "    int src_y = Y * args.block_size + block_id / args.block_size;\n";
@@ -60,8 +59,12 @@ std::string GetSpaceToDepthCode(const OperationDef& op_def) {
   c += "    FLT t_ar[4] = {t.x, t.y, t.z, t.w};\n";
   c += "    tmp[i] = t_ar[src_c % 4];\n";
   c += "  }\n";
-  c += "  FLT4 result = (FLT4)(tmp[0], tmp[1], tmp[2], tmp[3]);\n";
-  c += "  args.dst_tensor.Write(result, X, Y, Z);\n";
+  c += "  FLT4 result;\n";
+  c += "  result.x = tmp[0];\n";
+  c += "  result.y = tmp[1];\n";
+  c += "  result.z = tmp[2];\n";
+  c += "  result.w = tmp[3];\n";
+  c += "  args.dst_tensor.Write(result, X, Y, S);\n";
   c += "}\n";
   return c;
 }

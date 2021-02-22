@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 
+#include "tensorflow/compiler/xla/service/global_device_id.h"
+
 namespace xla {
 
 absl::optional<ReductionKind> MatchReductionComputation(
@@ -48,39 +50,59 @@ absl::optional<ReductionKind> MatchReductionComputation(
   }
 }
 
-StatusOr<std::vector<int64>> GetParticipatingReplicas(
-    GlobalDeviceId device_id, absl::Span<const ReplicaGroup> replica_groups,
-    int64 total_replica_count, const DeviceAssignment& device_assn) {
-  std::vector<int64> participating_replicas;
-
-  // Empty replica_groups() means that all replicas participate in one big
-  // group.
+StatusOr<std::vector<int>> GetParticipatingReplicas(
+    int replica_id, int total_replica_count,
+    absl::Span<const ReplicaGroup> replica_groups) {
+  // Empty replica_groups() means that all replicas participate.
   if (replica_groups.empty()) {
-    participating_replicas.resize(total_replica_count);
-    absl::c_iota(participating_replicas, 0);
-    return participating_replicas;
+    std::vector<int> all_replicas(total_replica_count);
+    absl::c_iota(all_replicas, 0);
+    return all_replicas;
   }
-
-  // Use the DeviceAssignment to figure out our replica-id.
-  TF_ASSIGN_OR_RETURN(int replica_id,
-                      device_assn.ReplicaIdForDevice(device_id));
 
   // Figure out the other replicas that go together with this one.
   absl::optional<ReplicaGroup> replica_group;
   for (const ReplicaGroup& g : replica_groups) {
     if (absl::c_linear_search(g.replica_ids(), replica_id)) {
-      CHECK(!replica_group.has_value())
+      TF_RET_CHECK(!replica_group.has_value())
           << "Replica " << replica_id << " appears twice in replica groups";
       replica_group = g;
     }
   }
-  CHECK(replica_group.has_value())
-      << "Replica " << replica_id << " doesn't appear in replica groups? ";
+  TF_RET_CHECK(replica_group.has_value())
+      << "Replica " << replica_id << " doesn't appear in replica groups";
+  return std::vector<int>(replica_group->replica_ids().begin(),
+                          replica_group->replica_ids().end());
+}
 
-  participating_replicas.insert(participating_replicas.begin(),
-                                replica_group->replica_ids().begin(),
-                                replica_group->replica_ids().end());
-  return participating_replicas;
+StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
+    GlobalDeviceId device_id, const DeviceAssignment& device_assignment,
+    int total_replica_count, absl::Span<const ReplicaGroup> replica_groups) {
+  std::vector<GlobalDeviceId> participants;
+  // Fast path for common case, avoiding logical IDs lookup.
+  if (replica_groups.empty() && device_assignment.computation_count() == 1) {
+    participants.reserve(total_replica_count);
+    for (int replica_id = 0; replica_id < total_replica_count; ++replica_id) {
+      participants.emplace_back(
+          device_assignment(replica_id, /*computation_id=*/0));
+    }
+    return participants;
+  }
+
+  std::pair<int, int> logical_ids;
+  TF_ASSIGN_OR_RETURN(logical_ids,
+                      device_assignment.LogicalIdsForDevice(device_id));
+  int replica_id = logical_ids.first;
+  int computation_id = logical_ids.second;
+  TF_ASSIGN_OR_RETURN(std::vector<int> participating_replicas,
+                      GetParticipatingReplicas(replica_id, total_replica_count,
+                                               replica_groups));
+
+  participants.reserve(participating_replicas.size());
+  for (int replica_id : participating_replicas) {
+    participants.emplace_back(device_assignment(replica_id, computation_id));
+  }
+  return participants;
 }
 
 }  // end namespace xla

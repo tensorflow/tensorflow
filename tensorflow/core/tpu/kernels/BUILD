@@ -13,6 +13,7 @@ load("//tensorflow:tensorflow.bzl", "tf_kernel_library")  # buildifier: disable=
 
 package(
     default_visibility = [
+        "//tensorflow/compiler/xrt/kernels:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/stream_executor/tpu:__subpackages__",
     ],
@@ -56,6 +57,7 @@ cc_library(
         ":tpu_op_util",
         ":tpu_program_group_interface",
         ":tpu_util",
+        "//tensorflow/core/tpu:tpu_compile_interface",
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         ":tpu_util_hdrs",
         "@com_google_absl//absl/strings",
@@ -438,6 +440,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
+        "//tensorflow/core/tpu:tpu_compile_interface",
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "@com_google_absl//absl/strings",
     ],
@@ -637,8 +640,8 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
-        "//tensorflow/stream_executor/tpu:tpu_executor",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
+        "//tensorflow/stream_executor/tpu:tpu_executor_hdrs",
         "@com_google_absl//absl/types:variant",
     ],
     alwayslink = 1,

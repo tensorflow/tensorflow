@@ -83,6 +83,7 @@ TEST(Types, TestTypeNames) {
   EXPECT_EQ(type_name(kTfLiteFloat16), "FLOAT16");
   EXPECT_EQ(type_name(kTfLiteInt16), "INT16");
   EXPECT_EQ(type_name(kTfLiteInt32), "INT32");
+  EXPECT_EQ(type_name(kTfLiteUInt32), "UINT32");
   EXPECT_EQ(type_name(kTfLiteUInt8), "UINT8");
   EXPECT_EQ(type_name(kTfLiteUInt64), "UINT64");
   EXPECT_EQ(type_name(kTfLiteInt8), "INT8");
@@ -91,6 +92,8 @@ TEST(Types, TestTypeNames) {
   EXPECT_EQ(type_name(kTfLiteComplex64), "COMPLEX64");
   EXPECT_EQ(type_name(kTfLiteComplex128), "COMPLEX128");
   EXPECT_EQ(type_name(kTfLiteString), "STRING");
+  EXPECT_EQ(type_name(kTfLiteResource), "RESOURCE");
+  EXPECT_EQ(type_name(kTfLiteVariant), "VARIANT");
 }
 
 TEST(Quantization, TestQuantizationFree) {

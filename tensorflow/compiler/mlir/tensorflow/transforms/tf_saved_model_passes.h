@@ -28,7 +28,12 @@ namespace tf_saved_model {
 std::unique_ptr<OperationPass<ModuleOp>> CreateOptimizeGlobalTensorsPass();
 
 // Creates a pass that freezes tf_saved_model.global_tensor ops.
-std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeGlobalTensorsPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeGlobalTensorsPass(
+    bool allow_mutable_tensors = false);
+
+// Creates a pass that freezes tf_saved_model.asset ops.
+std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeAssetsPass(
+    std::string saved_model_dir);
 
 // Creates as pass that removes variables in the session initializer.
 // This job is required with lifting variable passes. Originally, the session

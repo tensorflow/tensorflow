@@ -24,26 +24,41 @@ ROOT_DIR=${SCRIPT_DIR}/../../../../..
 cd "${ROOT_DIR}"
 pwd
 
-make -f tensorflow/lite/micro/tools/make/Makefile \
-  clean clean_downloads
+echo "Starting to run micro tests at `date`"
 
-# We are moving away from having the downloads and installations be part of the
-# Makefile. As a result, we need to manually add the downloads in this script.
-# Once we move more than the renode downloads out of the Makefile, we should
-# have common way to perform the downloads for a given target, tags ...
-echo "Starting renode download at `date`"
-tensorflow/lite/micro/testing/download_renode.sh tensorflow/lite/micro/tools/make/downloads/renode
-pip3 install -r tensorflow/lite/micro/tools/make/downloads/renode/tests/requirements.txt
+make -f tensorflow/lite/micro/tools/make/Makefile clean_downloads DISABLE_DOWNLOADS=true
+make -f tensorflow/lite/micro/tools/make/Makefile OPTIMIZED_KERNEL_DIR=cmsis_nn clean DISABLE_DOWNLOADS=true
+if [ -d tensorflow/lite/micro/tools/make/downloads ]; then
+  echo "ERROR: Downloads directory should not exist, but it does."
+  exit 1
+fi
+
+echo "Running code style checks at `date`"
+tensorflow/lite/micro/tools/ci_build/test_code_style.sh PRESUBMIT
 
 # Add all the test scripts for the various supported platforms here. This
 # enables running all the tests together has part of the continuous integration
 # pipeline and reduces duplication associated with setting up the docker
 # environment.
 
-echo "Starting to run micro tests at `date`"
+if [[ ${1} == "GITHUB_PRESUBMIT" ]]; then
+  # We enable bazel as part of the github CI only. This is because the same
+  # checks are already part of the internal CI and there isn't a good reason to
+  # duplicate them.
+  #
+  # Another reason is that the bazel checks involve some patching of TF
+  # workspace and BUILD files and this is an experiment to see what the
+  # trade-off should be between the maintenance overhead, increased CI time from
+  # the unnecessary TF downloads.
+  #
+  # See https://github.com/tensorflow/tensorflow/issues/46465 and
+  # http://b/177672856 for more context.
+  echo "Running bazel tests at `date`"
+  tensorflow/lite/micro/tools/ci_build/test_bazel.sh
+fi
 
 echo "Running x86 tests at `date`"
-tensorflow/lite/micro/tools/ci_build/test_x86.sh PRESUBMIT
+tensorflow/lite/micro/tools/ci_build/test_x86.sh
 
 echo "Running bluepill tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_bluepill.sh

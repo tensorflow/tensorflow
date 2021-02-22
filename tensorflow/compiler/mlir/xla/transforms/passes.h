@@ -81,6 +81,9 @@ LogicalResult legalizeTF(
 // ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCommunicationPass();
 
+// Prepare module for export to XLA HLO protos/instruction.
+std::unique_ptr<OperationPass<FuncOp>> CreatePrepareForExport();
+
 }  // namespace mhlo
 }  // namespace mlir
 

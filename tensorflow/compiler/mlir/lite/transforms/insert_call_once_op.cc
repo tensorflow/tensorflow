@@ -51,7 +51,7 @@ void InsertCallOnceOpFromSessionInitializerPass::runOnOperation() {
 
     for (auto func : module.getOps<FuncOp>()) {
       auto dict_attr =
-          func.getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
+          func->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
       if (!dict_attr) continue;
 
       OpBuilder builder(func.getContext());

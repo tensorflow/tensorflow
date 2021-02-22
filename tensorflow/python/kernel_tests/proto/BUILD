@@ -59,6 +59,7 @@ py_library(
     name = "proto_op_test_base",
     testonly = 1,
     srcs = ["proto_op_test_base.py"],
+    srcs_version = "PY3",
     deps = [
         ":test_example_proto_py",
         "//tensorflow/python:client_testlib",
@@ -69,6 +70,7 @@ py_library(
     name = "decode_proto_op_test_base",
     testonly = 1,
     srcs = ["decode_proto_op_test_base.py"],
+    srcs_version = "PY3",
     deps = [
         ":proto_op_test_base",
         ":test_example_proto_py",
@@ -81,6 +83,7 @@ py_library(
     name = "encode_proto_op_test_base",
     testonly = 1,
     srcs = ["encode_proto_op_test_base.py"],
+    srcs_version = "PY3",
     deps = [
         ":proto_op_test_base",
         ":test_example_proto_py",
@@ -89,7 +92,10 @@ py_library(
     ],
 )
 
-py_library(name = "py_test_deps")
+py_library(
+    name = "py_test_deps",
+    srcs_version = "PY3",
+)
 
 tf_proto_library(
     name = "test_example_proto",
@@ -110,6 +116,7 @@ py_library(
     name = "descriptor_source_test_base",
     testonly = 1,
     srcs = ["descriptor_source_test_base.py"],
+    srcs_version = "PY3",
     deps = [
         ":proto_op_test_base",
         "//third_party/py/numpy",
@@ -132,3 +139,11 @@ tf_py_test(
         "//tensorflow/python:proto_ops",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "test_example_proto_py",
+#     api_version = 2,
+#     deps = [":test_example_proto"],
+# )
+# copybara:uncomment_end

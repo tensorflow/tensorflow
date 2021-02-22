@@ -79,7 +79,7 @@ TF_LITE_MICRO_TEST(OutputTensorLength4) {
       tflite::ops::micro::Register_CIRCULAR_BUFFER();
   tflite::micro::KernelRunner runner = tflite::micro::KernelRunner(
       *registration, tensors, tensors_size, inputs_array, outputs_array,
-      /*builtin_data=*/nullptr, micro_test::reporter);
+      /*builtin_data=*/nullptr);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
 
   const int8_t goldens[5][16] = {{0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3},
@@ -147,7 +147,7 @@ TF_LITE_MICRO_TEST(OutputTensorLength5) {
       tflite::ops::micro::Register_CIRCULAR_BUFFER();
   tflite::micro::KernelRunner runner = tflite::micro::KernelRunner(
       *registration, tensors, tensors_size, inputs_array, outputs_array,
-      /*builtin_data=*/nullptr, micro_test::reporter);
+      /*builtin_data=*/nullptr);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
 
   const int8_t goldens[6][20] = {

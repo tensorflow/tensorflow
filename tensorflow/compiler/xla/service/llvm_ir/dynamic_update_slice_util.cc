@@ -189,14 +189,12 @@ Status EmitDynamicUpdateSliceInPlace(absl::Span<const IrArray> operand_arrays,
 //
 // Emits a sequential loop if launch_dimensions is null.
 static Status EmitFusedDynamicUpdateSliceInPlaceImpl(
-    HloInstruction* fusion, const IrArray& fusion_output_array,
+    const HloComputation* fusion, const IrArray& fusion_output_array,
     FusedIrEmitter* fused_emitter,
     const gpu::LaunchDimensions* launch_dimensions, llvm::IRBuilder<>* b) {
-  CHECK_EQ(fusion->opcode(), HloOpcode::kFusion);
-  VLOG(2) << "EmitFusedDynamicUpdateSliceInPlace for "
-          << fusion->ToShortString();
+  VLOG(2) << "EmitFusedDynamicUpdateSliceInPlace for " << fusion->ToString();
 
-  auto* dynamic_update_slice = fusion->fused_expression_root();
+  auto* dynamic_update_slice = fusion->root_instruction();
 
   const auto* update = dynamic_update_slice->operand(1);
   const auto* start_indices = dynamic_update_slice->operand(2);
@@ -215,8 +213,8 @@ static Status EmitFusedDynamicUpdateSliceInPlaceImpl(
   // through the chain of ops that gives us the update operand and use the
   // layout of its source buffer(s).  But this is no worse than we do with
   // fusion elsewhere.)
-  TF_RETURN_IF_ERROR(
-      LayoutUtil::CopyLayoutBetweenShapes(fusion->shape(), &update_shape));
+  TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
+      dynamic_update_slice->shape(), &update_shape));
 
   // Create element generators for update and start_indices.
   TF_ASSIGN_OR_RETURN(ElementGenerator update_array_generator,
@@ -232,7 +230,7 @@ static Status EmitFusedDynamicUpdateSliceInPlaceImpl(
   bool is_signed = ShapeUtil::ElementIsSigned(start_indices->shape());
   return EmitDynamicUpdateSliceInPlaceImpl(
       update_shape, start_indices_generator, is_signed, update_array_generator,
-      fusion_output_array, launch_dimensions, IrName(fusion), b);
+      fusion_output_array, launch_dimensions, IrName(dynamic_update_slice), b);
 }
 
 Status EmitFusedDynamicUpdateSliceInPlace(HloInstruction* fusion,
@@ -240,12 +238,12 @@ Status EmitFusedDynamicUpdateSliceInPlace(HloInstruction* fusion,
                                           FusedIrEmitter* fused_emitter,
                                           llvm::IRBuilder<>* b) {
   return EmitFusedDynamicUpdateSliceInPlaceImpl(
-      fusion, fusion_output_array, fused_emitter,
+      fusion->called_computations()[0], fusion_output_array, fused_emitter,
       /*launch_dimensions=*/nullptr, b);
 }
 
 Status EmitParallelFusedDynamicUpdateSliceInPlace(
-    HloInstruction* fusion, const IrArray& fusion_output_array,
+    const HloComputation* fusion, const IrArray& fusion_output_array,
     FusedIrEmitter* fused_emitter,
     const gpu::LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* b) {
   return EmitFusedDynamicUpdateSliceInPlaceImpl(

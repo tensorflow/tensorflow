@@ -469,6 +469,29 @@ TEST_F(FusionMergerTest, WillMergeExpensiveFusionsWithSingleConsumer) {
   EXPECT_TRUE(FusionMerger().Run(module.get()).ValueOrDie());
 }
 
+TEST_F(FusionMergerTest, WillNotMergeExpensiveFusionsWithReusingConsumer) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule m
+
+    %f_b (p: f32[1024,1024,1024]) -> f32[1024,1024,1024] {
+      %p = f32[1024,1024,1024] parameter(0)
+      ROOT %t = f32[1024,1024,1024] tanh(%p)
+    }
+
+    %f_c (p: f32[1024,1024,1024]) -> f32[1024,1024,1024,2] {
+      %p = f32[1024,1024,1024] parameter(0)
+      ROOT %t = f32[1024,1024,1024,2] broadcast(%p), dimensions={0,1,2}
+    }
+
+    ENTRY entry {
+      p0 = f32[1024,1024,1024] parameter(0)
+      f1 = f32[1024,1024,1024] fusion(p0), kind=kLoop, calls=%f_b
+      ROOT f2 = f32[1024,1024,1024,2] fusion(f1), kind=kLoop, calls=%f_c
+    })")
+                    .ValueOrDie();
+  EXPECT_FALSE(FusionMerger().Run(module.get()).ValueOrDie());
+}
+
 TEST_F(FusionMergerTest, NoMergeBecauseCodeDuplication) {
   auto module = ParseAndReturnVerifiedModule(R"(
 HloModule module

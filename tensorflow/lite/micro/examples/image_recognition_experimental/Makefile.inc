@@ -33,7 +33,7 @@ ifneq ($(filter disco_f746ng,$(ALL_TAGS)),)
 endif
 
 $(eval $(call microlite_test,image_recognition,\
-$(IMAGE_RECOGNITION_SRCS),$(IMAGE_RECOGNITION_HDRS)))
+$(IMAGE_RECOGNITION_SRCS),$(IMAGE_RECOGNITION_HDRS), exclude))
 
 $(eval $(call microlite_test,image_recognition_test,\
 $(IMAGE_RECOGNITION_TEST_SRCS),$(IMAGE_RECOGNITION_TEST_HDRS)))

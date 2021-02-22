@@ -44,10 +44,11 @@ HANDLER(WorkerHeartbeat);
 HANDLER(WorkerUpdate);
 HANDLER(GetDatasetDef);
 HANDLER(GetSplit);
+HANDLER(GetVersion);
 HANDLER(GetOrRegisterDataset);
 HANDLER(ReleaseJobClient);
 HANDLER(GetOrCreateJob);
-HANDLER(GetTasks);
+HANDLER(ClientHeartbeat);
 HANDLER(GetWorkers);
 #undef HANDLER
 

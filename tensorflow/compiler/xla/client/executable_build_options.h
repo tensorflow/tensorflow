@@ -23,7 +23,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
+#include "tensorflow/core/platform/threadpool.h"
+
+namespace stream_executor {
+
+// Forward-declared to avoid StreamExecutor dependency.
+class DeviceMemoryAllocator;
+
+}  // namespace stream_executor
 
 namespace xla {
 
@@ -115,6 +122,16 @@ class ExecutableBuildOptions {
     return *this;
   }
 
+  // Thread pool for parallel compilation.
+  tensorflow::thread::ThreadPool* compile_thread_pool() const {
+    return compile_thread_pool_;
+  }
+  ExecutableBuildOptions& set_compile_thread_pool(
+      tensorflow::thread::ThreadPool* compile_thread_pool) {
+    compile_thread_pool_ = compile_thread_pool;
+    return *this;
+  }
+
  private:
   int device_ordinal_ = -1;
   Shape result_layout_;
@@ -125,10 +142,18 @@ class ExecutableBuildOptions {
   int num_partitions_ = 1;
   bool use_spmd_partitioning_ = false;
   bool deduplicate_hlo_ = false;
+  bool broadcast_replicated_params_ = false;
   absl::optional<DeviceAssignment> device_assignment_;
   bool alias_passthrough_params_ = false;
   bool run_backend_only_ = false;
+  tensorflow::thread::ThreadPool* compile_thread_pool_ = nullptr;
 };
+
+// Creates an ExecutionOptions based on a given ExecutableBuildOptions and
+// ProgramShape.
+ExecutionOptions CreateExecutionOptions(
+    const ExecutableBuildOptions& build_options,
+    const ProgramShape* program_shape);
 
 }  // namespace xla
 

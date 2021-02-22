@@ -54,7 +54,7 @@ class ProfilerOptions(
     ])):
   """Options for finer control over the profiler.
 
-  Use `tf.profiler.ProfilerOptions` to control `tf.profiler`
+  Use `tf.profiler.experimental.ProfilerOptions` to control `tf.profiler`
   behavior.
 
   Fields:
@@ -204,8 +204,8 @@ class Profile(object):
 
     Args:
       logdir: profile data will save to this directory.
-      options: An optional tf.profiler.ProfilerOptions can be provided to fine
-        tune the profiler's behavior.
+      options: An optional `tf.profiler.experimental.ProfilerOptions` can be
+        provided to fine tune the profiler's behavior.
     """
     self._logdir = logdir
     self._options = options

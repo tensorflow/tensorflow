@@ -1,5 +1,0 @@
-op {
-  graph_op_name: "DataServiceDataset"
-  visibility: HIDDEN
-  summary: "Creates a dataset that reads data from the tf.data service."
-}

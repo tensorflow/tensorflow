@@ -19,8 +19,8 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/ViewOpGraph.h"  // from @llvm-project
@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -118,6 +119,8 @@ DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
       return DT_INT16;
     case toco::IODataType::INT32:
       return DT_INT32;
+    case toco::IODataType::UINT32:
+      return DT_UINT32;
     case toco::IODataType::INT64:
       return DT_INT64;
     case toco::IODataType::UINT64:
@@ -130,6 +133,10 @@ DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
       return DT_COMPLEX64;
     case toco::IODataType::COMPLEX128:
       return DT_COMPLEX128;
+    case toco::IODataType::RESOURCE:
+      return DT_RESOURCE;
+    case toco::IODataType::VARIANT:
+      return DT_VARIANT;
     default:
       return DT_INVALID;
   }
@@ -281,8 +288,8 @@ Status DumpOpGraphToFile(mlir::ModuleOp module, const std::string& filename) {
 }
 
 Status ConvertMLIRToTFLiteFlatBuffer(
-    const toco::TocoFlags& toco_flags, mlir::OwningModuleRef module,
-    const mlir::TFL::PassConfig& pass_config,
+    const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
+    mlir::OwningModuleRef module, const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags, string* result,
     llvm::Optional<tensorflow::Session*> session) {
   bool emit_builtin_tflite_ops = !toco_flags.force_select_tf_ops();
@@ -302,8 +309,10 @@ Status ConvertMLIRToTFLiteFlatBuffer(
 
   mlir::PassManager pm(module->getContext(),
                        mlir::OpPassManager::Nesting::Implicit);
+  ::tensorflow::SetCrashReproducer(pm);
 
-  tensorflow::AddTFToTFLConversionPasses(pass_config, &pm, session);
+  tensorflow::AddTFToTFLConversionPasses(model_flags, pass_config, &pm,
+                                         session);
   // Convert back to outlined while format for export back to flatbuffer.
   if (pass_config.legalize_tf_while) {
     pm.addPass(mlir::TFL::CreateWhileOutlinePass());

@@ -37,8 +37,8 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -243,7 +243,7 @@ DenseElementsAttr GetShape(Value output_val) {
   return mlir::DenseElementsAttr::get(
       RankedTensorType::get(
           {static_cast<int>(shape.size())},
-          mlir::IntegerType::get(32, output_val.getContext())),
+          mlir::IntegerType::get(output_val.getContext(), 32)),
       llvm::makeArrayRef(shape));
 }
 
@@ -351,10 +351,10 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
         // to properly broadcast the scalar to `{num_channels}` shape.
 
         // Get the number of channels if possible.
-        auto filter_type = filter.getType().cast<ShapedType>();
+        auto filter_type = filter.getType().dyn_cast<RankedTensorType>();
         // Filter must be a `2D` tensor with `{num_channels, num_features}`
         // shape. The following check is rejecting unknown rank (-1).
-        if (filter_type.getRank() != 2) {
+        if (filter_type == nullptr || filter_type.getRank() != 2) {
           return failure();
         }
         int num_channels = filter_type.getShape()[0];
@@ -395,6 +395,66 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
         /*weights_format=*/rewriter.getStringAttr(fc_op.weights_format()),
         /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()));
     rewriter.replaceOp(add_op, fc.output());
+
+    return success();
+  }
+};
+
+// Replace ..
+// FC(Add(lhs, rhs), filter, bias)
+// .. with ..
+// FC(lhs, filter, FC(rhs, filter, bias))
+// .. if rhs, filter, and bias are all constants.
+// The second FC will be constant folded to a single vector.
+// TODO(b/136285429): Move to tablegen when variadic is supported
+struct FuseAddAndFullyConnected
+    : public OpRewritePattern<TFL::FullyConnectedOp> {
+  using OpRewritePattern<TFL::FullyConnectedOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::FullyConnectedOp fc_op,
+                                PatternRewriter &rewriter) const override {
+    // This only works with default format.
+    if (fc_op.weights_format() != "DEFAULT") return failure();
+
+    // Match Add.
+    auto add_op = dyn_cast_or_null<TFL::AddOp>(fc_op.input().getDefiningOp());
+    if (!add_op) return failure();
+    if (add_op.fused_activation_function() != "NONE") return failure();
+
+    // Don't match adds where the added constant is not 1D.
+    {
+      auto addend_shape = add_op.rhs().getType().cast<ShapedType>();
+      if (!addend_shape.hasStaticShape()) return failure();
+      if (addend_shape.getShape().size() != 1) return failure();
+    }
+
+    // Calculate new bias.  Generate a new FC; it will be constant folded.
+    auto old_bias = fc_op.bias();
+    if (!old_bias || old_bias.getType().isa<NoneType>()) {
+      // TODO(b/180752069): Figure out new bias' type when old bias is empty.
+      return failure();
+    }
+    auto new_bias = rewriter.create<TFL::FullyConnectedOp>(
+        fc_op.getLoc(), old_bias.getType(),
+        /*input=*/add_op.rhs(),
+        /*filter=*/fc_op.filter(),
+        /*bias=*/old_bias,
+        /*fused_activation_function=*/rewriter.getStringAttr("NONE"),
+        /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
+        /*keep_num_dims=*/rewriter.getBoolAttr(true));
+
+    // Create the updated FC.
+    auto new_fc = rewriter.create<TFL::FullyConnectedOp>(
+        FusedLoc::get({add_op.getLoc(), fc_op.getLoc()}, add_op.getContext()),
+        fc_op.output().getTypes(),
+        /*input=*/add_op.lhs(),
+        /*filter=*/fc_op.filter(),
+        /*bias=*/*new_bias.output().begin(),
+        /*fused_activation_function=*/
+        rewriter.getStringAttr(fc_op.fused_activation_function()),
+        /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
+        /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()));
+    rewriter.replaceOp(fc_op.getOperation(), new_fc.output());
 
     return success();
   }
@@ -650,7 +710,7 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
     ShapedType filter_type = filter_cst.getType();
 
     if (llvm::isa<AddOp, SubOp>(binary_op)) {
-      auto padding = fc_op.template getAttrOfType<StringAttr>("padding");
+      auto padding = fc_op->template getAttrOfType<StringAttr>("padding");
       if (padding && padding.getValue() != "VALID") return failure();
 
       // The fusion of add/sub is actually applying the following
@@ -960,28 +1020,29 @@ void Optimize::runOnFunction() {
   // we explore these potentially first and then fuse the binary ops with the
   // following ops in a second pattern match.
   TFL::populateWithGenerated(ctx, patterns);
-  patterns.insert<FuseFullyConnectedAndAdd,
+  patterns.insert<FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
                   FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
                   FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
                   FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
                   FuseFullyConnectedAndMul>(ctx);
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Fuse the binary ops with the following ops.
   OwningRewritePatternList phase_2_patterns;
   TFL::populateWithGenerated(ctx, phase_2_patterns);
-  phase_2_patterns.insert<
-      ScalarizeSplatConstantForAdd, ScalarizeSplatConstantForSub,
-      ScalarizeSplatConstantForMul, ScalarizeSplatConstantForDiv,
-      FuseFullyConnectedAndAdd, FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
-      FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
-      FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
-      FuseFullyConnectedAndMul, FuseBinaryOpToFollowingConv2D,
-      FuseBinaryOpToFollowingDepthwiseConv2D,
-      FuseBinaryOpToFollowingFullyConnected, FuseConv2DAndMulWithQDQs,
-      FuseDepthwiseConv2DAndMulWithQDQs, ConvertTrivialTransposeOpToReshapeOp>(
-      ctx);
-  applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
+  phase_2_patterns
+      .insert<ScalarizeSplatConstantForAdd, ScalarizeSplatConstantForSub,
+              ScalarizeSplatConstantForMul, ScalarizeSplatConstantForDiv,
+              FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
+              FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
+              FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
+              FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
+              FuseFullyConnectedAndMul, FuseBinaryOpToFollowingConv2D,
+              FuseBinaryOpToFollowingDepthwiseConv2D,
+              FuseBinaryOpToFollowingFullyConnected, FuseConv2DAndMulWithQDQs,
+              FuseDepthwiseConv2DAndMulWithQDQs,
+              ConvertTrivialTransposeOpToReshapeOp>(ctx);
+  (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
 
 }  // namespace

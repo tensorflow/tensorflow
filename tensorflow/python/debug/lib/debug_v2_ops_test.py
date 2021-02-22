@@ -339,7 +339,7 @@ class DebugNumericSummaryV2Test(test_util.TensorFlowTestCase):
         debug_event_pb2.TensorDebugMode.SHAPE,
     ]
     # Maximum allowed tensor_id
-    tensor_id = np.power(2, 53)
+    tensor_id = np.power(2, 53, dtype=np.int64)
     for mode in modes:
       self.evaluate(
           gen_debug_ops.debug_numeric_summary_v2(

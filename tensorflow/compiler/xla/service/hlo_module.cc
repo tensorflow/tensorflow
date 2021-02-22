@@ -595,6 +595,22 @@ int64 HloModule::instruction_count() const {
   return n;
 }
 
+std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
+    const absl::flat_hash_set<HloComputation*>& allow_list) const {
+  std::vector<HloComputation*> filtered_post_order(allow_list.size());
+  auto post_order = this->MakeComputationPostOrder();
+
+  int filtered_idx = 0;
+  for (auto& computation : post_order) {
+    if (allow_list.contains(computation)) {
+      filtered_post_order[filtered_idx] = computation;
+      filtered_idx += 1;
+    }
+  }
+
+  return filtered_post_order;
+}
+
 std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {
   // First determine all root computations by building a set of nonroot
   // computations (computations which are called by an instruction in the

@@ -41,8 +41,9 @@ extern "C" void* _mlir_ciface_tf_alloc(void* op_kernel_ctx, size_t num_elements,
                                        int32_t output_index,
                                        int32_t num_candidates,
                                        int32_t* candidate_input_indices) {
+  static constexpr int kAmbiguousOutputIndex = -1;
   auto* ctx = static_cast<tensorflow::OpKernelContext*>(op_kernel_ctx);
-  if (output_index != -1) {
+  if (output_index != kAmbiguousOutputIndex) {
     // Create a 1D shape, because the shapes don't have to match exactly for
     // input forwarding. Only the number of elements must be the same.
     tensorflow::TensorShape output_shape;

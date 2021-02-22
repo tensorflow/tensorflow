@@ -134,9 +134,9 @@ Status GrpcServer::GetHostAndPort(const ServerDef& server_def,
     if (job.name() == server_def.job_name()) {
       auto iter = job.tasks().find(server_def.task_index());
       if (iter == job.tasks().end()) {
-        return errors::InvalidArgument("Task ", server_def.task_index(),
-                                       " was not defined in job \"",
-                                       server_def.job_name(), "\"");
+        return errors::Internal("Task ", server_def.task_index(),
+                                " was not defined in job \"",
+                                server_def.job_name(), "\"");
       }
 
       if (server_def.port() != 0) {

@@ -240,9 +240,9 @@ TfLiteStatus ValidateFullyConnectedGoldens(
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
   const TfLiteRegistration registration = Register_FULLY_CONNECTED();
-  micro::KernelRunner runner(
-      registration, tensors, tensors_size, inputs_array, outputs_array,
-      reinterpret_cast<void*>(&builtin_data), micro_test::reporter);
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array,
+                             reinterpret_cast<void*>(&builtin_data));
 
   TfLiteStatus status = runner.InitAndPrepare();
   if (status != kTfLiteOk) {

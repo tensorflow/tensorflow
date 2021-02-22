@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "pybind_extension")
+
 package(
     default_visibility = [
         "//visibility:public",
@@ -5,6 +7,8 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+# TODO(b/173059387): Hash table custom ops will be kept for legacy reasons until
+#                    every user will be migrated to builtin ops.
 cc_library(
     name = "hashtable_op_kernels",
     srcs = [
@@ -47,5 +51,23 @@ cc_test(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
+    ],
+)
+
+pybind_extension(
+    name = "pywrap_hashtable_ops",
+    srcs = [
+        "hashtable_ops_wrapper.cc",
+    ],
+    hdrs = ["hashtable_ops.h"],
+    additional_exported_symbols = ["HashtableOpsRegisterer"],
+    link_in_framework = True,
+    module_name = "pywrap_hashtable_ops",
+    deps = [
+        ":hashtable_op_kernels",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
     ],
 )

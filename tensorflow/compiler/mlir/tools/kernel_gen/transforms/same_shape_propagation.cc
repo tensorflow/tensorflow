@@ -29,8 +29,8 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AsmState.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
@@ -321,7 +321,7 @@ struct PropagateShapeKnowledgeToKernels
     knowledge.build(getFunction());
 
     getFunction().walk([&](gpu::LaunchFuncOp launch) {
-      auto module = launch.getParentOfType<ModuleOp>();
+      auto module = launch->getParentOfType<ModuleOp>();
       auto kernel = module.lookupSymbol<LLVM::LLVMFuncOp>(launch.kernel());
 
       if (!kernel || kernel.isExternal()) return;
@@ -340,13 +340,21 @@ struct PropagateShapeKnowledgeToKernels
           if (!knowledge.haveSameShape(operand, previous.first)) {
             continue;
           }
+          auto previous_type = previous.first.getType().cast<MemRefType>();
           // We use the first equality found and replace uses of corresponding
-          // size and stride information here.
-          // TODO(herhut): This is not safe if we had a cast operation
-          //     inbetween that changes stride information. The current
-          //     analysis above would not consider this equal.
-          // We need to replace sizes and strides.
-          auto args_to_replace = memref.getRank() * 2;
+          // size and (potentially) stride information here.
+          auto args_to_replace = memref.getRank();
+          auto all_maps_are_identity = [](ArrayRef<AffineMap> maps) {
+            return llvm::all_of(maps,
+                                [](AffineMap map) { return map.isIdentity(); });
+          };
+          // If both memrefs have identity maps, we can also reuse the strides
+          // here, as they are the identity strides and hence fully determinded
+          // by the shape.
+          if (all_maps_are_identity(previous_type.getAffineMaps()) &&
+              all_maps_are_identity(memref.getAffineMaps())) {
+            args_to_replace *= 2;
+          }
           int previous_args_pos = previous.second;
           auto previous_args = kernel.getArguments()
                                    .drop_front(previous_args_pos + 3)

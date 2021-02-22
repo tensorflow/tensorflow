@@ -103,8 +103,15 @@ static Status CreateXlaKernel(FunctionLibraryRuntime* flr,
   if (flr->config_proto()) {
     config_proto = *flr->config_proto();
   }
-  MlirBridgeRolloutPolicy policy =
-      GetMlirBridgeRolloutPolicy(*fbody->graph, config_proto);
+  // There is no easy way to check if we have uninitialized resource args here
+  // so we assume there are uninitialized resource args. This means that we
+  // might run the compilability checker in cases where we don't need to (when
+  // MLIR bridge is run later). Note that this is just temporary until
+  // b/171732021 gets fixed.
+  // We should also revisit if this check provides any value, otherwise we
+  // should remove it.
+  MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
+      *fbody->graph, config_proto, /*uses_uninitialized_resource_args=*/true);
   if (policy != MlirBridgeRolloutPolicy::kEnabledByUser) {
     RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_nodes_map;
     if (!IsCompilable(flr, node_def, &uncompilable_nodes_map)) {
@@ -115,17 +122,24 @@ static Status CreateXlaKernel(FunctionLibraryRuntime* flr,
           uncompilable_node_info.emplace_back(info);
         }
       }
-      string message = absl::StrCat(
+      std::string message = absl::StrCat(
           "Function invoked by the following node is not compilable: ",
           SummarizeNodeDef(node_def, /*max_inputs_in_summary=*/10), ".\n");
-      absl::StrAppend(&message, "Uncompilable nodes:");
+      absl::StrAppend(&message, "Uncompilable operations:");
       for (const auto& node_info : uncompilable_node_info) {
-        string node_message = absl::StrCat("\n", node_info.name, ": ",
-                                           node_info.uncompilable_reason, "\n",
-                                           "\tStacktrace:\n");
-        for (const auto& stack_frame : node_info.stack_trace) {
-          absl::StrAppendFormat(&node_message, "\t\tNode: %s, function: %s\n",
-                                stack_frame.name, stack_frame.function_name);
+        std::string node_message = absl::StrCat(
+            "\n", node_info.name, ": ", node_info.uncompilable_reason, "\n",
+            "The op is created at:\n");
+        if (node_info.stack_trace.back().stack_trace) {
+          AbstractStackTrace::TracePrintingOptions opts;
+          opts.show_line_contents = true;
+          opts.filter_common_prefix = true;
+          opts.drop_internal_frames = true;
+          absl::StrAppend(
+              &node_message,
+              node_info.stack_trace.back().stack_trace->ToString(opts));
+        } else {
+          absl::StrAppend(&node_message, "<Unavailable>\n");
         }
         absl::StrAppend(&message, node_message);
       }

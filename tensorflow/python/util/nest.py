@@ -1,4 +1,4 @@
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -47,10 +47,11 @@ import collections as _collections
 import six as _six
 import wrapt as _wrapt
 
-from tensorflow.python import _pywrap_utils
+from tensorflow.python.platform import tf_logging
+from tensorflow.python.util import _pywrap_nest
+from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util.compat import collections_abc as _collections_abc
 from tensorflow.python.util.tf_export import tf_export
-from tensorflow.python.platform import tf_logging
 
 
 _SHALLOW_TREE_HAS_INVALID_KEYS = (
@@ -274,6 +275,37 @@ is_sequence_or_composite = _pywrap_utils.IsSequenceOrComposite
 def is_nested(seq):
   """Returns true if its input is a collections.abc.Sequence (except strings).
 
+    >>> tf.nest.is_nested("1234")
+    False
+
+    >>> tf.nest.is_nested([1, 3, [4, 5]])
+    True
+
+    >>> tf.nest.is_nested(((7, 8), (5, 6)))
+    True
+
+    >>> tf.nest.is_nested([])
+    True
+
+    >>> tf.nest.is_nested({"a": 1, "b": 2})
+    True
+
+    >>> tf.nest.is_nested({"a": 1, "b": 2}.keys())
+    True
+
+    >>> tf.nest.is_nested({"a": 1, "b": 2}.values())
+    True
+
+    >>> tf.nest.is_nested({"a": 1, "b": 2}.items())
+    True
+
+    >>> tf.nest.is_nested(set([1, 2]))
+    False
+
+    >>> ones = tf.ones([2, 3])
+    >>> tf.nest.is_nested(ones)
+    False
+
   Args:
     seq: an input sequence.
 
@@ -407,15 +439,62 @@ def assert_same_structure(nest1, nest2, check_types=True,
                           expand_composites=False):
   """Asserts that two structures are nested in the same way.
 
-  Note that namedtuples with identical name and fields are always considered
-  to have the same shallow structure (even with `check_types=True`).
-  For instance, this code will print `True`:
+  Note the method does not check the types of data inside the structures.
 
-  ```python
-  def nt(a, b):
-    return collections.namedtuple('foo', 'a b')(a, b)
-  print(assert_same_structure(nt(0, 1), nt(2, 3)))
-  ```
+  Examples:
+
+  * These scalar vs. scalar comparisons will pass:
+
+    >>> tf.nest.assert_same_structure(1.5, tf.Variable(1, tf.uint32))
+    >>> tf.nest.assert_same_structure("abc", np.array([1, 2]))
+
+  * These sequence vs. sequence comparisons will pass:
+
+    >>> structure1 = (((1, 2), 3), 4, (5, 6))
+    >>> structure2 = ((("foo1", "foo2"), "foo3"), "foo4", ("foo5", "foo6"))
+    >>> structure3 = [(("a", "b"), "c"), "d", ["e", "f"]]
+    >>> tf.nest.assert_same_structure(structure1, structure2)
+    >>> tf.nest.assert_same_structure(structure1, structure3, check_types=False)
+
+    >>> import collections
+    >>> tf.nest.assert_same_structure(
+    ...     collections.namedtuple("bar", "a b")(1, 2),
+    ...     collections.namedtuple("foo", "a b")(2, 3),
+    ...     check_types=False)
+
+    >>> tf.nest.assert_same_structure(
+    ...     collections.namedtuple("bar", "a b")(1, 2),
+    ...     { "a": 1, "b": 2 },
+    ...     check_types=False)
+
+    >>> tf.nest.assert_same_structure(
+    ...     { "a": 1, "b": 2, "c": 3 },
+    ...     { "c": 6, "b": 5, "a": 4 })
+
+    >>> ragged_tensor1 = tf.RaggedTensor.from_row_splits(
+    ...       values=[3, 1, 4, 1, 5, 9, 2, 6],
+    ...       row_splits=[0, 4, 4, 7, 8, 8])
+    >>> ragged_tensor2 = tf.RaggedTensor.from_row_splits(
+    ...       values=[3, 1, 4],
+    ...       row_splits=[0, 3])
+    >>> tf.nest.assert_same_structure(
+    ...       ragged_tensor1,
+    ...       ragged_tensor2,
+    ...       expand_composites=True)
+
+  * These examples will raise exceptions:
+
+    >>> tf.nest.assert_same_structure([0, 1], np.array([0, 1]))
+    Traceback (most recent call last):
+    ...
+    ValueError: The two structures don't have the same nested structure
+
+    >>> tf.nest.assert_same_structure(
+    ...       collections.namedtuple('bar', 'a b')(1, 2),
+    ...       collections.namedtuple('foo', 'a b')(2, 3))
+    Traceback (most recent call last):
+    ...
+    TypeError: The two structures don't have the same nested structure
 
   Args:
     nest1: an arbitrarily nested structure.
@@ -484,30 +563,7 @@ def flatten_dict_items(dictionary):
     ValueError: If any key and value do not have the same structure layout, or
     if keys are not unique.
   """
-  if not isinstance(dictionary, (dict, _collections_abc.Mapping)):
-    raise TypeError("input must be a dictionary")
-  flat_dictionary = {}
-  for i, v in _six.iteritems(dictionary):
-    if not is_sequence(i):
-      if i in flat_dictionary:
-        raise ValueError(
-            "Could not flatten dictionary: key %s is not unique." % i)
-      flat_dictionary[i] = v
-    else:
-      flat_i = flatten(i)
-      flat_v = flatten(v)
-      if len(flat_i) != len(flat_v):
-        raise ValueError(
-            "Could not flatten dictionary. Key had %d elements, but value had "
-            "%d elements. Key: %s, value: %s."
-            % (len(flat_i), len(flat_v), flat_i, flat_v))
-      for new_i, new_v in zip(flat_i, flat_v):
-        if new_i in flat_dictionary:
-          raise ValueError(
-              "Could not flatten dictionary: key %s is not unique."
-              % (new_i))
-        flat_dictionary[new_i] = new_v
-  return flat_dictionary
+  return _pywrap_nest.FlattenDictItems(dictionary)
 
 
 def _packed_nest_with_indices(structure, flat, index, is_seq, sequence_fn=None):
@@ -709,18 +765,50 @@ def map_structure(func, *structure, **kwargs):
 
   Examples:
 
-  1. A single Python dict:
+  * A single Python dict:
 
   >>> a = {"hello": 24, "world": 76}
   >>> tf.nest.map_structure(lambda p: p * 2, a)
   {'hello': 48, 'world': 152}
 
-  2. Multiple Python dictionaries:
+  * Multiple Python dictionaries:
 
   >>> d1 = {"hello": 24, "world": 76}
   >>> d2 = {"hello": 36, "world": 14}
   >>> tf.nest.map_structure(lambda p1, p2: p1 + p2, d1, d2)
   {'hello': 60, 'world': 90}
+
+  * A single Python list:
+
+  >>> a = [24, 76, "ab"]
+  >>> tf.nest.map_structure(lambda p: p * 2, a)
+  [48, 152, 'abab']
+
+  * Scalars:
+
+  >>> tf.nest.map_structure(lambda x, y: x + y, 3, 4)
+  7
+
+  * Empty structures:
+
+  >>> tf.nest.map_structure(lambda x: x + 1, ())
+  ()
+
+  *. Check the types of iterables:
+
+  >>> s1 = (((1, 2), 3), 4, (5, 6))
+  >>> s1_list = [[[1, 2], 3], 4, [5, 6]]
+  >>> tf.nest.map_structure(lambda x, y: None, s1, s1_list)
+  Traceback (most recent call last):
+  ...
+  TypeError: The two structures don't have the same nested structure
+
+  * Type check is set to False:
+
+  >>> s1 = (((1, 2), 3), 4, (5, 6))
+  >>> s1_list = [[[1, 2], 3], 4, [5, 6]]
+  >>> tf.nest.map_structure(lambda x, y: None, s1, s1_list, check_types=False)
+  (((None, None), None), None, (None, None))
 
   Args:
     func: A callable that accepts as many arguments as there are structures.
@@ -956,6 +1044,11 @@ def assert_shallow_structure(shallow_tree,
           raise TypeError(_STRUCTURES_HAVE_MISMATCHING_TYPES.format(
               input_type=type(input_tree),
               shallow_type=type(shallow_tree)))
+
+      elif isinstance(shallow_tree, list) and isinstance(input_tree, list):
+        # List subclasses are considered the same,
+        # e.g. python list vs. _ListWrapper.
+        pass
 
       elif ((_is_composite_tensor(shallow_tree) or
              _is_composite_tensor(input_tree)) and

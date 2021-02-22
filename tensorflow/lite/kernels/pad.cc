@@ -118,7 +118,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                             op_context.constant_values->type);
   }
 
-  // TODO(nupurgarg): Current implementations rely on the inputs being <= 4D.
+  // Ensure we do not exceed maximum dimension count.
   TF_LITE_ENSURE(
       context, op_context.dims <= reference_ops::PadKernelMaxDimensionCount());
 

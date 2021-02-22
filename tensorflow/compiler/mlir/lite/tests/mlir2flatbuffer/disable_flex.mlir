@@ -2,7 +2,7 @@
 
 // CHECK: error: 'tf.Div' op is neither a custom op nor a flex op
 // CHECK: error: failed while converting: 'main'
-// CHECK: Ops that can be supported by the flex runtime (enabled via setting the -emit-select-tf-ops flag):
+// CHECK: Some ops are not supported by the native TFLite runtime
 // CHECK: tf.Div {name = "div"}
 
 func @main(tensor<4xf32>) -> tensor<4xf32> {

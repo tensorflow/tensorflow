@@ -17,13 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
 
 import numpy as np
 
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
-from tensorflow.python.client import session
+from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import constant_op
@@ -31,7 +30,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
-from tensorflow.python.platform import test
 
 
 def _generate_csv_test_case():
@@ -94,26 +92,21 @@ def _generate_parse_single_example_test_case():
 
 # TODO(rachelim): Add a benchmark for more expensive transformations, such as
 # vgg_preprocessing.
-class MapVectorizationBenchmark(test.Benchmark):
+class MapVectorizationBenchmark(benchmark_base.DatasetBenchmarkBase):
   """Benchmarks for the `MapVectorization` optimization."""
 
-  def _run(self, x, num_iters=100, name=None):
-    deltas = []
-    with session.Session() as sess:
-      for _ in range(5):
-        # Warm up session...
-        sess.run(x)
-      for _ in range(num_iters):
-        start = time.time()
-        sess.run(x)
-        end = time.time()
-        deltas.append(end - start)
-    median_time = np.median(deltas)
-    self.report_benchmark(iters=num_iters, wall_time=median_time, name=name)
-    return median_time
+  def _run(self, dataset, num_elements, num_iters=10, name=None):
+
+    wall_time = self.run_benchmark(
+        dataset=dataset,
+        num_elements=num_elements,
+        iters=num_iters,
+        warmup=True)
+    self.report_benchmark(iters=num_iters, wall_time=wall_time, name=name)
+    return wall_time
 
   def _compare(self, input_dataset, map_fn, batch_size, input_size, str_id):
-    num_elems = int(np.sum([np.prod(x) for x in input_size]))
+    num_elements = int(np.sum([np.prod(x) for x in input_size]))
     name_template = "{}_batch_size_{}_input_element_size_{}_{}"
 
     unoptimized_dataset = input_dataset.map(map_fn).batch(batch_size)
@@ -121,21 +114,19 @@ class MapVectorizationBenchmark(test.Benchmark):
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
     unoptimized_dataset = unoptimized_dataset.with_options(options)
-    unoptimized_next = dataset_ops.make_one_shot_iterator(
-        unoptimized_dataset).get_next()
 
     options = dataset_ops.Options()
     options.experimental_optimization.map_vectorization.enabled = True
     optimized_dataset = unoptimized_dataset.with_options(options)
-    optimized_next = dataset_ops.make_one_shot_iterator(
-        optimized_dataset).get_next()
 
     unoptimized_time = self._run(
-        unoptimized_next,
-        name=name_template.format(str_id, batch_size, num_elems, "unoptimized"))
+        dataset=unoptimized_dataset,
+        num_elements=num_elements,
+        name=name_template.format(str_id, batch_size, num_elements, "noopt"))
     optimized_time = self._run(
-        optimized_next,
-        name=name_template.format(str_id, batch_size, num_elems, "optimized"))
+        dataset=optimized_dataset,
+        num_elements=num_elements,
+        name=name_template.format(str_id, batch_size, num_elements, "opt"))
 
     print("Batch size: {}\n"
           "Input element size: {}\n"
@@ -198,4 +189,4 @@ class MapVectorizationBenchmark(test.Benchmark):
 
 
 if __name__ == "__main__":
-  test.main()
+  benchmark_base.test.main()

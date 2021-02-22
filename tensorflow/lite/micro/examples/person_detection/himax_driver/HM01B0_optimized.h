@@ -40,7 +40,7 @@ extern "C" {
 //
 //*****************************************************************************
 uint32_t hm01b0_blocking_read_oneframe_scaled(hm01b0_cfg_t* psCfg,
-                                              uint8_t* buffer, int w, int h,
+                                              int8_t* buffer, int w, int h,
                                               int channels);
 
 #ifdef __cplusplus

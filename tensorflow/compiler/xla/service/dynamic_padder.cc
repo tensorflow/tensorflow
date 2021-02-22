@@ -44,16 +44,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace xla {
 
 namespace {
-
-auto* dynamic_padding_gauge = tensorflow::monitoring::Gauge<bool, 0>::New(
-    "/tensorflow/core/use_dynamic_padding_gauge",
-    "Tracks if dynamic padder is used.");
 
 // ChooseIdentityValue looks at the instruction's operand, returns a
 // identity value which, when padded, doesn't change the result of the
@@ -98,6 +93,9 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
       return inst->mutable_operand(init_value_index);
     }
     case HloOpcode::kReduceWindow: {
+      if (inst->shape().IsTuple()) {
+        return Unimplemented("Variadic reduce window not yet supported. ");
+      }
       // Because of the way we do reduce, we already require the `init`
       // operand of hlo reduce instruction to be identity value. Here we reuse
       // the operand.
@@ -1020,6 +1018,10 @@ StatusOr<bool> RewriteDynamicConvolutionKernelGrad(
 StatusOr<bool> RewriteDynamicReduceWindowSamePadding(
     HloInstruction* hlo,
     DynamicDimensionInference* dynamic_dimension_inference) {
+  if (hlo->shape().IsTuple()) {
+    // TODO (b/73062247) variadic reduce window is not yet supported here.
+    return Unimplemented("Variadic reduce window net yet supported.");
+  }
   HloInstruction* input = hlo->mutable_operand(0);
   HloInstruction* init = hlo->mutable_operand(1);
   HloComputation* comp = hlo->parent();
@@ -1276,6 +1278,109 @@ StatusOr<bool> RewriteDynamicSort(
       comp->set_root_instruction(rewritten_sort);
     }
   }
+
+  return true;
+}
+
+StatusOr<bool> RewriteDynamicUpdateSlice(
+    HloInstruction* hlo,
+    DynamicDimensionInference* dynamic_dimension_inference) {
+  HloDynamicUpdateSliceInstruction* dus =
+      Cast<HloDynamicUpdateSliceInstruction>(hlo);
+  HloComputation* comp = hlo->parent();
+  // Suppose we have a base area that we want to update:
+  // +------------------------+
+  // |                        |
+  // |                  base  |
+  // |                        |
+  // +------------------------+
+  //
+  // A partial update with dynamic padding looks like this:
+  //
+  //           +------+-------+
+  //           |update|padding|
+  //           +------+-------+
+  //
+  // We don't want the padding to overwrite the base area:
+  //
+  // +------------------------+
+  // |         +------+-------+
+  // |<-begin->|update|padding| (what we want to avoid)
+  // |         +------+-------+
+  // +------------------------+
+  //
+  // Instead we want to keep the base area untouched except for the update
+  // region:
+  //
+  // +------------------------+
+  // |         +------+       |
+  // |<-begin->|update|  base | (what we want)
+  // |         +------+       |
+  // +------------------------+
+  //
+  // We do this by dynamic slicing the base area out first with the same begin
+  // index:
+  //
+  //           +--------------+
+  // <-begin-> |         base |
+  //           +--------------+
+  //
+  // Then replace the update's padding part with base:
+  //
+  //           +------+-------+
+  //           |update|  base |
+  //           +------+-------+
+  //
+  // Then do the DUS.
+
+  HloInstruction* update = dus->mutable_operand(1);
+  HloInstruction* base = dus->mutable_operand(0);
+  std::vector<HloInstruction*> dynamic_dims_in_partial_update(
+      update->shape().rank(), nullptr);
+  bool needs_rewrite = false;
+  for (int64 i = 0; i < update->shape().rank(); ++i) {
+    if (update->shape().dimensions(i) < base->shape().dimensions(i)) {
+      HloInstruction* dynamic_dim =
+          dynamic_dimension_inference->GetDynamicSize(update, {}, i);
+
+      if (dynamic_dim != nullptr) {
+        dynamic_dims_in_partial_update[i] = dynamic_dim;
+        needs_rewrite = true;
+      }
+    }
+  }
+
+  if (!needs_rewrite) {
+    return false;
+  }
+  std::vector<HloInstruction*> indices;
+  indices.reserve(dus->operand_count() - 2);
+  for (int64 i = 2; i < dus->operand_count(); ++i) {
+    indices.push_back(dus->mutable_operand(i));
+  }
+  HloInstruction* base_slice =
+      comp->AddInstruction(HloInstruction::CreateDynamicSlice(
+          update->shape(), base, indices, update->shape().dimensions()));
+
+  for (int64 i = 0; i < dynamic_dims_in_partial_update.size(); ++i) {
+    HloInstruction* dynamic_dim = dynamic_dims_in_partial_update[i];
+    if (dynamic_dim != nullptr) {
+      Shape mask_shape_int = ShapeUtil::ChangeElementType(update->shape(), S32);
+      Shape mask_shape_pred =
+          ShapeUtil::ChangeElementType(update->shape(), PRED);
+      // Generate mask using iota and dynamic_dim.
+      HloInstruction* iota =
+          comp->AddInstruction(HloInstruction::CreateIota(mask_shape_int, i));
+      HloInstruction* broadcast_dim = comp->AddInstruction(
+          HloInstruction::CreateBroadcast(mask_shape_int, dynamic_dim, {}));
+      HloInstruction* pred = comp->AddInstruction(HloInstruction::CreateCompare(
+          mask_shape_pred, iota, broadcast_dim, ComparisonDirection::kLt));
+      // Update `update` to include base.
+      update = comp->AddInstruction(HloInstruction::CreateTernary(
+          update->shape(), HloOpcode::kSelect, pred, update, base_slice));
+    }
+  }
+  TF_RETURN_IF_ERROR(dus->ReplaceOperandWith(1, update));
 
   return true;
 }
@@ -1730,6 +1835,12 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
         continue;
       }
 
+      if (inst->opcode() == HloOpcode::kDynamicUpdateSlice) {
+        TF_ASSIGN_OR_RETURN(changed, RewriteDynamicUpdateSlice(
+                                         inst, &dynamic_dimension_inference));
+        continue;
+      }
+
       if (inst->opcode() == HloOpcode::kDynamicReshape) {
         TF_ASSIGN_OR_RETURN(
             changed, RewriteDynamicReshape(inst, &dynamic_dimension_inference));
@@ -1804,7 +1915,6 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
               operand, input_dim, operand_dynamic_size, identity_value);
           TF_RETURN_IF_ERROR(inst->ReplaceOperandWith(operand_num, padded));
           operand = inst->mutable_operand(operand_num);
-          dynamic_padding_gauge->GetCell()->Set(true);
           changed = true;
         }
       }
@@ -1851,7 +1961,6 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
 
   VLOG(2) << "Post DynamicPadder HLO:";
   XLA_VLOG_LINES(2, module->ToString());
-  dynamic_padding_gauge->GetCell()->Set(changed);
   return changed;
 }
 

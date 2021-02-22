@@ -17,7 +17,7 @@
 #ifdef COCOAPODS
 @import TensorFlowLiteCCoreML;
 #else
-#include "tensorflow/lite/experimental/delegates/coreml/coreml_delegate.h"
+#include "tensorflow/lite/delegates/coreml/coreml_delegate.h"
 #endif
 
 NS_ASSUME_NONNULL_BEGIN

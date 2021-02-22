@@ -4368,6 +4368,43 @@ TEST_F(ConstantFoldingTest, SimplifySelect_BroadcastTo) {
   }
 }
 
+TEST_F(ConstantFoldingTest, QuantizationEmulation) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output x = ops::Const(scope.WithOpName("x"), {0.0f, 1.0f, 2.0f, 3.0f}, {4});
+  Output min_range = ops::Const(scope.WithOpName("min_range"), 0.0f, {});
+  Output max_range = ops::Const(scope.WithOpName("max_range"), 3.0f, {});
+  Output y = ops::QuantizeAndDequantizeV2(scope.WithOpName("y"), x, min_range,
+                                          max_range);
+  Output id = ops::Identity(scope.WithOpName("id"), y);
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  item.fetch = {"id"};
+
+  std::vector<Tensor> expected_tensors = EvaluateNodes(item.graph, item.fetch);
+
+  for (const bool fold_quantization_emulation : {false, true}) {
+    ConstantFolding optimizer(/*cpu_device=*/nullptr,
+                              /*disable_compressed_tensor_optimization=*/false,
+                              fold_quantization_emulation);
+    GraphDef output;
+    Status status = optimizer.Optimize(/*cluster=*/nullptr, item, &output);
+    int num_quantization_emulation_ops = 0;
+    for (const NodeDef& node : output.node()) {
+      if (node.op() == "QuantizeAndDequantizeV2") {
+        num_quantization_emulation_ops++;
+      }
+    }
+    EXPECT_EQ(fold_quantization_emulation ? 0 : 1,
+              num_quantization_emulation_ops);
+
+    std::vector<Tensor> actual_tensors = EvaluateNodes(output, item.fetch);
+    for (int i = 0; i < item.fetch.size(); ++i) {
+      test::ExpectTensorEqual<float>(expected_tensors[i], actual_tensors[i]);
+    }
+  }
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

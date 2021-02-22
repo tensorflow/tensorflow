@@ -104,6 +104,11 @@ class ReluTest(test.TestCase):
   def testNoElement(self):
     self._testRelu(np.array([[], []], dtype=np.float32))
 
+  @test_util.disable_xla("b/157978028: Does not yet pass with XLA")
+  def testNaNPropagation(self):
+    for t in [np.float16, np.float32, np.float64]:
+      self._testRelu(np.array([-1, np.nan, 1, np.nan]).astype(t))
+
   # The gradient test for ReLU is a bit tricky as the derivative is not well
   # defined at around zero and we want to avoid that in terms of input values.
   def testGradientFloat32(self):
@@ -234,6 +239,11 @@ class Relu6Test(test.TestCase):
       self._testRelu6(
           np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
 
+  @test_util.disable_xla("b/157978028: Does not yet pass with XLA")
+  def testNaNPropagation(self):
+    for t in [np.float16, np.float32, np.float64]:
+      self._testRelu6(np.array([-1, np.nan, 1, 7, np.nan]).astype(t))
+
   # The gradient test for ReLU6 is a bit tricky as the derivative is
   # not well defined at around zero and six and we want to avoid that
   # in terms of input values.
@@ -293,6 +303,11 @@ class LeakyReluTest(test.TestCase):
       self._testLeakyRelu(
           np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
           alpha=0.1)
+
+  def testNaNPropagation(self):
+    for t in [np.float16, np.float32, np.float64]:
+      self._testLeakyRelu(np.array([-1, np.nan, 1, np.nan]).astype(t),
+                          alpha=0.2)
 
   # The gradient test for Leaky ReLU is a bit tricky as the derivative is not
   # well defined at around zero and we want to avoid that in terms of input
@@ -410,6 +425,10 @@ class EluTest(test.TestCase):
       self.skipTest("No GPU available")
     for t in [np.float16, np.float32, np.float64]:
       self._testElu(np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
+
+  def testNaNPropagation(self):
+    for t in [np.float16, np.float32, np.float64]:
+      self._testElu(np.array([-1, np.nan, 1, np.nan]).astype(t))
 
   def testGradientFloat32(self):
     with self.cached_session():
