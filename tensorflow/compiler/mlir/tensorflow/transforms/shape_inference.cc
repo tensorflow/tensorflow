@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/FoldInterfaces.h"  // from @llvm-project
@@ -257,12 +258,23 @@ bool CanInferTensorListElementType(Value tensorlist,
       continue;
     }
     // Refining the tensor list element type might change the output of
-    // TensorListElementShape which is expected tp be the originally assigned
+    // TensorListElementShape which is expected to be the originally assigned
     // shape to TensorList init ops. So replace it with the original element
     // shape value.
     if (auto tl_element_shape =
             dyn_cast<TensorListElementShapeOp>(use.getOwner())) {
-      tl_element_shape.replaceAllUsesWith(initial_element_shape);
+      // If element types match, we can do a direct replacement.
+      if (getElementTypeOrSelf(tl_element_shape.getResult()) ==
+          getElementTypeOrSelf(initial_element_shape.getType())) {
+        tl_element_shape.replaceAllUsesWith(initial_element_shape);
+      } else {
+        OpBuilder b(use.getOwner());
+        auto cast_op = b.create<TF::CastOp>(
+            use.getOwner()->getLoc(), tl_element_shape.getResult().getType(),
+            initial_element_shape,
+            /*truncate=*/b.getBoolAttr(false));
+        tl_element_shape.replaceAllUsesWith(cast_op.getResult());
+      }
       continue;
     }
     // Ignore ops that just consume a TensorList and do not output another
