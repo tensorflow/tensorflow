@@ -692,6 +692,36 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(2, results[0][1][0].values[0])
     self.assertIsNone(results[0][1][1])
 
+  def test_run_passing_and_returning_empty_list(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+
+    @def_function.function
+    def train_step():
+
+      def computation(x):
+        return x
+
+      outputs = strategy.experimental_local_results(
+          strategy.run(computation, args=([],)))
+      return outputs
+
+    self.assertEqual([], train_step()[0])
+
+  def test_run_passing_and_returning_empty_dict(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+
+    @def_function.function
+    def train_step():
+
+      def computation(x):
+        return x
+
+      outputs = strategy.experimental_local_results(
+          strategy.run(computation, args=({},)))
+      return outputs
+
+    self.assertEqual({}, train_step()[0])
+
   def test_composite_input_output(self, enable_packed_var):
     strategy = get_tpu_strategy(enable_packed_var)
     if strategy.num_replicas_in_sync != 2:
