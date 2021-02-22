@@ -414,3 +414,13 @@ func @QuantizeSmallRange(%arg0: tensor<1x2xf32>) -> tensor<1x2xf32>  {
   return %4 : tensor<1x2xf32>
 // Legacy: "tfl.quantize"(%[[weight:.*]]) {qtype = tensor<2x2x!quant.uniform<i8<-127:127>:f32, 9.9999999999999995E-7>>
 }
+
+// CHECK-LABEL: ZeroPointLegacy
+// Legacy-LABEL: ZeroPointLegacy
+// Legacy mode re-calculates zero point when it's changed due to subtle difference in scale.
+func @ZeroPointLegacy(%arg0: tensor<1x2xf32> -> tensor<1x2xf32>  {
+  %0 = "quant.stats"(%arg0) {layerStats = dense<[-1.0, 1.20779215]> : tensor<2xf32>} : (tensor<1x2xf32>) -> tensor<1x2xf32>
+  return %0 : tensor<1x2xf32>
+// CHECK: %1 = "tfl.dequantize"(%0) : (tensor<1x2x!quant.uniform<i8:f32, 0.0086580084819419707:-12>>)
+// Legacy: %1 = "tfl.dequantize"(%0) : (tensor<1x2x!quant.uniform<i8:f32, 0.0086580086499452591:-13>>)
+}
