@@ -53,25 +53,24 @@ PluginConfigMap* GetPluginConfigMap() {
 }
 
 ConfigsList default_plugin_configs{
-    false,               // disable_model_pruning;
-    RewriterConfig::ON,  // implementation_selector;
-    RewriterConfig::ON,  // function_optimization;
-    RewriterConfig::ON,  // common_subgraph_elimination;
-    RewriterConfig::ON,  // arithmetic_optimization;
-    RewriterConfig::ON,  // debug_stripper;
-    RewriterConfig::ON,  // constant_folding;
-    RewriterConfig::ON,  // shape_optimization;
-    RewriterConfig::ON,  // auto_mixed_precision;
-    RewriterConfig::ON,  // auto_mixed_precision_mkl;
-    RewriterConfig::ON,  // pin_to_host_optimization;
-    RewriterConfig::ON,  // layout_optimizer;
-    RewriterConfig::ON,  // remapping;
-    RewriterConfig::ON,  // loop_optimization;
-    RewriterConfig::ON,  // dependency_optimization;
-    RewriterConfig::ON,  // auto_parallel;
-    RewriterConfig::ON,  // memory_optimization;
-    RewriterConfig::ON,  // scoped_allocator_optimization;
-};
+    false,  // disable_model_pruning;
+    {{"implementation_selector", RewriterConfig::ON},
+     {"function_optimization", RewriterConfig::ON},
+     {"common_subgraph_elimination", RewriterConfig::ON},
+     {"arithmetic_optimization", RewriterConfig::ON},
+     {"debug_stripper", RewriterConfig::ON},
+     {"constant_folding", RewriterConfig::ON},
+     {"shape_optimization", RewriterConfig::ON},
+     {"auto_mixed_precision", RewriterConfig::ON},
+     {"auto_mixed_precision_mkl", RewriterConfig::ON},
+     {"pin_to_host_optimization", RewriterConfig::ON},
+     {"layout_optimizer", RewriterConfig::ON},
+     {"remapping", RewriterConfig::ON},
+     {"loop_optimization", RewriterConfig::ON},
+     {"dependency_optimization", RewriterConfig::ON},
+     {"auto_parallel", RewriterConfig::ON},
+     {"memory_optimization", RewriterConfig::ON},
+     {"scoped_allocator_optimization", RewriterConfig::ON}}};
 }  // namespace
 
 std::unique_ptr<CustomGraphOptimizer>
@@ -124,57 +123,6 @@ void PluginGraphOptimizerRegistry::RegisterPluginOptimizerOrDie(
   GetPluginRegistrationMap()->insert({device_type, optimizer_creator});
 }
 
-string PrintConfigs(ConfigsList& configs) {
-  string ret = "";
-  strings::StrAppend(&ret, "disable_model_pruning\t\t",
-                     configs.disable_model_pruning, "\n");
-  strings::StrAppend(&ret, "implementation_selector\t\t",
-                     (configs.implementation_selector != RewriterConfig::OFF),
-                     "\n");
-  strings::StrAppend(&ret, "function_optimization\t\t",
-                     (configs.function_optimization != RewriterConfig::OFF),
-                     "\n");
-  strings::StrAppend(
-      &ret, "common_subgraph_elimination\t",
-      (configs.common_subgraph_elimination != RewriterConfig::OFF), "\n");
-  strings::StrAppend(&ret, "arithmetic_optimization\t\t",
-                     (configs.arithmetic_optimization != RewriterConfig::OFF),
-                     "\n");
-  strings::StrAppend(&ret, "debug_stripper\t\t\t",
-                     (configs.debug_stripper == RewriterConfig::ON), "\n");
-  strings::StrAppend(&ret, "constant_folding\t\t",
-                     (configs.constant_folding != RewriterConfig::OFF), "\n");
-  strings::StrAppend(&ret, "shape_optimization\t\t",
-                     (configs.shape_optimization != RewriterConfig::OFF), "\n");
-  strings::StrAppend(&ret, "auto_mixed_precision\t\t",
-                     (configs.auto_mixed_precision == RewriterConfig::ON),
-                     "\n");
-  strings::StrAppend(&ret, "auto_mixed_precision_mkl\t",
-                     (configs.auto_mixed_precision_mkl == RewriterConfig::ON),
-                     "\n");
-  strings::StrAppend(&ret, "pin_to_host_optimization\t",
-                     (configs.pin_to_host_optimization == RewriterConfig::ON),
-                     "\n");
-  strings::StrAppend(&ret, "layout_optimizer\t\t",
-                     (configs.layout_optimizer != RewriterConfig::OFF), "\n");
-  strings::StrAppend(&ret, "remapping\t\t\t",
-                     (configs.remapping != RewriterConfig::OFF), "\n");
-  strings::StrAppend(&ret, "loop_optimization\t\t",
-                     (configs.loop_optimization != RewriterConfig::OFF), "\n");
-  strings::StrAppend(&ret, "dependency_optimization\t\t",
-                     (configs.dependency_optimization != RewriterConfig::OFF),
-                     "\n");
-  strings::StrAppend(&ret, "memory_optimization\t\t",
-                     (configs.memory_optimization != RewriterConfig::OFF),
-                     "\n");
-  strings::StrAppend(&ret, "auto_parallel\t\t\t",
-                     (configs.auto_parallel != RewriterConfig::OFF), "\n");
-  strings::StrAppend(
-      &ret, "scoped_allocator_optimization\t",
-      (configs.scoped_allocator_optimization == RewriterConfig::ON), "\n");
-  return ret;
-}
-
 void PluginGraphOptimizerRegistry::PrintPluginConfigsIfConflict(
     const std::set<string>& device_types) {
   bool init = false, conflict = false;
@@ -202,8 +150,20 @@ void PluginGraphOptimizerRegistry::PrintPluginConfigsIfConflict(
     const auto it = GetPluginConfigMap()->find(device_type);
     if (it == GetPluginConfigMap()->end()) continue;
     auto cur_plugin_configs = it->second;
+
+    // Print logs in following style:
+    // disable_model_pruning    0
+    // remapping                1
+    // ...
+    string logs = "";
+    strings::StrAppend(&logs, "disable_model_pruning\t\t",
+                       cur_plugin_configs.disable_model_pruning, "\n");
+    for (auto const& pair : cur_plugin_configs.toggle_config) {
+      strings::StrAppend(&logs, pair.first, string(32 - pair.first.size(), ' '),
+                         (pair.second != RewriterConfig::OFF), "\n");
+    }
     LOG(WARNING) << "\nPlugin's config for device_type " << device_type << ":\n"
-                 << PrintConfigs(cur_plugin_configs);
+                 << logs;
   }
 }
 
@@ -221,33 +181,28 @@ ConfigsList PluginGraphOptimizerRegistry::GetPluginConfigs(
     if (cur_plugin_configs.disable_model_pruning == true)
       ret_plugin_configs.disable_model_pruning = true;
 
-// If any of the plugin turns off a certain optimizer,
-// then the optimizer should be turned off;
-#define CONFIG_TOGGLE(CONFIG)                           \
-  if (cur_plugin_configs.CONFIG == RewriterConfig::OFF) \
-  ret_plugin_configs.CONFIG = RewriterConfig::OFF
-
-    CONFIG_TOGGLE(implementation_selector);
-    CONFIG_TOGGLE(function_optimization);
-    CONFIG_TOGGLE(common_subgraph_elimination);
-    CONFIG_TOGGLE(arithmetic_optimization);
-    CONFIG_TOGGLE(debug_stripper);
-    CONFIG_TOGGLE(constant_folding);
-    CONFIG_TOGGLE(shape_optimization);
-    CONFIG_TOGGLE(auto_mixed_precision);
-    CONFIG_TOGGLE(auto_mixed_precision_mkl);
-    CONFIG_TOGGLE(pin_to_host_optimization);
-    CONFIG_TOGGLE(layout_optimizer);
-    CONFIG_TOGGLE(remapping);
-    CONFIG_TOGGLE(loop_optimization);
-    CONFIG_TOGGLE(dependency_optimization);
-    CONFIG_TOGGLE(auto_parallel);
-    CONFIG_TOGGLE(memory_optimization);
-    CONFIG_TOGGLE(scoped_allocator_optimization);
-#undef CONFIG_TOGGLE
+    // If any of the plugin turns off a certain optimizer,
+    // then the optimizer should be turned off;
+    for (auto& pair : cur_plugin_configs.toggle_config) {
+      if (cur_plugin_configs.toggle_config[pair.first] == RewriterConfig::OFF)
+        ret_plugin_configs.toggle_config[pair.first] = RewriterConfig::OFF;
+    }
   }
 
   return ret_plugin_configs;
+}
+
+bool PluginGraphOptimizerRegistry::IsConfigsConflict(
+    ConfigsList& user_config, ConfigsList& plugin_config) {
+  if (plugin_config == default_plugin_configs) return false;
+  if (user_config.disable_model_pruning != plugin_config.disable_model_pruning)
+    return true;
+  // Return true if user_config is turned on but plugin_config is turned off.
+  for (auto& pair : user_config.toggle_config) {
+    if ((user_config.toggle_config[pair.first] == RewriterConfig::ON) &&
+        (plugin_config.toggle_config[pair.first] == RewriterConfig::OFF))
+      return true;
+  }
 }
 
 }  // end namespace grappler

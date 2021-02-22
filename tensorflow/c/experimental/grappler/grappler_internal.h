@@ -94,11 +94,11 @@ class CGraphOptimizer : public CustomGraphOptimizer {
 };
 
 // Configs are turned on by default.
-#define CONFIG_TOGGLE(optimizer)               \
-  if (tp_configs.optimizer == TF_TriState_Off) \
-    configs.optimizer = RewriterConfig::OFF;   \
-  else                                         \
-    configs.optimizer = RewriterConfig::ON;
+#define CONFIG_TOGGLE(optimizer)                             \
+  if (tp_configs.optimizer == TF_TriState_Off)               \
+    configs.toggle_config[#optimizer] = RewriterConfig::OFF; \
+  else                                                       \
+    configs.toggle_config[#optimizer] = RewriterConfig::ON;
 
 void CGraphOptimizerRegister(
     const PluginGraphOptimizerRegistry::Creator& creator,

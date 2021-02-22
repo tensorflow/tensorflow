@@ -28,46 +28,11 @@ namespace grappler {
 struct ConfigsList {
   bool operator==(const ConfigsList& other) const {
     return (disable_model_pruning == other.disable_model_pruning) &&
-           (implementation_selector == other.implementation_selector) &&
-           (function_optimization == other.function_optimization) &&
-           (common_subgraph_elimination == other.common_subgraph_elimination) &&
-           (arithmetic_optimization == other.arithmetic_optimization) &&
-           (debug_stripper == other.debug_stripper) &&
-           (constant_folding == other.constant_folding) &&
-           (shape_optimization == other.shape_optimization) &&
-           (auto_mixed_precision == other.auto_mixed_precision) &&
-           (auto_mixed_precision_mkl == other.auto_mixed_precision_mkl) &&
-           (pin_to_host_optimization == other.pin_to_host_optimization) &&
-           (layout_optimizer == other.layout_optimizer) &&
-           (remapping == other.remapping) &&
-           (loop_optimization == other.loop_optimization) &&
-           (dependency_optimization == other.dependency_optimization) &&
-           (auto_parallel == other.auto_parallel) &&
-           (memory_optimization == other.memory_optimization) &&
-           (scoped_allocator_optimization ==
-            other.scoped_allocator_optimization);
+           (toggle_config == other.toggle_config);
   }
   bool disable_model_pruning;
-  RewriterConfig_Toggle implementation_selector;
-  RewriterConfig_Toggle function_optimization;
-  RewriterConfig_Toggle common_subgraph_elimination;
-  RewriterConfig_Toggle arithmetic_optimization;
-  RewriterConfig_Toggle debug_stripper;
-  RewriterConfig_Toggle constant_folding;
-  RewriterConfig_Toggle shape_optimization;
-  RewriterConfig_Toggle auto_mixed_precision;
-  RewriterConfig_Toggle auto_mixed_precision_mkl;
-  RewriterConfig_Toggle pin_to_host_optimization;
-  RewriterConfig_Toggle layout_optimizer;
-  RewriterConfig_Toggle remapping;
-  RewriterConfig_Toggle loop_optimization;
-  RewriterConfig_Toggle dependency_optimization;
-  RewriterConfig_Toggle auto_parallel;
-  RewriterConfig_Toggle memory_optimization;
-  RewriterConfig_Toggle scoped_allocator_optimization;
+  std::unordered_map<string, RewriterConfig_Toggle> toggle_config;
 };
-
-string PrintConfigs(ConfigsList& configs);
 
 class CustomGraphOptimizerRegistry {
  public:
@@ -124,6 +89,9 @@ class PluginGraphOptimizerRegistry {
   // Print plugin's configs if there are some conflicts.
   static void PrintPluginConfigsIfConflict(
       const std::set<string>& device_types);
+
+  static bool IsConfigsConflict(ConfigsList& user_config,
+                                ConfigsList& plugin_config);
 };
 
 }  // end namespace grappler

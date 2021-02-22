@@ -56,7 +56,7 @@ TEST(Grappler, SuccessfulRegistration) {
       1);
   ConfigsList config = PluginGraphOptimizerRegistry::GetPluginConfigs(
       true, std::set<string>{"Success"});
-  ASSERT_EQ(config.remapping, RewriterConfig::OFF);
+  ASSERT_EQ(config.toggle_config["remapping"], RewriterConfig::OFF);
 }
 
 TEST(Grappler, MultiplePluginRegistration) {
