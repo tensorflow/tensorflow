@@ -424,6 +424,9 @@ add_library(tensorflow::tensorflowlite ALIAS tensorflow-lite)
 # The benchmark tool.
 add_subdirectory(${TFLITE_SOURCE_DIR}/tools/benchmark)
 
+# The label_image example.
+add_subdirectory(${TFLITE_SOURCE_DIR}/examples/label_image)
+
 # Python interpreter wrapper.
 add_library(_pywrap_tensorflow_interpreter_wrapper SHARED EXCLUDE_FROM_ALL
   ${TFLITE_SOURCE_DIR}/python/interpreter_wrapper/interpreter_wrapper.cc
