@@ -865,9 +865,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       return
     expected_engines = self.ExpectedEnginesToBuild(run_params)
     all_op_names = [node.name for node in gdef_to_verify.node]
-    trt_op_names = [
-        node.name for node in gdef_to_verify.node if node.op == "TRTEngineOp"
-    ]
+    trt_op_names = []
     for func in gdef_to_verify.library.function:
       if not re.search(r"TRTEngineOp_\d+_\d+_native_segment",
                        func.signature.name):

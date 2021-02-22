@@ -42,6 +42,6 @@ class MetricSavedModelSaver(layer_serialization.LayerSavedModelSaver):
     return metadata
 
   def _get_serialized_attributes_internal(self, unused_serialization_cache):
-    return (dict(variables=data_structures.ListWrapper(self.obj.variables)),
+    return (dict(variables=data_structures.wrap_or_unwrap(self.obj.variables)),
             dict())  # TODO(b/135550038): save functions to enable saving
                      # custom metrics.

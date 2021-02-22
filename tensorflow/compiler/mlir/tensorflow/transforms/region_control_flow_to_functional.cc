@@ -46,6 +46,9 @@ namespace TF {
 
 namespace {
 
+constexpr char kElseFuncNameAttr[] = "_else_func_name";
+constexpr char kThenFuncNameAttr[] = "_then_func_name";
+
 struct RegionControlFlowToFunctional
     : public TF::RegionControlFlowToFunctionalPassBase<
           RegionControlFlowToFunctional> {
@@ -307,11 +310,25 @@ LogicalResult RegionControlFlowToFunctional::ConvertIfOp(IfRegionOp if_region) {
     // Create 2 new functions with the input signature matching this order,
     // and outline the `then` and `else` regions by moving the bodies of these
     // regions into these functions. Replace tf.yield with a regular return.
-    then_name = GetName(if_region, "_then");
+    if (if_region->hasAttrOfType<StringAttr>(kThenFuncNameAttr) &&
+        !if_region._then_func_nameAttr().getValue().empty()) {
+      then_name =
+          mapper.GetUniqueName(if_region._then_func_nameAttr().getValue())
+              .str();
+    } else {
+      then_name = GetName(if_region, "_then");
+    }
     ExtractSingleBlockRegion(if_region.then_branch(), then_name, extern_values,
                              worklist, /*extern_values_passthrough=*/false);
 
-    else_name = GetName(if_region, "_else");
+    if (if_region->hasAttrOfType<StringAttr>(kElseFuncNameAttr) &&
+        !if_region._else_func_nameAttr().getValue().empty()) {
+      else_name =
+          mapper.GetUniqueName(if_region._else_func_nameAttr().getValue())
+              .str();
+    } else {
+      else_name = GetName(if_region, "_else");
+    }
     ExtractSingleBlockRegion(if_region.else_branch(), else_name, extern_values,
                              worklist, /*extern_values_passthrough=*/false);
   }

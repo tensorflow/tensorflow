@@ -76,7 +76,7 @@ class NcclTestCase(test.TestCase):
     for dtype in [np.float16, np.float32, np.int32, np.int64, np.float64]:
       # Create session inside outer loop to test use of
       # same communicator across multiple sessions.
-      with self.test_session() as sess:
+      with self.test_session():
 
         for devices in device_sets:
           shape = (3, 4)

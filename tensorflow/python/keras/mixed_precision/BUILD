@@ -186,6 +186,7 @@ py_library(
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/keras/optimizer_v2",
+        "//tensorflow/python/keras/utils:control_flow_util",
         "@absl_py//absl/testing:parameterized",
     ],
 )

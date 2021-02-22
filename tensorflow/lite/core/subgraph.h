@@ -35,6 +35,11 @@ limitations under the License.
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
+namespace delegates {
+namespace test_utils {
+class TestDelegate;  // Class for friend declarations.
+}  // namespace test_utils
+}  // namespace delegates
 
 class Subgraph {
  public:
@@ -342,7 +347,11 @@ class Subgraph {
   TfLiteStatus SetCustomAllocationForTensor(
       int tensor_index, const TfLiteCustomAllocation& allocation);
 
+  void SetName(const char* name);
+  const std::string& GetName() const;
+
  private:
+  friend class TestDelegate;
   // SubgraphAwareProfiler wraps an actual TFLite profiler, such as a
   // BufferedProfiler instance, and takes care of event profiling/tracing in a
   // certain subgraph.
@@ -731,6 +740,8 @@ class Subgraph {
 
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap* resources_ = nullptr;
+
+  std::string name_;
 };
 
 }  // namespace tflite

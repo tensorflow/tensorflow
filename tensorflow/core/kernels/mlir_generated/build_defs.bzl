@@ -35,6 +35,19 @@ type_to_mlir = {
     "c128": "complex<f64>",
 }
 
+type_to_tf_dtype = {
+    "i1": "DT_BOOL",
+    "i8": "DT_INT8",
+    "i16": "DT_INT16",
+    "i32": "DT_INT32",
+    "i64": "DT_INT64",
+    "f16": "DT_HALF",
+    "f32": "DT_FLOAT",
+    "f64": "DT_DOUBLE",
+    "c64": "DT_COMPLEX64",
+    "c128": "DT_COMPLEX128",
+}
+
 def _get_mlir_type(type):
     """Return the mlir type corresponding to 'type'"""
     if type in type_to_mlir:
@@ -54,9 +67,9 @@ def _gen_mlir_op_impl(ctx):
               "sed 's/output_type/%s/g' > %s")) % (
                 ctx.file.template.path,
                 ctx.attr.platform.upper(),
-                ctx.attr.type,
+                type_to_tf_dtype[ctx.attr.type],
                 mlir_type,
-                ctx.attr.output_type,
+                type_to_tf_dtype[ctx.attr.output_type],
                 mlir_output_type,
                 ctx.outputs.out.path,
             )

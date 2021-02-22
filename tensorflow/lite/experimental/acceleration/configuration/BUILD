@@ -107,11 +107,24 @@ cc_library(
 
 cc_library(
     name = "nnapi_plugin",
+    deps = [
+        ":nnapi_plugin_impl",
+    ],
+)
+
+cc_library(
+    name = "nnapi_plugin_impl",
     srcs = ["nnapi_plugin.cc"],
+    hdrs = ["nnapi_plugin.h"],
+    visibility = [
+        "//tensorflow/lite/experimental/acceleration/configuration/c:__pkg__",
+    ],
     deps = [
         ":configuration_fbs",
         ":delegate_registry",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+        "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
         "@com_google_absl//absl/memory",
     ],
     alwayslink = 1,  # For registration to always run.

@@ -1231,6 +1231,7 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
   if (op_params.align_corners && output_width > 1) {
     width_scale = static_cast<float>(input_width - 1) / (output_width - 1);
   }
+  const float rounding_offset = std::numeric_limits<T>::is_integer ? .5f : .0f;
 
   for (int b = 0; b < batches; ++b) {
     for (int y = 0; y < output_height; ++y) {
@@ -1252,7 +1253,8 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
                              input_data[Offset(input_shape, b, y0, x1, c)] *
                                  (1 - (input_y - y0)) * (input_x - x0) +
                              input_data[Offset(input_shape, b, y1, x1, c)] *
-                                 (input_y - y0) * (input_x - x0));
+                                 (input_y - y0) * (input_x - x0) +
+                             rounding_offset);
           output_data[Offset(output_shape, b, y, x, c)] = interpolation;
         }
       }
@@ -1260,10 +1262,10 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
   }
 }
 
-inline void ComputeInterpolationValues(const int32 value, const int32 scale_10,
-                                       const bool half_pixel_centers,
-                                       int32 input_size, int32* scaled_value,
-                                       int32* lower_bound, int32* upper_bound) {
+inline void ComputeInterpolationValuesInteger(
+    const int32 value, const int32 scale_10, const bool half_pixel_centers,
+    int32 input_size, int32* scaled_value, int32* lower_bound,
+    int32* upper_bound) {
   if (half_pixel_centers) {
     *scaled_value = value * scale_10 + scale_10 / 2 - (1 << 9);
   } else {
@@ -1325,14 +1327,14 @@ inline void ResizeBilinearInteger(
   for (int b = 0; b < batches; ++b) {
     for (int y = 0; y < output_height; ++y) {
       int32 input_y, y0, y1;
-      ComputeInterpolationValues(y, height_scale_10,
-                                 op_params.half_pixel_centers, input_height,
-                                 &input_y, &y0, &y1);
+      ComputeInterpolationValuesInteger(y, height_scale_10,
+                                        op_params.half_pixel_centers,
+                                        input_height, &input_y, &y0, &y1);
       for (int x = 0; x < output_width; ++x) {
         int32 input_x, x0, x1;
-        ComputeInterpolationValues(x, width_scale_10,
-                                   op_params.half_pixel_centers, input_width,
-                                   &input_x, &x0, &x1);
+        ComputeInterpolationValuesInteger(x, width_scale_10,
+                                          op_params.half_pixel_centers,
+                                          input_width, &input_x, &x0, &x1);
         for (int c = 0; c < depth; ++c) {
           const int64_t output_20_ll =
               static_cast<int64_t>(

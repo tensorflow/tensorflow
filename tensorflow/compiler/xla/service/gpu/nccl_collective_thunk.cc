@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
-#include "tensorflow/compiler/xla/service/gpu/nccl_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/stream_executor/gpu/gpu_activation.h"
@@ -54,33 +53,16 @@ NcclCollectiveConfig::~NcclCollectiveConfig() = default;
 NcclCollectiveConfig& NcclCollectiveConfig::operator=(NcclCollectiveConfig&&) =
     default;
 
-NcclCollectiveConfig GetNcclCollectiveConfig(const HloInstruction* hlo,
-                                             int64 replica_count) {
-  NcclCollectiveConfig config;
-  config.operand_count = hlo->operands().size();
-  config.operand_element_type.reserve(config.operand_count);
-  for (int i = 0; i < config.operand_count; i++) {
-    config.operand_element_type.push_back(
-        hlo->operand(i)->shape().element_type());
-  }
-  config.replica_count = replica_count;
-  config.replica_groups = hlo->replica_groups();
-
-  if (hlo->channel_id().has_value()) {
-    config.collective_op_kind = RendezvousKey::kCrossModule;
-    config.op_id = *hlo->channel_id();
-  } else {
-    config.collective_op_kind = RendezvousKey::kCrossReplica;
-    config.op_id = static_cast<int64>(hlo->GetModule()->unique_id());
-  }
-  return config;
-}
-
 /* static */ bool NcclCollectiveThunk::NcclIsEnabled() {
-  return true;  // Skylark selects this source file if NCCL is enabled.
+#if XLA_ENABLE_XCCL
+  return true;
+#else
+  return false;
+#endif
 }
 
 Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
+#if XLA_ENABLE_XCCL
   VLOG(1) << absl::StreamFormat("Starting %s.", ThunkKindToString(kind()));
   auto op_profiler =
       params.profiler->MakeScopedInstructionProfiler(profile_index());
@@ -122,6 +104,29 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   TF_RETURN_IF_ERROR(RunNcclCollective(params, comm));
   return Status::OK();
+#else   // XLA_ENABLE_XCCL
+  return Unimplemented(
+      "NCCL support is not available: this binary was not built with a CUDA "
+      "compiler, which is necessary to build the NCCL source library.");
+#endif  // XLA_ENABLE_XCCL
+}
+
+bool IsTypeSupportedByNccl(PrimitiveType element_type) {
+  switch (element_type) {
+    case S8:
+    case PRED:
+    case U8:
+    case S32:
+    case U32:
+    case S64:
+    case U64:
+    case F16:
+    case F32:
+    case F64:
+      return true;
+    default:
+      return false;
+  }
 }
 
 }  // namespace gpu

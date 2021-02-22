@@ -1163,6 +1163,7 @@ cc_library(
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:TargetLLVMIR",
+        "@llvm-project//mlir:TargetLLVMIRModuleTranslation",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorToLLVM",
     ],

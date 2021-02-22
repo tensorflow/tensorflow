@@ -361,6 +361,12 @@ Status DataServiceDispatcherImpl::MakeSplitProvider(
   return Status::OK();
 }
 
+Status DataServiceDispatcherImpl::GetVersion(const GetVersionRequest* request,
+                                             GetVersionResponse* response) {
+  response->set_version(kDataServiceVersion);
+  return Status::OK();
+}
+
 Status DataServiceDispatcherImpl::GetOrRegisterDataset(
     const GetOrRegisterDatasetRequest* request,
     GetOrRegisterDatasetResponse* response) {

@@ -107,6 +107,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/micro/kernels:conv",
         "//tensorflow/lite/micro/kernels:ethosu",
         "//tensorflow/lite/micro/kernels:fully_connected",
         "//tensorflow/lite/micro/kernels:micro_ops",

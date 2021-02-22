@@ -56,6 +56,8 @@ filegroup(
         "gpu_op_digamma.cc",
         "gpu_op_erf.cc",
         "gpu_op_erfc.cc",
+        "gpu_op_exp.cc",
+        "gpu_op_expm1.cc",
         "gpu_op_floor.cc",
         "gpu_op_imag.cc",
         "gpu_op_invert.cc",
@@ -69,6 +71,7 @@ filegroup(
         "gpu_op_neg.cc",
         "gpu_op_real.cc",
         "gpu_op_rsqrt.cc",
+        "gpu_op_sign.cc",
         "gpu_op_sin.cc",
         "gpu_op_sinh.cc",
         "gpu_op_sqrt.cc",
@@ -82,9 +85,6 @@ filegroup(
 filegroup(
     name = "experimental_unary_gpu_kernel_srcs",
     srcs = [
-        "gpu_op_exp.cc",
-        "gpu_op_expm1.cc",
-        "gpu_op_sign.cc",
     ],
     compatible_with = get_compatible_with_cloud(),
 )
@@ -322,6 +322,19 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "cast_op",
+    srcs = ["gpu_op_cast.cc"],
+    tags = [
+        "manual",
+    ],
+    deps = [
+        ":base_gpu_op",
+        ":gpu_cast_kernels",
+        "//third_party/eigen3",
+    ],
+)
+
 cc_library(
     name = "base_ops_test",
     testonly = 1,
@@ -482,7 +495,7 @@ gpu_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
+    # Cannot vectorize.
 )
 
 gpu_kernel_library(
@@ -493,7 +506,8 @@ gpu_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
+    # May be compute-bound.
+    # unroll_factors = "4",
 )
 
 gpu_kernel_library(
@@ -519,7 +533,7 @@ gpu_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
+    # Cannot vectorize.
 )
 
 gpu_kernel_library(
@@ -530,7 +544,7 @@ gpu_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
+    # Cannot vectorize.
 )
 
 gpu_kernel_library(
@@ -574,7 +588,8 @@ gpu_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
+    # May be compute-bound.
+    # unroll_factors = "4",
 )
 
 gpu_kernel_library(
@@ -672,7 +687,8 @@ gpu_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
+    # May be compute-bound.
+    # unroll_factors = "4",
 )
 
 [

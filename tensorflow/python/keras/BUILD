@@ -242,6 +242,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":backend",
+        "//tensorflow/python/keras/utils:control_flow_util",
         "//tensorflow/python/keras/utils:engine_utils",
     ],
 )

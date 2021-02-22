@@ -122,24 +122,28 @@ Operation* CreateRecvAtHostOp(OpBuilder& builder, Location loc,
       /*device_ordinal=*/builder.getI64IntegerAttr(0));
 }
 
-// Creates a IfRegionOp with `predicate` and then/else region with yield op and
-// an empty block.
-TF::IfRegionOp CloneEmptyIfWithPredicate(Value predicate, bool is_stateless,
-                                         Location loc, OpBuilder& builder) {
+// Clones an IfRegionOp 'if_region' and attributes and creates then/else regions
+// with yield op and an empty block.
+TF::IfRegionOp CloneEmptyIfWithPredicate(TF::IfRegionOp if_region,
+                                         OpBuilder& builder) {
   auto host_side_if = builder.create<TF::IfRegionOp>(
-      loc, llvm::SmallVector<Type, 4>{}, predicate, is_stateless);
+      if_region.getLoc(), llvm::SmallVector<Type, 4>{}, if_region.cond(),
+      if_region.is_stateless(), if_region._then_func_nameAttr(),
+      if_region._else_func_nameAttr());
 
   // Create empty then branch region.
   auto& then_branch = host_side_if.then_branch();
   then_branch.push_back(new Block);
   builder.setInsertionPointToEnd(&then_branch.front());
-  builder.create<TF::YieldOp>(loc, /*operands=*/ArrayRef<Value>{});
+  builder.create<TF::YieldOp>(if_region.getLoc(),
+                              /*operands=*/ArrayRef<Value>{});
 
   // Create empty else branch region.
   auto& else_branch = host_side_if.else_branch();
   else_branch.push_back(new Block);
   builder.setInsertionPointToEnd(&else_branch.front());
-  builder.create<TF::YieldOp>(loc, /*operands=*/ArrayRef<Value>{});
+  builder.create<TF::YieldOp>(if_region.getLoc(),
+                              /*operands=*/ArrayRef<Value>{});
   return host_side_if;
 }
 // Creates a WhileRegionOp cond and body regions with yield op and
@@ -357,8 +361,7 @@ void DecomposeControlFlow(tf_device::ClusterOp tpu_cluster,
     if (auto if_op = llvm::dyn_cast<TF::IfRegionOp>(op)) {
       if (!HasOutsideCompilationNested(op)) return;
       OpBuilder builder(if_op);
-      auto host_if = CloneEmptyIfWithPredicate(
-          if_op.cond(), if_op.is_stateless(), if_op.getLoc(), builder);
+      auto host_if = CloneEmptyIfWithPredicate(if_op, builder);
       MoveOpsToHost(tpu_cluster, &if_op.then_branch().front(),
                     host_if.then_branch().front().getTerminator(),
                     compilation_key, device_ordinal, communication_key_index);

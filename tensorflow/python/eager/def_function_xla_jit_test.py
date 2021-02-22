@@ -132,6 +132,9 @@ class DefFunctionTest(xla_test.XLATestCase):
       self.assertAllClose([2, 3, 3, 4, 4], fn2(inputs, 1))
 
   def testNestedCallUnsupportedOps(self):
+    if 'tpu' in self.device.lower():
+      self.skipTest('XLA TPU supports tf.unique')
+
     with ops.device('device:{}:0'.format(self.device)):
 
       def fn(x):

@@ -134,7 +134,8 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
     absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing) {
+        output_operand_aliasing,
+    const Literal* literal) {
   if (operand_shapes_with_layout.has_value())
     return Unimplemented(
         "CustomCall doesn't support operands shapes with layout");
@@ -142,6 +143,8 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
                                          shape, builder_));
   TF_RET_CHECK(output_operand_aliasing.empty())
       << "MLIR CustomCallOp does not support output_operand_aliasing yet";
+  TF_RET_CHECK(literal == nullptr)
+      << "MLIR CustomCallOp does not support literal yet";
   auto op = builder_.create<mlir::mhlo::CustomCallOp>(
       loc_, ty, GetValues(operands), builder_.getStringAttr(call_target_name),
       /*has_side_effect=*/builder_.getBoolAttr(has_side_effect),

@@ -217,7 +217,8 @@ TF::IfRegionOp CreateMergedIf(
 
   auto new_if_op = builder.create<TF::IfRegionOp>(
       destination.getLoc(), merged_return_types, destination.cond(),
-      destination.is_stateless() && source.is_stateless());
+      destination.is_stateless() && source.is_stateless(),
+      destination._then_func_nameAttr(), destination._else_func_nameAttr());
   new_if_op.then_branch().push_back(new Block);
   new_if_op.else_branch().push_back(new Block);
   // Replace internal usages of merged if ops.

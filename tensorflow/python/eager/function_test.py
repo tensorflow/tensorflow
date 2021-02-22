@@ -1796,6 +1796,18 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertIn('CPU', has_device.v.device)
 
   @test_util.run_in_graph_and_eager_modes
+  def testMultipleDeviceCheck(self):
+
+    def f():
+      with ops.device('cpu'):
+        return test_ops.device_placement_op()
+
+    func = function.defun(f)
+    with ops.device('cpu:0'):
+      output = self.evaluate(func())
+      self.assertIn(compat.as_bytes('CPU:0'), output)
+
+  @test_util.run_in_graph_and_eager_modes
   def testDeviceAnnotationsRespected(self):
 
     def multi_device_fn():

@@ -166,7 +166,11 @@ Status MlirFunctionOptimizationPass::Run(
 
   // TODO(b/176852151): Remove this after dark launch completed.
   // Capture stats relevant to graph properties used in dark launch.
-  GetMlirBridgeRolloutPolicy(**graph, config_proto, /*record_stats=*/true);
+  // We set `uses_uninitialized_resource_args` to false here because function
+  // optimization is not affected by uninitialized resource args.
+  GetMlirBridgeRolloutPolicy(**graph, config_proto,
+                             /*uses_uninitialized_resource_args=*/false,
+                             /*record_stats=*/true);
 
   if (overall_state == MlirOptimizationPassState::Disabled) {
     LOG_FIRST_N(INFO, 1) << "None of the MLIR Optimization Passes are enabled "

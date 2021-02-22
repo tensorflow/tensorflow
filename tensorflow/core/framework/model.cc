@@ -1638,13 +1638,38 @@ void Model::FlushMetrics() {
 
 void Model::Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget,
                      int64 ram_budget, double model_input_time) {
+  std::shared_ptr<Node> snapshot;
+  {
+    tf_shared_lock lock(mu_);
+    snapshot = output_->Snapshot();
+  }
+  OptimizationParams optimization_params;
+  optimization_params.set_algorithm(algorithm);
+  optimization_params.set_cpu_budget(cpu_budget);
+  optimization_params.set_ram_budget(ram_budget);
+  optimization_params.set_model_input_time(model_input_time);
   switch (algorithm) {
     case AutotuneAlgorithm::HILL_CLIMB:
-      OptimizeHillClimb(cpu_budget, ram_budget, model_input_time);
+      OptimizeHillClimb(snapshot, optimization_params);
       break;
     case AutotuneAlgorithm::GRADIENT_DESCENT:
-      OptimizeGradientDescent(cpu_budget, ram_budget, model_input_time);
+      OptimizeGradientDescent(snapshot, optimization_params);
       break;
+    default:
+      VLOG(2) << "Autotuning algorithm was not recognized. Aborting "
+                 "optimization.";
+      return;
+  }
+  if (!save_dir_.empty()) {
+    mutex_lock lock(mu_);
+    Status status = EnsureSaveLoopThreadStarted();
+    if (status.ok() && save_buffer_.size() < kMaxNumBufferedOptimizeArgs) {
+      save_buffer_.push_back(std::make_pair(snapshot, optimization_params));
+      save_cond_var_.notify_all();
+    } else if (save_buffer_.size() >= kMaxNumBufferedOptimizeArgs) {
+      VLOG(3) << "Saved snapshots buffer is full. Current snapshot and "
+                 "optimization parameters will not be saved.";
+    }
   }
 }
 
@@ -1707,7 +1732,7 @@ Status Model::OptimizeLoop(AutotuneAlgorithm algorithm, int64 cpu_budget,
       cancellation_manager,
       [this]() {
         mutex_lock l(mu_);
-        cond_var_.notify_all();
+        optimize_cond_var_.notify_all();
       },
       /*deregister_fn=*/&unused));
 
@@ -1721,7 +1746,7 @@ Status Model::OptimizeLoop(AutotuneAlgorithm algorithm, int64 cpu_budget,
         auto wait_ms =
             last_optimization_ms + optimization_period_ms_ - current_time_ms;
         VLOG(2) << "Waiting for " << wait_ms << " ms.";
-        cond_var_.wait_for(l, std::chrono::milliseconds(wait_ms));
+        optimize_cond_var_.wait_for(l, std::chrono::milliseconds(wait_ms));
         current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
       }
       if (cancellation_manager->IsCancelled()) {
@@ -1747,13 +1772,9 @@ Status Model::OptimizeLoop(AutotuneAlgorithm algorithm, int64 cpu_budget,
   }
 }
 
-void Model::OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget,
-                                    double model_input_time) {
-  std::shared_ptr<Node> snapshot;
-  {
-    tf_shared_lock lock(mu_);
-    snapshot = output_->Snapshot();
-  }
+void Model::OptimizeGradientDescent(
+    std::shared_ptr<Node> snapshot,
+    const OptimizationParams& optimization_params) {
   VLOG(2) << "Starting optimization of tunable parameters with Gradient "
              "Descent.";
   auto parameters = CollectTunableParameters(snapshot);
@@ -1788,13 +1809,15 @@ void Model::OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget,
   // and we only increase the buffer size parameters.
   bool cpu_budget_reached = false;
 
-  for (int i = 0;
-       i < kMaxIterations &&
-       !ShouldStop(cpu_budget, ram_budget, parameters, parallelism_parameters,
-                   buffer_size_parameters, snapshot, &cpu_budget_reached);
+  for (int i = 0; i < kMaxIterations &&
+                  !ShouldStop(optimization_params.cpu_budget(),
+                              optimization_params.ram_budget(), parameters,
+                              parallelism_parameters, buffer_size_parameters,
+                              snapshot, &cpu_budget_reached);
        ++i) {
     absl::flat_hash_map<string, double> gradients;
-    new_output_time = OutputTime(snapshot, model_input_time, &gradients);
+    new_output_time = OutputTime(
+        snapshot, optimization_params.model_input_time(), &gradients);
     // We also terminate once the improvement of the output latency is too
     // small.
     if (std::abs(output_time - new_output_time) < kOptimizationPrecision) {
@@ -1812,13 +1835,8 @@ void Model::OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget,
   UpdateStateValues(&parameters);
 }
 
-void Model::OptimizeHillClimb(int64 cpu_budget, int64 ram_budget,
-                              double model_input_time) {
-  std::shared_ptr<Node> snapshot;
-  {
-    tf_shared_lock lock(mu_);
-    snapshot = output_->Snapshot();
-  }
+void Model::OptimizeHillClimb(std::shared_ptr<Node> snapshot,
+                              const OptimizationParams& optimization_params) {
   VLOG(2) << "Starting optimization of tunable parameters with Hill Climb.";
   const double processing_time = TotalProcessingTime(snapshot);
   auto parameters = CollectTunableParameters(snapshot);
@@ -1838,7 +1856,8 @@ void Model::OptimizeHillClimb(int64 cpu_budget, int64 ram_budget,
   }
   while (true) {
     const double output_time =
-        OutputTime(snapshot, model_input_time, /*gradients=*/nullptr);
+        OutputTime(snapshot, optimization_params.model_input_time(),
+                   /*gradients=*/nullptr);
     bool all_max = true;
     for (auto& pair : parameters) {
       if (pair.second->value < pair.second->max) {
@@ -1846,8 +1865,10 @@ void Model::OptimizeHillClimb(int64 cpu_budget, int64 ram_budget,
         break;
       }
     }
-    if (output_time < processing_time / cpu_budget || all_max ||
-        TotalMaximumBufferedBytes(snapshot) > ram_budget) {
+    if (output_time < processing_time / optimization_params.cpu_budget() ||
+        all_max ||
+        TotalMaximumBufferedBytes(snapshot) >
+            optimization_params.ram_budget()) {
       break;
     }
     double best_delta = -1.0L;
@@ -1858,7 +1879,8 @@ void Model::OptimizeHillClimb(int64 cpu_budget, int64 ram_budget,
       }
       pair.second->value++;
       double new_output_time =
-          OutputTime(snapshot, model_input_time, /*gradients=*/nullptr);
+          OutputTime(snapshot, optimization_params.model_input_time(),
+                     /*gradients=*/nullptr);
       double delta = output_time - new_output_time;
       if (delta > best_delta &&
           (delta > kBufferSizeMinDelta || pair.second->name != kBufferSize)) {
@@ -1928,6 +1950,72 @@ Status Model::FromProto(ModelProto model_proto, std::unique_ptr<Model>* model) {
       model_proto.collect_resource_usage());
   *model = std::move(restored_model);
   return Status::OK();
+}
+
+Status Model::Save(const string& fname, std::shared_ptr<Node> snapshot,
+                   const OptimizationParams& optimization_params) {
+  ModelProto model_proto;
+  std::unique_ptr<Model> model_snapshot = std::make_unique<Model>();
+  {
+    mutex_lock lock(model_snapshot->mu_);
+    model_snapshot->output_ = std::move(snapshot);
+    model_snapshot->id_counter_ = id_counter_;
+    model_snapshot->collect_resource_usage_.store(collect_resource_usage_);
+  }
+  TF_RETURN_IF_ERROR(model_snapshot->ToProto(&model_proto));
+  OptimizationParams* saved_optimization_params =
+      model_proto.mutable_optimization_params();
+  *saved_optimization_params = optimization_params;
+  return WriteBinaryProto(Env::Default(), fname, model_proto);
+}
+
+Status Model::Load(const string& fname, std::unique_ptr<Model>* model,
+                   OptimizationParams* optimization_params) {
+  ModelProto model_proto;
+  TF_RETURN_IF_ERROR(ReadBinaryProto(Env::Default(), fname, &model_proto));
+  TF_RETURN_IF_ERROR(FromProto(model_proto, model));
+  const OptimizationParams restored_optimization_params =
+      model_proto.optimization_params();
+  *optimization_params = restored_optimization_params;
+  return Status::OK();
+}
+
+Status Model::EnsureSaveLoopThreadStarted() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  if (!save_thread_) {
+    save_thread_ = absl::WrapUnique(
+        Env::Default()->StartThread({}, "tf_data_model_save", [this]() {
+          Status status = SaveLoop();
+          if (!status.ok()) {
+            VLOG(2) << "Model save loop failed: " << status.ToString();
+          }
+        }));
+  }
+  return Status::OK();
+}
+
+Status Model::SaveLoop() {
+  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(save_dir_));
+  while (true) {
+    std::pair<std::shared_ptr<Node>, OptimizationParams> to_save;
+    {
+      mutex_lock l(mu_);
+      while (!save_thread_cancelled_ && save_buffer_.empty()) {
+        save_cond_var_.wait(l);
+      }
+      if (save_thread_cancelled_) {
+        return Status::OK();
+      }
+      to_save = save_buffer_.front();
+      save_buffer_.pop_front();
+    }
+    string model_name =
+        absl::StrCat("autotune_model_",
+                     Hash64Combine(static_cast<uint64>(EnvTime::NowMicros()),
+                                   reinterpret_cast<uint64>(this)));
+    string fname = io::JoinPath(save_dir_, model_name);
+    TF_RETURN_IF_ERROR(Save(fname, to_save.first, to_save.second));
+    VLOG(2) << "Model was saved as " << fname;
+  }
 }
 
 }  // namespace model

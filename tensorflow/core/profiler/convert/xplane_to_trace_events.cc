@@ -126,9 +126,12 @@ void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace) {
     XPlaneVisitor xplane = CreateTfXPlaneVisitor(host_plane);
     ConvertXPlaneToTraceEvents(kHostThreadsDeviceId, xplane, trace);
   }
-
-  const std::vector<const XPlane*> device_planes =
+  std::vector<const XPlane*> device_planes =
       FindPlanesWithPrefix(xspace, kGpuPlanePrefix);
+  // We don't expect GPU and TPU planes to be present in the same XSpace.
+  if (device_planes.empty()) {
+    device_planes = FindPlanesWithPrefix(xspace, kTpuPlanePrefix);
+  }
   for (const XPlane* device_plane : device_planes) {
     XPlaneVisitor xplane = CreateTfXPlaneVisitor(device_plane);
     uint32 device_id = kFirstDeviceId + xplane.Id();

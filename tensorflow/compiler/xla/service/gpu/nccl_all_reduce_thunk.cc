@@ -23,25 +23,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_format.h"
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
-#include "tensorflow/compiler/xla/service/collective_ops_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
-#if GOOGLE_CUDA
-#include "third_party/nccl/nccl.h"
-#elif TENSORFLOW_USE_ROCM
-#include "rocm/include/rccl/rccl.h"
-#endif
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
-#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/service/gpu/nccl_utils.h"
+#include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -109,12 +98,11 @@ static NcclAllReduceConfig GetNcclAllReduceConfig(mlir::lmhlo::AllReduceOp op,
 }
 
 /*static*/ bool NcclAllReduceThunk::CanImplement(mlir::lmhlo::AllReduceOp op) {
-  if (!op.IsCrossReplica()) return false;
   bool operands_are_supported =
       absl::c_all_of(op.operands(), [](mlir::Value operand) {
         Shape shape = TypeToShape(operand.getType());
         return LayoutUtil::IsDenseArray(shape) &&
-               ToNcclDataType(shape.element_type()).ok();
+               IsTypeSupportedByNccl(shape.element_type());
       });
   return operands_are_supported && MatchReductionComputation(op).has_value();
 }
@@ -130,6 +118,7 @@ NcclAllReduceThunk::NcclAllReduceThunk(
 
 Status NcclAllReduceThunk::RunNcclCollective(const ExecuteParams& params,
                                              ncclComm_t comm) {
+#if XLA_ENABLE_XCCL
   int device_ordinal = params.stream->parent()->device_ordinal();
   VLOG(3) << "Performing all-reduce from device ordinal: " << device_ordinal;
 
@@ -165,10 +154,11 @@ Status NcclAllReduceThunk::RunNcclCollective(const ExecuteParams& params,
 
   VLOG(3) << "Done performing all-reduce for ordinal: " << device_ordinal;
   return Status::OK();
-}
-
-const NcclCollectiveConfig& NcclAllReduceThunk::config() const {
-  return config_.config;
+#else   // XLA_ENABLE_XCCL
+  return Unimplemented(
+      "NCCL support is not available: this binary was not built with a CUDA "
+      "compiler, which is necessary to build the NCCL source library.");
+#endif  // XLA_ENABLE_XCCL
 }
 
 }  // namespace gpu

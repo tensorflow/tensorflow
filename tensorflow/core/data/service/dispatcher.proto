@@ -48,6 +48,12 @@ message GetSplitResponse {
   bool end_of_splits = 2;
 }
 
+message GetVersionRequest {}
+
+message GetVersionResponse {
+  int64 version = 1;
+}
+
 message GetOrRegisterDatasetRequest {
   // The dataset to register.
   DatasetDef dataset = 1;
@@ -145,6 +151,9 @@ service DispatcherService {
 
   // Gets the next split for a given job.
   rpc GetSplit(GetSplitRequest) returns (GetSplitResponse);
+
+  // Returns the API version of the server.
+  rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
 
   // Registers a dataset with the server, or returns its id if it is already
   // registered.

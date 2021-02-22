@@ -444,7 +444,7 @@ class CropAndResizeOpTestBase(test.TestCase):
         constant_op.constant(boxes, shape=[num_boxes, 4]),
         constant_op.constant(box_ind, shape=[num_boxes]),
         constant_op.constant(crop_size, shape=[2]))
-    with self.session() as sess:
+    with self.session():
       self.assertEqual(crops_shape, list(crops.get_shape()))
       crops = self.evaluate(crops)
       self.assertEqual(crops_shape, list(crops.shape))

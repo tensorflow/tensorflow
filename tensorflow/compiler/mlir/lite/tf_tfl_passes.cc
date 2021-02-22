@@ -62,7 +62,8 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
       mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
 }
 
-void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
+void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
+                                const mlir::TFL::PassConfig& pass_config,
                                 mlir::OpPassManager* pass_manager,
                                 llvm::Optional<tensorflow::Session*> session) {
   mlir::TF::StandardPipelineOptions standard_pipeline_options;
@@ -175,6 +176,13 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
         /*allow_mutable_tensors=*/pass_config.enable_tflite_variables));
   }
 
+  if (!model_flags.saved_model_dir().empty()) {
+    // This pass 'freezes' tf saved model asset ops and inlines as string values
+    // in a format of the tf constant op.
+    pass_manager->addPass(mlir::tf_saved_model::CreateFreezeAssetsPass(
+        model_flags.saved_model_dir()));
+  }
+
   // The below passes only make sense if Builtin TFLite ops are enabled
   // for emission.
   if (pass_config.emit_builtin_tflite_ops) {
@@ -253,6 +261,13 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   }
 }
 
+void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
+                                mlir::OpPassManager* pass_manager,
+                                llvm::Optional<tensorflow::Session*> session) {
+  const toco::ModelFlags model_flags;
+  AddTFToTFLConversionPasses(model_flags, pass_config, pass_manager, session);
+}
+
 }  // namespace tensorflow
 
 namespace mlir {
@@ -301,7 +316,8 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
 
   // TFLite dialect passes.
   pm.addPass(mlir::TFL::CreatePrepareTFPass(
-      /*unfold_batch_matmul=*/true, /*allow_bf16_type_legalization=*/false));
+      /*unfold_batch_matmul=*/true,
+      /*allow_bf16_and_f16_type_legalization=*/false));
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pm.addPass(
       mlir::TFL::CreateLegalizeTFPass(/*run_tfl_runtime_verification=*/true));

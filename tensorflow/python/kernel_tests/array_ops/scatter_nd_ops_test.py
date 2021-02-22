@@ -211,7 +211,7 @@ class StatefulScatterNdTest(test.TestCase):
     scatter = state_ops.scatter_nd_update(ref, indices, updates)
     init = variables.global_variables_initializer()
 
-    with self.session() as sess:
+    with self.session():
       self.evaluate(init)
       result = self.evaluate(scatter)
       self.assertAllClose(result, expected)
@@ -225,7 +225,7 @@ class StatefulScatterNdTest(test.TestCase):
     scatter = state_ops.scatter_nd_update(ref, indices, updates)
     init = variables.global_variables_initializer()
 
-    with self.session() as sess:
+    with self.session():
       self.evaluate(init)
       result = self.evaluate(scatter)
       self.assertAllClose(result, expected)

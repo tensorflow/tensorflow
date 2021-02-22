@@ -37,7 +37,7 @@ class DecodeImageOpTest(test.TestCase):
   def testBmp(self):
     # Read a real bmp and verify shape
     path = os.path.join(prefix_path, "bmp", "testdata", "lena.bmp")
-    with self.session() as sess:
+    with self.session():
       bmp0 = io_ops.read_file(path)
       image0 = image_ops.decode_image(bmp0)
       image1 = image_ops.decode_bmp(bmp0)
@@ -53,7 +53,7 @@ class DecodeImageOpTest(test.TestCase):
     stride = 5
     shape = (12, height, width, 3)
 
-    with self.session() as sess:
+    with self.session():
       gif0 = io_ops.read_file(path)
       image0 = image_ops.decode_image(gif0)
       image1 = image_ops.decode_gif(gif0)
@@ -82,7 +82,7 @@ class DecodeImageOpTest(test.TestCase):
   def testJpeg(self):
     # Read a real jpeg and verify shape
     path = os.path.join(prefix_path, "jpeg", "testdata", "jpeg_merge_test1.jpg")
-    with self.session() as sess:
+    with self.session():
       jpeg0 = io_ops.read_file(path)
       image0 = image_ops.decode_image(jpeg0)
       image1 = image_ops.decode_jpeg(jpeg0)

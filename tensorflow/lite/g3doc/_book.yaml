@@ -187,7 +187,9 @@ upper_tabs:
         section:
         - title: "Cross compilation for ARM"
           path: /lite/guide/build_cmake_arm
-
+      - title: "Build Python Wheel"
+        path: /lite/guide/build_cmake_pip
+        status: experimental
       - title: "Reduce binary size"
         path: /lite/guide/reduce_binary_size
         status: experimental

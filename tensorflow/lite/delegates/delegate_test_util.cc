@@ -91,19 +91,33 @@ TfLiteRegistration AddOpRegistration() {
 
 void TestDelegate::SetUp() {
   interpreter_.reset(new Interpreter);
-  interpreter_->AddTensors(5);
-  interpreter_->SetInputs({0, 1});
-  interpreter_->SetOutputs({3, 4});
-  TfLiteQuantizationParams quant;
-  interpreter_->SetTensorParametersReadWrite(0, kTfLiteFloat32, "", {3}, quant);
-  interpreter_->SetTensorParametersReadWrite(1, kTfLiteFloat32, "", {3}, quant);
-  interpreter_->SetTensorParametersReadWrite(2, kTfLiteFloat32, "", {3}, quant);
-  interpreter_->SetTensorParametersReadWrite(3, kTfLiteFloat32, "", {3}, quant);
-  interpreter_->SetTensorParametersReadWrite(4, kTfLiteFloat32, "", {3}, quant);
+  SetUpSubgraph(&interpreter_->primary_subgraph());
+}
+
+void TestDelegate::SetUpSubgraph(Subgraph* subgraph) {
+  subgraph->AddTensors(5);
+  subgraph->SetInputs({0, 1});
+  subgraph->SetOutputs({3, 4});
+  std::vector<int> dims({3});
+  TfLiteQuantization quant{kTfLiteNoQuantization, nullptr};
+  subgraph->SetTensorParametersReadWrite(0, kTfLiteFloat32, "", dims.size(),
+                                         dims.data(), quant, false);
+  subgraph->SetTensorParametersReadWrite(1, kTfLiteFloat32, "", dims.size(),
+                                         dims.data(), quant, false);
+  subgraph->SetTensorParametersReadWrite(2, kTfLiteFloat32, "", dims.size(),
+                                         dims.data(), quant, false);
+  subgraph->SetTensorParametersReadWrite(3, kTfLiteFloat32, "", dims.size(),
+                                         dims.data(), quant, false);
+  subgraph->SetTensorParametersReadWrite(4, kTfLiteFloat32, "", dims.size(),
+                                         dims.data(), quant, false);
   TfLiteRegistration reg = AddOpRegistration();
-  interpreter_->AddNodeWithParameters({0, 0}, {2}, nullptr, 0, nullptr, &reg);
-  interpreter_->AddNodeWithParameters({1, 1}, {3}, nullptr, 0, nullptr, &reg);
-  interpreter_->AddNodeWithParameters({2, 1}, {4}, nullptr, 0, nullptr, &reg);
+  int node_index_ignored;
+  subgraph->AddNodeWithParameters({0, 0}, {2}, {}, nullptr, 0, nullptr, &reg,
+                                  &node_index_ignored);
+  subgraph->AddNodeWithParameters({1, 1}, {3}, {}, nullptr, 0, nullptr, &reg,
+                                  &node_index_ignored);
+  subgraph->AddNodeWithParameters({2, 1}, {4}, {}, nullptr, 0, nullptr, &reg,
+                                  &node_index_ignored);
 }
 
 void TestDelegate::TearDown() {
