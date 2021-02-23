@@ -2,6 +2,13 @@ FROM ubuntu:16.04
 
 LABEL maintainer="Rama Ketineni <rama.ketineni@intel.com>"
 
+ENV http_proxy="http://proxy-us.intel.com:911"
+ENV https_proxy="http://proxy-us.intel.com:912"
+ENV HTTP_PROXY="http://proxy-us.intel.com:911"
+ENV HTTPS_PROXY="http://proxy-us.intel.com:912"
+ENV ftp_proxy="http://proxy-chain.intel.com:911"
+ENV socks_proxy="http://proxy-us.intel.com:1080"
+ENV no_proxy="intel.com,.intel.com,localhost,127.0.0.1"
 
 # Copy and run the install scripts.
 COPY install/*.sh /install/
@@ -9,6 +16,15 @@ RUN /install/install_bootstrap_deb_packages.sh
 RUN add-apt-repository -y ppa:openjdk-r/ppa && \
    add-apt-repository -y ppa:george-edison55/cmake-3.x
 RUN /install/install_deb_packages.sh
+
+# Install gcc 7
+RUN apt-get install -y software-properties-common
+RUN add-apt-repository ppa:ubuntu-toolchain-r/test
+RUN apt update
+RUN apt install g++-7 -y
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 60 \
+                         --slave /usr/bin/g++ g++ /usr/bin/g++-7
+RUN update-alternatives --config gcc
 
 # The following line installs the Python 3.6 cross-compilation toolchain.
 RUN /install/install_pi_python3x_toolchain.sh "3.6"
