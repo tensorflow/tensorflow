@@ -2117,10 +2117,10 @@ Status IrEmitterUnnested::EmitFusionFromMlir(MlirEmitterInput mlir_input) {
 
 Status IrEmitterUnnested::HandleCopy(HloInstruction* copy) {
   TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(copy));
-  return EmitCopyForMlir(input);
+  return EmitCopyFromMlir(input);
 }
 
-Status IrEmitterUnnested::EmitCopyForMlir(MlirEmitterInput input) {
+Status IrEmitterUnnested::EmitCopyFromMlir(MlirEmitterInput input) {
   auto copy = mlir::cast<mlir::lmhlo::CopyOp>(input.op);
   auto operand_shape = TypeToShape(copy.operand().getType());
   auto output_shape = TypeToShape(copy.output().getType());
@@ -2213,21 +2213,6 @@ Status IrEmitterUnnested::AssertNonDeterminismIsOkay(const string& op_name) {
 
 Status IrEmitterUnnested::HandleSelectAndScatter(
     HloInstruction* select_and_scatter) {
-  const Window& window = select_and_scatter->window();
-  const auto* operand = select_and_scatter->operand(0);
-  const auto* source = select_and_scatter->operand(1);
-  const int64 rank = operand->shape().rank();
-  CHECK_EQ(rank, source->shape().rank());
-  CHECK_EQ(rank, window.dimensions_size());
-
-  // TODO(b/31410564): Implement dilation rate for select-and-scatter.
-  if (window_util::HasDilation(window)) {
-    return Unimplemented(
-        "Dilation for SelectAndScatter not implemented on GPU.");
-  }
-
-  TF_RETURN_IF_ERROR(AssertNonDeterminismIsOkay(select_and_scatter->name()));
-
   TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(select_and_scatter));
   return EmitSelectAndScatterFromMlir(input);
 }
@@ -2236,6 +2221,20 @@ Status IrEmitterUnnested::EmitSelectAndScatterFromMlir(
     MlirEmitterInput mlir_input) {
   auto select_and_scatter_op =
       mlir::cast<mlir::lmhlo::SelectAndScatterOp>(mlir_input.op);
+
+  const Shape source_shape =
+      TypeToShape(select_and_scatter_op.source().getType());
+  const Shape operand_shape =
+      TypeToShape(select_and_scatter_op.operand().getType());
+  const int64 rank = operand_shape.rank();
+
+  CHECK_EQ(rank, source_shape.rank());
+  if (select_and_scatter_op.window_dimensions()) {
+    CHECK_EQ(rank, select_and_scatter_op.window_dimensions()->size());
+  }
+
+  TF_RETURN_IF_ERROR(AssertNonDeterminismIsOkay(
+      mlir::GetNameFromLoc(select_and_scatter_op.getLoc())));
 
   std::string name = mlir::GetNameFromLoc(select_and_scatter_op.getLoc());
 
@@ -2265,16 +2264,11 @@ Status IrEmitterUnnested::EmitSelectAndScatterFromMlir(
   auto select_and_scatter_thunk = absl::make_unique<SequentialThunk>(
       mlir_input.thunk_info, std::move(thunks));
 
-  const Shape source_shape =
-      TypeToShape(select_and_scatter_op.source().getType());
-  const Shape operand_shape =
-      TypeToShape(select_and_scatter_op.operand().getType());
-  const int64 rank = operand_shape.rank();
-
   TF_ASSIGN_OR_RETURN(
       LaunchDimensions launch_dimensions,
       CalculateLaunchDimensions(source_shape,
                                 ir_emitter_context_->gpu_device_info()));
+
   llvm::Type* index_type = GetIndexTypeForKernelFromMlir(
       select_and_scatter_op, launch_dimensions.launch_bound(), &b_);
   auto index_typed_constant = [&](uint64 c) -> llvm::Constant* {
@@ -2527,9 +2521,6 @@ Status IrEmitterUnnested::EmitRngGetAndUpdateState(
 }
 
 Status IrEmitterUnnested::HandleScatter(HloInstruction* scatter) {
-  if (!scatter->unique_indices()) {
-    TF_RETURN_IF_ERROR(AssertNonDeterminismIsOkay(scatter->name()));
-  }
   TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(scatter));
   return EmitScatterFromMlir(input);
 }
@@ -2538,6 +2529,11 @@ Status IrEmitterUnnested::EmitScatterFromMlir(MlirEmitterInput mlir_input) {
   std::vector<std::unique_ptr<Thunk>> thunks;
 
   auto scatter_op = mlir::cast<mlir::lmhlo::ScatterOp>(mlir_input.op);
+
+  if (!scatter_op.unique_indices()) {
+    TF_RETURN_IF_ERROR(
+        AssertNonDeterminismIsOkay(mlir::GetNameFromLoc(scatter_op.getLoc())));
+  }
 
   TF_ASSIGN_OR_RETURN(auto operand_buffer,
                       GetAllocationSliceForMlir(scatter_op.operand()));
@@ -3240,7 +3236,10 @@ Status IrEmitterUnnested::HandleAllToAll(HloInstruction* hlo) {
 
 Status IrEmitterUnnested::HandleInfeed(HloInstruction* xla_infeed) {
   TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(xla_infeed));
+  return EmitInfeedFromMlir(input);
+}
 
+Status IrEmitterUnnested::EmitInfeedFromMlir(MlirEmitterInput input) {
   auto infeed_op = mlir::cast<mlir::lmhlo::InfeedOp>(input.op);
 
   std::vector<ShapedSlice> dest_slices;
@@ -3259,7 +3258,10 @@ Status IrEmitterUnnested::HandleInfeed(HloInstruction* xla_infeed) {
 
 Status IrEmitterUnnested::HandleOutfeed(HloInstruction* outfeed) {
   TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(outfeed));
+  return EmitOutfeedFromMlir(input);
+}
 
+Status IrEmitterUnnested::EmitOutfeedFromMlir(MlirEmitterInput input) {
   auto outfeed_op = mlir::cast<mlir::lmhlo::OutfeedOp>(input.op);
 
   std::vector<ShapedSlice> source_slices;

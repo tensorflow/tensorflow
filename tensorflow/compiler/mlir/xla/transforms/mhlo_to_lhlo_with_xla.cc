@@ -592,6 +592,10 @@ StatusOr<lmhlo::SelectAndScatterOp> LhloDialectEmitter::EmitSelectAndScatterOp(
       xla::Cast<xla::HloSelectAndScatterInstruction>(instr);
   const xla::Window& window = select_and_scatter_instr->window();
 
+  if (xla::window_util::HasDilation(window)) {
+    return xla::Unimplemented("Dilation for SelectAndScatter is not supported");
+  }
+
   select_and_scatter.window_dimensionsAttr(
       GetWindowElements(window, [](const xla::WindowDimension& dim) {
         return static_cast<int64_t>(dim.size());
