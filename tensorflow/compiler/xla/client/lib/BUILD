@@ -292,6 +292,7 @@ xla_test(
     srcs = ["qr_test.cc"],
     tags = ["optonly"],
     deps = [
+        ":constants",
         ":matrix",
         ":qr",
         "//tensorflow/compiler/xla:array2d",

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/loops.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
+#include "tensorflow/compiler/xla/client/lib/qr.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -172,7 +173,7 @@ Status House(XlaOp x, XlaOp k, absl::Span<const int64> batch_dims,
 //     a[j+1:, j] = v[j+1:]
 //     taus[j] = tau
 //   return (a, taus)
-StatusOr<QrExpander::QrResult> QrExpander::QrBlock(
+StatusOr<QrDecomposition> QrExpander::QrBlock(
     XlaOp a, PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
@@ -269,8 +270,8 @@ StatusOr<QrExpander::QrResult> QrExpander::QrBlock(
   TF_ASSIGN_OR_RETURN(auto values, ForEachIndex(std::min(m, n), S32, qr_body_fn,
                                                 {a, taus}, "qr", builder));
 
-  QrResult result;
-  result.a = values[0];
+  QrDecomposition result;
+  result.q_and_r = values[0];
   result.taus = values[1];
   return result;
 }
@@ -372,18 +373,21 @@ StatusOr<XlaOp> QrExpander::BuildQrDecomposition(
     batch_dims[i] = ShapeUtil::GetDimension(a_shape, i);
   }
 
-  auto q = Broadcast(IdentityMatrix(builder, type, m, m), batch_dims);
+  std::vector<int64> taus_dims = batch_dims;
+  taus_dims.push_back(p);
+  auto taus = Zeros(builder, ShapeUtil::MakeShape(type, taus_dims));
   for (int64 i = 0; i < p; i += block_size) {
     int64 k = std::min(block_size, p - i);
 
     auto a_block = SliceInMinorDims(a, {i, i}, {m, i + k});
     TF_ASSIGN_OR_RETURN(auto qr_block, QrBlock(a_block, precision));
-    auto y = Add(
-        IdentityMatrix(builder, type, m - i, k),
-        Select(TriangleMask(qr_block.a, -1), qr_block.a, ZerosLike(qr_block.a)),
-        /*broadcast_dimensions=*/{num_dims - 2, num_dims - 1});
+    auto y = Add(IdentityMatrix(builder, type, m - i, k),
+                 Select(TriangleMask(qr_block.q_and_r, -1), qr_block.q_and_r,
+                        ZerosLike(qr_block.q_and_r)),
+                 /*broadcast_dimensions=*/{num_dims - 2, num_dims - 1});
 
-    a = UpdateSliceInMinorDims(a, qr_block.a, {i, i});
+    a = UpdateSliceInMinorDims(a, qr_block.q_and_r, {i, i});
+    taus = UpdateSliceInMinorDims(taus, qr_block.taus, {i});
 
     // Compute the I + Y @ T @ Y^t block representation of a product of
     // Householder matrices.
@@ -401,8 +405,64 @@ StatusOr<XlaOp> QrExpander::BuildQrDecomposition(
     a_update = BatchDot(yt, a_update, precision);
     a_panel = a_panel + a_update;
     a = UpdateSliceInMinorDims(a, a_panel, {i, i + k});
+  }
 
+  return Tuple(builder, {a, taus});
+}
+
+StatusOr<XlaOp> QrExpander::ProductOfElementaryHouseholderReflectors(
+    XlaOp a, XlaOp taus, int64 block_size,
+    PrecisionConfig::Precision precision) {
+  XlaBuilder* builder = a.builder();
+  TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+  TF_ASSIGN_OR_RETURN(Shape taus_shape, builder->GetShape(taus));
+  const int num_dims = a_shape.rank();
+  if (num_dims < 2) {
+    return InvalidArgument("Arguments to QR must have rank >= 2: got shape %s",
+                           a_shape.ToString());
+  }
+  PrimitiveType type = a_shape.element_type();
+
+  const int64 m = ShapeUtil::GetDimension(a_shape, -2);
+  int64 n = ShapeUtil::GetDimension(a_shape, -1);
+  const int64 p = ShapeUtil::GetDimension(taus_shape, -1);
+  if (m < n) {
+    return InvalidArgument(
+        "Argument to product of elementary Householder "
+        "reflectors must have m >= n, got shape %s",
+        a_shape.ToString());
+  }
+
+  if (block_size < 1) {
+    return InvalidArgument("block_size argument to QR must be >= 1; got %d",
+                           block_size);
+  }
+
+  const int64 num_batch_dims = num_dims - 2;
+  std::vector<int64> batch_dims(num_batch_dims);
+  for (int i = 0; i < num_batch_dims; ++i) {
+    batch_dims[i] = ShapeUtil::GetDimension(a_shape, i);
+  }
+
+  auto q = Broadcast(IdentityMatrix(builder, type, m, m), batch_dims);
+  for (int64 i = 0; i < p; i += block_size) {
+    int64 k = std::min(block_size, p - i);
+
+    auto a_block = SliceInMinorDims(a, {i, i}, {m, i + k});
+    auto y = Add(IdentityMatrix(builder, type, m - i, k),
+                 Select(TriangleMask(a_block, -1), a_block, ZerosLike(a_block)),
+                 /*broadcast_dimensions=*/{num_dims - 2, num_dims - 1});
+
+    // Compute the I + Y @ T @ Y^t block representation of a product of
+    // Householder matrices.
+    auto taus_block = SliceInMinorDims(taus, {i}, {i + k});
+
+    TF_ASSIGN_OR_RETURN(
+        auto t, CompactWYRepresentation(type, batch_dims, y, taus_block, m - i,
+                                        k, precision));
     // q[:, i:] += (q[:, i:] @ y) @ np.conj((y @ np.conj(t.T)).T)
+    auto yt = BatchDot(y, /*transpose_x=*/false, MaybeConjugate(t, true),
+                       /*transpose_y=*/true, precision);
     auto q_panel = SliceInMinorDims(q, {0, i}, {m, m});
     auto q_update = BatchDot(q_panel, y, precision);
     q_update =
@@ -411,19 +471,26 @@ StatusOr<XlaOp> QrExpander::BuildQrDecomposition(
     q_panel = q_panel + q_update;
     q = UpdateSliceInMinorDims(q, q_panel, {0, i});
   }
-
-  return Tuple(builder, {q, UpperTriangle(a)});
+  q = SliceInMinorDims(q, {0, 0}, {m, n});
+  return q;
 }
+
+static const char* kQrCustomCallName = "Qr";
+static const char* kHouseholderProductCustomCallName =
+    "ProductOfElementaryHouseholderReflectors";
 
 bool QrExpander::InstructionMatchesPattern(HloInstruction* instruction) {
   return instruction->opcode() == HloOpcode::kCustomCall &&
-         instruction->custom_call_target() == "QrDecomposition";
+         (instruction->custom_call_target() == kQrCustomCallName ||
+          instruction->custom_call_target() ==
+              kHouseholderProductCustomCallName);
 }
 
 StatusOr<HloInstruction*> QrExpander::ExpandInstruction(
     HloInstruction* instruction) {
   const string name =
-      absl::StrFormat("xla.qr_%s", instruction->operand(0)->shape().ToString());
+      absl::StrFormat("xla.%s_%s", instruction->custom_call_target(),
+                      instruction->operand(0)->shape().ToString());
 
   HloModule* module = instruction->parent()->parent();
 
@@ -441,13 +508,25 @@ StatusOr<HloInstruction*> QrExpander::ExpandInstruction(
     // into our HloModule. Ideally we would avoid the protocol buffer step;
     // that is left as an exercise for future work.
     XlaBuilder builder(name);
+    TF_RET_CHECK(instruction->operand_count() >= 1);
     XlaOp a = Parameter(&builder, 0, instruction->operand(0)->shape(), "a");
-    TF_ASSIGN_OR_RETURN(
-        XlaOp l, BuildQrDecomposition(a,
-                                      /*block_size=*/128,
+    XlaOp result;
+    if (instruction->custom_call_target() == kQrCustomCallName) {
+      TF_RET_CHECK(instruction->operand_count() == 1);
+      TF_ASSIGN_OR_RETURN(
+          result, BuildQrDecomposition(a,
+                                       /*block_size=*/128,
+                                       /*precision=*/PrecisionConfig::HIGHEST));
+    } else {
+      TF_RET_CHECK(instruction->operand_count() == 2);
+      XlaOp taus =
+          Parameter(&builder, 1, instruction->operand(1)->shape(), "taus");
+      TF_ASSIGN_OR_RETURN(result, ProductOfElementaryHouseholderReflectors(
+                                      a, taus, /*block_size=*/128,
                                       /*precision=*/PrecisionConfig::HIGHEST));
+    }
 
-    TF_ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build(l));
+    TF_ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build(result));
 
     TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
                         xla_computation.GetProgramShape());
