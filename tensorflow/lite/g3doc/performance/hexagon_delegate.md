@@ -290,3 +290,6 @@ ro.board.platform`).
     *   Some phone manufactures intentionally restrict the use of Hexagon DSP
         from non-system Android apps, making the Hexagon delegate unable to
         work.
+*   My phone has locked DSP access. I rooted the phone and still can't run the
+    delegate, what to do ?
+    *   Make sure to disable SELinux enforce by running `adb shell setenforce 0`
