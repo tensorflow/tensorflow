@@ -50,7 +50,6 @@ from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
-from tensorflow.python.training.tracking.tracking import delete_tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 
@@ -284,7 +283,7 @@ class KerasObjectLoader(object):
         # loading layers from the config, such as variables.
         continue
       for name in PUBLIC_ATTRIBUTES:
-        delete_tracking(node, name)
+        node._delete_tracking(name)  # pylint: disable=protected-access
 
       if isinstance(node, functional_lib.Functional):
         # Delete the temporary layer dependencies, which were used to restore
@@ -294,7 +293,7 @@ class KerasObjectLoader(object):
         dependencies = list(node._self_unconditional_dependency_names)  # pylint: disable=protected-access
         for name in dependencies:
           if re.match(r'^layer(_with_weights)?-[\d+]', name) is not None:
-            delete_tracking(node, name)
+            node._delete_tracking(name)  # pylint: disable=protected-access
 
   def _add_children_recreated_from_config(self, obj, proto, node_id):
     """Recursively records objects recreated from config."""

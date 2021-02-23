@@ -303,6 +303,28 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose(batch_loss, new_batch_loss)
 
+  @combinations.generate(combinations.combine(mode=['eager', 'graph']))
+  def test_save_include_optimizer_false(self):
+
+    def get_variables(file_name):
+      reader = training_module.load_checkpoint(
+          os.path.join(file_name, 'variables/variables'))
+      shape_from_key = reader.get_variable_to_shape_map()
+      return sorted(shape_from_key.keys())
+
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(1))
+    model.compile('adam', loss='mse')
+    x, y = np.ones((10, 10)), np.ones((10, 1))
+    model.train_on_batch(x, y)
+
+    path = os.path.join(self.get_temp_dir(), 'no_optimizer')
+    model.save(path, save_format='tf', include_optimizer=False)
+    variables = get_variables(path)
+
+    for v in variables:
+      self.assertNotIn('optimizer', v)
+
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_saving_model_with_custom_object(self):
     with generic_utils.custom_object_scope(), self.cached_session():
