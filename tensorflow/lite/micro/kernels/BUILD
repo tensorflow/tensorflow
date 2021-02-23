@@ -221,6 +221,7 @@ cc_library(
         "detection_postprocess.cc",
         "elementwise.cc",
         "exp.cc",
+        "elu.cc",
         "floor.cc",
         "l2norm.cc",
         "logical.cc",
@@ -514,6 +515,21 @@ cc_test(
 cc_test(
     name = "elementwise_test",
     srcs = ["elementwise_test.cc"],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "elu_test",
+    srcs = [
+        "elu_test.cc",
+    ],
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
