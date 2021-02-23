@@ -173,9 +173,9 @@ class FunctionalPreprocessingStage(functional.Functional,
     """
     if not isinstance(data, dataset_ops.Dataset):
       data = self._flatten_to_reference_inputs(data)
-      if any([
+      if any(
           not isinstance(datum, (np.ndarray, ops.EagerTensor)) for datum in data
-      ]):
+      ):
         raise ValueError(
             '`adapt()` requires a batched Dataset, a list of EagerTensors '
             'or Numpy arrays as input, got {}'.format(type(data)))
