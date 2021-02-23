@@ -760,10 +760,8 @@ foreach ArgMinMaxOp = [TFL_ArgMinOp, TFL_ArgMaxOp] in {
      (AxesIsLastDimension $axes, $logits)]>;
 }
 
-class AllElementsAreI32OrI64<string val> : Constraint<CPred<
+class AllElementsAreInt<string val> : Constraint<CPred<
   "($0.isa<DenseIntElementsAttr>() && "
-  "($0.cast<DenseIntElementsAttr>().getType().cast<ShapedType>().getElementType().isInteger(32) || "
-  "$0.cast<DenseIntElementsAttr>().getType().cast<ShapedType>().getElementType().isInteger(64)) && "
   "llvm::all_of($0.cast<DenseIntElementsAttr>().getIntValues(), "
                "[](APInt v){ return v.getSExtValue() == static_cast<int64_t>(" #val# ");}))">>;
 
@@ -771,6 +769,6 @@ class AllElementsAreI32OrI64<string val> : Constraint<CPred<
 def OptimizeSliceOp : Pat<
   (TFL_SliceOp:$output $input, (ConstantOp $begin), $shape),
   (replaceWithValue $input),
-  [(AllElementsAreI32OrI64<"0"> $begin),
+  [(AllElementsAreInt<"0"> $begin),
    (IsTailOfShape $input, $output),
    (IsTailOfShape $output, $input)]>;
