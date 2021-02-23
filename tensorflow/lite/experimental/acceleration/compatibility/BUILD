@@ -180,7 +180,9 @@ cc_library(
 cc_test(
     name = "gpu_compatibility_test",
     srcs = ["gpu_compatibility_test.cc"],
-    tags = tf_gpu_tests_tags(),
+    tags = tf_gpu_tests_tags() + [
+        "no_cuda_asan",  # TODO(b/181032551).
+    ],
     deps = [
         ":devicedb_sample",
         ":gpu_compatibility",
