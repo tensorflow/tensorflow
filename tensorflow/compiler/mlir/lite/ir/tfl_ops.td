@@ -1890,6 +1890,17 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
         /*scale=*/1.0 / 256, /*zero_point=*/-128);
   }
   }];
+
+  // This builder doesn't work with quantized type, so it can only be used by
+  // non-quantization tablegen patterns. Currently, it is used by the
+  // elementwise-move reordering pattern in the optimize_patterns.td
+  let builders = [
+    OpBuilderDAG<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(input.getType());
+    }]>
+  ];
 }
 
 def TFL_LogOp: TFL_Op<"log", [
