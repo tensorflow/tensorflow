@@ -367,11 +367,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         num_tasks = tasks_.size() - finished_tasks_;
         mu_.unlock();
       }
-      std::string num_tasks_string =
-          (num_tasks == -1)
-              ? "unavailable"
-              : strings::Printf("%lld", static_cast<long long>(num_tasks));
-      result.push_back(std::make_pair("num_tasks", num_tasks_string));
+      result.push_back(std::make_pair(
+          "num_tasks",
+          num_tasks == -1
+              ? kTraceInfoUnavailable
+              : strings::Printf("%lld", static_cast<long long>(num_tasks))));
       result.push_back(std::make_pair("job_name", dataset()->job_name_));
       result.push_back(std::make_pair(
           "max_outstanding_requests",
