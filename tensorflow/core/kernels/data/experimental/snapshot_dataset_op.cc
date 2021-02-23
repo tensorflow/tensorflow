@@ -83,6 +83,8 @@ namespace experimental {
     SnapshotDatasetV2Op::kReaderFuncTarguments;
 /* static */ constexpr const char* const
     SnapshotDatasetV2Op::kShardFuncTarguments;
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kReaderPrefix;
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kWriterPrefix;
 /* static */ constexpr const int SnapshotDatasetV2Op::kFileFormatVersion;
 
 // ==== Snapshot Implementation ====
