@@ -25,14 +25,15 @@ import time
 
 import six
 
+from tensorflow.python.keras.saving.utils_v1 import export_output as export_output_lib
+from tensorflow.python.keras.saving.utils_v1 import mode_keys
+from tensorflow.python.keras.saving.utils_v1 import unexported_constants
+from tensorflow.python.keras.saving.utils_v1.mode_keys import KerasModeKeys as ModeKeys
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
-from tensorflow.python.saved_model.model_utils import export_output as export_output_lib
-from tensorflow.python.saved_model.model_utils import mode_keys
-from tensorflow.python.saved_model.model_utils.mode_keys import KerasModeKeys as ModeKeys
 from tensorflow.python.util import compat
 
 
@@ -40,7 +41,7 @@ from tensorflow.python.util import compat
 EXPORT_TAG_MAP = mode_keys.ModeKeyMap(**{
     ModeKeys.PREDICT: [tag_constants.SERVING],
     ModeKeys.TRAIN: [tag_constants.TRAINING],
-    ModeKeys.TEST: [tag_constants.EVAL]})
+    ModeKeys.TEST: [unexported_constants.EVAL]})
 
 # For every exported mode, a SignatureDef map should be created using the
 # functions `export_outputs_for_mode` and `build_all_signature_defs`. By
@@ -49,8 +50,8 @@ EXPORT_TAG_MAP = mode_keys.ModeKeyMap(**{
 # The default keys used in the SignatureDef map are defined below.
 SIGNATURE_KEY_MAP = mode_keys.ModeKeyMap(**{
     ModeKeys.PREDICT: signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
-    ModeKeys.TRAIN: signature_constants.DEFAULT_TRAIN_SIGNATURE_DEF_KEY,
-    ModeKeys.TEST: signature_constants.DEFAULT_EVAL_SIGNATURE_DEF_KEY})
+    ModeKeys.TRAIN: unexported_constants.DEFAULT_TRAIN_SIGNATURE_DEF_KEY,
+    ModeKeys.TEST: unexported_constants.DEFAULT_EVAL_SIGNATURE_DEF_KEY})
 
 # Default names used in the SignatureDef input map, which maps strings to
 # TensorInfo protos.
@@ -145,8 +146,8 @@ _FRIENDLY_METHOD_NAMES = {
     signature_constants.CLASSIFY_METHOD_NAME: 'Classify',
     signature_constants.REGRESS_METHOD_NAME: 'Regress',
     signature_constants.PREDICT_METHOD_NAME: 'Predict',
-    signature_constants.SUPERVISED_TRAIN_METHOD_NAME: 'Train',
-    signature_constants.SUPERVISED_EVAL_METHOD_NAME: 'Eval',
+    unexported_constants.SUPERVISED_TRAIN_METHOD_NAME: 'Train',
+    unexported_constants.SUPERVISED_EVAL_METHOD_NAME: 'Eval',
 }
 
 
@@ -354,4 +355,4 @@ def _maybe_add_default_serving_output(export_outputs):
           'signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY.')
 
   return export_outputs
-# LINT.ThenChange(//tensorflow/python/keras/saving/utils_v1/export_utils.py)
+# LINT.ThenChange(//tensorflow/python/saved_model/model_utils/export_utils.py)

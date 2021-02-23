@@ -28,6 +28,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.keras.saving.utils_v1 import signature_def_utils as unexported_signature_utils
 from tensorflow.python.saved_model import signature_def_utils
 
 
@@ -344,7 +345,7 @@ class _SupervisedOutput(ExportOutput):
         raise ValueError(
             '{} output value must be a Tensor; got {}.'.format(
                 key, metric_val))
-      if not (tensor_util.is_tf_type(metric_op) or
+      if not (tensor_util.is_tensor(metric_op) or
               isinstance(metric_op, ops.Operation)):
         raise ValueError(
             '{} update_op must be a Tensor or Operation; got {}.'.format(
@@ -394,7 +395,7 @@ class TrainOutput(_SupervisedOutput):
   """
 
   def _get_signature_def_fn(self):
-    return signature_def_utils.supervised_train_signature_def
+    return unexported_signature_utils.supervised_train_signature_def
 
 
 class EvalOutput(_SupervisedOutput):
@@ -406,5 +407,5 @@ class EvalOutput(_SupervisedOutput):
   """
 
   def _get_signature_def_fn(self):
-    return signature_def_utils.supervised_eval_signature_def
-# LINT.ThenChange(//tensorflow/python/keras/saving/utils_v1/export_output.py)
+    return unexported_signature_utils.supervised_eval_signature_def
+# LINT.ThenChange(//tensorflow/python/saved_model/model_utils/export_output.py)
