@@ -707,6 +707,7 @@ package_group(
         "//learning/lib/ami/simple_ml/...",
         "//tensorflow/...",
         "//tensorflow_decision_forests/...",
+        "//third_party/cloud_tpu/inference_converter/...",
     ],
 )
 
