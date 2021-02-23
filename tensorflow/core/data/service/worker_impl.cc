@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/snappy.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -122,12 +123,39 @@ Status DataServiceWorkerImpl::Start(const std::string& worker_address,
   registered_ = true;
   return Status::OK();
 }
+void DataServiceWorkerImpl::Stop() {
+  {
+    mutex_lock l(mu_);
+    cancellation_manager_.StartCancel();
+    cancelled_ = true;
+    while (outstanding_requests_ > 0) {
+      cv_.wait(l);
+    }
+  }
+  // At this point there are no outstanding requests in this RPC handler.
+  // However, requests successfully returned from this RPC handler may still be
+  // in progress within the gRPC server. If we shut down the gRPC server
+  // immediately, it could cause these requests to fail, e.g. with broken pipe.
+  // To mitigate this, we sleep for some time to give the gRPC server time to
+  // complete requests.
+  Env::Default()->SleepForMicroseconds(config_.shutdown_quiet_period_ms() *
+                                       1000);
+}
 
 Status DataServiceWorkerImpl::GetElementResult(
     const GetElementRequest* request, struct GetElementResult* result) {
+  auto cleanup = gtl::MakeCleanup([&] {
+    mutex_lock l(mu_);
+    outstanding_requests_--;
+    cv_.notify_all();
+  });
   Task* task;
   {
     mutex_lock l(mu_);
+    outstanding_requests_++;
+    if (cancelled_) {
+      return errors::Cancelled("Worker is shutting down");
+    }
     if (!registered_) {
       // We need to reject requests until the worker has registered with the
       // dispatcher, so that we don't return NOT_FOUND for tasks that the worker
@@ -164,7 +192,7 @@ Status DataServiceWorkerImpl::ProcessTask(const ProcessTaskRequest* request,
 
 Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  std::unique_ptr<Task>& task = tasks_[task_def.task_id()];
+  std::shared_ptr<Task>& task = tasks_[task_def.task_id()];
   if (task) {
     VLOG(1) << "Received request to process already-processed task "
             << task->task_def.task_id();
@@ -226,8 +254,9 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
   }
   auto task_iterator = absl::make_unique<StandaloneTaskIterator>(
       std::move(dataset), std::move(iterator));
-  TF_RETURN_IF_ERROR(TaskRunner::Create(task.task_def, std::move(task_iterator),
-                                        task.task_runner));
+  TF_RETURN_IF_ERROR(
+      TaskRunner::Create(config_, task.task_def, cancellation_manager_,
+                         std::move(task_iterator), task.task_runner));
 
   task.initialized = true;
   VLOG(3) << "Created iterator for task " << task.task_def.task_id();
@@ -359,6 +388,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
                                    current_tasks, new_tasks, tasks_to_delete));
   mutex_lock l(mu_);
   for (const auto& task : new_tasks) {
+    VLOG(1) << "Received new task from dispatcher with id " << task.task_id();
     Status s = ProcessTaskInternal(task);
     if (!s.ok() && !errors::IsAlreadyExists(s)) {
       LOG(WARNING) << "Failed to start processing task " << task.task_id()

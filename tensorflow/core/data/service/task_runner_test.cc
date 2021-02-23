@@ -15,6 +15,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/service/worker.pb.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -99,8 +100,10 @@ TEST_P(ConsumeParallelTest, ConsumeParallel) {
     element.push_back(Tensor(i));
     elements.push_back(element);
   }
-  RoundRobinTaskRunner runner(absl::make_unique<TestTaskIterator>(elements),
-                              num_consumers);
+  CancellationManager cancellation_manager;
+  RoundRobinTaskRunner runner(
+      absl::make_unique<TestTaskIterator>(elements), num_consumers,
+      /*worker_address=*/"test_worker_address", cancellation_manager);
   std::vector<std::vector<int64>> per_consumer_results;
   std::vector<std::unique_ptr<Thread>> consumers;
   mutex mu;
@@ -152,8 +155,10 @@ TEST(RoundRobinTaskRunner, ConsumeParallelPartialRound) {
     element.push_back(Tensor(i));
     elements.push_back(element);
   }
-  RoundRobinTaskRunner runner(absl::make_unique<TestTaskIterator>(elements),
-                              num_consumers);
+  CancellationManager cancellation_manager;
+  RoundRobinTaskRunner runner(
+      absl::make_unique<TestTaskIterator>(elements), num_consumers,
+      /*worker_address=*/"test_worker_address", cancellation_manager);
   std::vector<std::vector<int64>> per_consumer_results;
   std::vector<std::unique_ptr<Thread>> consumers;
   mutex mu;

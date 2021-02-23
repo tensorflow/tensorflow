@@ -30,7 +30,7 @@ namespace data {
 
 // Increment this when making backwards-incompatible changes to communication
 // between tf.data servers.
-constexpr int kDataServiceVersion = 2;
+constexpr int kDataServiceVersion = 3;
 
 // Modes for how a tf.data service job should process a dataset.
 enum class ProcessingMode : int64 {
@@ -120,6 +120,11 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // Releases a job client id, indicating that the id will no longer be used to
   // read from the job.
   Status ReleaseJobClient(int64 job_client_id);
+
+  // Attempts to remove a task. The task is removed if all consumers try to
+  // remove the task in the same round.
+  Status MaybeRemoveTask(int64 task_id, int64 consumer_index, int64 round,
+                         bool& removed);
 
   // Heartbeats to the dispatcher, getting back the tasks that should be
   // running, and whether the job is finished.

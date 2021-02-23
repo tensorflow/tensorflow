@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import tempfile
 
+from tensorflow.core.protobuf import service_config_pb2
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.service import server_lib
 from tensorflow.python.data.kernel_tests import test_base
@@ -32,6 +33,7 @@ TMP_WORK_DIR = "tmp_work_dir_placeholder"
 NO_WORK_DIR = ""
 # We use a faster than normal heartbeat interval so that tests run faster.
 TEST_HEARTBEAT_INTERVAL_MS = 100
+TEST_DISPATCHER_TIMEOUT_MS = 1000
 # Some clusters may take a long time to shut down due to blocked outstanding
 # RPCs. We store the clusters here so that they are destroyed at end of process
 # instead of slowing down unit tests.
@@ -46,6 +48,59 @@ def all_cluster_configurations():
   return with_work_dir + without_work_dir
 
 
+def _make_worker(dispatcher_address, shutdown_quiet_period_ms=0, port=0):
+  """Creates a worker server."""
+  defaults = server_lib.WorkerConfig(dispatcher_address=dispatcher_address)
+  config_proto = service_config_pb2.WorkerConfig(
+      dispatcher_address=dispatcher_address,
+      worker_address=defaults.worker_address,
+      port=port,
+      protocol=defaults.protocol,
+      heartbeat_interval_ms=TEST_HEARTBEAT_INTERVAL_MS,
+      dispatcher_timeout_ms=TEST_DISPATCHER_TIMEOUT_MS,
+      data_transfer_protocol=None,
+      shutdown_quiet_period_ms=shutdown_quiet_period_ms)
+  return server_lib.WorkerServer(config_proto, start=False)
+
+
+class TestWorker(object):
+  """A tf.data service worker."""
+
+  def __init__(self, dispatcher_address, shutdown_quiet_period_ms):
+    self._dispatcher_address = dispatcher_address
+    self._shutdown_quiet_period_ms = shutdown_quiet_period_ms
+    self._server = _make_worker(dispatcher_address, shutdown_quiet_period_ms)
+    self._running = False
+
+  def stop(self):
+    self._server._stop()  # pylint: disable=protected-access
+    self._running = False
+
+  def start(self):
+    self._server.start()
+    # pylint: disable=protected-access
+    self._port = int(self._server._address.split(":")[1])
+    self._running = True
+
+  def restart(self, use_same_port=True):
+    """Restarts the worker, stopping it first if it is already running."""
+    if self._running:
+      self.stop()
+    port = 0
+    if use_same_port:
+      port = self._port
+    self._server = _make_worker(self._dispatcher_address,
+                                self._shutdown_quiet_period_ms, port)
+    self._server.start()
+    # pylint: disable=protected-access
+    self._port = int(self._server._address.split(":")[1])
+    self._running = True
+
+  def num_tasks(self):
+    # pylint: disable=protected-access
+    return self._server._num_tasks()
+
+
 class TestCluster(object):
   """Test tf.data service cluster."""
 
@@ -56,6 +111,7 @@ class TestCluster(object):
                fault_tolerant_mode=True,
                job_gc_check_interval_ms=None,
                job_gc_timeout_ms=None,
+               worker_shutdown_quiet_period_ms=0,
                start=True):
     """Creates a tf.data service test cluster.
 
@@ -72,12 +128,15 @@ class TestCluster(object):
         delete old and unused jobs, in milliseconds.
       job_gc_timeout_ms: How long a job needs to be unused before it becomes a
         candidate for garbage collection, in milliseconds.
+      worker_shutdown_quiet_period_ms: When shutting down a worker, how long to
+        wait for the gRPC server to process the final requests.
       start: Whether to immediately start the servers in the cluster. If
         `False`, the servers can be started later by calling
         `start_dispatcher()` and `start_workers()`.
     """
     if work_dir == TMP_WORK_DIR:
       work_dir = tempfile.mkdtemp(dir=googletest.GetTempDir())
+    self._worker_shutdown_quiet_period_ms = worker_shutdown_quiet_period_ms
     self.dispatcher = server_lib.DispatchServer(
         server_lib.DispatcherConfig(
             port=dispatcher_port,
@@ -99,13 +158,11 @@ class TestCluster(object):
     return self.dispatcher.target.split("://")[1]
 
   def add_worker(self, start=True):
-    self.workers.append(
-        server_lib.WorkerServer(
-            server_lib.WorkerConfig(
-                dispatcher_address=self.dispatcher_address(),
-                heartbeat_interval_ms=TEST_HEARTBEAT_INTERVAL_MS,
-                dispatcher_timeout_ms=1000),
-            start=start))
+    worker = TestWorker(self.dispatcher_address(),
+                        self._worker_shutdown_quiet_period_ms)
+    if start:
+      worker.start()
+    self.workers.append(worker)
 
   def start_dispatcher(self):
     self.dispatcher.start()
@@ -136,25 +193,8 @@ class TestCluster(object):
             work_dir=self.dispatcher._config.work_dir,
             fault_tolerant_mode=self.dispatcher._config.fault_tolerant_mode))
 
-  # pylint: disable=protected-access
-  def restart_worker(self, worker_index=0, use_same_port=True):
-    """Replaces the worker at index `worker_index` with a new worker."""
-    worker = self.workers[worker_index]
-    port = 0
-    if use_same_port:
-      port = int(worker._address.split(":")[1])
-    worker._stop()
-    self.workers[worker_index] = server_lib.WorkerServer(
-        server_lib.WorkerConfig(
-            dispatcher_address=self.dispatcher_address(),
-            port=port,
-            heartbeat_interval_ms=worker._config.heartbeat_interval_ms))
-
   def num_registered_workers(self):
     return self.dispatcher._num_workers()
-
-  def num_tasks_on_worker(self, worker_index=0):
-    return self.workers[worker_index]._num_tasks()
 
   def __del__(self):
     # Destroy workers before the dispatcher for clean shutdown.
@@ -164,45 +204,6 @@ class TestCluster(object):
 
 class TestBase(test_base.DatasetTestBase):
   """Base class for tf.data service tests."""
-
-  def create_cluster(self,
-                     num_workers,
-                     dispatcher_port=0,
-                     work_dir=TMP_WORK_DIR,
-                     fault_tolerant_mode=True,
-                     job_gc_check_interval_ms=None,
-                     job_gc_timeout_ms=None,
-                     start=True):
-    """Creates a tf.data service test cluster.
-
-    Args:
-      num_workers: The number of workers to initially add to the cluster.
-      dispatcher_port: The port to use for the dispatcher.
-      work_dir: The work directory to use for the dispatcher. If set to
-        `TMP_WORK_DIR`, the cluster will create a new temporary directory to use
-        as the work directory. If set to `NO_WORK_DIR`, no work directory will
-        be used.
-      fault_tolerant_mode: Whether the dispatcher should write its state to a
-        journal so that it can recover from restarts.
-      job_gc_check_interval_ms: How often the dispatcher should scan through to
-        delete old and unused jobs, in milliseconds.
-      job_gc_timeout_ms: How long a job needs to be unused before it becomes a
-        candidate for garbage collection, in milliseconds.
-      start: Whether to immediately start the servers in the cluster. If
-        `False`, the servers can be started later by calling
-        `start_dispatcher()` and `start_workers()`.
-
-    Returns:
-      The created cluster.
-    """
-    return TestCluster(
-        num_workers=num_workers,
-        dispatcher_port=dispatcher_port,
-        work_dir=work_dir,
-        fault_tolerant_mode=fault_tolerant_mode,
-        job_gc_check_interval_ms=job_gc_check_interval_ms,
-        job_gc_timeout_ms=job_gc_timeout_ms,
-        start=start)
 
   def make_distributed_dataset(self,
                                dataset,
@@ -240,3 +241,61 @@ class TestBase(test_base.DatasetTestBase):
         job_name=job_name,
         max_outstanding_requests=max_outstanding_requests,
         compression=compression)
+
+  def make_round_robin_dataset(self, cluster, num_consumers):
+    """Creates a dataset that performs round-robin reads.
+
+    The dataset simulates `num_consumers` consumers by using parallel
+    interleave to read with `num_consumers` threads, one for each consumer. The
+    nth element of the dataset is produced by consumer `n % num_consumers`.
+
+    The dataset executed on each worker counts upwards from 0.
+
+    Args:
+      cluster: A tf.data service `TestCluster`.
+      num_consumers: The number of consumers to simulate.
+
+    Returns:
+      A dataset that simulates reading with `num_consumers` consumers.
+    """
+    ds = dataset_ops.Dataset.range(100000000).repeat()
+    consumers = []
+    for consumer_index in range(num_consumers):
+      consumers.append(
+          self.make_distributed_dataset(
+              ds,
+              cluster,
+              job_name="test",
+              consumer_index=consumer_index,
+              num_consumers=num_consumers))
+    # Use parallel interleave to read from consumers in parallel.
+    ds = dataset_ops.Dataset.from_tensor_slices(consumers)
+    ds = ds.interleave(
+        lambda x: x,
+        cycle_length=num_consumers,
+        num_parallel_calls=num_consumers)
+    return ds
+
+  def checkRoundRobinGroups(self, results, num_consumers):
+    groups = [
+        results[start:start + num_consumers]
+        for start in range(0, len(results), num_consumers)
+    ]
+    incorrect_groups = []
+    for group in groups:
+      if group[0] % num_consumers != 0:
+        incorrect_groups.append(group)
+        break
+      # Check that each group of `num_consumers` results are consecutive.
+      for offset in range(1, len(group)):
+        if group[0] + offset != group[offset]:
+          incorrect_groups.append(group)
+          break
+    self.assertEmpty(
+        incorrect_groups,
+        "Incorrect groups: {}.\nAll groups: {}".format(incorrect_groups,
+                                                       groups))
+
+  def read(self, get_next, results, count):
+    for _ in range(count):
+      results.append(self.evaluate(get_next()))

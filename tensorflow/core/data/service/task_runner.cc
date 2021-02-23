@@ -16,18 +16,18 @@ limitations under the License.
 #include "tensorflow/core/data/service/task_runner.h"
 
 #include "tensorflow/core/data/standalone.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
-// How long to wait for other round-robin consumers before returning with an
-// Unavailable error. This prevents the server from hanging on shutdown when
-// some round-robin consumers exit earlier than others.
-const int64 kTimeoutUs = 60 * 1000 * 1000;  // 1 minute.
 // Time to wait before skipping a round if data still isn't available.
 const int64 kWaitBeforeSkipUs = 100 * 1000;  // 100ms.
 
@@ -47,7 +47,9 @@ int64 StandaloneTaskIterator::Cardinality() const {
   return dataset_->Get()->Cardinality();
 }
 
-Status TaskRunner::Create(const TaskDef& task_def,
+Status TaskRunner::Create(const experimental::WorkerConfig& worker_config,
+                          const TaskDef& task_def,
+                          CancellationManager& cancellation_manager,
                           std::unique_ptr<TaskIterator> iterator,
                           std::unique_ptr<TaskRunner>& out) {
   if (task_def.optional_num_consumers_case() == TaskDef::kNumConsumers) {
@@ -60,8 +62,9 @@ Status TaskRunner::Create(const TaskDef& task_def,
           cardinality,
           ". Consider adding a `.repeat()` transformation to the dataset.");
     }
-    out = absl::make_unique<RoundRobinTaskRunner>(std::move(iterator),
-                                                  task_def.num_consumers());
+    out = absl::make_unique<RoundRobinTaskRunner>(
+        std::move(iterator), task_def.num_consumers(),
+        task_def.worker_address(), cancellation_manager);
   } else {
     out =
         absl::make_unique<FirstComeFirstServedTaskRunner>(std::move(iterator));
@@ -78,8 +81,12 @@ Status FirstComeFirstServedTaskRunner::GetNext(const GetElementRequest& req,
   std::vector<Tensor> element;
   bool end_of_task;
   result.skip = false;
-  TF_RETURN_IF_ERROR(iterator_->GetNext(element, end_of_task));
-  result.end_of_sequence = end_of_task;
+  {
+    mutex_lock l(mu_);
+    TF_RETURN_IF_ERROR(iterator_->GetNext(element, end_of_task));
+    result.end_of_sequence = end_of_task;
+    result.element_index = element_index_++;
+  }
   if (!end_of_task) {
     result.components = std::move(element);
   }
@@ -87,12 +94,31 @@ Status FirstComeFirstServedTaskRunner::GetNext(const GetElementRequest& req,
 }
 
 RoundRobinTaskRunner::RoundRobinTaskRunner(
-    std::unique_ptr<TaskIterator> iterator, int64 num_consumers)
+    std::unique_ptr<TaskIterator> iterator, int64 num_consumers,
+    string worker_address, CancellationManager& cancellation_manager)
     : num_consumers_(num_consumers),
+      worker_address_(worker_address),
       buffer_(num_consumers_),
       prefetch_thread_(std::move(iterator), num_consumers_) {
   VLOG(1) << "Creating task runner for distributing data round-robin to "
           << num_consumers << " consumers";
+  Status s = RegisterCancellationCallback(
+      &cancellation_manager,
+      [&] {
+        mutex_lock l(mu_);
+        LOG(INFO) << "Cancelling task runner";
+        cancelled_ = true;
+        new_round_cv_.notify_all();
+      },
+      &deregister_cancel_callback_);
+  if (!s.ok()) {
+    mutex_lock l(mu_);
+    cancelled_ = true;
+  }
+}
+
+RoundRobinTaskRunner::~RoundRobinTaskRunner() {
+  if (deregister_cancel_callback_) deregister_cancel_callback_();
 }
 
 Status RoundRobinTaskRunner::ValidateRequest(const GetElementRequest& req) {
@@ -111,7 +137,8 @@ Status RoundRobinTaskRunner::ValidateRequest(const GetElementRequest& req) {
 
 Status RoundRobinTaskRunner::PrepareFullRound(int64 wait_us)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  VLOG(1) << "Preparing full round for index " << current_round_;
+  VLOG(1) << worker_address_ << ": Preparing full round for round "
+          << current_round_;
   // This was the last request to arrive, time to start a new round.
   TF_RETURN_IF_ERROR(prefetch_thread_.FillBuffer(wait_us, buffer_));
   round_skipped_ = buffer_.empty();
@@ -121,8 +148,8 @@ Status RoundRobinTaskRunner::PrepareFullRound(int64 wait_us)
 
 Status RoundRobinTaskRunner::PreparePartialRound()
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  VLOG(1) << "Starting partial round for " << requests_[first_round_].size()
-          << " consumers";
+  VLOG(1) << worker_address_ << ": Starting partial round " << first_round_
+          << " for " << requests_[first_round_].size() << " consumers";
   current_round_ = first_round_;
   new_round_cv_.notify_all();
   // Indicates that we need a partial round to get consumers back in sync.
@@ -159,15 +186,12 @@ Status RoundRobinTaskRunner::PrepareRound(const GetElementRequest& req) {
           num_consumers_) {
     TF_RETURN_IF_ERROR(PreparePartialRound());
   }
-  while (current_round_ < req.round_index()) {
+  while (!cancelled_ && current_round_ < req.round_index()) {
     TF_RETURN_IF_ERROR(prefetch_thread_.GetStatus());
-    std::cv_status s =
-        new_round_cv_.wait_for(l, std::chrono::microseconds(kTimeoutUs));
-    if (s == std::cv_status::timeout) {
-      // Clients will retry Unavailable.
-      return errors::Unavailable(
-          "Timeout waiting for other round-robin consumers to be ready.");
-    }
+    new_round_cv_.wait(l);
+  }
+  if (current_round_ < req.round_index() && cancelled_) {
+    return errors::Cancelled("Worker is shutting down.");
   }
   return prefetch_thread_.GetStatus();
 }
@@ -176,18 +200,20 @@ Status RoundRobinTaskRunner::GetNext(const GetElementRequest& req,
                                      GetElementResult& result) {
   TF_RETURN_IF_ERROR(ValidateRequest(req));
   result.end_of_sequence = false;
-  VLOG(2) << "Received request from consumer index " << req.consumer_index()
-          << " for round " << req.round_index();
+  VLOG(2) << worker_address_ << ": Received request from consumer index "
+          << req.consumer_index() << " for round " << req.round_index();
   TF_RETURN_IF_ERROR(PrepareRound(req));
   tf_shared_lock l(mu_);
   result.skip = round_skipped_;
   if (round_skipped_) {
-    VLOG(1) << "Buffer not ready, skipping round " << current_round_
-            << " for consumer " << req.consumer_index();
+    VLOG(1) << worker_address_ << ": Buffer not ready, skipping round "
+            << current_round_ << " for consumer " << req.consumer_index();
     return Status::OK();
   }
+  auto& buffer_result = buffer_[req.consumer_index()];
+  result.element_index = buffer_result->index;
   std::vector<Tensor> element;
-  for (auto& component : buffer_[req.consumer_index()]) {
+  for (auto& component : buffer_result->components) {
     element.push_back(tensor::DeepCopy(component));
   }
   if (VLOG_IS_ON(2)) {
@@ -195,7 +221,8 @@ Status RoundRobinTaskRunner::GetNext(const GetElementRequest& req,
     for (auto& component : element) {
       size += component.TotalBytes();
     }
-    VLOG(2) << "Returning to consumer " << req.consumer_index() << " for round "
+    VLOG(2) << worker_address_ << ": Returning element " << result.element_index
+            << " to consumer " << req.consumer_index() << " for round "
             << req.round_index() << ". element size " << size;
   }
   result.components = std::move(element);
@@ -246,13 +273,13 @@ void PrefetchThread::Run() {
       return;
     }
     mutex_lock l(mu_);
-    buffer_.push_back(std::move(element));
+    buffer_.push_back(absl::make_unique<Element>(std::move(element), index_++));
     cv_.notify_all();
   }
 }
 
 Status PrefetchThread::FillBuffer(int64 wait_us,
-                                  std::vector<std::vector<Tensor>>& out) {
+                                  std::vector<std::unique_ptr<Element>>& out) {
   int64 start_us = Env::Default()->NowMicros();
   out.clear();
   mutex_lock l(mu_);

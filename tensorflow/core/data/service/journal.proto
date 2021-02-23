@@ -15,6 +15,7 @@ message Update {
     ProduceSplitUpdate produce_split = 8;
     AcquireJobClientUpdate acquire_job_client = 6;
     ReleaseJobClientUpdate release_job_client = 7;
+    RemoveTaskUpdate remove_task = 11;
     CreatePendingTaskUpdate create_pending_task = 9;
     ClientHeartbeatUpdate client_heartbeat = 10;
     CreateTaskUpdate create_task = 3;
@@ -67,6 +68,10 @@ message ReleaseJobClientUpdate {
   // The time when the client was released, measured in microseconds since the
   // epoch.
   int64 time_micros = 2;
+}
+
+message RemoveTaskUpdate {
+  int64 task_id = 1;
 }
 
 // Indicates that a client failed to block before reaching the target round.

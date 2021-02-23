@@ -197,6 +197,25 @@ Status DataServiceDispatcherClient::ReleaseJobClient(int64 job_client_id) {
   return Status::OK();
 }
 
+Status DataServiceDispatcherClient::MaybeRemoveTask(int64 task_id,
+                                                    int64 consumer_index,
+                                                    int64 round,
+                                                    bool& removed) {
+  TF_RETURN_IF_ERROR(EnsureInitialized());
+  MaybeRemoveTaskRequest req;
+  req.set_task_id(task_id);
+  req.set_consumer_index(consumer_index);
+  req.set_round(round);
+  MaybeRemoveTaskResponse resp;
+  grpc::ClientContext client_ctx;
+  grpc::Status status = stub_->MaybeRemoveTask(&client_ctx, req, &resp);
+  if (!status.ok()) {
+    return grpc_util::WrapError("Failed to call MaybeRemoveTask", status);
+  }
+  removed = resp.removed();
+  return Status::OK();
+}
+
 Status DataServiceDispatcherClient::ClientHeartbeat(
     ClientHeartbeatRequest& req, ClientHeartbeatResponse& resp) {
   TF_RETURN_IF_ERROR(EnsureInitialized());

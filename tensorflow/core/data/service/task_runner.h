@@ -19,7 +19,9 @@ limitations under the License.
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -57,7 +59,9 @@ class StandaloneTaskIterator : public TaskIterator {
 class TaskRunner {
  public:
   // Creates a `TaskRunner` and stores it in `out`.
-  static Status Create(const TaskDef& task_def,
+  static Status Create(const experimental::WorkerConfig& worker_config,
+                       const TaskDef& task_def,
+                       CancellationManager& cancellation_manager,
                        std::unique_ptr<TaskIterator> iterator,
                        std::unique_ptr<TaskRunner>& out);
   virtual ~TaskRunner() = default;
@@ -76,7 +80,20 @@ class FirstComeFirstServedTaskRunner : public TaskRunner {
                  GetElementResult& result) override;
 
  private:
-  std::unique_ptr<TaskIterator> iterator_;
+  mutex mu_;
+  std::unique_ptr<TaskIterator> iterator_ TF_GUARDED_BY(mu_);
+  int64 element_index_ TF_GUARDED_BY(mu_) = 0;
+};
+
+// An element produced by a task.
+struct Element {
+  explicit Element(std::vector<Tensor>&& components, int64 index)
+      : components(components), index(index) {}
+  // The components of the element.
+  std::vector<Tensor> components;
+  // The element's index within the task, e.g. 0 for the first element produced
+  // by the task, 1 for the second element, etc.
+  int64 index;
 };
 
 // Thread for prefetching a round worth of elements.
@@ -91,7 +108,7 @@ class PrefetchThread {
   // Fills `out` with a round of data. Waits for up to `wait_us` micoseconds
   // before giving up and returning with `out` empty. A negative `wait_us`
   // signals to wait indefinitely.
-  Status FillBuffer(int64 wait_us, std::vector<std::vector<Tensor>>& out);
+  Status FillBuffer(int64 wait_us, std::vector<std::unique_ptr<Element>>& out);
   // Returns the status for any failures encountered by the prefetch thread.
   Status GetStatus();
 
@@ -99,8 +116,9 @@ class PrefetchThread {
   const std::unique_ptr<TaskIterator> iterator_;
   const int64 round_size_;
   mutex mu_;
+  int64 index_ TF_GUARDED_BY(mu_) = 0;
   // Buffered results for the next round.
-  std::vector<std::vector<Tensor>> buffer_ TF_GUARDED_BY(mu_);
+  std::vector<std::unique_ptr<Element>> buffer_ TF_GUARDED_BY(mu_);
   // The status if the prefetch thread fails.
   Status status_ TF_GUARDED_BY(mu_) = Status::OK();
   // Thread which constantly tries to fill `buffer_` up with
@@ -132,7 +150,9 @@ class PrefetchThread {
 class RoundRobinTaskRunner : public TaskRunner {
  public:
   RoundRobinTaskRunner(std::unique_ptr<TaskIterator> iterator,
-                       int64 num_consumers);
+                       int64 num_consumers, string worker_address,
+                       CancellationManager& cancellation_manager);
+  ~RoundRobinTaskRunner() override;
 
   Status GetNext(const GetElementRequest& req,
                  GetElementResult& result) override;
@@ -148,7 +168,9 @@ class RoundRobinTaskRunner : public TaskRunner {
   // start.
   Status PrepareRound(const GetElementRequest& req);
   const int64 num_consumers_;
+  const string worker_address_;
   mutex mu_;
+  bool cancelled_ TF_GUARDED_BY(mu_) = false;
   // Condition variable notified whenever we start a new round of round-robin.
   condition_variable new_round_cv_;
   // Outstanding requests, indexed by round number and then consumer index.
@@ -161,10 +183,11 @@ class RoundRobinTaskRunner : public TaskRunner {
   int64 current_round_ TF_GUARDED_BY(mu_) = -1;
   bool round_skipped_ TF_GUARDED_BY(mu_) = false;
   // Buffered results for the current round.
-  std::vector<std::vector<Tensor>> buffer_ TF_GUARDED_BY(mu_);
+  std::vector<std::unique_ptr<Element>> buffer_ TF_GUARDED_BY(mu_);
   // Thread which constantly tries to prepare `num_consumers` elements for the
   // next round.
   PrefetchThread prefetch_thread_;
+  std::function<void()> deregister_cancel_callback_;
 };
 
 }  // namespace data

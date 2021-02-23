@@ -217,6 +217,7 @@ cc_library(
         ":dispatcher_state",
         ":grpc_util",
         ":journal",
+        ":task_remover",
         ":worker_cc_grpc_proto",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
@@ -413,6 +414,17 @@ cc_library(
 )
 
 cc_library(
+    name = "task_remover",
+    srcs = ["task_remover.cc"],
+    hdrs = ["task_remover.h"],
+    deps = [
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+cc_library(
     name = "task_runner",
     srcs = ["task_runner.cc"],
     hdrs = ["task_runner.h"],
@@ -423,7 +435,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/data:standalone",
-        "//tensorflow/core/kernels/data:dataset_utils",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
     ],
 )
 
@@ -543,6 +555,7 @@ cc_library(
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",

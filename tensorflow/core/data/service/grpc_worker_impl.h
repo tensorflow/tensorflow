@@ -35,6 +35,7 @@ class GrpcWorkerImpl : public WorkerService::Service {
 
   Status Start(const std::string& worker_address,
                const std::string& transfer_address);
+  void Stop();
 
   std::function<Status(const GetElementRequest*, GetElementResult*)>
   get_element_getter() {

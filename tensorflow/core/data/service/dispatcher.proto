@@ -94,6 +94,16 @@ message GetOrCreateJobResponse {
   int64 job_client_id = 1;
 }
 
+message MaybeRemoveTaskRequest {
+  int64 task_id = 1;
+  int64 consumer_index = 2;
+  int64 round = 3;
+}
+
+message MaybeRemoveTaskResponse {
+  bool removed = 1;
+}
+
 message ReleaseJobClientRequest {
   int64 job_client_id = 1;
 }
@@ -165,6 +175,9 @@ service DispatcherService {
 
   // Gets a job if it already exists, otherwise creates it.
   rpc GetOrCreateJob(GetOrCreateJobRequest) returns (GetOrCreateJobResponse);
+
+  // Attempts to remove a task from a round-robin read job.
+  rpc MaybeRemoveTask(MaybeRemoveTaskRequest) returns (MaybeRemoveTaskResponse);
 
   // Releases a job client so that a job may eventually be cleaned up.
   rpc ReleaseJobClient(ReleaseJobClientRequest)
