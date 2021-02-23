@@ -499,6 +499,17 @@ class MeanAbsoluteErrorTest(test.TestCase):
     loss = mae_obj(y_true, y_pred, sample_weight=2.3)
     self.assertAlmostEqual(self.evaluate(loss), 25.29999, 3)
 
+  def test_ragged_tensor(self):
+    mae_obj = losses.MeanAbsoluteError()
+    y_true = ragged_factory_ops.constant([[1, 9, 2], [-5, -2]],
+                                         dtype=dtypes.float32)
+    y_pred = ragged_factory_ops.constant([[4, 8, 12], [8, 1]],
+                                         dtype=dtypes.float32)
+    # loss = [14/3, 16/2]
+    sample_weight = constant_op.constant([1.2, 1.0], shape=(2, 1))
+    loss = mae_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), 6.8, 5)
+
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class MeanAbsolutePercentageErrorTest(test.TestCase):
@@ -883,6 +894,35 @@ class BinaryCrossentropyTest(test.TestCase):
     expected_value = (100.0 + 50.0 * label_smoothing) / 3.0
     self.assertAlmostEqual(self.evaluate(loss), expected_value, 3)
 
+  def test_ragged_tensors(self):
+    bce_obj = losses.BinaryCrossentropy()
+    y_true = ragged_factory_ops.constant([[1, 0, 1], [0]])
+    y_pred = ragged_factory_ops.constant([[1, 1, 1], [0]], dtype=dtypes.float32)
+    sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
+    loss = bce_obj(y_true, y_pred, sample_weight=sample_weight)
+
+    # per batch loss = [ sum([0, 15.33, 0]) / 3, 0. ]
+    #                = [ 5.11, 0]
+    # Reduced loss = 5.11 * 1.2 / 2
+
+    self.assertAlmostEqual(self.evaluate(loss), 3.0666, 3)
+
+    # Test with logits.
+    y_true = ragged_factory_ops.constant([[1, 0, 1], [0, 1]])
+    logits = ragged_factory_ops.constant([[100.0, -100.0, 100.0],
+                                          [100.0, 100.0]])
+    weights = constant_op.constant([4, 3])
+    bce_obj = losses.BinaryCrossentropy(from_logits=True)
+    loss = bce_obj(y_true, logits, sample_weight=weights)
+
+    # Loss = max(x, 0) - x * z + log(1 + exp(-abs(x)))
+    #            (where x = logits and z = y_true)
+    # Loss = [(0 + 0 + 0)/3, 100 / 2]
+    # Weighted loss = [0 * 4, 50 * 3]
+    # Reduced loss = (0 + 50 * 3) / 2
+
+    self.assertAlmostEqual(self.evaluate(loss), 75., 3)
+
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class CategoricalCrossentropyTest(test.TestCase):
@@ -989,6 +1029,26 @@ class CategoricalCrossentropyTest(test.TestCase):
     cce_obj = losses.CategoricalCrossentropy()
     with self.assertRaisesRegex(ValueError, 'Shapes .+ are incompatible'):
       cce_obj(y_true, y_pred)
+
+  def test_ragged_tensors(self):
+    cce_obj = losses.CategoricalCrossentropy()
+    y_true = ragged_factory_ops.constant([[[1, 0, 0], [0, 1, 0]], [[0, 0, 1]]])
+    y_pred = ragged_factory_ops.constant(
+        [[[.9, .05, .05], [.5, .89, .6]], [[.05, .01, .94]]],
+        dtype=dtypes.float32)
+    # batch losses [[0.1054, 0.8047], [0.0619]]
+    sample_weight = constant_op.constant([[1.2], [3.4]], shape=(2, 1))
+    loss = cce_obj(y_true, y_pred, sample_weight=sample_weight)
+    # sum([0.1054, 0.8047, 0.0619]) / 3
+    self.assertAlmostEqual(self.evaluate(loss), 0.4341, 3)
+
+    # Test with logits.
+    logits = ragged_factory_ops.constant([[[8., 1., 1.], [0., 9., 1.]],
+                                          [[2., 3., 5.]]])
+    cce_obj = losses.CategoricalCrossentropy(from_logits=True)
+    # batch losses [[0.0018, 0.0004], [0.1698]]
+    loss = cce_obj(y_true, logits, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), 0.1934, 3)
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))

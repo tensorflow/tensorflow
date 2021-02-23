@@ -438,6 +438,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       tflite::ops::micro::Register_UNPACK(), ParseUnpack);
   }
 
+  TfLiteStatus AddZerosLike() {
+    return AddBuiltin(BuiltinOperator_ZEROS_LIKE, Register_ZEROS_LIKE(),
+                      ParseZerosLike);
+  }
+
   unsigned int GetRegistrationLength() { return registrations_len_; }
 
  private:

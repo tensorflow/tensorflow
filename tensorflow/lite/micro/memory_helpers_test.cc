@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/memory_helpers.h"
 
+#include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 
@@ -136,6 +137,10 @@ TF_LITE_MICRO_TEST(TestTypeSizeOf) {
   TF_LITE_MICRO_EXPECT_EQ(sizeof(int32_t), size);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
+                          tflite::TfLiteTypeSizeOf(kTfLiteUInt32, &size));
+  TF_LITE_MICRO_EXPECT_EQ(sizeof(uint32_t), size);
+
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
                           tflite::TfLiteTypeSizeOf(kTfLiteUInt8, &size));
   TF_LITE_MICRO_EXPECT_EQ(sizeof(uint8_t), size);
 
@@ -172,17 +177,17 @@ TF_LITE_MICRO_TEST(TestBytesRequiredForTensor) {
       tflite::testing::Create1dFlatbufferTensor(100);
   size_t bytes;
   size_t type_size;
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, tflite::BytesRequiredForTensor(*tensor100, &bytes, &type_size,
-                                                micro_test::reporter));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, tflite::BytesRequiredForTensor(
+                                         *tensor100, &bytes, &type_size,
+                                         tflite::GetMicroErrorReporter()));
   TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(400), bytes);
   TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(4), type_size);
 
   const tflite::Tensor* tensor200 =
       tflite::testing::Create1dFlatbufferTensor(200);
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, tflite::BytesRequiredForTensor(*tensor200, &bytes, &type_size,
-                                                micro_test::reporter));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, tflite::BytesRequiredForTensor(
+                                         *tensor200, &bytes, &type_size,
+                                         tflite::GetMicroErrorReporter()));
   TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(800), bytes);
   TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(4), type_size);
 }

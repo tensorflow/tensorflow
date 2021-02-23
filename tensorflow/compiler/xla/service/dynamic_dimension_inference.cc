@@ -1141,13 +1141,25 @@ Status DynamicDimensionInferenceVisitor::HandleDynamicUpdateSlice(
   return ForEachOperandDynamicDimension(
       hlo,
       [&](HloInstruction* /*operand*/, ShapeIndex /*index*/, int64 dimension,
-          int64 /*operand_index*/, HloInstruction* dynamic_size) {
+          int64 operand_index, HloInstruction* dynamic_size) {
         if (hlo->shape().dimensions(dimension) !=
             hlo->operand(0)->shape().dimensions(dimension)) {
           return Unimplemented(
-              "Dynamic dimension propagation on DynamicSlice where a partial "
-              "dimension is selected %s",
+              "Dynamic dimension propagation on DynamicUpdateSlice where a "
+              "partial dimension is selected %s",
               hlo->ToString());
+        }
+
+        if (operand_index == 1 &&
+            hlo->operand(1)->shape().dimensions(dimension) <
+                hlo->operand(0)->shape().dimensions(dimension)) {
+          // DUS(input=[A], update=[<=B])
+          //
+          // If update dim is smaller than input dim (B < A) , then we are doing
+          // a partial update, no need to set the output dynamic dimension.
+          //
+          // The dynamic shape in `update` doesn't change output dynamic shape.
+          return Status::OK();
         }
 
         parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size);
@@ -1659,8 +1671,10 @@ Status DynamicDimensionInference::AnalyzeDynamicDimensions() {
 
 void DynamicDimensionInference::ReplaceAllDynamicDimensionUsesWith(
     HloInstruction* replace, HloInstruction* with) {
-  CHECK(Shape::Equal()(replace->shape(), ShapeUtil::MakeScalarShape(S32)));
-  CHECK(Shape::Equal()(with->shape(), ShapeUtil::MakeScalarShape(S32)));
+  CHECK(Shape::Equal().IgnoreLayout()(replace->shape(),
+                                      ShapeUtil::MakeScalarShape(S32)));
+  CHECK(Shape::Equal().IgnoreLayout()(with->shape(),
+                                      ShapeUtil::MakeScalarShape(S32)));
   for (auto& kv : dynamic_mapping_) {
     if (kv.second == replace) {
       kv.second = with;

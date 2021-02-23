@@ -519,7 +519,6 @@ pybind_extension(
         ":xla_compiler",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "//third_party/py/numpy:headers",
         "@pybind11",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "//tensorflow/compiler/xla:literal",

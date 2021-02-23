@@ -31,6 +31,7 @@ from tensorflow.python.data.ops import readers
 from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations as ds_combinations
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_process_runner
@@ -39,7 +40,6 @@ from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
-from tensorflow.python.distribute import values as ds_values_lib
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -2696,16 +2696,16 @@ class TestModelCapturesStrategy(test.TestCase, parameterized.TestCase):
       model = create_model()
       model.load_weights(temp_dir)
       self.assertNotEmpty(model.optimizer.weights)
-      self.assertIsInstance(model.optimizer.weights[0],
-                            ds_values_lib.DistributedVariable)
+      self.assertTrue(
+          distribute_utils.is_distributed_variable(model.optimizer.weights[0]))
 
     with distribution.scope():
       model = create_model()
     # create/restore slot variables outside of scope is fine.
     model.load_weights(temp_dir)
     self.assertNotEmpty(model.optimizer.weights)
-    self.assertIsInstance(model.optimizer.weights[0],
-                          ds_values_lib.DistributedVariable)
+    self.assertTrue(
+        distribute_utils.is_distributed_variable(model.optimizer.weights[0]))
 
 
 if __name__ == '__main__':

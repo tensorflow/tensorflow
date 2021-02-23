@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #endif
 #include "tensorflow/lite/kernels/custom_ops_register.h"
-#include "tensorflow/lite/kernels/hashtable/hashtable_ops.h"
 #include "tensorflow/lite/kernels/parse_example/parse_example.h"
 #include "tensorflow/lite/kernels/perception/perception_ops.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -333,6 +332,8 @@ bool TfLiteDriver::DataExpectation::Check(bool verbose,
       return TypedCheck<float, float>(verbose, tensor);
     case kTfLiteInt32:
       return TypedCheck<int32_t, float>(verbose, tensor);
+    case kTfLiteUInt32:
+      return TypedCheck<uint32_t, float>(verbose, tensor);
     case kTfLiteInt64:
       return TypedCheck<int64_t, float>(verbose, tensor);
     case kTfLiteUInt64:
@@ -353,6 +354,8 @@ bool TfLiteDriver::DataExpectation::Check(bool verbose,
     case kTfLiteComplex128:
       return TypedCheck<std::complex<double>, std::complex<double>>(verbose,
                                                                     tensor);
+    case kTfLiteFloat64:
+      return TypedCheck<double, double>(verbose, tensor);
     default:
       fprintf(stderr, "Unsupported type %d in Check\n", tensor.type);
       return false;
@@ -379,7 +382,6 @@ TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
         new ops::builtin::BuiltinOpResolverWithoutDefaultDelegates());
     ops::builtin::BuiltinOpResolver* buildinop_resolver_ =
         reinterpret_cast<ops::builtin::BuiltinOpResolver*>(resolver_.get());
-    tflite::ops::custom::AddHashtableOps(buildinop_resolver_);
     tflite::ops::custom::AddParseExampleOp(buildinop_resolver_);
     tflite::ops::custom::AddPerceptionOps(buildinop_resolver_);
   }
@@ -483,6 +485,12 @@ void TfLiteDriver::SetInput(int id, const string& csv_values) {
       SetTensorData(values, tensor->data.raw);
       break;
     }
+    case kTfLiteUInt32: {
+      const auto& values = testing::Split<uint32_t>(csv_values, ",");
+      if (!CheckSizes<uint32_t>(tensor->bytes, values.size())) return;
+      SetTensorData(values, tensor->data.raw);
+      break;
+    }
     case kTfLiteInt64: {
       const auto& values = testing::Split<int64_t>(csv_values, ",");
       if (!CheckSizes<int64_t>(tensor->bytes, values.size())) return;
@@ -528,6 +536,21 @@ void TfLiteDriver::SetInput(int id, const string& csv_values) {
 
       break;
     }
+    case kTfLiteComplex64: {
+      const auto& values = testing::Split<std::complex<float>>(csv_values, ",");
+      if (!CheckSizes<std::complex<float>>(tensor->bytes, values.size()))
+        return;
+      SetTensorData(values, tensor->data.raw);
+      break;
+    }
+    case kTfLiteComplex128: {
+      const auto& values =
+          testing::Split<std::complex<double>>(csv_values, ",");
+      if (!CheckSizes<std::complex<double>>(tensor->bytes, values.size()))
+        return;
+      SetTensorData(values, tensor->data.raw);
+      break;
+    }
     default:
       Invalidate(absl::StrCat("Unsupported tensor type ",
                               TfLiteTypeGetName(tensor->type),
@@ -569,6 +592,9 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
     case kTfLiteInt32:
       expected_output_[id]->SetData<int32_t>(csv_values);
       break;
+    case kTfLiteUInt32:
+      expected_output_[id]->SetData<uint32_t>(csv_values);
+      break;
     case kTfLiteInt64:
       expected_output_[id]->SetData<int64_t>(csv_values);
       break;
@@ -589,6 +615,9 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
       break;
     case kTfLiteString:
       expected_output_[id]->SetData<string>(csv_values);
+      break;
+    case kTfLiteFloat64:
+      expected_output_[id]->SetData<double>(csv_values);
       break;
     case kTfLiteComplex64:
       expected_output_[id]->SetData<std::complex<float>>(csv_values);
@@ -672,6 +701,8 @@ string TfLiteDriver::ReadOutput(int id) {
       return JoinDefault(tensor->data.f, num_elements, ",");
     case kTfLiteInt32:
       return JoinDefault(tensor->data.i32, num_elements, ",");
+    case kTfLiteUInt32:
+      return JoinDefault(tensor->data.u32, num_elements, ",");
     case kTfLiteInt64:
       return JoinDefault(tensor->data.i64, num_elements, ",");
     case kTfLiteUInt64:

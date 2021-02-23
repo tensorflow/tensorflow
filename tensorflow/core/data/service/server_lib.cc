@@ -70,6 +70,7 @@ void GrpcDataServerBase::Stop() {
   if (stopped_) {
     return;
   }
+  StopServiceInternal();
   server_->Shutdown();
   stopped_ = true;
   LOG(INFO) << "Shut down " << server_type_ << " server running at port "
@@ -150,6 +151,8 @@ Status WorkerGrpcDataServer::StartServiceInternal() {
   TF_RETURN_IF_ERROR(service_->Start(worker_address, transfer_address));
   return Status::OK();
 }
+
+void WorkerGrpcDataServer::StopServiceInternal() { service_->Stop(); }
 
 Status WorkerGrpcDataServer::NumTasks(int* num_tasks) {
   GetWorkerTasksRequest req;

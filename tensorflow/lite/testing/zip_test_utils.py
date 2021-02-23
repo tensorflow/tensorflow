@@ -111,6 +111,10 @@ def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
 
   if dtype in (tf.float32, tf.float16, tf.float64):
     value = (max_value - min_value) * np.random.random_sample(shape) + min_value
+  elif dtype in (tf.complex64, tf.complex128):
+    real = (max_value - min_value) * np.random.random_sample(shape) + min_value
+    imag = (max_value - min_value) * np.random.random_sample(shape) + min_value
+    value = real + imag * 1j
   elif dtype in (tf.int32, tf.uint8, tf.int64, tf.int16):
     value = np.random.randint(min_value, max_value + 1, shape)
   elif dtype == tf.bool:
@@ -474,8 +478,8 @@ def make_zip_of_tests(options,
         report["converter_log"] = toco_log
 
         if options.save_graphdefs:
-          archive.writestr(zip_path_label + ".pbtxt",
-                           text_format.MessageToString(graph_def),
+          zipinfo = zipfile.ZipInfo(zip_path_label + ".pbtxt")
+          archive.writestr(zipinfo, text_format.MessageToString(graph_def),
                            zipfile.ZIP_DEFLATED)
 
         if tflite_model_binary:
@@ -483,19 +487,20 @@ def make_zip_of_tests(options,
             # Set proper min max values according to input dtype.
             baseline_inputs, baseline_outputs = generate_inputs_outputs(
                 tflite_model_binary, min_value=0, max_value=255)
-          archive.writestr(zip_path_label + ".bin", tflite_model_binary,
-                           zipfile.ZIP_DEFLATED)
+          zipinfo = zipfile.ZipInfo(zip_path_label + ".bin")
+          archive.writestr(zipinfo, tflite_model_binary, zipfile.ZIP_DEFLATED)
           example = {"inputs": baseline_inputs, "outputs": baseline_outputs}
 
           example_fp = StringIO()
           write_examples(example_fp, [example])
-          archive.writestr(zip_path_label + ".inputs", example_fp.getvalue(),
-                           zipfile.ZIP_DEFLATED)
+          zipinfo = zipfile.ZipInfo(zip_path_label + ".inputs")
+          archive.writestr(zipinfo, example_fp.getvalue(), zipfile.ZIP_DEFLATED)
 
           example_fp2 = StringIO()
           write_test_cases(example_fp2, zip_path_label + ".bin", [example])
-          archive.writestr(zip_path_label + "_tests.txt",
-                           example_fp2.getvalue(), zipfile.ZIP_DEFLATED)
+          zipinfo = zipfile.ZipInfo(zip_path_label + "_tests.txt")
+          archive.writestr(zipinfo, example_fp2.getvalue(),
+                           zipfile.ZIP_DEFLATED)
 
           zip_manifest_label = zip_path_label + " " + label
           if zip_path_label == label:
@@ -525,16 +530,18 @@ def make_zip_of_tests(options,
     report_io = StringIO()
     report_lib.make_report_table(report_io, zip_path, convert_report)
     if options.multi_gen_state:
-      archive.writestr("report_" + options.multi_gen_state.test_name + ".html",
-                       report_io.getvalue())
+      zipinfo = zipfile.ZipInfo("report_" + options.multi_gen_state.test_name +
+                                ".html")
+      archive.writestr(zipinfo, report_io.getvalue())
     else:
-      archive.writestr("report.html", report_io.getvalue())
+      zipinfo = zipfile.ZipInfo("report.html")
+      archive.writestr(zipinfo, report_io.getvalue())
 
   if options.multi_gen_state:
     options.multi_gen_state.zip_manifest.extend(zip_manifest)
   else:
-    archive.writestr("manifest.txt", "".join(zip_manifest),
-                     zipfile.ZIP_DEFLATED)
+    zipinfo = zipfile.ZipInfo("manifest.txt")
+    archive.writestr(zipinfo, "".join(zip_manifest), zipfile.ZIP_DEFLATED)
 
   # Log statistics of what succeeded
   total_conversions = len(convert_report)

@@ -47,6 +47,7 @@ struct OpData {
   int32_t shift;
   int input_offset;
   int output_offset;
+  bool needs_rescale;
 };
 
 bool IsNumericSupportedType(const TfLiteType type) {
@@ -118,7 +119,8 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
     }
     const float input_scale = input_params->scale->data[0];
     const float output_scale = output_params->scale->data[0];
-    if (op_name == kAbsName) {
+    op_data->needs_rescale = input_scale != output_scale;
+    if (op_name == kAbsName && op_data->needs_rescale) {
       SetAbsOutputMultiplier(input_scale, output_scale, &op_data->multiplier,
                              &op_data->shift);
     } else if (op_name == kRsqrtName) {
@@ -188,10 +190,13 @@ TfLiteStatus AbsEvalQuantized(TfLiteContext* context, TfLiteNode* node,
 
   std::function<T(T)> func = [&](T i) {
     const int32_t value = std::abs(i - op_data->input_offset);
+    if (!op_data->needs_rescale) {
+      return static_cast<T>(
+          std::min(std::max(value + op_data->output_offset, kMin), kMax));
+    }
     const int32_t output = MultiplyByQuantizedMultiplier(
                                value, op_data->multiplier, op_data->shift) +
                            op_data->output_offset;
-
     return static_cast<T>(std::min(std::max(output, kMin), kMax));
   };
 

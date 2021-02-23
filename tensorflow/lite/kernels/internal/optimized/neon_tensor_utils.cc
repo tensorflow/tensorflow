@@ -60,6 +60,10 @@ limitations under the License.
 #define TFLITE_UNLIKELY(x) (x)
 #endif
 
+// TODO(b/180650471): Add back padded version of
+//  MatrixBatchVectorMultiplyAccumulate with sdot instruction.
+#define ENABLE_PADDED_DOT_PROD false
+
 namespace tflite {
 namespace tensor_utils {
 namespace {
@@ -68,7 +72,6 @@ constexpr int kFloatValuesPerNeonVector = 4;
 constexpr int kInt16ValuesPerNeonVector = 8;
 constexpr int kInt8ValuesPerNeonVector = 16;
 constexpr int kNeonVectorAlignment = 4;
-
 template <int PerNeonSize>
 inline int RoundDownVectors(int size) {
   return size & ~(PerNeonSize - 1);
@@ -1054,7 +1057,8 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const int8_t* __restrict__ matrix,
       DotprodMatrixBatchFourVectorMultiplyAccumulate(
           matrix, m_rows, m_cols, vectors, scaling_factors, n_batch, result);
       return;
-    } else if (n_batch >= 2 && m_rows * m_cols >= 128 * 128) {
+    } else if (ENABLE_PADDED_DOT_PROD && n_batch >= 2 &&
+               m_rows * m_cols >= 128 * 128) {
       DotprodMatrixBatchPaddedFourVectorMultiplyAccumulate(
           matrix, m_rows, m_cols, vectors, scaling_factors, n_batch, result);
       return;
@@ -1252,7 +1256,8 @@ void NeonMatrixBatchVectorMultiplyAccumulateImpl(
           matrix, m_rows, m_cols, vectors, scaling_factors, n_batch, result,
           per_channel_scale, input_offset, row_sums);
       return;
-    } else if (n_batch >= 2 && m_rows * m_cols >= 128 * 128) {
+    } else if (ENABLE_PADDED_DOT_PROD && n_batch >= 2 &&
+               m_rows * m_cols >= 128 * 128) {
       DotprodMatrixBatchPaddedFourVectorMultiplyAccumulate(
           matrix, m_rows, m_cols, vectors, scaling_factors, n_batch, result,
           per_channel_scale, input_offset, row_sums);

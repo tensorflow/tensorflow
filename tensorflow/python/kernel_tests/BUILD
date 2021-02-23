@@ -289,6 +289,7 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:test_util",
+        "//tensorflow/python/eager:cancellation",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "@absl_py//absl/testing:parameterized",
@@ -2914,7 +2915,10 @@ cuda_py_test(
     name = "atrous_convolution_test",
     size = "medium",
     srcs = ["atrous_convolution_test.py"],
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "no_cuda_asan",
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -3336,7 +3340,6 @@ cuda_py_test(
     shard_count = 30,
     tags = [
         "no_cuda11",
-        "no_cuda_asan",  # b/179030928
     ],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -3838,6 +3841,9 @@ cuda_py_test(
     name = "critical_section_test",
     size = "medium",
     srcs = ["critical_section_test.py"],
+    tags = [
+        "notsan",  # TODO(b/180454366): Re-enable.
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

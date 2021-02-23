@@ -448,8 +448,8 @@ distribute_py_test(
         "no_oss",  # TODO(b/173021094)
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
-        "noasan",  # TODO(b/178803051)
         "nogpu",  # TODO(b/170905292)
+        "notap",  # TODO(b/178803051): flaky
         "notsan",
     ],
     deps = [
@@ -692,6 +692,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "no_tfrt",  # TODO(b/179839466): Reenable TFRT after the issue is resolved.
         "no_windows_gpu",  # TODO(b/130551176)
     ],
     deps = [
@@ -706,6 +707,7 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/layers:core",
+        "//tensorflow/python/keras/utils:kpl_test_utils",
     ],
 )
 
@@ -740,6 +742,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
+        "no_tfrt",  # TODO(b/179839466): Reenable TFRT after the issue is resolved.
     ],
     deps = [
         ":multi_worker_testing_utils",
@@ -757,6 +760,7 @@ cuda_py_test(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:parameter_server_strategy",
+        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/keras",
         "//tensorflow/python/keras:backend",
@@ -764,6 +768,7 @@ cuda_py_test(
         "//tensorflow/python/keras:engine",
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras/optimizer_v2",
+        "//tensorflow/python/keras/utils:kpl_test_utils",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -858,6 +863,9 @@ tf_py_test(
     srcs = ["parameter_server_training_test.py"],
     python_version = "PY3",
     shard_count = 1,
+    tags = [
+        "no_tfrt",  # TODO(b/180537361): Reenable TFRT after the issue is resolved.
+    ],
     deps = [
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -876,6 +884,7 @@ tf_py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras/utils:dataset_creator",
     ],
 )
 

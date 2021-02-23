@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import functools
 
 import six
 
@@ -25,16 +26,18 @@ from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops.losses import losses_impl
@@ -1231,7 +1234,31 @@ def _ragged_tensor_apply_loss(loss_fn, y_true, y_pred):
     (per-batch loss value); a ragged tensor otherwise.
   """
 
+  def rt_is_equiv_dense(rt):
+    """Returns true if this RaggedTensor has the same row_lenghts across
+
+       all ragged dimensions and thus can be converted to a dense tensor
+       without loss of information.
+
+    Args:
+      rt: RaggedTensor
+    """
+    return math_ops.reduce_all([
+        math_ops.equal(
+            math_ops.reduce_variance(math_ops.cast(row_lens, K.floatx())),
+            constant_op.constant([0.])) for row_lens in rt.nested_row_lengths()
+    ])
+
+  def _convert_to_dense(inputs):
+    return tuple(rt.to_tensor() for rt in inputs)
+
   def _wrapper(inputs):
+    _, y_pred = inputs
+    if isinstance(y_pred, ragged_tensor.RaggedTensor):
+      return control_flow_ops.cond(
+          rt_is_equiv_dense(y_pred),
+          lambda: loss_fn(*_convert_to_dense(inputs)), lambda: loss_fn(*inputs))
+
     return loss_fn(*inputs)
 
   lshape = y_pred.shape.as_list()[1:-1]
@@ -1291,6 +1318,12 @@ def mean_absolute_error(y_true, y_pred):
   y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   return K.mean(math_ops.abs(y_pred - y_true), axis=-1)
+
+
+@dispatch.dispatch_for_types(mean_absolute_error, ragged_tensor.RaggedTensor)
+def _ragged_tensor_mae(y_true, y_pred):
+  """ RaggedTensor adapter for mean_absolute_error"""
+  return _ragged_tensor_apply_loss(mean_absolute_error, y_true, y_pred)
 
 
 @keras_export('keras.metrics.mean_absolute_percentage_error',
@@ -1375,8 +1408,8 @@ def _maybe_convert_labels(y_true):
     # Convert the binary labels to -1 or 1.
     return 2. * y_true - 1.
 
-  updated_y_true = smart_cond.smart_cond(is_binary, _convert_binary_labels,
-                                         lambda: y_true)
+  updated_y_true = control_flow_util.smart_cond(
+      is_binary, _convert_binary_labels, lambda: y_true)
   return updated_y_true
 
 
@@ -1593,9 +1626,34 @@ def categorical_crossentropy(y_true,
     num_classes = math_ops.cast(array_ops.shape(y_true)[-1], y_pred.dtype)
     return y_true * (1.0 - label_smoothing) + (label_smoothing / num_classes)
 
-  y_true = smart_cond.smart_cond(label_smoothing, _smooth_labels,
-                                 lambda: y_true)
+  y_true = control_flow_util.smart_cond(
+      label_smoothing, _smooth_labels, lambda: y_true)
   return K.categorical_crossentropy(y_true, y_pred, from_logits=from_logits)
+
+
+@dispatch.dispatch_for_types(categorical_crossentropy,
+                             ragged_tensor.RaggedTensor)
+def _ragged_tensor_categorical_crossentropy(y_true,
+                                            y_pred,
+                                            from_logits=False,
+                                            label_smoothing=0):
+  """ Implements support for handling RaggedTensors.
+
+      Expected shape: (batch, sequence_len, n_classes) with sequence_len
+      being variable per batch.
+      Return shape: (batch, sequence_len).
+
+      When used by CategoricalCrossentropy() with the default reduction
+      (SUM_OVER_BATCH_SIZE), the reduction averages the loss over the
+      number of elements independent of the batch. E.g. if the RaggedTensor
+      has 2 batches with [2, 1] values respectivly the resulting loss is
+      the sum of the individual loss values divided by 3.
+  """
+  fn = functools.partial(
+      categorical_crossentropy,
+      from_logits=from_logits,
+      label_smoothing=label_smoothing)
+  return _ragged_tensor_apply_loss(fn, y_true, y_pred)
 
 
 @keras_export('keras.metrics.sparse_categorical_crossentropy',
@@ -1665,10 +1723,32 @@ def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0):
   def _smooth_labels():
     return y_true * (1.0 - label_smoothing) + 0.5 * label_smoothing
 
-  y_true = smart_cond.smart_cond(label_smoothing, _smooth_labels,
-                                 lambda: y_true)
+  y_true = control_flow_util.smart_cond(
+      label_smoothing, _smooth_labels, lambda: y_true)
   return K.mean(
       K.binary_crossentropy(y_true, y_pred, from_logits=from_logits), axis=-1)
+
+
+@dispatch.dispatch_for_types(binary_crossentropy, ragged_tensor.RaggedTensor)
+def _ragged_tensor_binary_crossentropy(y_true,
+                                       y_pred,
+                                       from_logits=False,
+                                       label_smoothing=0):
+  """ Implements support for handling RaggedTensors.
+
+      Expected shape: (batch, sequence_len) with sequence_len being variable
+      per batch.
+      Return shape: (batch,); returns the per batch mean of the loss values.
+
+      When used by BinaryCrossentropy() with the default reduction
+      (SUM_OVER_BATCH_SIZE), the reduction averages the per batch losses over
+      the number of batches.
+  """
+  fn = functools.partial(
+      binary_crossentropy,
+      from_logits=from_logits,
+      label_smoothing=label_smoothing)
+  return _ragged_tensor_apply_loss(fn, y_true, y_pred)
 
 
 @keras_export('keras.metrics.kl_divergence',

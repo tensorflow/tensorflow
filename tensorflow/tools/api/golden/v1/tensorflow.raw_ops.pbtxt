@@ -1950,11 +1950,11 @@ tf_module {
   }
   member_method {
     name: "InitializeTableFromTextFile"
-    argspec: "args=[\'table_handle\', \'filename\', \'key_index\', \'value_index\', \'vocab_size\', \'delimiter\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\\t\', \'None\'], "
+    argspec: "args=[\'table_handle\', \'filename\', \'key_index\', \'value_index\', \'vocab_size\', \'delimiter\', \'offset\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\\t\', \'0\', \'None\'], "
   }
   member_method {
     name: "InitializeTableFromTextFileV2"
-    argspec: "args=[\'table_handle\', \'filename\', \'key_index\', \'value_index\', \'vocab_size\', \'delimiter\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\\t\', \'None\'], "
+    argspec: "args=[\'table_handle\', \'filename\', \'key_index\', \'value_index\', \'vocab_size\', \'delimiter\', \'offset\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\\t\', \'0\', \'None\'], "
   }
   member_method {
     name: "InitializeTableV2"
@@ -2798,7 +2798,7 @@ tf_module {
   }
   member_method {
     name: "ParallelBatchDataset"
-    argspec: "args=[\'input_dataset\', \'batch_size\', \'num_parallel_calls\', \'drop_remainder\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'batch_size\', \'num_parallel_calls\', \'drop_remainder\', \'output_types\', \'output_shapes\', \'deterministic\', \'name\'], varargs=None, keywords=None, defaults=[\'default\', \'None\'], "
   }
   member_method {
     name: "ParallelConcat"

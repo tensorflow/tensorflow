@@ -65,6 +65,7 @@ project, we have additional documentation in the [docs](docs/) folder.
 *   [Benchmarks](benchmarks/README.md)
 *   [Profiling](docs/profiling.md)
 *   [Memory Management](docs/memory_management.md)
+*   [Optimized Kernel Implementations](docs/optimized_kernel_implementations.md)
 *   [New Platform Support](docs/new_platform_support.md)
 *   [Software Emulation with Renode](docs/renode.md)
 *   [Pre-allocated tensors](docs/preallocated_tensors.md)

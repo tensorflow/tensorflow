@@ -25,6 +25,18 @@ namespace tensorflow {
 namespace grappler {
 namespace graph_tests_utils {
 
+NodeDef MakeBatchV2Node(StringPiece name, StringPiece input_node_name,
+                        StringPiece batch_size_node_name,
+                        StringPiece drop_remainder_node_name) {
+  return test::function::NDef(
+      name, "BatchDatasetV2",
+      {string(input_node_name), string(batch_size_node_name),
+       string(drop_remainder_node_name)},
+      {{"parallel_copy", false},
+       {"output_shapes", gtl::ArraySlice<TensorShape>{}},
+       {"output_types", gtl::ArraySlice<DataType>{}}});
+}
+
 NodeDef MakeCacheV2Node(StringPiece name, StringPiece input_node_name,
                         StringPiece filename_node_name,
                         StringPiece cache_node_name) {

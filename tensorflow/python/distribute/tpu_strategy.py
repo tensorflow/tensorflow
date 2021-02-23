@@ -38,6 +38,7 @@ from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import tpu_util
 from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
@@ -321,9 +322,10 @@ class TPUStrategyV2(distribute_lib.Strategy):
     """Synchronous training in TPU donuts or Pods.
 
     Args:
-      tpu_cluster_resolver: A tf.distribute.cluster_resolver.TPUClusterResolver,
-        which provides information about the TPU cluster. If None, it will
-        assume running on a local TPU worker.
+      tpu_cluster_resolver: A 
+        `tf.distribute.cluster_resolver.TPUClusterResolver` instance, which
+        provides information about the TPU cluster. If None, it will assume
+        running on a local TPU worker.
       experimental_device_assignment: Optional
         `tf.tpu.experimental.DeviceAssignment` to specify the placement of
         replicas on the TPU cluster.
@@ -944,7 +946,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         dataset,
         self._get_input_workers(options),
         self._container_strategy(),
-        num_replicas_in_sync=self._num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync,
+        options=options)
 
   def _distribute_datasets_from_function(self, dataset_fn, options):
     if (options and options.experimental_replication_mode ==
@@ -967,7 +970,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         dataset_fn,
         input_workers,
         input_contexts,
-        self._container_strategy())
+        self._container_strategy(),
+        options=options)
 
     # We can only check after the dataset_fn is called.
     if options is None or options.experimental_prefetch_to_device:
@@ -1099,7 +1103,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     self._logical_device_stack.append(logical_device_id)
     try:
-      if tpu_values.enclosing_tpu_context() is None:
+      if tpu_util.enclosing_tpu_context() is None:
         yield
       else:
         with ops.device(tpu.core(logical_device_id)):
@@ -1213,7 +1217,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
   def _reduce_to(self, reduce_op, value, destinations, options):
     if (isinstance(value, values.DistributedValues) or
         tensor_util.is_tf_type(value)
-       ) and tpu_values.enclosing_tpu_context() is not None:
+       ) and tpu_util.enclosing_tpu_context() is not None:
       if reduce_op == reduce_util.ReduceOp.MEAN:
         # TODO(jhseu):  Revisit once we support model-parallelism.
         value *= (1. / self._num_replicas_in_sync)
@@ -1260,7 +1264,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
   def _update(self, var, fn, args, kwargs, group):
     assert isinstance(var, tpu_values.TPUVariableMixin) or isinstance(
         var, resource_variable_ops.BaseResourceVariable)
-    if tpu_values.enclosing_tpu_context() is not None:
+    if tpu_util.enclosing_tpu_context() is not None:
       if group:
         return fn(var, *args, **kwargs)
       else:
@@ -1279,7 +1283,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         values_and_devices.append((value, value.device))
 
     if (var.synchronization != variables_lib.VariableSynchronization.ON_READ and
-        var.synchronization != variables_lib.VariableAggregation.NONE):
+        var.aggregation != variables_lib.VariableAggregation.NONE):
       distribute_utils.assert_mirrored(args)
       distribute_utils.assert_mirrored(kwargs)
     for i, value_and_device in enumerate(values_and_devices):
@@ -1300,11 +1304,6 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         var, resource_variable_ops.BaseResourceVariable)
     return var.read_value()
 
-  def _local_results(self, val):
-    if isinstance(val, values.DistributedValues):
-      return val.values
-    return (val,)
-
   def value_container(self, value):
     return value
 
@@ -1317,7 +1316,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     # since the `1` gets broadcast as an int32 but global_step is int64.
     if isinstance(tensor, (float, int)):
       return tensor
-    if tpu_values.enclosing_tpu_context() is not None:
+    if tpu_util.enclosing_tpu_context() is not None:
       broadcast_tensor = [tensor for _ in range(self._num_replicas_in_sync)]
       result = tpu_ops.all_to_all(
           broadcast_tensor,
@@ -1438,15 +1437,6 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       if kwargs is None:
         kwargs = {}
 
-      # Remove None at the end of args as they are not replicatable
-      # If there are None in the middle we can't do anything about it
-      # so let those cases fail.
-      # For example when Keras model predict is used they pass the targets as
-      # None. We want to handle it here so all client libraries don't have to
-      # do this as other strategies can handle None values better.
-      while args and args[-1] is None:
-        args = args[:-1]
-
       # Used to re-structure flattened output tensors from `tpu.replicate()`
       # into a structured format.
       result = [[]]
@@ -1497,19 +1487,17 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
                                        ._use_spmd_for_xla_partitioning))
 
       # Remove all no ops that may have been added during 'tpu.replicate()'
+      filter_ops = lambda x: [o for o in x if not isinstance(o, ops.Operation)]
       if isinstance(result[0], list):
-        result[0] = [
-            output for output in result[0] if not isinstance(
-                output, ops.Operation)
-        ]
+        result[0] = filter_ops(result[0])
 
       # Workaround for `tpu.replicate` behaviour when single `Tensor` returned.
       if result[0] is None or isinstance(result[0], ops.Operation):
         replicate_outputs = [None] * len(replicate_outputs)
       else:
         replicate_outputs = [
-            nest.pack_sequence_as(result[0], nest.flatten(replica_output))
-            for replica_output in replicate_outputs
+            nest.pack_sequence_as(result[0], filter_ops(nest.flatten(output)))
+            for output in replicate_outputs
         ]
       return distribute_utils.regroup(replicate_outputs)
 

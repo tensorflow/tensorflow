@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/typed_allocator.h"
+#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/lite/delegates/flex/util.h"
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
@@ -155,6 +156,26 @@ const tensorflow::Tensor* BufferMap::GetTensorPtr(int tensor_index) const {
 }
 
 void BufferMap::SetFromTfLite(int tensor_index, const TfLiteTensor* tensor) {
+  // TODO(b/179094265): This is an experimental implementation, subject to
+  // change. This can be re-implemented with life cycle management mechanism
+  // like reference counting.
+  // In a different subgraph, it can load the TensorFlow tensor pointer of the
+  // given TensorFlow Lite tensor, which is stored in the `data` field. The
+  // memory management cycle of the shared TensorFlow's tensor will be managed
+  // by the buffer maps since the loaded tensors always will be kept in the
+  // buffer map.
+  //
+  // The life cycle of the pointer will be managed by the reference counting in
+  // the TensorFlow world and the pointer will be freed when all the buffer
+  // maps, who own it, are gone.
+  if (tensor->type == kTfLiteResource || tensor->type == kTfLiteVariant) {
+    const tensorflow::Tensor** tf_tensor_ptr =
+        reinterpret_cast<const tensorflow::Tensor**>(tensor->data.raw);
+    id_to_tensor_[tensor_index] = **tf_tensor_ptr;
+    owned_by_tf_.insert(tensor_index);
+    return;
+  }
+
   tensorflow::TensorShape shape;
   int num_dims = tensor->dims->size;
   for (int i = 0; i < num_dims; ++i) {

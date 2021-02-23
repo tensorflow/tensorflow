@@ -463,6 +463,7 @@ tf_kernel_library(
         "//tensorflow/core:session_options",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -706,7 +707,7 @@ tf_kernel_library(
 
 tf_cc_test(
     name = "parallel_batch_dataset_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["parallel_batch_dataset_op_test.cc"],
     deps = [
         ":dataset_test_base",

@@ -49,6 +49,6 @@ def : Pat<(TFL_PowOp $l, $r), (Tosa_PowOp $l, $r)>;
 def : Pat<(TFL_GatherOp $params,
                         $indices,
                         $axis),
-          (Tosa_GatherOp $params,
-                           $indices,
+          (Tosa_GatherOp $indices,
+                           $params,
                            $axis)>;

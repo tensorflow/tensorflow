@@ -316,7 +316,7 @@ def compare_results(results_with_ds,
     default_tolerance = 1e-3
     relaxed_tolerance = 1e-3
   else:
-    default_tolerance = 1e-5
+    default_tolerance = 4e-5
     relaxed_tolerance = 1e-4
 
   def _get_compare_result_tolerance(key):

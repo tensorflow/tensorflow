@@ -36,7 +36,7 @@ struct NcclAllReduceConfig {
 class NcclAllReduceThunk : public NcclCollectiveThunk {
  public:
   NcclAllReduceThunk(ThunkInfo thunk_info, mlir::lmhlo::AllReduceOp op,
-                     int64 replica_count, std::vector<Buffer> buffers);
+                     std::vector<Buffer> buffers);
 
   // Returns whether the given instruction can be lowered to a nccl all-reduce
   // call.
@@ -44,13 +44,25 @@ class NcclAllReduceThunk : public NcclCollectiveThunk {
 
   static const char* GetName() { return "AllReduce"; }
 
+  static bool IsDegenerate(mlir::lmhlo::AllReduceOp op, int64 replica_count,
+                           int64 partition_count) {
+    return GetNcclAllReduceConfig(op).config.IsDegenerate(replica_count,
+                                                          partition_count);
+  }
+
+  static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::AllReduceOp op) {
+    return GetNcclAllReduceConfig(op).config.group_mode;
+  }
+
  protected:
   Status RunNcclCollective(const ExecuteParams& params,
                            ncclComm_t comm) override;
 
-  const NcclCollectiveConfig& config() const override;
+  const NcclCollectiveConfig& config() const override { return config_.config; }
 
  private:
+  static NcclAllReduceConfig GetNcclAllReduceConfig(
+      mlir::lmhlo::AllReduceOp op);
   const NcclAllReduceConfig config_;
   const std::vector<Buffer> buffers_;
 };

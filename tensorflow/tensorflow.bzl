@@ -54,6 +54,7 @@ load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 # and tensorflow/tools/pip_package/setup.py
 VERSION = "2.5.0"
 VERSION_MAJOR = VERSION.split(".")[0]
+two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 
 def clean_dep(target):
     """Returns string to 'target' in @org_tensorflow repository.
@@ -1188,6 +1189,34 @@ def tf_gpu_cc_test(
             clean_dep("//tensorflow/core:gpu_runtime"),
         ]),
     )
+    if "multi_gpu" in tags or "multi_and_single_gpu" in tags:
+        cleaned_tags = tags + two_gpu_tags
+        if "requires-gpu-nvidia" in cleaned_tags:
+            cleaned_tags.remove("requires-gpu-nvidia")
+        tf_cc_test(
+            name = name,
+            size = size,
+            srcs = srcs,
+            args = args,
+            data = data,
+            extra_copts = extra_copts,
+            kernels = kernels,
+            linkopts = linkopts,
+            linkstatic = select({
+                # TODO(allenl): Remove Mac static linking when Bazel 0.6 is out.
+                clean_dep("//tensorflow:macos"): 1,
+                "@local_config_cuda//cuda:using_nvcc": 1,
+                "@local_config_cuda//cuda:using_clang": 1,
+                "//conditions:default": 0,
+            }),
+            suffix = "_2gpu",
+            tags = cleaned_tags,
+            deps = deps + if_cuda_is_configured([
+                clean_dep("//tensorflow/core:gpu_runtime"),
+            ]) + if_rocm_is_configured([
+                clean_dep("//tensorflow/core:gpu_runtime"),
+            ]),
+        )
 
 # terminology changes: saving tf_cuda_* definition for compatibility
 def tf_cuda_cc_test(*args, **kwargs):
@@ -2283,11 +2312,18 @@ def gpu_py_test(
         main = name + ".py"
     if "additional_deps" in kwargs:
         fail("Use `deps` to specify dependencies. `additional_deps` has been replaced with the standard pattern of `deps`.")
-    for config in ["cpu", "gpu"]:
+    configs = ["cpu", "gpu"]
+    if "multi_gpu" in tags or "multi_and_single_gpu" in tags:
+        configs = configs + ["2gpu"]
+    for config in configs:
         test_name = name
         test_tags = tags
         if config == "gpu":
             test_tags = test_tags + tf_gpu_tests_tags()
+        if config == "2gpu":
+            test_tags = test_tags + two_gpu_tags
+            if "requires-gpu-nvidia" in test_tags:
+                test_tags.remove("requires-gpu-nvidia")
         if xla_enable_strict_auto_jit:
             tf_py_test(
                 name = test_name + "_xla_" + config,
@@ -2307,6 +2343,8 @@ def gpu_py_test(
             )
         if config == "gpu":
             test_name += "_gpu"
+        if config == "2gpu":
+            test_name += "_2gpu"
         tf_py_test(
             name = test_name,
             size = size,
@@ -2379,12 +2417,33 @@ def gpu_py_tests(
         **kwargs):
     # TODO(b/122522101): Don't ignore xla_enable_strict_auto_jit and enable additional
     # XLA tests once enough compute resources are available.
-    test_tags = tags + tf_gpu_tests_tags()
-    if "additional_deps" in kwargs:
-        fail("Use `deps` to specify dependencies. `additional_deps` has been replaced with the standard pattern of `deps`.")
-    if xla_enable_strict_auto_jit:
+    test_tags = [tags + tf_gpu_tests_tags()]
+    if "multi_gpu" in tags or "multi_and_single_gpu" in tags:
+        two_gpus = tags + two_gpu_tags
+        if "requires-gpu-nvidia" in two_gpus:
+            two_gpus.remove("requires-gpu-nvidia")
+        test_tags.append(two_gpus)
+
+    for test_tag in test_tags:
+        if "additional_deps" in kwargs:
+            fail("Use `deps` to specify dependencies. `additional_deps` has been replaced with the standard pattern of `deps`.")
+        if xla_enable_strict_auto_jit:
+            py_tests(
+                name = name + "_xla",
+                size = size,
+                srcs = srcs,
+                data = data,
+                grpc_enabled = grpc_enabled,
+                kernels = kernels,
+                prefix = prefix,
+                shard_count = shard_count,
+                tags = test_tag + ["xla", "manual"],
+                xla_enabled = xla_enabled,
+                xla_enable_strict_auto_jit = True,
+                **kwargs
+            )
         py_tests(
-            name = name + "_xla",
+            name = name,
             size = size,
             srcs = srcs,
             data = data,
@@ -2392,25 +2451,11 @@ def gpu_py_tests(
             kernels = kernels,
             prefix = prefix,
             shard_count = shard_count,
-            tags = test_tags + ["xla", "manual"],
+            tags = test_tag,
             xla_enabled = xla_enabled,
-            xla_enable_strict_auto_jit = True,
+            xla_enable_strict_auto_jit = False,
             **kwargs
         )
-    py_tests(
-        name = name,
-        size = size,
-        srcs = srcs,
-        data = data,
-        grpc_enabled = grpc_enabled,
-        kernels = kernels,
-        prefix = prefix,
-        shard_count = shard_count,
-        tags = test_tags,
-        xla_enabled = xla_enabled,
-        xla_enable_strict_auto_jit = False,
-        **kwargs
-    )
 
 # terminology changes: saving cuda_* definition for compatibility
 def cuda_py_tests(*args, **kwargs):

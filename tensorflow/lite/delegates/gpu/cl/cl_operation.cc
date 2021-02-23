@@ -65,6 +65,9 @@ std::string GetCommonOpenCLDefines(CalculationsPrecision precision) {
   result += "#define GROUP_SIZE_0 get_local_size(0)\n";
   result += "#define GROUP_SIZE_1 get_local_size(1)\n";
   result += "#define GROUP_SIZE_2 get_local_size(2)\n";
+  result += "#define SUB_GROUP_LOCAL_ID get_sub_group_local_id()\n";
+  result += "#define SUB_GROUP_BROADCAST(V, ID) sub_group_broadcast(V, ID)\n";
+  result += "#define SIMD_LOCAL_MEM_BARRIER barrier(CLK_LOCAL_MEM_FENCE)\n";
   result += "#define LOCAL_MEM_BARRIER barrier(CLK_LOCAL_MEM_FENCE)\n";
   result += "#define MAIN_FUNCTION __kernel void main_function\n";
   result += "#define INIT_FLOAT(value) (float)(value)\n";

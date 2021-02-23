@@ -59,13 +59,13 @@ namespace {
 const char* GetCollectiveName(const CollectiveParams* cp, bool nccl) {
   switch (cp->instance.type) {
     case BROADCAST_COLLECTIVE:
-      return "HierarchicalTreeBroadcast";
+      return nccl ? "NcclBroadcast" : "HierarchicalTreeBroadcast";
 
     case REDUCTION_COLLECTIVE:
       return nccl ? "NcclReduce" : "RingReduce";
 
     case GATHER_COLLECTIVE:
-      return "RingGather";
+      return nccl ? "NcclGather" : "RingGather";
 
     case PERMUTE_COLLECTIVE:
       return "Permute";
@@ -86,10 +86,49 @@ string TaskNameFromDeviceName(const string& device_name) {
 
 void CollectiveParamResolverLocal::CompleteGroupLocal(
     const DeviceAttributes& device, CollectiveParams* cp,
-    const GroupRecCallback& done) {
+    const GroupRecCallback& done, CancellationManager* cancel_mgr) {
   VLOG(1) << "CompleteGroupLocal device=" << device.name() << " cp: " << cp
           << ": " << cp->ToString();
   std::vector<StatusCallback> to_be_called;
+  // Keep a reference to `cp` to avoid racing with deletion due to cancellation.
+  cp->Ref();
+  core::ScopedUnref cp_unref(cp);
+
+  std::function<void(const Status& s, GroupRec* gr)> done_with_cleanup;
+  if (cancel_mgr != nullptr) {
+    auto cancelled_mu = std::make_shared<mutex>();
+    // Some callers delete `cancel_mgr` as soon as `done` is called once,
+    // meaning we can't rely on it to avoid calling `done` twice if the local op
+    // is cancelled but the group succeeds.
+    auto cancelled = std::make_shared<bool>(false);
+    const CancellationToken token = cancel_mgr->get_cancellation_token();
+    const bool already_cancelled =
+        !cancel_mgr->RegisterCallback(token, [done, cancelled_mu, cancelled]() {
+          {
+            mutex_lock l(*cancelled_mu);
+            *cancelled = true;
+          }
+          done(errors::Cancelled("op cancelled"), nullptr);
+        });
+    if (already_cancelled) {
+      done(errors::Cancelled("op cancelled"), nullptr);
+      return;
+    }
+    done_with_cleanup = [cancel_mgr, done, cancelled_mu, cancelled, token](
+                            const Status& s, GroupRec* gr) {
+      {
+        mutex_lock l(*cancelled_mu);
+        if (*cancelled || !cancel_mgr->TryDeregisterCallback(token)) {
+          return;
+        }
+      }
+      // The operation was never cancelled, so we'll return a normal status.
+      done(s, gr);
+    };
+  } else {
+    done_with_cleanup = done;
+  }
+
   GroupRec* gr = nullptr;
   Status status;
   {
@@ -121,7 +160,7 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
       }
 
       if (!status.ok()) {
-        done(status, gr);
+        done_with_cleanup(status, gr);
         return;
       }
 
@@ -140,7 +179,7 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
     status = status_;
   }
   if (!status.ok()) {
-    done(status, nullptr);
+    done_with_cleanup(status, nullptr);
     return;
   }
   {
@@ -211,7 +250,8 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
               << gr->devices.size() << " gr " << gr;
 
       if (gr->devices.size() < gr->group.group_size) {
-        gr->waiting.push_back(std::bind(done, std::placeholders::_1, gr));
+        gr->waiting.push_back(
+            std::bind(done_with_cleanup, std::placeholders::_1, gr));
         return;
       }
       CHECK_EQ(gr->devices.size(), gr->group.group_size);
@@ -227,7 +267,7 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
     }
     status = gr->status;
   }
-  done(status, gr);
+  done_with_cleanup(status, gr);
   for (int i = 0; i < to_be_called.size(); ++i) {
     to_be_called[i](status);
   }
@@ -513,14 +553,14 @@ void CollectiveParamResolverLocal::SetDefaultRank(const string& device,
 
 void CollectiveParamResolverLocal::InitInstanceSharedParams(
     const GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir) {
-  ir->shared.instance = cp->instance;
-  ir->shared.default_rank = -1;
+  ir->shared->instance = cp->instance;
+  ir->shared->default_rank = -1;
 
   // Set is_local and task_names in *shared prior to invoking
   // GetDeviceAttributesAsync.  In a distributed context this function can be
   // called by a derived class, some of the devices may be non-local and
   // GetDeviceAttributesAsync will use those fields to launch RPCs.
-  CompleteTaskIsLocal(task_name_, &ir->shared);
+  CompleteTaskIsLocal(task_name_, ir->shared);
 }
 
 // NOTE(ayushd): The DeviceLocality objects in attributes will have LocalLinks
@@ -609,7 +649,8 @@ void CollectiveParamResolverLocal::CompleteParamsAsync(
         } else {
           done(s);
         }
-      });
+      },
+      cancel_mgr);
 }
 
 void CollectiveParamResolverLocal::CompleteInstanceAsync(
@@ -662,11 +703,11 @@ void CollectiveParamResolverLocal::CompleteInstanceLocal(
   if (!created_irec) {
     // Check that the preexisting IRec is consistent with the params passed into
     // this invocation.
-    if (ir->shared.instance.type != cp->instance.type ||
-        ir->shared.instance.data_type != cp->instance.data_type) {
+    if (ir->shared->instance.type != cp->instance.type ||
+        ir->shared->instance.data_type != cp->instance.data_type) {
       done(errors::Internal("Collective instance ", cp->instance.instance_key,
-                            " expected type ", ir->shared.instance.type,
-                            " and data_type ", ir->shared.instance.data_type,
+                            " expected type ", ir->shared->instance.type,
+                            " and data_type ", ir->shared->instance.data_type,
                             " but got type ", cp->instance.type,
                             " and data_type ", cp->instance.data_type));
       return;
@@ -686,7 +727,7 @@ void CollectiveParamResolverLocal::CompleteInstanceFromInitializedIRec(
     status = ir->status;
     if (status.ok()) {
       // custom operator= does a deep copy.
-      cp->instance = ir->shared.instance;
+      cp->instance = ir->shared->instance;
     }
   }
   if (!status.ok()) {

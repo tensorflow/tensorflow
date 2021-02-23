@@ -35,6 +35,7 @@
 #include "mlir/ExecutionEngine/OptUtils.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/kernel_creator.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -72,6 +73,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(llvm::Module* module) {
 xla::StatusOr<std::string> EmitToBinary(mlir::ModuleOp module) {
   // Translate the module.
   llvm::LLVMContext llvm_context;
+  mlir::registerLLVMDialectTranslation(*module->getContext());
   std::unique_ptr<llvm::Module> llvm_module =
       mlir::translateModuleToLLVMIR(module, llvm_context);
 
@@ -104,8 +106,8 @@ xla::StatusOr<std::string> EmitToBinary(mlir::ModuleOp module) {
 
 xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
                 llvm::ArrayRef<std::string> architectures,
-                llvm::ArrayRef<uint32_t> tile_sizes,
-                llvm::ArrayRef<uint32_t> unroll_factors,
+                llvm::ArrayRef<int64_t> tile_sizes,
+                llvm::ArrayRef<int64_t> unroll_factors,
                 bool embed_memref_prints, bool print_ptx, bool enable_ftz,
                 bool cpu_codegen) {
   // Read TF code.
@@ -158,11 +160,11 @@ int main(int argc, char** argv) {
       llvm::cl::init(false));
   llvm::cl::list<std::string> architectures(
       "arch", llvm::cl::desc("target architectures (e.g. sm_70 or compute_75)"),
-      llvm::cl::OneOrMore, llvm::cl::CommaSeparated);
-  llvm::cl::list<uint32_t> tile_sizes(
+      llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated);
+  llvm::cl::list<int64_t> tile_sizes(
       "tile_sizes", llvm::cl::desc("tile sizes to use"), llvm::cl::ZeroOrMore,
       llvm::cl::CommaSeparated);
-  llvm::cl::list<uint32_t> unroll_factors(
+  llvm::cl::list<int64_t> unroll_factors(
       "unroll_factors",
       llvm::cl::desc("factors to unroll by, separated by commas"),
       llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated);

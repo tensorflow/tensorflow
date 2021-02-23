@@ -18,6 +18,12 @@ filegroup(
     ],
 )
 
+config_setting(
+    name = "no_keras_py_deps",
+    define_values = {"no_keras_py_deps": "true"},
+    visibility = ["//visibility:public"],
+)
+
 py_library(
     name = "keras",
     srcs = [
@@ -236,6 +242,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":backend",
+        "//tensorflow/python/keras/utils:control_flow_util",
         "//tensorflow/python/keras/utils:engine_utils",
     ],
 )
@@ -566,6 +573,7 @@ tf_py_test(
     shard_count = 6,
     tags = [
         "no_oss",
+        "no_tfrt",  # TODO(b/179690526)
         "notsan",
     ],
     deps = [

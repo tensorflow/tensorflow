@@ -1845,6 +1845,59 @@ TEST_P(QuantizeGatherNDModelTest, QuantizeGatherND) {
   EXPECT_EQ(model_.operator_codes[0]->version, 3);
 }
 
+class QuantizeWhereModelTest : public QuantizeModelTest {
+ protected:
+  QuantizeWhereModelTest() {
+    input_model_ = ReadModel(internal::kModelWithWhereOp);
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_);
+  }
+};
+
+TEST_F(QuantizeWhereModelTest, QuantizeWhere) {
+  // Where operator takes a BOOL tensor as input
+  // and outputs INT64 indices, both of which
+  // should not be quantized
+  auto status = QuantizeModel(&builder_, &model_, TensorType_BOOL,
+                              TensorType_INT64, &error_reporter_);
+  EXPECT_EQ(status, kTfLiteOk);
+
+  // There is only one subgraph.
+  const int32_t subgraph_idx = 0;
+  const auto& subgraph = model_.subgraphs[subgraph_idx];
+  const auto& readonly_subgraph =
+      readonly_model_->subgraphs()->Get(subgraph_idx);
+
+  // There should be a single where op.
+  EXPECT_EQ(readonly_subgraph->operators()->size(), 1);
+  EXPECT_EQ(subgraph->operators.size(), 1);
+  const auto& where = subgraph->operators[0];
+  EXPECT_EQ(model_.operator_codes[where->opcode_index]->builtin_code,
+            BuiltinOperator_WHERE);
+
+  // There should be 2 tensors: input and output.
+  EXPECT_EQ(subgraph->tensors.size(), 2);
+
+  // Testing input tensor type and ensuring it
+  // was not quantized
+  EXPECT_EQ(subgraph->tensors[0]->type, TensorType_BOOL);
+  EXPECT_EQ(subgraph->tensors[0]->name, "input");
+  EXPECT_EQ(subgraph->tensors[0]->quantization->scale.size(), 0);
+  EXPECT_EQ(subgraph->tensors[0]->quantization->zero_point.size(), 0);
+
+  // Testing output (indices) tensor type and ensuring it
+  // was not quantized
+  EXPECT_EQ(subgraph->tensors[1]->type, TensorType_INT64);
+  EXPECT_EQ(subgraph->tensors[1]->name, "indices");
+  EXPECT_EQ(subgraph->tensors[1]->quantization->scale.size(), 0);
+  EXPECT_EQ(subgraph->tensors[1]->quantization->zero_point.size(), 0);
+
+  // check op and versioning.
+  EXPECT_EQ(model_.operator_codes.size(), 1);
+  EXPECT_EQ(model_.operator_codes[0]->builtin_code, BuiltinOperator_WHERE);
+  EXPECT_EQ(model_.operator_codes[0]->version, 1);
+}
+
 }  // namespace
 }  // namespace optimize
 }  // namespace tflite

@@ -182,6 +182,13 @@ class CancellationManager {
   std::unique_ptr<State> state_ TF_GUARDED_BY(mu_);
 };
 
+// Registers the given cancellation callback, returning a function that can be
+// used to deregister the callback. If `cancellation_manager` is NULL, no
+// registration occurs and `deregister_fn` will be a no-op.
+Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
+                                    std::function<void()> callback,
+                                    std::function<void()>* deregister_fn);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_CANCELLATION_H_

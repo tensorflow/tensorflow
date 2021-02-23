@@ -1484,10 +1484,7 @@ def ndim(x):
   2
 
   """
-  dims = x.shape._dims
-  if dims is not None:
-    return len(dims)
-  return None
+  return x.shape.rank
 
 
 @keras_export('keras.backend.dtype')

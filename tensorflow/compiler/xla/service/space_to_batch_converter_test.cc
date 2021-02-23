@@ -118,9 +118,9 @@ TEST_F(ConvolutionSpaceToBatchConverterTest, Batch1WithBaseDilation) {
   
   HloModule module
 ENTRY computation {
-  %p2 = bf16[1,7,7,128]{3,0,2,1} parameter(0)
+  %p2 = bf16[1,28,28,128]{3,0,2,1} parameter(0)
   %p3 = bf16[1,1,512,128]{3,2,1,0} parameter(1)
-  ROOT %c = bf16[1,14,14,512]{3,0,2,1} convolution(%p2, %p3),
+  ROOT %c = bf16[1,56,56,512]{3,0,2,1} convolution(%p2, %p3),
     window={size=1x1 pad=0_1x0_1 lhs_dilate=2x2 rhs_reversal=1x1},
     dim_labels=b01f_01oi->b01f
 }

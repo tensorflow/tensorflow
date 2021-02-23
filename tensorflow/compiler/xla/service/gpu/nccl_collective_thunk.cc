@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
-#include "tensorflow/compiler/xla/service/gpu/nccl_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/stream_executor/gpu/gpu_activation.h"
@@ -54,33 +53,64 @@ NcclCollectiveConfig::~NcclCollectiveConfig() = default;
 NcclCollectiveConfig& NcclCollectiveConfig::operator=(NcclCollectiveConfig&&) =
     default;
 
-NcclCollectiveConfig GetNcclCollectiveConfig(const HloInstruction* hlo,
-                                             int64 replica_count) {
-  NcclCollectiveConfig config;
-  config.operand_count = hlo->operands().size();
-  config.operand_element_type.reserve(config.operand_count);
-  for (int i = 0; i < config.operand_count; i++) {
-    config.operand_element_type.push_back(
-        hlo->operand(i)->shape().element_type());
-  }
-  config.replica_count = replica_count;
-  config.replica_groups = hlo->replica_groups();
+// Returns if the collective communication operation is degenerate because all
+// the groups formed by the operation are singleton. A given op can be
+// degenerate under several conditions, corresponding to the modes supported
+// in GetParticipatingDevices().
+//   1. no channel id, use_global_device_ids = false:
+//         degenerate if replica_groups are singleton, or groups empty and
+//         replica_count == 1.
+//   2. channel_id is set, use_global_device_ids = false:
+//         degenerate if replica_groups are singleton and num_partitions == 1,
+//         or groups empty and num_replicas == 1 && num_partitions == 1.
+//   3. channel_id is set, use_global_device_ids = true (flattened-ids):
+//         degenerate if replica_groups are singleton (groups cannot be empty).
+//   4. no channel_id, no use_global_device_ids:
+//         identical to 1.
+//   5. channel_id is set, no use_global_device_ids:
+//         degenerate if replica_groups are singleton or group emty and
+//         num_partitions == 1 (since replica groups contain partition ids).
+//
+bool NcclCollectiveConfig::IsDegenerate(int64_t replica_count,
+                                        int64_t partition_count) const {
+  bool groups_empty = replica_groups.empty();
 
-  if (hlo->channel_id().has_value()) {
-    config.collective_op_kind = RendezvousKey::kCrossModule;
-    config.op_id = hlo->channel_id().value();
-  } else {
-    config.collective_op_kind = RendezvousKey::kCrossReplica;
-    config.op_id = static_cast<int64>(hlo->GetModule()->unique_id());
+  // check if all replica_groups are singleton. If not, then the operation is
+  // not degenerate.
+  bool all_groups_singleton =
+      !groups_empty &&
+      absl::c_all_of(replica_groups, [](const ReplicaGroup& group) {
+        return group.replica_ids_size() == 1;
+      });
+
+  switch (group_mode) {
+    case CollectiveOpGroupMode::kCrossReplica:
+      return all_groups_singleton || (groups_empty && replica_count == 1);
+    case CollectiveOpGroupMode::kCrossPartition:
+      return all_groups_singleton || (groups_empty && partition_count == 1);
+    case CollectiveOpGroupMode::kCrossReplicaAndPartition:
+      return (all_groups_singleton && partition_count == 1) ||
+             (groups_empty && replica_count == 1 && partition_count == 1);
+    case CollectiveOpGroupMode::kFlattenedID:
+      CHECK(!groups_empty)
+          << "replica groups cannot be empty if use_global_device_ids = true";
+      return all_groups_singleton;
+    default:
+      CHECK(0) << "Invalid collective op mode";
+      return false;
   }
-  return config;
 }
 
 /* static */ bool NcclCollectiveThunk::NcclIsEnabled() {
-  return true;  // Skylark selects this source file if NCCL is enabled.
+#if XLA_ENABLE_XCCL
+  return true;
+#else
+  return false;
+#endif
 }
 
 Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
+#if XLA_ENABLE_XCCL
   VLOG(1) << absl::StreamFormat("Starting %s.", ThunkKindToString(kind()));
   auto op_profiler =
       params.profiler->MakeScopedInstructionProfiler(profile_index());
@@ -91,9 +121,10 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(
       std::vector<GlobalDeviceId> participants,
       GetParticipatingDevices(global_device_id, *params.device_assn,
-                              config().replica_count, config().replica_groups));
+                              config().replica_groups, config().group_mode));
 
-  if (IsGlobalNcclConfig() && (participants.size() != config().replica_count)) {
+  if (IsGlobalNcclConfig() &&
+      (participants.size() != params.device_assn->replica_count())) {
     return InvalidArgument(
         "Partial replica groups are not allowed when using NCCL_COMM_ID "
         "environment configuration.");
@@ -104,9 +135,17 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
       GetLocalParticipants(participants, params.gpu_global_device_ids));
 
   // Create the rendezvous for this collective operation.
-  RendezvousKey rendezvous_key(params.run_id, std::move(participants),
-                               local_participants.size(),
-                               config().collective_op_kind, config().op_id);
+  const RendezvousKey rendezvous_key(
+      params.run_id, std::move(participants), local_participants.size(),
+      config().collective_op_kind, config().op_id);
+  if (VLOG_IS_ON(2)) {
+    TF_ASSIGN_OR_RETURN(
+        DeviceAssignment::LogicalID logical_id,
+        params.device_assn->LogicalIdForDevice(global_device_id));
+    VLOG(2) << "global device " << global_device_id << ", (r"
+            << logical_id.replica_id << ", p" << logical_id.computation_id
+            << ") key " << rendezvous_key.ToString() << "\n";
+  }
 
   int device_ordinal = params.stream->parent()->device_ordinal();
 
@@ -122,6 +161,29 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   TF_RETURN_IF_ERROR(RunNcclCollective(params, comm));
   return Status::OK();
+#else   // XLA_ENABLE_XCCL
+  return Unimplemented(
+      "NCCL support is not available: this binary was not built with a CUDA "
+      "compiler, which is necessary to build the NCCL source library.");
+#endif  // XLA_ENABLE_XCCL
+}
+
+bool IsTypeSupportedByNccl(PrimitiveType element_type) {
+  switch (element_type) {
+    case S8:
+    case PRED:
+    case U8:
+    case S32:
+    case U32:
+    case S64:
+    case U64:
+    case F16:
+    case F32:
+    case F64:
+      return true;
+    default:
+      return false;
+  }
 }
 
 }  // namespace gpu

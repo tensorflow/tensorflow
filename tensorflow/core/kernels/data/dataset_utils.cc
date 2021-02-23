@@ -103,26 +103,6 @@ std::pair<int64, int64> MaybeOverrideSeeds(std::pair<int64, int64> seeds) {
   return seeds;
 }
 
-Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
-                                    std::function<void()> register_fn,
-                                    std::function<void()>* deregister_fn) {
-  if (cancellation_manager) {
-    CancellationToken token = cancellation_manager->get_cancellation_token();
-    if (!cancellation_manager->RegisterCallback(token,
-                                                std::move(register_fn))) {
-      return errors::Cancelled("Operation was cancelled");
-    }
-    *deregister_fn = [cancellation_manager, token]() {
-      cancellation_manager->DeregisterCallback(token);
-    };
-  } else {
-    VLOG(1) << "Cancellation manager is not set. Cancellation callback will "
-               "not be registered.";
-    *deregister_fn = []() {};
-  }
-  return Status::OK();
-}
-
 Status VerifyTypeMatch(const DataType& expected, const DataType& received,
                        int index) {
   if (expected != received) {

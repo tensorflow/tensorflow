@@ -37,7 +37,8 @@ std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFPass(
     bool run_tfl_runtime_verification);
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass();
+std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass(
+    bool enable_canonicalization);
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareTFPass(

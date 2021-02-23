@@ -66,7 +66,7 @@ class SparseTensorDenseMatMulTest(test.TestCase):
     x_values = x[np.where(x)]
     x_shape = x.shape
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       sp_x_value = sparse_tensor.SparseTensorValue(
           indices=x_indices, values=x_values, dense_shape=x_shape)
       tf_value_ans = sparse_ops.sparse_tensor_dense_matmul(

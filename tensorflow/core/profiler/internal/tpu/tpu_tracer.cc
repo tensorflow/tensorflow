@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/tpu/tpu_api.h"
+#include "tensorflow/core/tpu/tpu_initializer_helper.h"
 #include "tensorflow/core/tpu/tpu_ops_c_api.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
 
@@ -107,7 +108,12 @@ Status TpuTracer::CollectData(XSpace* space) {
     tpu::OpsApiFn()->TpuProfiler_CollectDataFn(tpu_profiler_, status.c_status,
                                                buffer.data(), &size_in_bytes);
     // Deserialize XSpace from the buffer and return it.
-    space->ParseFromArray(buffer.data(), buffer.size());
+    XSpace tpu_space;
+    tpu_space.ParseFromArray(buffer.data(), buffer.size());
+    for (XPlane& tpu_plane : *tpu_space.mutable_planes()) {
+      XPlane* plane = space->add_planes();
+      plane->Swap(&tpu_plane);
+    }
   }
   if (!status.ok()) {
     LOG(ERROR) << "TPU tracer failed to collect data.";
@@ -129,7 +135,9 @@ std::unique_ptr<ProfilerInterface> CreateTpuTracer(
 }
 
 auto register_tpu_tracer_factory = [] {
-  RegisterProfilerFactory(&CreateTpuTracer);
+  if (tensorflow::tpu::TryAcquireTpuLock()) {
+    RegisterProfilerFactory(&CreateTpuTracer);
+  }
   return 0;
 }();
 

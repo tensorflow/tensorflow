@@ -315,11 +315,20 @@ def add_function_callback(function_callback):
 
   The callback function has the signature:
 
-    `def function_callback(function):`
+    `def function_callback(function, name, graph, inputs, outputs):`
 
-  wherein `function` is the just-created _EagerDefinedFunction.
-  The callback is invoked immediately after a new `_EagerDefinedFunction`
-  is created. The return value(s) of the callback function (if any) is ignored.
+  where:
+  - `function`: _EagerDefinedFunction being created before finalizing the graph.
+      Do not modify the function directly but instead modify the graph.
+  - `name`: name of the function.
+  - `graph`: Graph of the function.
+  - `inputs`: `tuple` of tensors used as inputs to the function.
+  - `outputs`: `tuple` of tensors used as outputs from the function.
+
+  The callback is at the top of the `_EagerDefinedFunction` construction, giving
+  callback an opportunity to make the last edits to the graph. Do not make
+  changes to `graph, inputs`, and `outputs` manually, but, instead, set the
+  `graph` as the default then define ops.
 
   Repeated registration of the same callback function is idempotent.
   After a callback is added, it can be removed with the
@@ -408,6 +417,14 @@ class _EagerDefinedFunctionDeleter(object):
       # been unloaded. Will catch other module unloads as well.
 
 
+class FunctionAlreadyGarbageCollectedError(Exception):
+
+  def __init__(self, function_name):
+    super(FunctionAlreadyGarbageCollectedError, self).__init__(
+        "{} has already been garbage collected and cannot be called.".format(
+            function_name))
+
+
 # TODO(apassos) get rid of this by splitting framework.function._DefinedFunction
 # so it doesn't have the definition-generating logic and is just a container for
 # an already-defined function.
@@ -427,9 +444,12 @@ class _EagerDefinedFunction(object):
       name: str, the name for the created function.
       graph: Graph, the graph containing the operations in the function
       inputs: the tensors in the graph to be used as inputs to the function
-      outputs: the tensors in the graph which will be outputs to the function
+      outputs: the tensors in the graph which will be outputs from the function
       attrs: dict mapping names of attributes to their AttrValue values
     """
+    for function_callback in _function_callbacks:
+      function_callback(self, name, graph, tuple(inputs), tuple(outputs))
+
     input_ops = set(arg.op for arg in inputs)
     operations = [op for op in graph.get_operations() if op not in input_ops]
 
@@ -494,9 +514,6 @@ class _EagerDefinedFunction(object):
     self.graph = graph
     self._stateful_ops = tuple(op for op in operations if op._is_stateful)  # pylint: disable=protected-access
 
-    for function_callback in _function_callbacks:
-      function_callback(self)
-
   def add_to_graph(self, g=None):
     """Add the function to the current context or a graph, if supplied.
 
@@ -542,12 +559,22 @@ class _EagerDefinedFunction(object):
 
     Raises:
       ValueError: if the number of arguments is incorrect.
+      FunctionAlreadyGarbageCollectedError: if the function is no longer
+        available to be called because it has been garbage collected.
     """
     if len(args) != len(self.signature.input_arg):
       raise ValueError(
           "Arguments and signature arguments do not match. "
           "got: %s, expected: %s " %
           (len(args), len(list(self.signature.input_arg))))
+
+    # If the `ScopedTFFunction` (accessed via `_c_func`) has already been
+    # cleaned up as a part of garbage collection, this `_EagerDefinedFunction`
+    # should also be garbage and is likely being called as part of a `__del__`
+    # elsewhere. In that case, there's nothing we can do, so we raise an
+    # exception for the caller to handle.
+    if self._c_func.has_been_garbage_collected:
+      raise FunctionAlreadyGarbageCollectedError(self.name)
 
     function_call_options = ctx.function_call_options
     if function_call_options.config_proto_serialized is None:
@@ -1522,11 +1549,6 @@ class ConcreteFunction(object):
     self._func_graph = func_graph
     self._captured_inputs = self._func_graph.external_captures
     self._captured_closures = self._func_graph.deferred_external_captures
-    structured_outputs = self._func_graph.structured_outputs
-    self._ndarrays_list = (
-        isinstance(structured_outputs, (list, tuple)) and structured_outputs and
-        all(isinstance(o, np_arrays.ndarray) for o in structured_outputs))
-    self._ndarray_singleton = isinstance(structured_outputs, np_arrays.ndarray)
 
     # function_spec defines the structured signature.
     self._set_function_spec(function_spec)
@@ -2175,12 +2197,6 @@ class ConcreteFunction(object):
     # TODO(jlchu): call C++ version in function.cc when speed is improved
     if self._func_graph.structured_outputs is None:
       return result
-
-    if result:
-      if self._ndarrays_list:
-        return [np_arrays.tensor_to_ndarray(o) for o in result]
-      elif self._ndarray_singleton:
-        return np_arrays.tensor_to_ndarray(result[0])
 
     # Replace outputs with results, skipping over any 'None' values.
     outputs_list = nest.flatten(
@@ -2900,8 +2916,17 @@ class FunctionCache(object):
         _FunctionGarbageCollector(self.arg_relaxed_specs)]
 
   def all_values(self):
-    """A set of all `ConcreteFunction` instances held by this cache."""
-    return set(self.primary.values()) | set(self.arg_relaxed.values())
+    """A list of all `ConcreteFunction` instances held by this cache."""
+    # We need to simultaneously make sure our returned concrete functions are
+    # unique *and* make sure they are returned in a deterministic order for
+    # serialization.
+    #
+    # TODO(b/174215821): It's likely that we ultimately would just prefer to
+    # choose the most specific concrete function shape given a set of
+    # arguments. If and when that is implemented, this logic can be revisited.
+    primary_functions = set(self.primary.values())
+    return list(self.primary.values()) + [
+        v for v in self.arg_relaxed.values() if v not in primary_functions]
 
 
 class Function(object):

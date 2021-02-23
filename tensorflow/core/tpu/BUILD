@@ -11,6 +11,7 @@ package(
         "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
         "//tensorflow/compiler/tf2xla/kernels:__subpackages__",
         "//tensorflow/compiler/xrt:__subpackages__",
+        "//tensorflow/core/profiler/internal/tpu:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/stream_executor/tpu:__subpackages__",
     ],
@@ -105,7 +106,11 @@ cc_library(
     name = "tpu_initializer_helper",
     srcs = ["tpu_initializer_helper.cc"],
     hdrs = ["tpu_initializer_helper.h"],
-    deps = ["@com_google_absl//absl/strings"],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+    ],
 )
 
 cc_library(
@@ -151,6 +156,9 @@ cc_library(
         "//tensorflow/stream_executor/tpu:tpu_executor",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
     ],
+    # Always link this in, because even if we don't use it directly we want its
+    #static initializers to dynamically load API symbols exported from libtpu.so
+    alwayslink = True,
 )
 
 # This is an alternative to "tpu_api_dlsym_initializer" that only initializes
@@ -310,4 +318,24 @@ cc_library(
         "//tensorflow/core:lib_internal_impl",
         "//tensorflow/core/lib/core:status",
     ],
+)
+
+cc_library(
+    name = "tpu_model_server_initializer",
+    srcs = ["tpu_model_server_initializer.cc"],
+    hdrs = ["tpu_model_server_initializer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":libtftpu_header",
+        ":tpu_api",
+        ":tpu_api_dlsym_set_fn",
+        ":tpu_executor_init_fns",
+        ":tpu_initializer_helper",
+        ":tpu_library_init_fns",
+        ":tpu_ops_c_api_hdrs",
+        "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/tpu:tpu_executor",
+        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
+    ],
+    alwayslink = True,
 )

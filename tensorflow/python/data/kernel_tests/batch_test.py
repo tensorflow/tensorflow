@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -30,6 +32,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import script_ops
 from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
@@ -233,6 +236,42 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(10).map(lambda x: (x, None)).batch(
         10).map(lambda x, y: x)
     self.assertDatasetProduces(dataset, expected_output=[list(range(10))])
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              local_determinism=[None, True, False],
+              global_determinism=[True, False])))
+  def testDeterminismConfiguration(self, local_determinism, global_determinism):
+    expect_determinism = local_determinism or (local_determinism is None and
+                                               global_determinism)
+    elements = list(range(100))
+
+    def dataset_fn(delay_ms):
+
+      def sleep(x):
+        time.sleep(delay_ms / 1000)
+        return x
+
+      def map_function(x):
+        if math_ops.equal(x, 0):
+          return script_ops.py_func(sleep, [x], x.dtype)
+        else:
+          return x
+
+      dataset = dataset_ops.Dataset.from_tensor_slices(elements)
+      dataset = dataset.map(
+          map_function, num_parallel_calls=2, deterministic=local_determinism)
+      dataset = dataset.batch(
+          batch_size=6, num_parallel_calls=2,
+          deterministic=local_determinism).unbatch()
+      opts = dataset_ops.Options()
+      opts.experimental_deterministic = global_determinism
+      dataset = dataset.with_options(opts)
+      return dataset
+
+    self.checkDeterminism(dataset_fn, expect_determinism, elements)
 
 
 if __name__ == '__main__':

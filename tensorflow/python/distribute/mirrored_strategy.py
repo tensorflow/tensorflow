@@ -331,7 +331,6 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       self._communication_options = collective_util.Options(
           implementation=collective_util.CommunicationImplementation.NCCL)
     else:
-      # TODO(wxinyi): is this missing?
       self._communication_options = collective_util.Options()
     self._collective_ops_in_use = False
     self._collective_key_base = container_strategy._collective_key_base
@@ -355,8 +354,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       self._initialize_single_worker(devices)
       if self._prefer_collective_ops and (
           isinstance(self._cross_device_ops, cross_device_ops_lib.NcclAllReduce)
-          or isinstance(self._inferred_cross_device_ops),
-          cross_device_ops_lib.NcclAllReduce):
+          or isinstance(self._inferred_cross_device_ops,
+                        cross_device_ops_lib.NcclAllReduce)):
         self._use_collective_ops(devices)
         self._inferred_cross_device_ops = None
       logging.info("Using MirroredStrategy with devices %r", devices)
@@ -569,7 +568,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         dataset,
         self._input_workers_with_options(options),
         self._container_strategy(),
-        num_replicas_in_sync=self._num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync,
+        options=options)
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     return numpy_dataset.one_host_numpy_dataset(
@@ -758,7 +758,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     # TODO(josh11b): In eager mode, use one thread per device.
     assert isinstance(var, values.DistributedVariable)
     if (var.synchronization != variables_lib.VariableSynchronization.ON_READ and
-        var.synchronization != variables_lib.VariableAggregation.NONE):
+        var.aggregation != variables_lib.VariableAggregation.NONE):
       distribute_utils.assert_mirrored(args)
       distribute_utils.assert_mirrored(kwargs)
     updates = []
@@ -793,11 +793,6 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     assert distribute_utils.is_mirrored(replica_local_var)
     return array_ops.identity(replica_local_var._get())
     # pylint: enable=protected-access
-
-  def _local_results(self, val):
-    if isinstance(val, values.DistributedValues):
-      return val._values  # pylint: disable=protected-access
-    return (val,)
 
   def value_container(self, val):
     return distribute_utils.value_container(val)

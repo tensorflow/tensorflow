@@ -36,12 +36,12 @@ from tensorflow.python.keras.engine import training as model_lib
 from tensorflow.python.keras.optimizer_v2 import adadelta
 from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.keras.saving import saved_model_experimental as keras_saved_model
+from tensorflow.python.keras.saving import utils_v1 as model_utils
 from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import mode_keys
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import loader_impl
-from tensorflow.python.saved_model import model_utils
 from tensorflow.python.training import training as training_module
 
 

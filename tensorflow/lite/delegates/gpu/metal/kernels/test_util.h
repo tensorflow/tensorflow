@@ -21,13 +21,11 @@ limitations under the License.
 #include <map>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/task/testing_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
-#include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_device.h"
 
 namespace tflite {

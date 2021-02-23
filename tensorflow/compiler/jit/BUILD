@@ -358,6 +358,9 @@ cc_library(
 
 cc_header_only_library(
     name = "flags_headers_only",
+    features = [
+        "-parse_headers",  # buildifier: disable=no-parse-headers
+    ],
     deps = [":flags_headers"],
 )
 
@@ -521,6 +524,9 @@ cc_library(
 
 cc_header_only_library(
     name = "get_compiler_ir_hdrs_only",
+    features = [
+        "-parse_headers",  # buildifier: disable=no-parse-headers
+    ],
     deps = [":get_compiler_ir_hdrs"],
 )
 

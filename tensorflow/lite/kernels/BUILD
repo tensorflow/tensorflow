@@ -558,6 +558,7 @@ BUILTIN_KERNEL_SRCS = [
     "cast.cc",
     "ceil.cc",
     "comparisons.cc",
+    "complex_support.cc",
     "concatenation.cc",
     "conv.cc",
     "conv3d.cc",
@@ -581,7 +582,11 @@ BUILTIN_KERNEL_SRCS = [
     "fully_connected.cc",
     "gather.cc",
     "gather_nd.cc",
+    "hashtable.cc",
+    "hashtable_find.cc",
+    "hashtable_import.cc",
     "hashtable_lookup.cc",
+    "hashtable_size.cc",
     "if.cc",
     "l2norm.cc",
     "local_response_norm.cc",
@@ -690,6 +695,8 @@ cc_library(
     deps = BUILTIN_KERNEL_DEPS + [
         "@fft2d",
         "@ruy//ruy/profiler:instrumentation",
+        # TODO(b/179298174): Move out from the experimental directory.
+        "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels/internal:cppmath",
         "//tensorflow/lite:string",
         "@farmhash_archive//:farmhash",
@@ -731,7 +738,6 @@ cc_test(
 cc_library(
     name = "custom_ops",
     srcs = [
-        "complex_support.cc",
         "multinomial.cc",
         "random_standard_normal.cc",
     ],
@@ -1536,6 +1542,7 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
+        "//tensorflow/lite/kernels/internal:optimized_base",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -2378,7 +2385,6 @@ cc_test(
     name = "complex_support_test",
     srcs = ["complex_support_test.cc"],
     deps = [
-        ":custom_ops",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
@@ -2409,6 +2415,27 @@ exports_files(
         "fully_connected.h",
     ],
     visibility = ["//tensorflow/lite/core/shims:__subpackages__"],
+)
+
+cc_test(
+    name = "hashtable_ops_test",
+    size = "small",
+    srcs = [
+        "hashtable_ops_test.cc",
+    ],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/experimental/resource",
+        "//tensorflow/lite/kernels:test_main",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/testing:util",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
 )
 
 tflite_portable_test_suite_combined(combine_conditions = {"deps": [":test_main"]})

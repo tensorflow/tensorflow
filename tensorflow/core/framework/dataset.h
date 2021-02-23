@@ -708,6 +708,11 @@ class IteratorBase {
     return Status::OK();
   }
 
+  Status RestoreInput(IteratorContext&& ctx, IteratorStateReader* reader,
+                      const std::unique_ptr<IteratorBase>& input) {
+    return RestoreInput(&ctx, reader, input);
+  }
+
   // Saves the state of this iterator.
   //
   // This method is used to store the state of the iterator in a checkpoint.
@@ -1089,6 +1094,7 @@ class DatasetBaseIterator : public IteratorBase {
     return model && model->collect_resource_usage() && node_;
   }
 
+  string traceme_metadata_;
   BaseParams params_;
 };
 

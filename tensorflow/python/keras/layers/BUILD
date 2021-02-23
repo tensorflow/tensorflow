@@ -241,7 +241,6 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:util",
-        "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:constraints",

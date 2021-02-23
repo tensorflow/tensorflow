@@ -87,6 +87,15 @@ func @exp(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
 
 // -----
 
+// CHECK-LABEL: func @expm1
+func @expm1(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %result = "mhlo.exponential_minus_one"(%operand) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK: "lmhlo.exponential_minus_one"(%{{.*}}, %{{.*}})
+  return %result : tensor<2x2xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @log
 func @log(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %result = "mhlo.log"(%operand) : (tensor<2x2xf32>) -> tensor<2x2xf32>

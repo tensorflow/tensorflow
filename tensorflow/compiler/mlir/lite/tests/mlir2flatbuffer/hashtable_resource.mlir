@@ -10,7 +10,7 @@
 // CHECK: subgraphs: [ {
 // CHECK:   tensors: [ {
 // CHECK:     shape: [  ],
-// CHECK:     type: INT32,
+// CHECK:     type: RESOURCE,
 // CHECK:     buffer: 1,
 // CHECK:     name: "tf.HashTableV2",
 // CHECK:     quantization: {

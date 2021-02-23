@@ -19,6 +19,8 @@ message TaskDef {
   int64 dataset_id = 3;
   int64 task_id = 4;
   int64 job_id = 5;
+  // Address of the worker that the task is assigned to.
+  string worker_address = 8;
   ProcessingModeDef processing_mode = 6;
   // Optional number of consumers. If set, the results of the task will be
   // provided to consumers round-robin.
