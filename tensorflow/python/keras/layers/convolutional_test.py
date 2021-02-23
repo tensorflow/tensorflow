@@ -42,7 +42,7 @@ class Conv1DTest(keras_parameterized.TestCase):
     stack_size = 3
     length = 7
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.Conv1D,
           kwargs=kwargs,
@@ -54,7 +54,7 @@ class Conv1DTest(keras_parameterized.TestCase):
     stack_size = 3
     length = 7
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       if expected_output_shape is not None:
         expected_output_shape = (None,) + expected_output_shape
 
@@ -112,7 +112,7 @@ class Conv1DTest(keras_parameterized.TestCase):
         'activity_regularizer': 'l2',
         'strides': 1
     }
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = keras.layers.Conv1D(**kwargs)
       layer.build((None, 5, 2))
       self.assertEqual(len(layer.losses), 2)
@@ -131,14 +131,14 @@ class Conv1DTest(keras_parameterized.TestCase):
         'bias_constraint': b_constraint,
         'strides': 1
     }
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = keras.layers.Conv1D(**kwargs)
       layer.build((None, 5, 2))
       self.assertEqual(layer.kernel.constraint, k_constraint)
       self.assertEqual(layer.bias.constraint, b_constraint)
 
   def test_conv1d_recreate_conv(self):
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = keras.layers.Conv1D(filters=1,
                                   kernel_size=3,
                                   strides=1,
@@ -151,7 +151,7 @@ class Conv1DTest(keras_parameterized.TestCase):
       self.assertEqual(outp1_shape, layer(inpt1).shape)
 
   def test_conv1d_recreate_conv_unknown_dims(self):
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = keras.layers.Conv1D(filters=1,
                                   kernel_size=3,
                                   strides=1,
@@ -184,7 +184,7 @@ class Conv2DTest(keras_parameterized.TestCase):
       input_data_shape = (num_samples, num_row or 7, num_col or 6, stack_size)
       input_data = 10 * np.random.random(input_data_shape).astype(np.float32)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.Conv2D,
           kwargs=kwargs,
@@ -205,7 +205,7 @@ class Conv2DTest(keras_parameterized.TestCase):
       input_data_shape = batch_shape + (num_row or 7, num_col or 6, stack_size)
       input_data = 10 * np.random.random(input_data_shape).astype(np.float32)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       if expected_output_shape is not None:
         expected_output_shape = (None,) + expected_output_shape
       testing_utils.layer_test(
@@ -272,7 +272,7 @@ class Conv2DTest(keras_parameterized.TestCase):
         'activity_regularizer': 'l2',
         'strides': 1
     }
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = keras.layers.Conv2D(**kwargs)
       layer.build((None, 5, 5, 2))
       self.assertEqual(len(layer.losses), 2)
@@ -291,7 +291,7 @@ class Conv2DTest(keras_parameterized.TestCase):
         'bias_constraint': b_constraint,
         'strides': 1
     }
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = keras.layers.Conv2D(**kwargs)
       layer.build((None, 5, 5, 2))
       self.assertEqual(layer.kernel.constraint, k_constraint)
@@ -313,7 +313,7 @@ class Conv3DTest(keras_parameterized.TestCase):
     num_col = 6
     depth = 5
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.Conv3D,
           kwargs=kwargs,
@@ -331,7 +331,7 @@ class Conv3DTest(keras_parameterized.TestCase):
     num_col = 6
     depth = 5
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       if expected_output_shape is not None:
         expected_output_shape = (None,) + expected_output_shape
 
@@ -387,7 +387,7 @@ class Conv3DTest(keras_parameterized.TestCase):
         'activity_regularizer': 'l2',
         'strides': 1
     }
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = keras.layers.Conv3D(**kwargs)
       layer.build((None, 5, 5, 5, 2))
       self.assertEqual(len(layer.losses), 2)
@@ -407,7 +407,7 @@ class Conv3DTest(keras_parameterized.TestCase):
         'bias_constraint': b_constraint,
         'strides': 1
     }
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = keras.layers.Conv3D(**kwargs)
       layer.build((None, 5, 5, 5, 2))
       self.assertEqual(layer.kernel.constraint, k_constraint)
@@ -415,7 +415,7 @@ class Conv3DTest(keras_parameterized.TestCase):
 
   def test_conv3d_dynamic_shape(self):
     input_data = np.random.random((1, 3, 3, 3, 3)).astype(np.float32)
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       # Won't raise error here.
       testing_utils.layer_test(
           keras.layers.Conv3D,
@@ -564,7 +564,7 @@ class ConvSequentialTest(keras_parameterized.TestCase):
     kwargs['filters'] = 1
     kwargs['kernel_size'] = 3
     kwargs['dilation_rate'] = 2
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = conv_layer_cls(**kwargs)
       output1 = layer(np.zeros(input_shape1))
       self.assertEqual(output1.shape, expected_output_shape1)
@@ -607,7 +607,7 @@ class ConvSequentialTest(keras_parameterized.TestCase):
                    expected_output_shape1, expected_output_shape2)
 
   def test_dynamic_shape(self):
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = keras.layers.Conv3D(2, 3)
       input_shape = (5, None, None, 2)
       inputs = keras.Input(shape=input_shape)
@@ -626,7 +626,7 @@ class ZeroPaddingTest(keras_parameterized.TestCase):
     shape = (num_samples, num_steps, input_dim)
     inputs = np.ones(shape)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       # basic test
       testing_utils.layer_test(
           keras.layers.ZeroPadding1D,
@@ -682,7 +682,7 @@ class ZeroPaddingTest(keras_parameterized.TestCase):
       inputs = np.ones((num_samples, input_num_row, input_num_col, stack_size))
 
     # basic test
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.ZeroPadding2D,
           kwargs={
@@ -699,7 +699,7 @@ class ZeroPaddingTest(keras_parameterized.TestCase):
           input_shape=inputs.shape)
 
     # correctness test
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       layer = keras.layers.ZeroPadding2D(
           padding=(2, 2), data_format=data_format)
       layer.build(inputs.shape)
@@ -770,7 +770,7 @@ class ZeroPaddingTest(keras_parameterized.TestCase):
       inputs = np.ones((num_samples, input_len_dim1, input_len_dim2,
                         input_len_dim3, stack_size))
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       # basic test
       testing_utils.layer_test(
           keras.layers.ZeroPadding3D,
@@ -787,7 +787,7 @@ class ZeroPaddingTest(keras_parameterized.TestCase):
           },
           input_shape=inputs.shape)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       # correctness test
       layer = keras.layers.ZeroPadding3D(
           padding=(2, 2, 2), data_format=data_format)
@@ -856,7 +856,7 @@ class ZeroPaddingTest(keras_parameterized.TestCase):
 class UpSamplingTest(keras_parameterized.TestCase):
 
   def test_upsampling_1d(self):
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.UpSampling1D, kwargs={'size': 2}, input_shape=(3, 5, 4))
 
@@ -875,7 +875,7 @@ class UpSamplingTest(keras_parameterized.TestCase):
                                 stack_size)
 
       # basic test
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         testing_utils.layer_test(
             keras.layers.UpSampling2D,
             kwargs={'size': (2, 2),
@@ -960,7 +960,7 @@ class UpSamplingTest(keras_parameterized.TestCase):
                                 input_len_dim3, stack_size)
 
       # basic test
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         testing_utils.layer_test(
             keras.layers.UpSampling3D,
             kwargs={'size': (2, 2, 2),
@@ -1010,7 +1010,7 @@ class CroppingTest(keras_parameterized.TestCase):
     input_len_dim1 = 2
     inputs = np.random.rand(num_samples, time_length, input_len_dim1)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.Cropping1D,
           kwargs={'cropping': (2, 2)},
@@ -1036,7 +1036,7 @@ class CroppingTest(keras_parameterized.TestCase):
       else:
         inputs = np.random.rand(num_samples, input_len_dim1, input_len_dim2,
                                 stack_size)
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         # basic test
         testing_utils.layer_test(
             keras.layers.Cropping2D,
@@ -1069,7 +1069,7 @@ class CroppingTest(keras_parameterized.TestCase):
         inputs = np.random.rand(num_samples, input_len_dim1, input_len_dim2,
                                 stack_size)
       # another correctness test (no cropping)
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         cropping = ((0, 0), (0, 0))
         layer = keras.layers.Cropping2D(
             cropping=cropping, data_format=data_format)
@@ -1105,7 +1105,7 @@ class CroppingTest(keras_parameterized.TestCase):
           inputs = np.random.rand(num_samples, input_len_dim1, input_len_dim2,
                                   input_len_dim3, stack_size)
         # basic test
-        with self.cached_session(use_gpu=True):
+        with self.cached_session():
           testing_utils.layer_test(
               keras.layers.Cropping3D,
               kwargs={'cropping': cropping,
@@ -1114,7 +1114,7 @@ class CroppingTest(keras_parameterized.TestCase):
 
         if len(croppings) == 3 and len(croppings[0]) == 2:
           # correctness test
-          with self.cached_session(use_gpu=True):
+          with self.cached_session():
             layer = keras.layers.Cropping3D(
                 cropping=cropping, data_format=data_format)
             layer.build(inputs.shape)
@@ -1152,7 +1152,7 @@ class DepthwiseConv2DTest(keras_parameterized.TestCase):
     num_row = 7
     num_col = 6
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.DepthwiseConv2D,
           kwargs=kwargs,

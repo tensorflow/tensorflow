@@ -238,6 +238,21 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
       self.evaluate(next_fn())
 
   @combinations.generate(test_base.default_test_combinations())
+  def testRoundtripEmptySnapshot(self):
+    dataset = dataset_ops.Dataset.range(0)
+    dataset = dataset.apply(snapshot.snapshot(self._snapshot_dir))
+    self.assertDatasetProduces(dataset, [])
+    self.assertSnapshotDirectoryContains(
+        self._snapshot_dir,
+        num_fingerprints=1,
+        num_runs_per_fingerprint=1,
+        num_snapshot_shards_per_run=0)
+
+    dataset2 = dataset_ops.Dataset.range(0)
+    dataset2 = dataset.apply(snapshot.snapshot(self._snapshot_dir))
+    self.assertDatasetProduces(dataset2, [])
+
+  @combinations.generate(test_base.default_test_combinations())
   def testWriteSnapshotDatasetSimple(self):
     dataset = dataset_ops.Dataset.range(1000)
     dataset = dataset.apply(snapshot.snapshot(self._snapshot_dir))

@@ -52,7 +52,7 @@ void Optimize::runOnFunction() {
   auto func = getFunction();
 
   populateWithGenerated(ctx, patterns);
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 }  // namespace
 

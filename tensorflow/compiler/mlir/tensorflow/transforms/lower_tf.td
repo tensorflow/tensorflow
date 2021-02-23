@@ -22,14 +22,14 @@ class GetScalarOfType<int value> : NativeCodeCall<
   "GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
 
 class GetScalarOfFloatType<string value> : NativeCodeCall<
-  "GetScalarOfFloatType(getElementTypeOrSelf($0)," # value # ")">;
+  "GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
 
 def GetScalarInfOfType : NativeCodeCall<
-  "GetScalarOfFloatType(getElementTypeOrSelf($0), "
+  "GetScalarOfType(getElementTypeOrSelf($0), "
   "std::numeric_limits<double>::infinity())">;
 
 def GetScalarNanOfType : NativeCodeCall<
-  "GetScalarOfFloatType(getElementTypeOrSelf($0), "
+  "GetScalarOfType(getElementTypeOrSelf($0), "
   "std::numeric_limits<double>::quiet_NaN())">;
 
 class GetI64ScalarElementsAttr<int value> :
@@ -161,14 +161,6 @@ class BinaryNoNanPat<Op FromOp, Op ToOp>
 def LowerDivNoNanOp : BinaryNoNanPat<TF_DivNoNanOp, TF_DivOp>;
 
 def LowerMulNoNanOp : BinaryNoNanPat<TF_MulNoNanOp, TF_MulOp>;
-
-//===----------------------------------------------------------------------===//
-// Expm1 op patterns.
-//===----------------------------------------------------------------------===//
-
-def LowerExpm1Op : Pat<(TF_Expm1Op $x),
-                       (TF_SubOp (TF_ExpOp $x),
-                        (TF_ConstOp (GetScalarOfType<1> $x)))>;
 
 //===----------------------------------------------------------------------===//
 // Fill op patterns.
@@ -318,6 +310,18 @@ def LowerSizeOp : Pat<
     ),
     /*keep_dims=*/
     ConstBoolAttrFalse
+  )>;
+
+//===----------------------------------------------------------------------===//
+// Sqrt op patterns.
+//===----------------------------------------------------------------------===//
+
+// SqrtGrad(y, dy) = dy * 0.5 / y
+def LowerSqrtGradOp : Pat<
+  (TF_SqrtGradOp $y, $dy),
+  (TF_DivOp
+    (TF_MulOp $dy, (TF_ConstOp (GetScalarOfFloatType<"0.5"> $dy))),
+    $y
   )>;
 
 //===----------------------------------------------------------------------===//

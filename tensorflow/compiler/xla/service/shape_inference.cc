@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -2688,11 +2689,19 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
   auto result_shape = operand_shape;
 
-  // If any of the operand shape and update shape is dynamic, update the result
-  // dimension to dynamic.
+  // If any of the operand shape is dynamic, the result dimension is also
+  // dynamic.
+  // If update shape is dynamic, only propagate dynamic dimension to result if
+  // the update is a full update (update_shape[i] == operand_shape[i]).
   for (int64 i = 0; i < update_shape.rank(); ++i) {
-    if (update_shape.is_dynamic_dimension(i) ||
-        operand_shape.is_dynamic_dimension(i)) {
+    if (operand_shape.is_dynamic_dimension(i)) {
+      result_shape.set_dynamic_dimension(i, true);
+    }
+
+    if (update_shape.is_dynamic_dimension(i) &&
+        update_shape.dimensions(i) == operand_shape.dimensions(i)) {
+      // When update/replace a full dimension, propagate dynamic dimension to
+      // the result.
       result_shape.set_dynamic_dimension(i, true);
     }
   }
@@ -3086,7 +3095,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     const Shape& operand, absl::Span<const int64> dimensions) {
   TF_RETURN_IF_ERROR(ExpectArray(operand, "transpose"));
 
-  if (!IsPermutation(dimensions, operand.rank())) {
+  if (dimensions.size() != operand.rank() || !IsPermutation(dimensions)) {
     return InvalidArgument(
         "Transpose dimensions [%s] are not a permutation of the operand "
         "dimensions (operand shape is %s).",
@@ -3096,7 +3105,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   // Permute(dimensions,input) computes output[dimensions[i]]=input[i]. However,
   // we need output[i]=input[dimensions[i]] which is
   // Permute(Inverse(dimensions),input).
-  return ShapeUtil::PermuteDimensions(InversePermutation(dimensions), operand);
+  return ShapeUtil::PermuteDimensions(dimensions, operand);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferClampShape(

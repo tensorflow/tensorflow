@@ -634,7 +634,7 @@ build:asan --copt -fno-omit-frame-pointer
 build:asan --linkopt -fsanitize=address
 
 # Memory sanitizer
-# CC=clang bazel build --config asan
+# CC=clang bazel build --config msan
 build:msan --strip=never
 build:msan --copt -fsanitize=memory
 build:msan --copt -DADDRESS_SANITIZER
@@ -644,7 +644,7 @@ build:msan --copt -fno-omit-frame-pointer
 build:msan --linkopt -fsanitize=memory
 
 # Undefined Behavior Sanitizer
-# CC=clang bazel build --config asan
+# CC=clang bazel build --config ubsan
 build:ubsan --strip=never
 build:ubsan --copt -fsanitize=undefined
 build:ubsan --copt -g

@@ -11,14 +11,17 @@ Note: This delegate is in experimental (beta) phase.
 
 **Supported devices:**
 
-Currently most
-[Qualcomm SoCs](https://en.wikipedia.org/wiki/List_of_Qualcomm_Snapdragon_systems-on-chip)
-are supported, including:
+Currently the following Hexagon architecture are supported, including but not
+limited to:
 
-*   Snapdragon 835 (682 DSP)
-*   Snapdragon 660/820/821 (680 DSP)
-*   Snapdragon 710/845 (685 DSP)
-*   Snapdragon 8150/855 (690 DSP)
+*   Hexagon 680
+    *   SoC examples: Snapdragon 821, 820, 660
+*   Hexagon 682
+    *   SoC examples: Snapdragon 835
+*   Hexagon 685
+    *   SoC examples: Snapdragon 845, Snapdragon 710, QCS605, QCS603
+*   Hexagon 690
+    *   SoC examples: Snapdragon 855, QCS610, QCS410, RB5
 
 **Supported models:**
 

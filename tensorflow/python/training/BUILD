@@ -294,7 +294,8 @@ py_library(
     deps = [
         ":optimizer",
         ":training_ops",
-        "//tensorflow/python:constant_op",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/util:tf_export",

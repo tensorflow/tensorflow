@@ -411,12 +411,17 @@ class QuantizationMode(object):
     """Checks if the graph contains any training-time quantization ops."""
     training_quant_ops = frozenset({
         "FakeQuantWithMinMaxVars", "FakeQuantWithMinMaxVarsPerChannel",
+        "FakeQuantWithMinMaxArgs", "FakeQuantWithMinMaxArgsPerChannel",
         "QuantizeAndDequantizeV2", "QuantizeAndDequantizeV3"
     })
 
     for node_def in self._graph_def.node:
       if node_def.op in training_quant_ops:
         return True
+    for function in self._graph_def.library.function:
+      for node_def in function.node_def:
+        if node_def.op in training_quant_ops:
+          return True
     return False
 
 
@@ -715,6 +720,7 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
     self._saved_model_exported_names = saved_model_exported_names
     self._trackable_obj = trackable_obj
     self._parse_saved_model_args(always_enable_saved_model_import=True)
+    self._enable_tflite_resource_variables = False
 
   def convert(self):
     """Converts a TensorFlow GraphDef based on instance variables.
@@ -774,6 +780,10 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
 
     converter_kwargs = self._get_base_converter_args()
     converter_kwargs.update(quant_mode.converter_flags())
+    converter_kwargs.update({
+        "enable_tflite_resource_variables":
+            self._enable_tflite_resource_variables
+    })
 
     result = _convert_saved_model(**converter_kwargs)
     calibrate_and_quantize, flags = quant_mode.quantizer_flags()
@@ -1192,7 +1202,6 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     self.dump_graphviz_video = False
     self.conversion_summary_dir = None
     self._debug_info_func = experimental_debug_info_func
-    self._custom_opdefs = None
 
   def __setattr__(self, name, value):
     if name == "post_training_quantize":
@@ -1329,7 +1338,6 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
         "dump_graphviz_dir": self.dump_graphviz_dir,
         "dump_graphviz_video": self.dump_graphviz_video,
         "conversion_summary_dir": self.conversion_summary_dir,
-        "custom_opdefs": self._custom_opdefs,
     })
 
     if not self.experimental_new_converter:

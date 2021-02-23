@@ -863,7 +863,7 @@ static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
     Value full_range_const = value;
     for (auto& use : value.getUses()) {
       Operation* user = use.getOwner();
-      if (user->isKnownTerminator()) return;
+      if (user->hasTrait<mlir::OpTrait::IsTerminator>()) return;
       auto qtype = mlir::quant::UniformQuantizedType::getQuantizedElementType(
           value.getType());
       // Only the 8-bit constants are imported with narrow range.

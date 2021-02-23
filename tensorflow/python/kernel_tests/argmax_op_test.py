@@ -97,7 +97,7 @@ class ArgMaxTest(test.TestCase):
   def testFloatInt32Output(self):
     x = np.asarray(100 * np.random.randn(200), dtype=np.float32)
     expected_values = x.argmax()
-    with self.session(use_gpu=True):
+    with self.session():
       ans = math_ops.argmax(x, axis=0, output_type=dtypes.int32)
       tf_ans = self.evaluate(ans)
       self.assertEqual(np.int32, tf_ans.dtype)
@@ -105,7 +105,7 @@ class ArgMaxTest(test.TestCase):
       # the values don't have a range that exceeds 32-bit integers.
       self.assertAllEqual(tf_ans, expected_values)
     expected_values = x.argmin()
-    with self.session(use_gpu=True):
+    with self.session():
       ans = math_ops.argmin(x, axis=0, output_type=dtypes.int32)
       tf_ans = self.evaluate(ans)
       self.assertEqual(np.int32, tf_ans.dtype)

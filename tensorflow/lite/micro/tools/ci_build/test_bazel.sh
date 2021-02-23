@@ -48,9 +48,25 @@ readable_run cp tensorflow/lite/micro/tools/ci_build/tflm_bazel/WORKSPACE ./
 # Now that we are set up to download fewer external deps as part of a bazel
 # build, we can go ahead and invoke bazel.
 
-CC=clang readable_run bazel test tensorflow/lite/micro/... --test_tag_filters=-no_oss --build_tag_filters=-no_oss
-CC=clang readable_run bazel test tensorflow/lite/micro/... --config=msan --test_tag_filters=-no_oss,-nomsan --build_tag_filters=-no_oss,-nomsan
-CC=clang readable_run bazel test tensorflow/lite/micro/... --config=asan --test_tag_filters=-no_oss,-noasan --build_tag_filters=-no_oss,-noasan
+CC=clang readable_run bazel test tensorflow/lite/micro/... \
+  --test_tag_filters=-no_oss --build_tag_filters=-no_oss \
+  --test_output=errors
+
+CC=clang readable_run bazel test tensorflow/lite/micro/... \
+  --config=msan \
+  --test_tag_filters=-no_oss,-nomsan --build_tag_filters=-no_oss,-nomsan \
+  --test_output=errors
+
+CC=clang readable_run bazel test tensorflow/lite/micro/... \
+  --config=asan \
+  --test_tag_filters=-no_oss,-noasan --build_tag_filters=-no_oss,-noasan \
+  --test_output=errors
+
 # TODO(b/178621680): enable ubsan once bazel + clang + ubsan errors are fixed.
 #CC=clang readable_run bazel test tensorflow/lite/micro/... --config=ubsan --test_tag_filters=-no_oss,-noubsan --build_tag_filters=-no_oss,-noubsan
-CC=clang readable_run bazel test tensorflow/lite/micro/... --test_tag_filters=-no_oss --build_tag_filters=-no_oss --copt=-DTF_LITE_STATIC_MEMORY
+
+CC=clang readable_run bazel test tensorflow/lite/micro/... \
+  --test_tag_filters=-no_oss --build_tag_filters=-no_oss \
+  --copt=-DTF_LITE_STATIC_MEMORY \
+  --test_output=errors
+

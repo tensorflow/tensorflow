@@ -65,12 +65,12 @@ def use_wrapped_call(layer, call_fn, default_training_value=None,
       original_call, call_fn, expects_training_arg, default_training_value)
 
   def return_outputs_and_add_losses(*args, **kwargs):
-    """Returns the outputs from the call_fn, and adds the losses."""
-    inputs_arg_index = 1 if return_method else 0
-    inputs = args[inputs_arg_index]
-    args = args[inputs_arg_index + 1:]
-    outputs, losses = fn(inputs, *args, **kwargs)
-    layer.add_loss(losses, inputs=inputs)
+    """Returns the outputs from the layer call function, and adds the losses."""
+    if return_method:
+      args = args[1:]
+
+    outputs, losses = fn(*args, **kwargs)
+    layer.add_loss(losses, inputs=True)
 
     # TODO(kathywu): This is a temporary hack. When a network of layers is
     # revived from SavedModel, only the top-level layer will have losses. This
@@ -271,3 +271,4 @@ def keras_option_scope(save_traces):
 
 def should_save_traces():
   return _save_options_context.save_traces
+

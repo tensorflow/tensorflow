@@ -30,12 +30,13 @@ class ParallelBatchDatasetParams : public DatasetParams {
                              int64 num_parallel_calls, bool drop_remainder,
                              DataTypeVector output_dtypes,
                              std::vector<PartialTensorShape> output_shapes,
-                             string node_name)
+                             const std::string& deterministic, string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         batch_size_(batch_size),
         num_parallel_calls_(num_parallel_calls),
-        drop_remainder_(drop_remainder) {
+        drop_remainder_(drop_remainder),
+        deterministic_(deterministic) {
     input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
     op_version_ = kOpVersion;
     iterator_prefix_ =
@@ -62,7 +63,8 @@ class ParallelBatchDatasetParams : public DatasetParams {
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
     *attr_vector = {{ParallelBatchDatasetOp::kOutputTypes, output_dtypes_},
-                    {ParallelBatchDatasetOp::kOutputShapes, output_shapes_}};
+                    {ParallelBatchDatasetOp::kOutputShapes, output_shapes_},
+                    {ParallelBatchDatasetOp::kDeterministic, deterministic_}};
     return Status::OK();
   };
 
@@ -74,6 +76,7 @@ class ParallelBatchDatasetParams : public DatasetParams {
   int64 batch_size_;
   int64 num_parallel_calls_;
   bool drop_remainder_;
+  std::string deterministic_;
 };
 
 class ParallelBatchDatasetOpTest : public DatasetOpsTestBase {};
@@ -81,25 +84,29 @@ class ParallelBatchDatasetOpTest : public DatasetOpsTestBase {};
 // Test Case 1: test ParallelBatchDataset with `drop_remainder` = false and a
 // batch size that can evenly split the input dataset.
 ParallelBatchDatasetParams ParallelBatchDatasetParams1() {
-  return ParallelBatchDatasetParams(RangeDatasetParams(0, 12, 1),
-                                    /*batch_size=*/4,
-                                    /*num_parallel_calls=*/1,
-                                    /*drop_remainder=*/false,
-                                    /*output_dtypes=*/{DT_INT64},
-                                    /*output_shapes=*/{PartialTensorShape({4})},
-                                    /*node_name=*/kNodeName);
+  return ParallelBatchDatasetParams(
+      RangeDatasetParams(0, 12, 1),
+      /*batch_size=*/4,
+      /*num_parallel_calls=*/1,
+      /*drop_remainder=*/false,
+      /*output_dtypes=*/{DT_INT64},
+      /*output_shapes=*/{PartialTensorShape({4})},
+      /*deterministic=*/DeterminismPolicy::kDeterministic,
+      /*node_name=*/kNodeName);
 }
 
 // Test Case 2: test ParallelBatchDataset with `drop_remainder` = true and a
 // batch size that can evenly split the input dataset.
 ParallelBatchDatasetParams ParallelBatchDatasetParams2() {
-  return ParallelBatchDatasetParams(RangeDatasetParams(0, 12, 1),
-                                    /*batch_size=*/4,
-                                    /*num_parallel_calls=*/1,
-                                    /*drop_remainder=*/true,
-                                    /*output_dtypes=*/{DT_INT64},
-                                    /*output_shapes=*/{PartialTensorShape({4})},
-                                    /*node_name=*/kNodeName);
+  return ParallelBatchDatasetParams(
+      RangeDatasetParams(0, 12, 1),
+      /*batch_size=*/4,
+      /*num_parallel_calls=*/1,
+      /*drop_remainder=*/true,
+      /*output_dtypes=*/{DT_INT64},
+      /*output_shapes=*/{PartialTensorShape({4})},
+      /*deterministic=*/DeterminismPolicy::kDeterministic,
+      /*node_name=*/kNodeName);
 }
 
 // Test Case 3: test ParallelBatchDataset with `drop_remainder` = false and a
@@ -112,19 +119,22 @@ ParallelBatchDatasetParams ParallelBatchDatasetParams3() {
       /*drop_remainder=*/false,
       /*output_dtypes=*/{DT_INT64},
       /*output_shapes=*/{PartialTensorShape({-1})},
+      /*deterministic=*/DeterminismPolicy::kDeterministic,
       /*node_name=*/kNodeName);
 }
 
 // Test Case 4: test ParallelBatchDataset with `drop_remainder` = true and a
 // batch size that can not evenly split the input dataset.
 ParallelBatchDatasetParams ParallelBatchDatasetParams4() {
-  return ParallelBatchDatasetParams(RangeDatasetParams(0, 10, 1),
-                                    /*batch_size=*/3,
-                                    /*num_parallel_calls=*/1,
-                                    /*drop_remainder=*/true,
-                                    /*output_dtypes=*/{DT_INT64},
-                                    /*output_shapes=*/{PartialTensorShape({3})},
-                                    /*node_name=*/kNodeName);
+  return ParallelBatchDatasetParams(
+      RangeDatasetParams(0, 10, 1),
+      /*batch_size=*/3,
+      /*num_parallel_calls=*/1,
+      /*drop_remainder=*/true,
+      /*output_dtypes=*/{DT_INT64},
+      /*output_shapes=*/{PartialTensorShape({3})},
+      /*deterministic=*/DeterminismPolicy::kDeterministic,
+      /*node_name=*/kNodeName);
 }
 
 // Test Case 5: test ParallelBatchDataset with `drop_remainder` = true and
@@ -137,6 +147,7 @@ ParallelBatchDatasetParams ParallelBatchDatasetParams5() {
       /*drop_remainder=*/true,
       /*output_dtypes=*/{DT_INT64},
       /*output_shapes=*/{PartialTensorShape({12})},
+      /*deterministic=*/DeterminismPolicy::kDeterministic,
       /*node_name=*/kNodeName);
 }
 
@@ -150,52 +161,61 @@ ParallelBatchDatasetParams ParallelBatchDatasetParams6() {
       /*drop_remainder=*/false,
       /*output_dtypes=*/{DT_INT64},
       /*output_shapes=*/{PartialTensorShape({-1})},
+      /*deterministic=*/DeterminismPolicy::kDeterministic,
       /*node_name=*/kNodeName);
 }
 
 // Test Case 7: test ParallelBatchDataset with `drop_remainder` = false and
 // the output of the input dataset is empty.
 ParallelBatchDatasetParams ParallelBatchDatasetParams7() {
-  return ParallelBatchDatasetParams(RangeDatasetParams(0, 0, 1),
-                                    /*batch_size=*/4,
-                                    /*num_parallel_calls=*/1,
-                                    /*drop_remainder=*/false,
-                                    /*output_dtypes=*/{DT_INT64},
-                                    /*output_shapes=*/{PartialTensorShape({4})},
-                                    /*node_name=*/kNodeName);
+  return ParallelBatchDatasetParams(
+      RangeDatasetParams(0, 0, 1),
+      /*batch_size=*/4,
+      /*num_parallel_calls=*/1,
+      /*drop_remainder=*/false,
+      /*output_dtypes=*/{DT_INT64},
+      /*output_shapes=*/{PartialTensorShape({4})},
+      /*deterministic=*/DeterminismPolicy::kDeterministic,
+      /*node_name=*/kNodeName);
 }
 
 // Test Case 8: test ParallelBatchDataset with `num_parallel_calls` = 2.
 ParallelBatchDatasetParams ParallelBatchDatasetParams8() {
-  return ParallelBatchDatasetParams(RangeDatasetParams(0, 12, 1),
-                                    /*batch_size=*/4,
-                                    /*num_parallel_calls=*/2,
-                                    /*drop_remainder=*/false,
-                                    /*output_dtypes=*/{DT_INT64},
-                                    /*output_shapes=*/{PartialTensorShape({4})},
-                                    /*node_name=*/kNodeName);
+  return ParallelBatchDatasetParams(
+      RangeDatasetParams(0, 12, 1),
+      /*batch_size=*/4,
+      /*num_parallel_calls=*/2,
+      /*drop_remainder=*/false,
+      /*output_dtypes=*/{DT_INT64},
+      /*output_shapes=*/{PartialTensorShape({4})},
+      /*deterministic=*/DeterminismPolicy::kDeterministic,
+      /*node_name=*/kNodeName);
 }
 
 // Test Case 9: test ParallelBatchDataset with `num_parallel_calls` = 4.
 ParallelBatchDatasetParams ParallelBatchDatasetParams9() {
-  return ParallelBatchDatasetParams(RangeDatasetParams(0, 12, 1),
-                                    /*batch_size=*/4,
-                                    /*num_parallel_calls=*/4,
-                                    /*drop_remainder=*/false,
-                                    /*output_dtypes=*/{DT_INT64},
-                                    /*output_shapes=*/{PartialTensorShape({4})},
-                                    /*node_name=*/kNodeName);
+  return ParallelBatchDatasetParams(
+      RangeDatasetParams(0, 12, 1),
+      /*batch_size=*/4,
+      /*num_parallel_calls=*/4,
+      /*drop_remainder=*/false,
+      /*output_dtypes=*/{DT_INT64},
+      /*output_shapes=*/{PartialTensorShape({4})},
+      /*deterministic=*/DeterminismPolicy::kDeterministic,
+      /*node_name=*/kNodeName);
 }
 
 // Test Case 10: test ParallelBatchDataset with an invalid batch size.
 ParallelBatchDatasetParams InvalidBatchSizeParallelBatchDatasetParams() {
-  return ParallelBatchDatasetParams(RangeDatasetParams(0, 10, 1),
-                                    /*batch_size=*/-1,
-                                    /*num_parallel_calls=*/1,
-                                    /*drop_remainder=*/false,
-                                    /*output_dtypes=*/{DT_INT64},
-                                    /*output_shapes=*/{PartialTensorShape({3})},
-                                    /*node_name=*/kNodeName);
+  return ParallelBatchDatasetParams(
+      RangeDatasetParams(0, 10, 1),
+      /*batch_size=*/-1,
+      /*num_parallel_calls=*/1,
+      /*drop_remainder=*/false,
+      /*output_dtypes=*/{DT_INT64},
+      /*output_shapes=*/{PartialTensorShape({3})},
+      /*deterministic=*/DeterminismPolicy::kNondeterministic,
+      /*node_name=*/kNodeName);
 }
 
 std::vector<GetNextTestCase<ParallelBatchDatasetParams>> GetNextTestCases() {

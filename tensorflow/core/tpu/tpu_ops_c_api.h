@@ -426,6 +426,9 @@ void TpuNodeContext_CloseTpuHost(TF_Status* status);
 
 void TpuNodeContext_Initialize(int device_ordinal, TF_Status* status);
 
+// Globally initialize the TPU system for inference.
+TFTPU_CAPI_EXPORT void TfTpu_InitializeTpuModelServer();
+
 struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CompileAndBuild);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_XrtCompileAndBuild);
@@ -492,6 +495,8 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuNodeContext_StopChipHeartbeats);
   TFTPU_ADD_FN_IN_STRUCT(TpuNodeContext_CloseTpuHost);
   TFTPU_ADD_FN_IN_STRUCT(TpuNodeContext_Initialize);
+
+  TFTPU_ADD_FN_IN_STRUCT(TfTpu_InitializeTpuModelServer);
 };
 
 }  // extern "C"

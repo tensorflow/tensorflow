@@ -286,6 +286,8 @@ class CollectiveReplicaLauncher(object):
     return CollectiveReplicaLauncher._prefer_unique_instance_key
 
   def _use_ordering_token(self):
+    # We rely on auto control dep to insert control edges between NCCL calls,
+    # but for tf1 graph mode auto control dep is not used.
     if not ops.executing_eagerly_outside_functions():
       return False
     return CollectiveReplicaLauncher._prefer_ordering_token
@@ -601,8 +603,9 @@ def copy_tensor_or_indexed_slices_to_device(value, device):
 def is_indexed_slices(value):
   if isinstance(value, ops.IndexedSlices):
     return True
-  assert isinstance(value, value_lib.DistributedValues)
-  return all(isinstance(v, ops.IndexedSlices) for v in value.values)
+  if isinstance(value, value_lib.DistributedValues):
+    return all(isinstance(v, ops.IndexedSlices) for v in value.values)
+  return False
 
 
 def split_by_sparsity(values):

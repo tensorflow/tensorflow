@@ -245,7 +245,7 @@ void MarkVariantInputsOutputs(tf_device::ClusterOp tpu_cluster) {
                 kXlaOutsideCompilationAttr)) {
           input_defining_op->setAttr(
               kXlaOutsideCompilationAttr,
-              StringAttr::get("auto", input_defining_op->getContext()));
+              StringAttr::get(input_defining_op->getContext(), "auto"));
           outside_compiled_ops.push(input_defining_op);
         }
       }
@@ -254,11 +254,11 @@ void MarkVariantInputsOutputs(tf_device::ClusterOp tpu_cluster) {
       for (auto value : op->getResults()) {
         if (IsVariant(value)) {
           for (auto user : value.getUsers()) {
-            if (!user->isKnownTerminator() &&
+            if (!user->hasTrait<OpTrait::IsTerminator>() &&
                 !HasOutsideCompiledAncestor(user) &&
                 !user->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
               user->setAttr(kXlaOutsideCompilationAttr,
-                            StringAttr::get("auto", user->getContext()));
+                            StringAttr::get(user->getContext(), "auto"));
               outside_compiled_ops.push(user);
             }
           }
@@ -285,11 +285,11 @@ LogicalResult MarkUncompilableOps(
       VLOG(3) << "Cloud TPU: Op " << op->getName().getStringRef().str()
               << " isn't compilable, adding outside_compilation attr. "
                  "This op will automatically be placed on CPU.";
-      op->setAttr(
-          kXlaOutsideCompilationAttr,
-          StringAttr::get(
-              llvm::formatv("auto{0}", outside_compiled_cluster_counter).str(),
-              op->getContext()));
+      op->setAttr(kXlaOutsideCompilationAttr,
+                  StringAttr::get(
+                      op->getContext(),
+                      llvm::formatv("auto{0}", outside_compiled_cluster_counter)
+                          .str()));
       outside_compiled_cluster_counter++;
     }
   });
@@ -297,6 +297,30 @@ LogicalResult MarkUncompilableOps(
     auto_outside_compilation_gauge->GetCell()->Set(true);
   }
   return success();
+}
+
+// Check for uncompilable ops that are in `tf_dialect` and are not already
+// marked for outside compilation.
+bool ContainsUncompilableOps(const Dialect* tf_dialect, Block* block,
+                             llvm::DenseSet<OperationName>& supported_ops) {
+  int uncompilable_op_count = 0;
+  // Check if op or any parent is already marked for outside compilation.
+  block->walk([&](Operation* op) {
+    Operation* iter_op = op;
+    while (iter_op && !llvm::isa<tf_device::ClusterOp>(iter_op)) {
+      if (iter_op->hasAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
+        return;
+      }
+      iter_op = iter_op->getParentOp();
+    }
+
+    if (!IsSupportedOp(*op, supported_ops, tf_dialect)) {
+      op->emitOpError() << "isn't compilable for TPU device. enable "
+                           "soft_device_placement option to run on CPU";
+      ++uncompilable_op_count;
+    }
+  });
+  return uncompilable_op_count > 0;
 }
 
 // Unmarks outside compilation for any op that has parents already
@@ -353,6 +377,10 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
     if ((soft_placement_attr && soft_placement_attr.getValue())) {
       if (failed(MarkUncompilableOps(tf_dialect, &cluster.GetBody(),
                                      supported_ops)))
+        return WalkResult::interrupt();
+    } else {
+      if (ContainsUncompilableOps(tf_dialect, &cluster.GetBody(),
+                                  supported_ops))
         return WalkResult::interrupt();
     }
     MarkVariantInputsOutputs(cluster);

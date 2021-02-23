@@ -62,9 +62,6 @@ from tensorflow.python.util.tf_export import tf_export
 pfor_ops = LazyLoader(
     "pfor_ops", globals(),
     "tensorflow.python.ops.parallel_for.control_flow_ops")
-np_arrays = LazyLoader(
-    "np_arrays", globals(),
-    "tensorflow.python.ops.numpy_ops.np_arrays")
 
 function = LazyLoader("function", globals(),
                       "tensorflow.python.eager.function")
@@ -727,8 +724,6 @@ def _handle_or_self(x):
   """Unwrap resource variable/ndarray to return tensors."""
   if resource_variable_ops.is_resource_variable(x):
     return x.handle
-  if isinstance(x, np_arrays.ndarray):
-    return x.data
   return x
 
 
@@ -877,6 +872,18 @@ class GradientTape(object):
       raise ValueError("Tape is not recording.")
     tape.pop_tape(self._tape)
     self._recording = False
+
+  @tf_contextlib.contextmanager
+  def _ensure_recording(self):
+    """Ensures that this tape is recording."""
+    if not self._recording:
+      try:
+        self._push_tape()
+        yield
+      finally:
+        self._pop_tape()
+    else:
+      yield
 
   def watch(self, tensor):
     """Ensures that `tensor` is being traced by this tape.
@@ -1034,7 +1041,6 @@ class GradientTape(object):
                       " of Tensors or Variables to be differentiated,"
                       " but recieved %r" % (target))
 
-    num_ndarrays = 0
     flat_targets = []
     for t in nest.flatten(target):
       if not backprop_util.IsTrainable(t):
@@ -1045,12 +1051,7 @@ class GradientTape(object):
       if resource_variable_ops.is_resource_variable(t):
         with self:
           t = ops.convert_to_tensor(t)
-      elif isinstance(t, np_arrays.ndarray):
-        t = t.data
-        num_ndarrays += 1
       flat_targets.append(t)
-    # Only rewrap if all targets are ndarray. If not, prefer tensors.
-    rewrap_as_ndarray = num_ndarrays == len(flat_targets)
 
     flat_sources = nest.flatten(sources)
     flat_sources_raw = flat_sources
@@ -1082,13 +1083,6 @@ class GradientTape(object):
       # Keep track of watched variables before setting tape to None
       self._watched_variables = self._tape.watched_variables()
       self._tape = None
-
-    if rewrap_as_ndarray:
-      def _tensor_to_ndarray(x):
-        if x is not None:
-          return np_arrays.tensor_to_ndarray(x)
-        return None
-      flat_grad = nest.map_structure(_tensor_to_ndarray, flat_grad)
 
     grad = nest.pack_sequence_as(sources, flat_grad)
     return grad
@@ -1158,22 +1152,16 @@ class GradientTape(object):
                          "compute one set of gradients (or jacobians)")
 
     flat_sources = nest.flatten(sources)
-    rewrap_as_ndarray = False
-    if isinstance(target, np_arrays.ndarray):
-      target = target.data
-      rewrap_as_ndarray = True
     target_static_shape = target.shape
     target_shape = array_ops.shape(target)
     # Note that we push and pop the tape here and below. This is needed since we
     # need gradients through the enclosed operations.
-    self._push_tape()
-    target = array_ops.reshape(target, [-1])
-    self._pop_tape()
+    with self._ensure_recording():
+      target = array_ops.reshape(target, [-1])
 
     def loop_fn(i):
-      self._push_tape()
-      y = array_ops.gather(target, i)
-      self._pop_tape()
+      with self._ensure_recording():
+        y = array_ops.gather(target, i)
       return self.gradient(y, flat_sources,
                            unconnected_gradients=unconnected_gradients)
 
@@ -1211,8 +1199,6 @@ class GradientTape(object):
         out = array_ops.reshape(out, new_shape)
         if context.executing_eagerly():
           out.set_shape(target_static_shape.concatenate(flat_sources[i].shape))
-      if rewrap_as_ndarray:
-        out = np_arrays.tensor_to_ndarray(out)
       output[i] = out
 
     return nest.pack_sequence_as(sources, output)
@@ -1287,12 +1273,6 @@ class GradientTape(object):
     if self._tape is None:
       raise RuntimeError("A non-persistent GradientTape can only be used to"
                          "compute one set of gradients (or jacobians)")
-    rewrap_as_ndarray = False
-    if isinstance(target, np_arrays.ndarray):
-      target = target.data
-      rewrap_as_ndarray = True
-    if isinstance(source, np_arrays.ndarray):
-      source = source.data
     target_shape = target.shape
     if target_shape.rank is None:
       dim = tensor_shape.Dimension(None)
@@ -1315,16 +1295,14 @@ class GradientTape(object):
     # Flatten target to 2-D.
     # Note that we push and pop the tape here and below. This is needed since we
     # need gradients through the enclosed operations.
-    self._push_tape()
-    with ops.control_dependencies(
-        [check_ops.assert_equal(batch_size, source_shape[0])]):
-      target = array_ops.reshape(target, [batch_size, target_row_size])
-    self._pop_tape()
+    with self._ensure_recording():
+      with ops.control_dependencies(
+          [check_ops.assert_equal(batch_size, source_shape[0])]):
+        target = array_ops.reshape(target, [batch_size, target_row_size])
 
     def loop_fn(i):
-      self._push_tape()
-      y = array_ops.gather(target, i, axis=1)
-      self._pop_tape()
+      with self._ensure_recording():
+        y = array_ops.gather(target, i, axis=1)
       return self.gradient(y, source,
                            unconnected_gradients=unconnected_gradients)
 
@@ -1354,8 +1332,6 @@ class GradientTape(object):
       # represent unconnected gradients. This is to maintain compatibility with
       # the previous behavior, which ignored `unconnected_gradients`.
       output = array_ops.zeros(new_shape, target.dtype)
-      if rewrap_as_ndarray:
-        output = np_arrays.tensor_to_ndarray(output)
       return output
     else:
       output = array_ops.reshape(output,
@@ -1363,6 +1339,4 @@ class GradientTape(object):
       output = array_ops.transpose(output, [1, 0, 2])
 
       output = array_ops.reshape(output, new_shape)
-      if rewrap_as_ndarray:
-        output = np_arrays.tensor_to_ndarray(output)
       return output

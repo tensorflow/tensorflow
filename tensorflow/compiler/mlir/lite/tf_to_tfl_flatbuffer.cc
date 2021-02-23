@@ -172,20 +172,29 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   // Write MLIR TFLite dialect into FlatBuffer
   OpOrArgLocNameMapper op_or_arg_name_mapper;
   if (!quant_specs.RunWeightQuantization()) {
-    if (tflite::MlirToFlatBufferTranslateFunction(
-            module, result, emit_builtin_tflite_ops, emit_select_tf_ops,
-            emit_custom_ops, select_user_tf_ops, saved_model_tags,
-            &op_or_arg_name_mapper)) {
+    tflite::FlatbufferExportOptions options;
+    options.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
+    options.emit_select_tf_ops = emit_select_tf_ops;
+    options.select_user_tf_ops = select_user_tf_ops;
+    options.emit_custom_ops = emit_custom_ops;
+    options.saved_model_tags = saved_model_tags;
+    options.op_or_arg_name_mapper = &op_or_arg_name_mapper;
+    if (!tflite::MlirToFlatBufferTranslateFunction(module, options, result)) {
       return statusHandler.ConsumeStatus();
     }
   } else {
     // Post-training weight quantization path. Once MLIR has support for this,
     // we can remove this else statement.
     std::string pre_quantized_result;
-    if (tflite::MlirToFlatBufferTranslateFunction(
-            module, &pre_quantized_result, emit_builtin_tflite_ops,
-            emit_select_tf_ops, emit_custom_ops, select_user_tf_ops,
-            saved_model_tags, &op_or_arg_name_mapper)) {
+    tflite::FlatbufferExportOptions options;
+    options.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
+    options.emit_select_tf_ops = emit_select_tf_ops;
+    options.select_user_tf_ops = select_user_tf_ops;
+    options.emit_custom_ops = emit_custom_ops;
+    options.saved_model_tags = saved_model_tags;
+    options.op_or_arg_name_mapper = &op_or_arg_name_mapper;
+    if (!tflite::MlirToFlatBufferTranslateFunction(module, options,
+                                                   &pre_quantized_result)) {
       return statusHandler.ConsumeStatus();
     }
     flatbuffers::FlatBufferBuilder q_builder(/*initial_size=*/10240);

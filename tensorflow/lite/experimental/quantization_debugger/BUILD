@@ -33,5 +33,6 @@ py_strict_test(
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/training/tracking",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

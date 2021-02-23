@@ -57,6 +57,7 @@ tf_proto_library(
     ],
     visibility = [
         ":data_transfer_visibility",
+        "//tensorflow:internal",
     ],
 )
 
@@ -95,6 +96,7 @@ cc_library(
         ":dispatcher_cc_grpc_proto",
         ":grpc_util",
         ":worker_cc_grpc_proto",
+        ":worker_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -139,6 +141,7 @@ cc_library(
     ],
     deps = [
         ":worker_proto_cc",
+        "//tensorflow/core:framework",
         "//tensorflow/core/data:dataset_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:mutex",
@@ -214,6 +217,7 @@ cc_library(
         ":dispatcher_state",
         ":grpc_util",
         ":journal",
+        ":task_remover",
         ":worker_cc_grpc_proto",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
@@ -410,16 +414,28 @@ cc_library(
 )
 
 cc_library(
+    name = "task_remover",
+    srcs = ["task_remover.cc"],
+    hdrs = ["task_remover.h"],
+    deps = [
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+cc_library(
     name = "task_runner",
     srcs = ["task_runner.cc"],
     hdrs = ["task_runner.h"],
     deps = [
         ":common_proto_cc",
+        ":data_transfer",
+        ":worker_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/data:compression_utils",
         "//tensorflow/core/data:standalone",
-        "//tensorflow/core/kernels/data:dataset_utils",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
     ],
 )
 
@@ -428,11 +444,13 @@ tf_cc_test(
     srcs = ["task_runner_test.cc"],
     deps = [
         ":task_runner",
+        ":worker_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/data:dataset_proto_cc",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -525,6 +543,7 @@ cc_library(
         ":common_proto_cc",
         ":credentials_factory",
         ":data_service",
+        ":data_transfer",
         ":dispatcher_cc_grpc_proto",
         ":dispatcher_proto_cc",
         ":grpc_util",
@@ -536,6 +555,7 @@ cc_library(
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",

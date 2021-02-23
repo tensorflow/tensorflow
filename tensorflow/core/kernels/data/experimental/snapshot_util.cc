@@ -598,10 +598,13 @@ Status Reader::MakeNestedDataset(Env* env,
   }
 
   // Rotate the vector such that the first dataset contains the next element
-  // to be produced.
-  std::rotate(datasets.begin(),
-              datasets.begin() + (start_index % shard_dirs.size()),
-              datasets.end());
+  // to be produced, but not if there are no shards at all (then we just
+  // construct an empty dataset).
+  if (!shard_dirs.empty()) {
+    std::rotate(datasets.begin(),
+                datasets.begin() + (start_index % shard_dirs.size()),
+                datasets.end());
+  }
 
   *output = new NestedDataset(
       datasets, DatasetContext::Params({"snapshot_util::Reader::NestedDataset",

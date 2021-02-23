@@ -89,6 +89,17 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "mlir_gpu_compile_test",
+    srcs = ["mlir_gpu_compile_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":mlir_gpu_test_base",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "gemm_rewrite_test",
     srcs = [
         "gemm_rewrite_test.cc",
@@ -115,6 +126,21 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_test(
+    name = "gpu_too_many_blocks_test",
+    srcs = [
+        "gpu_too_many_blocks_test.cc",
+    ],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 

@@ -1628,9 +1628,6 @@ class BackupAndRestore(Callback):
     # restore checkpoint at on_train_begin().
     self._chief_worker_only = False
 
-  def set_model(self, model):
-    self.model = model
-
   def on_train_begin(self, logs=None):
     # TrainingState is used to manage the training state needed for
     # failure-recovery of a worker in training.

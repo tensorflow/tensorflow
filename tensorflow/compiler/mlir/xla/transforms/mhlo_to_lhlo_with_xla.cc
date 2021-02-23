@@ -209,16 +209,18 @@ class XlaHloToLhloPass
 // operands of the HLO instruction will be considered.
 Status LhloDialectEmitter::CreateOperands(
     const HloInstruction* instr, absl::optional<xla::int64> num_operands,
-    llvm::SmallVectorImpl<Value>& operands, size_t& num_arguments,
-    size_t& num_results) {
+    TokenLoweringMode token_mode, llvm::SmallVectorImpl<Value>& operands,
+    size_t& num_arguments, size_t& num_results) {
   if (num_operands.value_or(0) > instr->operand_count())
     return xla::InvalidArgument("num_operands must be <= operand count");
   for (xla::int64 i = 0; i < num_operands.value_or(instr->operand_count());
        ++i) {
-    TF_RETURN_IF_ERROR(GetOrCreateView(instr->operand(i), &operands));
+    TF_RETURN_IF_ERROR(GetOrCreateView(instr->operand(i), &operands,
+                                       /*result_subset=*/{}, token_mode));
   }
   num_arguments = operands.size();
-  TF_RETURN_IF_ERROR(GetOrCreateView(instr, &operands));
+  TF_RETURN_IF_ERROR(
+      GetOrCreateView(instr, &operands, /*result_subset=*/{}, token_mode));
   num_results = operands.size() - num_arguments;
   return Status::OK();
 }
@@ -236,7 +238,8 @@ StatusOr<OpType> LhloDialectEmitter::CreateOpWithoutAttrs(
     const HloInstruction* instr, size_t& num_arguments, size_t& num_results,
     absl::optional<xla::int64> num_operands) {
   llvm::SmallVector<Value, 4> operands;
-  TF_RETURN_IF_ERROR(CreateOperands(instr, num_operands, operands,
+  TF_RETURN_IF_ERROR(CreateOperands(instr, num_operands,
+                                    TokenLoweringMode::kFailToLower, operands,
                                     num_arguments, num_results));
   return CreateOpWithoutAttrs<OpType>(instr, operands);
 }
@@ -259,6 +262,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return CreateOpWithoutAttrs<lmhlo::AndOp>(instr);
     case HloOpcode::kAtan2:
       return CreateOpWithoutAttrs<lmhlo::Atan2Op>(instr);
+    case HloOpcode::kBitcast:
+      return nullptr;
     case HloOpcode::kBitcastConvert:
       return CreateOpWithoutAttrs<lmhlo::BitcastConvertOp>(instr);
     case HloOpcode::kBroadcast:
@@ -293,6 +298,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return EmitDynamicSliceOp(instr);
     case HloOpcode::kDynamicUpdateSlice:
       return CreateOpWithoutAttrs<lmhlo::DynamicUpdateSliceOp>(instr);
+    case HloOpcode::kFft:
+      return EmitFftOp(instr);
     case HloOpcode::kExp:
       return CreateOpWithoutAttrs<lmhlo::ExpOp>(instr);
     case HloOpcode::kExpm1:
@@ -377,6 +384,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
       return CreateOpWithoutAttrs<lmhlo::TanhOp>(instr);
     case HloOpcode::kTranspose:
       return EmitTransposeOp(instr);
+    case HloOpcode::kTriangularSolve:
+      return EmitTriangularSolveOp(instr);
     case HloOpcode::kXor:
       return CreateOpWithoutAttrs<lmhlo::XorOp>(instr);
     case HloOpcode::kSort:
@@ -460,7 +469,7 @@ StatusOr<Value> LhloDialectEmitter::RewriteFusionOperand(
     llvm::SmallVector<int64_t, 4> minor_to_major(
         shape.layout().minor_to_major().begin(),
         shape.layout().minor_to_major().end());
-    load->setAttr("minor_to_major", b->getIndexTensorAttr(minor_to_major));
+    load->setAttr("minor_to_major", GetLayoutAttribute(shape.layout(), b));
   }
   return load.getResult();
 }
@@ -626,10 +635,56 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
     return EmitDnnBatchNorm(custom_call_instr);
   }
 
+  // For custom call, if there are any token operands or results, they will not
+  // be represented in LHLO so we need to remember the mapping. First create
+  // operands where each token is replaced with a null Value.
+  llvm::SmallVector<Value, 4> operands;
   size_t num_arguments, num_results;
-  TF_ASSIGN_OR_RETURN(auto custom_call,
-                      CreateOpWithoutAttrs<lmhlo::CustomCallOp>(
-                          instr, num_arguments, num_results));
+  TF_RETURN_IF_ERROR(CreateOperands(instr, /*num_operands=*/absl::nullopt,
+                                    TokenLoweringMode::kUseNull, operands,
+                                    num_arguments, num_results));
+
+  // Now check if any of the operands is Null, which would indicate the presence
+  // of a token in the input or output.
+  bool has_token = llvm::any_of(operands, [](Value v) { return !v; });
+
+  lmhlo::CustomCallTargetArgMapping target_mapping;
+  if (has_token) {
+    // If there was a token, squeeze all the non-token arguments and results
+    // (in-place) and remember the mapping.
+    int next_index = 0;
+    llvm::SmallVector<int64_t> arg_to_target_arg_mapping;
+    for (int i = 0; i < num_arguments; ++i) {
+      if (operands[i]) {
+        arg_to_target_arg_mapping.push_back(i);
+        operands[next_index++] = operands[i];
+      }
+    }
+    // Size of arg_to_target_arg_mapping is the number of arguments in LHLO.
+    llvm::SmallVector<int64_t> result_to_target_result_mapping;
+    for (int i = num_arguments; i < operands.size(); ++i) {
+      if (operands[i]) {
+        result_to_target_result_mapping.push_back(i - num_arguments);
+        operands[next_index++] = operands[i];
+      }
+    }
+
+    // Build the mapping attribute.
+    target_mapping = lmhlo::CustomCallTargetArgMapping::get(
+        builder_.getI64IntegerAttr(num_arguments),
+        builder_.getI64IntegerAttr(num_results),
+        builder_.getI64ArrayAttr(arg_to_target_arg_mapping),
+        builder_.getI64ArrayAttr(result_to_target_result_mapping),
+        builder_.getContext());
+
+    // Drop the remaining operands and adjust num_arguments and num_results
+    // for LMHLO creation.
+    operands.resize(next_index);
+    num_arguments = arg_to_target_arg_mapping.size();
+    num_results = result_to_target_result_mapping.size();
+  }
+
+  auto custom_call = CreateOpWithoutAttrs<lmhlo::CustomCallOp>(instr, operands);
   custom_call.call_target_nameAttr(
       builder_.getStringAttr(custom_call_instr->custom_call_target()));
   custom_call.backend_configAttr(
@@ -638,6 +693,7 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
                                static_cast<int32_t>(num_results)};
   custom_call->setAttr(lmhlo::CustomCallOp::getOperandSegmentSizeAttr(),
                        builder_.getI32VectorAttr(segments));
+  if (target_mapping) custom_call.target_arg_mappingAttr(target_mapping);
   return custom_call.getOperation();
 }
 
@@ -1275,6 +1331,51 @@ LhloDialectEmitter::EmitRngGetAndUpdateStateOp(
   return rng;
 }
 
+xla::StatusOr<lmhlo::FftOp> LhloDialectEmitter::EmitFftOp(
+    const HloInstruction* instr) {
+  auto hlo_fft = xla::Cast<xla::HloFftInstruction>(instr);
+  TF_ASSIGN_OR_RETURN(auto fft, CreateOpWithoutAttrs<lmhlo::FftOp>(instr));
+  TF_ASSIGN_OR_RETURN(mlir::mhlo::FftType fft_type,
+                      xla::ConvertFftType(hlo_fft->fft_type()));
+  StringAttr fft_type_attr =
+      builder_.getStringAttr(mlir::mhlo::stringifyFftType(fft_type));
+  fft.fft_typeAttr(fft_type_attr);
+  fft.fft_lengthAttr(GetI64DenseElementsAttr(instr->fft_length()));
+  return fft;
+}
+
+xla::StatusOr<lmhlo::TriangularSolveOp>
+LhloDialectEmitter::EmitTriangularSolveOp(const xla::HloInstruction* instr) {
+  auto hlo_triangular_solve =
+      xla::Cast<xla::HloTriangularSolveInstruction>(instr);
+  TF_ASSIGN_OR_RETURN(auto triangular_solve,
+                      CreateOpWithoutAttrs<lmhlo::TriangularSolveOp>(instr));
+  const xla::TriangularSolveOptions& options =
+      hlo_triangular_solve->triangular_solve_options();
+  triangular_solve.left_sideAttr(builder_.getBoolAttr(options.left_side()));
+  triangular_solve.lowerAttr(builder_.getBoolAttr(options.lower()));
+  triangular_solve.unit_diagonalAttr(
+      builder_.getBoolAttr(options.unit_diagonal()));
+  TF_ASSIGN_OR_RETURN(mlir::mhlo::Transpose transpose,
+                      xla::ConvertTranspose(options.transpose_a()));
+  triangular_solve.transpose_aAttr(
+      builder_.getStringAttr(mlir::mhlo::stringifyTranspose(transpose)));
+  triangular_solve.layout_aAttr(
+      GetLayoutAttribute(instr->operand(0)->shape().layout(), &builder_));
+  triangular_solve.layout_bAttr(
+      GetLayoutAttribute(instr->operand(1)->shape().layout(), &builder_));
+  triangular_solve.layout_outputAttr(
+      GetLayoutAttribute(instr->shape().layout(), &builder_));
+  return triangular_solve;
+}
+
+mlir::DenseIntElementsAttr LhloDialectEmitter::GetLayoutAttribute(
+    const xla::Layout& layout, Builder* builder) {
+  llvm::SmallVector<int64_t, 4> minor_to_major(layout.minor_to_major().begin(),
+                                               layout.minor_to_major().end());
+  return builder->getIndexTensorAttr(minor_to_major);
+}
+
 StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
     const xla::HloInstruction* instr, const xla::Shape& current_shape,
     const xla::ShapeIndex& shape_index) {
@@ -1346,12 +1447,14 @@ StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
 
 Status LhloDialectEmitter::GetOrCreateViewImpl(
     const HloInstruction* instr, const Shape& current_shape,
-    xla::ShapeIndex* current_shape_index, SmallVectorImpl<Value>* values) {
+    xla::ShapeIndex* current_shape_index, SmallVectorImpl<Value>* values,
+    TokenLoweringMode token_mode) {
   if (current_shape.IsTuple()) {
     for (int i = 0; i < current_shape.tuple_shapes().size(); ++i) {
       current_shape_index->push_back(i);
-      TF_RETURN_IF_ERROR(GetOrCreateViewImpl(
-          instr, current_shape.tuple_shapes(i), current_shape_index, values));
+      TF_RETURN_IF_ERROR(
+          GetOrCreateViewImpl(instr, current_shape.tuple_shapes(i),
+                              current_shape_index, values, token_mode));
       current_shape_index->pop_back();
     }
     return Status::OK();
@@ -1362,6 +1465,18 @@ Status LhloDialectEmitter::GetOrCreateViewImpl(
     values->push_back(v);
     return Status::OK();
   }
+  if (current_shape.IsToken()) {
+    switch (token_mode) {
+      case TokenLoweringMode::kFailToLower:
+        return xla::InternalError(
+            "Unexpected token kind for %s and shape index %s",
+            instr->ToString(), current_shape_index->ToString());
+
+      case TokenLoweringMode::kUseNull:
+        values->push_back(Value{});
+        return Status::OK();
+    }
+  }
   return xla::InternalError("Unexpected shape kind for %s and shape index %s",
                             instr->ToString(), current_shape_index->ToString());
 }
@@ -1369,13 +1484,15 @@ Status LhloDialectEmitter::GetOrCreateViewImpl(
 // Returns a view for the result of an instruction.
 // We first get a view for the slice in the allocation, and then may need to
 // create another view to adjust the slice for the shape of the instruction.
-Status LhloDialectEmitter::GetOrCreateView(
-    const HloInstruction* instr, SmallVectorImpl<Value>* values,
-    const xla::ShapeIndex& result_subset) {
+Status LhloDialectEmitter::GetOrCreateView(const HloInstruction* instr,
+                                           SmallVectorImpl<Value>* values,
+                                           const xla::ShapeIndex& result_subset,
+                                           TokenLoweringMode token_mode) {
   xla::ShapeIndex shape_index = result_subset;
   const Shape& sub_shape =
       xla::ShapeUtil::GetSubshape(instr->shape(), shape_index);
-  return GetOrCreateViewImpl(instr, sub_shape, &shape_index, values);
+  return GetOrCreateViewImpl(instr, sub_shape, &shape_index, values,
+                             token_mode);
 }
 
 Status LhloDialectEmitter::Initialize() {

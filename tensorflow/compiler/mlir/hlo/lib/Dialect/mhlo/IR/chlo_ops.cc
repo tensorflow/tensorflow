@@ -318,6 +318,7 @@ BROADCAST_BINARY_OP_DEFS(BroadcastMaxOp);
 BROADCAST_BINARY_OP_DEFS(BroadcastMinOp);
 BROADCAST_BINARY_OP_DEFS(BroadcastMulOp);
 BROADCAST_BINARY_OP_DEFS(BroadcastOrOp);
+BROADCAST_BINARY_OP_DEFS(BroadcastPolygammaOp);
 BROADCAST_BINARY_OP_DEFS(BroadcastPowOp);
 BROADCAST_BINARY_OP_DEFS(BroadcastRemOp);
 BROADCAST_BINARY_OP_DEFS(BroadcastShiftLeftOp);
@@ -370,6 +371,31 @@ struct ConstantLikeToConstant : public OpRewritePattern<ConstantLikeOp> {
 void ConstantLikeOp::getCanonicalizationPatterns(
     OwningRewritePatternList& results, MLIRContext* context) {
   results.insert<ConstantLikeToConstant>(context);
+}
+
+LogicalResult BroadcastSelectOp::inferReturnTypeComponents(
+    MLIRContext*, Optional<Location> location, ValueRange operands,
+    DictionaryAttr, RegionRange,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  BroadcastSelectOp::Adaptor op(operands);
+  auto pred_type = op.pred().getType().dyn_cast<ShapedType>();
+  auto on_true_type = op.on_true().getType().dyn_cast<ShapedType>();
+  auto on_false_type = op.on_false().getType().dyn_cast<ShapedType>();
+
+  if (!pred_type || !on_true_type || !on_false_type ||
+      on_true_type.getElementType() != on_false_type.getElementType()) {
+    return emitOptionalError(location, "mismatched operand types");
+  }
+
+  Type element_type = on_true_type.getElementType();
+
+  // Compute the result shape as two binary broadcasts.
+  Type other =
+      GetBroadcastType(on_true_type, on_false_type, element_type, nullptr);
+  Type output = GetBroadcastType(other, pred_type, element_type, nullptr);
+
+  inferredReturnShapes.push_back(output);
+  return success();
 }
 
 }  // namespace chlo

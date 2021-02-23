@@ -37,12 +37,9 @@ include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/CopyOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/ViewLikeInterface.td"
+include "mlir-hlo/Dialect/mhlo/IR/lhlo_dialect.td"
 include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_base.td"
-
-def LHLO_Dialect : Dialect {
-  let name = "lmhlo";
-  let cppNamespace = "::mlir::lmhlo";
-}
+include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.td"
 
 //===----------------------------------------------------------------------===//
 // LMHLO nullary op definitions.
@@ -274,8 +271,10 @@ def LHLO_CustomCallOp : LHLO_Op<"custom_call", [AttrSizedOperandSegments]>,
     Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$output,
     StrAttr:$call_target_name,
     DefaultValuedAttr<BoolAttr, "false">:$has_side_effect,
-    DefaultValuedAttr<StrAttr, "">:$backend_config
+    DefaultValuedAttr<StrAttr, "">:$backend_config,
+    OptionalAttr<CustomCallTargetArgMapping>:$target_arg_mapping
   );
+  let verifier = [{ return Verify(*this); }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -378,12 +377,6 @@ def LHLO_BatchNormTrainingOp : LHLO_Op<"batch_norm_training", []>,
     F32Attr:$epsilon,
     I64Attr:$feature_index
   );
-}
-
-// TODO(timshen): add a custom verifier.
-def LHLO_BitcastOp: LHLO_Op<"bitcast", []> {
-  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$input,
-                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
 }
 
 def LHLO_BroadcastOp : LHLO_Op<"broadcast",
@@ -641,7 +634,10 @@ def LHLO_TriangularSolveOp: LHLO_Op<"triangular_solve", [SameOperandsElementType
     BoolAttr:$left_side,
     BoolAttr:$lower,
     BoolAttr:$unit_diagonal,
-    HLO_TransposeAttr:$transpose_a
+    HLO_TransposeAttr:$transpose_a,
+    HLO_LayoutAttr:$layout_a,
+    HLO_LayoutAttr:$layout_b,
+    HLO_LayoutAttr:$layout_output
   );
 }
 

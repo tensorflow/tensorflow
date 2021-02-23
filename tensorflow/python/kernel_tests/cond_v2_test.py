@@ -1130,7 +1130,10 @@ class CondV2Test(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testLoweringDisabledWithSingleThreadedExecutorContext(self):
-    with self.session(graph=ops.Graph()) as sess:
+    # Single threaded executor does not support partitioned graphs, so we can't
+    # run on GPUs (running on GPU requires a mixed CPU/GPU graph).
+    with self.session(graph=ops.Graph(), use_gpu=False) as sess:
+
       @function.defun
       def _add_cond(x):
         return cond_v2.cond_v2(

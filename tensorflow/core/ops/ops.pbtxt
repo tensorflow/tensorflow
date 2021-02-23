@@ -19797,6 +19797,13 @@ op {
       s: "\t"
     }
   }
+  attr {
+    name: "offset"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
 }
 op {
   name: "InitializeTableFromTextFileV2"
@@ -19834,6 +19841,13 @@ op {
     type: "string"
     default_value {
       s: "\t"
+    }
+  }
+  attr {
+    name: "offset"
+    type: "int"
+    default_value {
+      i: 0
     }
   }
   is_stateful: true
@@ -27753,6 +27767,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "deterministic"
+    type: "string"
+    default_value {
+      s: "default"
+    }
   }
 }
 op {
@@ -35804,6 +35825,8 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT8
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
       }
@@ -41593,6 +41616,7 @@ op {
         type: DT_INT32
         type: DT_INT64
         type: DT_BOOL
+        type: DT_BFLOAT16
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
@@ -54090,6 +54114,28 @@ op {
     name: "T"
     type: "type"
   }
+}
+op {
+  name: "TPUReshardVariables"
+  input_arg {
+    name: "vars"
+    type: DT_RESOURCE
+    number_attr: "N"
+  }
+  input_arg {
+    name: "new_format_key"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "format_state_var"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+  }
+  is_stateful: true
 }
 op {
   name: "TakeDataset"

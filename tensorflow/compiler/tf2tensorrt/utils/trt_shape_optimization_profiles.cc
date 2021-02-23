@@ -25,26 +25,109 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-// Creates optimization profiles for a list of input shapes. The list of input
-// shapes are stored in shapes_.
-void TrtShapeOptimizationProfile::InitProfiles() {
+// Returns a vector of nvinfer1::Dims for a vector of TensorShapes.
+template <typename TensorShapeType>
+std::vector<nvinfer1::Dims> GetDimVec(std::vector<TensorShapeType> shape_vec) {
+  std::vector<nvinfer1::Dims> dimvec(shape_vec.size());
+  absl::c_transform(shape_vec, dimvec.begin(), [](TensorShapeType shape) {
+    return TensorShapeToTrtDims(shape, false);
+  });
+  return dimvec;
+}
+
+// In dynamic shape mode the optimization profile dims are only allowed to
+// differ from the network input dims where the network input dims have -1
+// values. We enforce this condition by changing prof_dims if necessary.
+void EnforceCompatibility(nvinfer1::Dims* prof_dims,
+                          const PartialTensorShape& input_shape) {
+  for (int i = 0; i < input_shape.dims(); i++) {
+    if (input_shape.dim_size(i) != -1) {
+      prof_dims->d[i] = input_shape.dim_size(i);
+    }
+  }
+}
+
+void SetImplicitBatchModeCompatibleProfile(
+    const std::vector<nvinfer1::Dims>& dimvec, std::vector<nvinfer1::Dims>* min,
+    std::vector<nvinfer1::Dims>* opt, std::vector<nvinfer1::Dims>* max) {
+  *min = dimvec;
+  for (auto& dim : *min) {
+    dim.d[0] = 1;  // Set min batch size to 1.
+  }
+  *opt = dimvec;
+  *max = dimvec;
+}
+
+void TrtShapeOptimizationProfile::ImplicitBatchModeCompatibleStrategy() {
+  for (auto& shape_vec : input_shapes_) {
+    if (!shape_vec.empty()) {
+      std::vector<nvinfer1::Dims> dimvec = GetDimVec(shape_vec);
+      std::vector<nvinfer1::Dims> min, opt, max;
+      SetImplicitBatchModeCompatibleProfile(dimvec, &min, &opt, &max);
+      OptimizationProfileConfig profConfig{min, opt, max};
+      profiles_.push_back(std::move(profConfig));
+    }
+  }
+}
+
+void TrtShapeOptimizationProfile::OptimalStrategy() {
+  for (auto& shape_vec : input_shapes_) {
+    if (!shape_vec.empty()) {
+      std::vector<nvinfer1::Dims> min = GetDimVec(shape_vec);
+      std::vector<nvinfer1::Dims> opt = min;
+      std::vector<nvinfer1::Dims> max = min;
+      OptimizationProfileConfig profConfig{min, opt, max};
+      profiles_.push_back(std::move(profConfig));
+    }
+  }
+}
+
+// Adjust shape value profile to prevent TRT from removing shape value input
+// bindings whose value is redundant (only a single value matches the profile).
+// This should be removed once the NVIDIA bug 3153064 is fixed.
+void FixShapeValueProfile(OptimizationProfileConfig* prof,
+                          const std::vector<bool>& is_shape_tensor) {
+  for (int i = 0; i < prof->min.size(); i++) {
+    if (is_shape_tensor[i] &&
+        std::equal(prof->min[i].d, prof->min[i].d + prof->min[i].nbDims,
+                   prof->max[i].d)) {
+      VLOG(2) << "Adjust profile for shape value tensor " << i;
+      prof->max[i].d[0]++;
+    }
+  }
+}
+
+void TrtShapeOptimizationProfile::InitProfiles(
+    const std::vector<PartialTensorShape>& input_partial_shapes) {
   if (input_shapes_.size() == 0) {
     VLOG(1) << "Not creating profiles without input_shapes. "
                "You have to enable profile generation mode first (build).";
-  } else {
-    VLOG(1) << "Creating profiles with startegy of one profile "
-            << "for each input (min=opt=max).";
+    return;
   }
-  for (auto& shape_vec : input_shapes_) {
-    if (!shape_vec.empty()) {
-      std::vector<nvinfer1::Dims> dimvec(shape_vec.size());
-      absl::c_transform(shape_vec, dimvec.begin(), [](TensorShape shape) {
-        return TensorShapeToTrtDims(shape, false);
-      });
-      // Set min=opt=max.
-      OptimizationProfileConfig profConfig{dimvec, dimvec, dimvec};
-      profiles_.push_back(std::move(profConfig));
-      VLOG(1) << "Created profile " << profiles_.back().DebugString();
+  switch (strategy_) {
+    case ProfileStrategy::kImplicitBatchModeCompatible:
+      VLOG(1) << "Creating profiles with ImplicitBatchModeCompatible strategy";
+      ImplicitBatchModeCompatibleStrategy();
+      break;
+    case ProfileStrategy::kOptimal:
+      VLOG(1) << "Creating profiles with Optimal strategy";
+      OptimalStrategy();
+      break;
+  }
+  // Define a mask that describe which input could be a shape tensor. Note that
+  // here we can have false positives. The shape tensor mask will be updated
+  // once the network is constructed.
+  SetShapeTensorMask(input_partial_shapes);
+  if (input_partial_shapes.size() > 0) {
+    for (OptimizationProfileConfig& prof : profiles_) {
+      // TODO: Remove this when the bug is fixed.
+      FixShapeValueProfile(&prof, is_shape_tensor_);
+      for (int i = 0; i < input_partial_shapes.size(); i++) {
+        auto network_input = input_partial_shapes[i];
+        EnforceCompatibility(&prof.min[i], network_input);
+        EnforceCompatibility(&prof.opt[i], network_input);
+        EnforceCompatibility(&prof.max[i], network_input);
+      }
     }
   }
 }
@@ -53,7 +136,7 @@ void TrtShapeOptimizationProfile::InitProfiles() {
 Status TrtShapeOptimizationProfile::AddProfiles(
     nvinfer1::IBuilder* builder, nvinfer1::IBuilderConfig* config,
     const nvinfer1::INetworkDefinition* network) {
-  // Create a vector of optimization profiles
+  // Create a vector of optimization profiles.
   for (int i = 0; i < profiles_.size(); i++) {
     auto* optProfile = builder->createOptimizationProfile();
     Status status = profiles_[i].SetDimensions(network, optProfile);
@@ -82,7 +165,11 @@ Status TrtShapeOptimizationProfile::AddProfiles(
   if (!profiles_.empty() && config->getNbOptimizationProfiles() == 0) {
     return errors::Internal("Failure in adding an optimization profile.");
   }
-  // if TRT_VERSION < 6, then we do not need to add
+  need_profiles_ = config->getNbOptimizationProfiles() > 0;
+  // Update the the mask that flag shape tensors. The network is known now,
+  // the mask will be correct.
+  SetShapeTensorMask(network);
+  // if TRT_VERSION < 6, then we do not need to add.
   return Status::OK();
 }
 #endif
@@ -96,8 +183,43 @@ Status TrtShapeOptimizationProfile::ConfigureBuilder(
 }
 #endif
 
+// Sets the shape tensor mask using the network definition.
+void TrtShapeOptimizationProfile::SetShapeTensorMask(
+    const nvinfer1::INetworkDefinition* network) {
+  int n_inputs = network->getNbInputs();
+  is_shape_tensor_.resize(n_inputs, false);
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  for (int i = 0; i < n_inputs; i++) {
+    const nvinfer1::ITensor* input = network->getInput(i);
+    is_shape_tensor_[i] = input->isShapeTensor();
+    if (is_shape_tensor_[i]) {
+      VLOG(2) << "Found shape tensor " << input->getName() << ' at ' << i;
+    }
+  }
+#endif
+  has_shape_tensor_ =
+      absl::c_any_of(is_shape_tensor_, [](bool b) { return b; });
+}
+
+// Sets the shape tensor mask using the input partial shapes. This only tells
+// whether the tensors are shape value compatible, only the final network
+// definition or the engine would give concrete answers.
+void TrtShapeOptimizationProfile::SetShapeTensorMask(
+    const std::vector<PartialTensorShape>& input_partial_shapes) {
+  is_shape_tensor_.resize(input_partial_shapes.size(), false);
+  for (int i = 0; i < input_partial_shapes.size(); i++) {
+    is_shape_tensor_[i] = IsTrtShapeTensorCompatible(input_partial_shapes[i]);
+    if (is_shape_tensor_[i]) {
+      VLOG(2) << "Found shape compatible tensor at " << i;
+    }
+  }
+  has_shape_tensor_ =
+      absl::c_any_of(is_shape_tensor_, [](bool b) { return b; });
+}
+
 int TrtShapeOptimizationProfile::GetProfileNumber(
-    std::vector<TensorShape> shapes) {
+    const std::vector<TensorShape>& shapes) {
+  if (!need_profiles_) return 0;
   for (int i = 0; i < profiles_.size(); i++) {
     if (profiles_[i].IncludesShapes(shapes)) {
       return i;
@@ -146,18 +268,20 @@ Status TrtShapeOptimizationProfile::CreateExecutionContexts(
 
 Status TrtShapeOptimizationProfile::RestoreProfiles(
     const nvinfer1::ICudaEngine* engine) {
+  need_profiles_ = false;
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
   if (!engine) {
-    // We do not need to restore profiles for an empty engine
+    // We do not need to restore profiles for an empty engine.
     return Status::OK();
   }
 #if IS_TRT_VERSION_GE(7, 0, 0, 0)
   if (engine->hasImplicitBatchDimension()) {
-    // Nothing to do, we cannot have profiles in implicit batch mode
+    // Nothing to do, we cannot have profiles in implicit batch mode.
     return Status::OK();
   }
 #endif
   int n_profiles = engine->getNbOptimizationProfiles();
+  need_profiles_ = n_profiles > 0;
   int n_inputs = GetNumberOfEngineInputs(engine);
   VLOG(2) << "Attempting to restore " << n_profiles << " profiles, each with "
           << n_inputs << " inputs";

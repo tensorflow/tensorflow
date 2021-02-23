@@ -394,7 +394,12 @@ else_branch: A region that computes the outputs of the op if cond = false.
     0DTensorOf<[I1]>:$cond,
 
     // Used to map StatelessIf and If op defined in TensorFlow to a common op.
-    BoolAttr:$is_stateless
+    BoolAttr:$is_stateless,
+    // Used to maintain function name when round-tripping
+    // between functional and regional control flow.  This can be removed if
+    // the runtime does not require globally unique then/else branch function names.
+    OptionalAttr<StrAttr>:$_then_func_name,
+    OptionalAttr<StrAttr>:$_else_func_name
   );
 
   let results = (outs

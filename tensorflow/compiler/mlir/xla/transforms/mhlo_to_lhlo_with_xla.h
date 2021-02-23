@@ -125,6 +125,17 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   xla::StatusOr<lmhlo::DotOp> EmitDotOp(const xla::HloInstruction* instr);
   xla::StatusOr<lmhlo::RngGetAndUpdateStateOp> EmitRngGetAndUpdateStateOp(
       const xla::HloInstruction* instr);
+  xla::StatusOr<lmhlo::FftOp> EmitFftOp(const xla::HloInstruction* instr);
+  xla::StatusOr<lmhlo::TriangularSolveOp> EmitTriangularSolveOp(
+      const xla::HloInstruction* instr);
+
+  // Since LMHLO dialect does not define token types, this enum controls how
+  // token operand/results from XLA:HLO are lowered to MLIR.
+  enum class TokenLoweringMode {
+    kFailToLower,  // Fail lowering if token inputs are encountered.
+    kUseNull,      // Use a null Value in the operand list for each token.
+    // kSkip,        // Skip any token inputs or outputs (not yet needed)
+  };
 
   // Create LHLO operation operands given an XLA HLO instruction. By default,
   // all XLA HLO operands and results are converted to MLIR and appended to
@@ -134,6 +145,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   // and `num_results`.
   xla::Status CreateOperands(const xla::HloInstruction* instr,
                              absl::optional<xla::int64> num_operands,
+                             TokenLoweringMode token_mode,
                              SmallVectorImpl<Value>& operands,
                              size_t& num_arguments, size_t& num_results);
 
@@ -172,6 +184,9 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
     return GetI64DenseElementsAttr(elements);
   }
 
+  static mlir::DenseIntElementsAttr GetLayoutAttribute(
+      const xla::Layout& layout, Builder* builder);
+
   tensorflow::Status DefaultAction(const xla::HloInstruction* instr) final;
 
   // Computation parameters don't need any specific handling when they are
@@ -187,7 +202,8 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   tensorflow::Status GetOrCreateViewImpl(const xla::HloInstruction* instr,
                                          const xla::Shape& current_shape,
                                          xla::ShapeIndex* current_shape_index,
-                                         SmallVectorImpl<Value>* values);
+                                         SmallVectorImpl<Value>* values,
+                                         TokenLoweringMode token_mode);
 
   // Helper function to create view/tuple of views to a buffer for a given
   // instruction result. `result_subset` can be used to for instructions that
@@ -195,9 +211,10 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   // tuple elements. Note that if needed, this can be extended to take a list of
   // ShapeIndex values in case we need finer control on what elements of the
   // output tuple to be converted to MLIR.
-  tensorflow::Status GetOrCreateView(const xla::HloInstruction* instr,
-                                     SmallVectorImpl<Value>* values,
-                                     const xla::ShapeIndex& result_subset = {});
+  tensorflow::Status GetOrCreateView(
+      const xla::HloInstruction* instr, SmallVectorImpl<Value>* values,
+      const xla::ShapeIndex& result_subset = {},
+      TokenLoweringMode token_mode = TokenLoweringMode::kFailToLower);
 
   xla::StatusOr<Value> GetOrCreateArrayView(
       const xla::HloInstruction* instr, const xla::Shape& current_shape,

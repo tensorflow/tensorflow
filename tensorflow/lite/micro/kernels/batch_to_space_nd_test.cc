@@ -48,7 +48,7 @@ TfLiteStatus ValidateBatchToSpaceNdGoldens(TfLiteTensor* tensors,
 
   const TfLiteRegistration registration = Register_BATCH_TO_SPACE_ND();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
-                             outputs_array, nullptr, micro_test::reporter);
+                             outputs_array, nullptr);
 
   TF_LITE_ENSURE_STATUS(runner.InitAndPrepare());
   TF_LITE_ENSURE_STATUS(runner.Invoke());

@@ -2718,3 +2718,15 @@ tf_cc_test(
         "//third_party/eigen3",
     ],
 )
+
+tf_cc_test(
+    name = "bfc_allocator_test",
+    srcs = ["bfc_allocator_test.cc"],
+    deps = [
+        ":bfc_allocator",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:allocator",
+        "//tensorflow/core/platform:test_benchmark",
+    ],
+)

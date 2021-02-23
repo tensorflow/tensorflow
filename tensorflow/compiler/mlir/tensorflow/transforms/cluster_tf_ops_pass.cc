@@ -152,7 +152,7 @@ llvm::Optional<llvm::StringMap<FunctionMetadata>> GetFunctionMetadatas(
 
       // If the value is used as an operand of the terminator op, adds it to
       // the result list of function that defines this op.
-      if (op->isKnownTerminator()) {
+      if (op->hasTrait<OpTrait::IsTerminator>()) {
         if (llvm::find(defining_func_metadata.results, value) ==
             defining_func_metadata.results.end()) {
           defining_func_metadata.results.push_back(value);
@@ -210,15 +210,15 @@ void CreateFunctions(ModuleOp module_op,
     // function.
     for (int i : llvm::seq<int>(0, metadata.input_devices.size())) {
       func_op.setArgAttr(i, kTFDeviceAttr,
-                         StringAttr::get(metadata.input_devices[i], context));
+                         StringAttr::get(context, metadata.input_devices[i]));
     }
     for (int i : llvm::seq<int>(0, metadata.result_devices.size())) {
       func_op.setResultAttr(
           i, kTFDeviceAttr,
-          StringAttr::get(metadata.result_devices[i], context));
+          StringAttr::get(context, metadata.result_devices[i]));
     }
 
-    func_op->setAttr(kHostAttr, StringAttr::get(host, context));
+    func_op->setAttr(kHostAttr, StringAttr::get(context, host));
     func_op.setPublic();
     Block *block = func_op.addEntryBlock();
 

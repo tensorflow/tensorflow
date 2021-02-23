@@ -52,7 +52,7 @@ static ConfigProto::Experimental::MlirBridgeRollout GetUserRequest(
 
 MlirBridgeRolloutPolicy GetMlirBridgeRolloutPolicy(
     const tensorflow::Graph& graph, absl::optional<ConfigProto> config_proto,
-    bool record_stats) {
+    bool uses_uninitialized_resource_args, bool record_stats) {
   switch (GetUserRequest(config_proto)) {
     case ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED:
       return MlirBridgeRolloutPolicy::kEnabledByUser;

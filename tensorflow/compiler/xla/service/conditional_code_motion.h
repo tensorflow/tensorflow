@@ -95,12 +95,69 @@ class ConditionalCodeMotion : public HloModulePass {
   // start over when optimizing a new model.
   explicit ConditionalCodeMotion(bool is_layout_sensitive,
                                  bool pursue_full_conditional_code_motion,
-                                 int32 search_config = 0)
+                                 int64 search_config = 0)
       : is_layout_sensitive_(is_layout_sensitive),
         pursue_full_conditional_code_motion_(
             /*turn off special case if tuning*/
             pursue_full_conditional_code_motion && search_config == 0),
-        search_config_(search_config) {}
+        search_config_index_(0) {
+    search_config_.push_back(search_config);
+    if (search_config != 0) {
+      search_config_map_[0] = search_config_;
+    }
+  }
+  explicit ConditionalCodeMotion(bool is_layout_sensitive,
+                                 bool pursue_full_conditional_code_motion,
+                                 std::string search_config)
+      : is_layout_sensitive_(is_layout_sensitive),
+        pursue_full_conditional_code_motion_(
+            /*turn off special case if tuning*/
+            pursue_full_conditional_code_motion && search_config.empty()),
+        search_config_index_(-1) {
+    ParseSearchConfiguration(search_config);
+  }
+  // Parse a given string in the format of a sequence of i,s,m,t into a
+  // list of transformation search configurations, each configuration generated
+  // by invoking MakeSearchConfig(s,m,t) and will be used for the ith
+  // conditional encountered when optimizing a given module.
+  void ParseSearchConfiguration(const std::string& search_config);
+  // Make a single search configuration for changing transformation decisions:
+  // flip the decisions at position n = flip_start + flip_stride * m, and
+  // m = 0..max_flip.
+  // The following defines how the int64 search configuration is composed, as
+  // flip_start + (flip_max << kMaxPos) + (flip_stride << kStridePos).
+  // Position (digit) for maximum number of flips.
+  static constexpr int kMaxPos = 16;
+  // Position (digit) for the count-down to the first flip.
+  static constexpr int kStartPos = 0;
+  // Position (digit) for the count-down to the next flip.
+  static constexpr int kStridePos = 32;
+  // Bit mask for extracting the last digits of value.
+  static constexpr int kValueMask = 0xffff;
+  static int64 MakeSearchConfig(int64 start, int64 max, int64 stride) {
+    const int64 config =
+        (max << kMaxPos) + (start << kStartPos) + (stride << kStridePos);
+    VLOG(2) << "flip stride = " << flip_stride(config) << "\n";
+    VLOG(2) << "flig config = " << config << "\n";
+    return config;
+  }
+
+  static int16 flip_start(int64 search_config) {
+    return (search_config >> kStartPos) & kValueMask;
+  }
+
+  static int16 flip_stride(int64 search_config) {
+    return (search_config >> kStridePos) & kValueMask;
+  }
+
+  static int16 DecrementMaxFlip(int64* search_config) {
+    const int16 max_flip = ((*search_config) >> kMaxPos) & kValueMask;
+    // Decrement flip count so we can stop if it reaches 0.
+    if (max_flip > 0) {
+      *search_config -= (1 << kMaxPos);
+    }
+    return max_flip;
+  }
 
   absl::string_view name() const override { return "conditional-code-motion"; }
   StatusOr<bool> Run(HloModule* module) override;
@@ -134,7 +191,14 @@ class ConditionalCodeMotion : public HloModulePass {
  private:
   const bool is_layout_sensitive_;
   const bool pursue_full_conditional_code_motion_;
-  int32 search_config_;
+  // The following parameterizes the transformation decisions and cost model.
+  std::vector<int64> search_config_;
+  int64 search_config_index_;
+  // Map each conditional to a vector of its search configurations. The key of
+  // the map is the index number of the conditional in a module when traversed
+  // in post order, and the value of the map is the sequence of search
+  // configurations specified with the same index number for the conditional.
+  absl::flat_hash_map<int64, std::vector<int64>> search_config_map_;
   std::vector<std::vector<int64>> move_config_, reuse_config_;
 
   StatusOr<bool> MoveInstructionOut(HloInstruction* conditional,

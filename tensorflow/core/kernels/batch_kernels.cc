@@ -160,9 +160,12 @@ class BatchResource : public serving::BatchResourceBase {
     opts.cancellation_manager = last_task_context->cancellation_manager();
     opts.collective_executor = last_task_context->collective_executor();
     opts.stats_collector = last_task_context->stats_collector();
-    opts.rendezvous = last_task_context->rendezvous();
     opts.runner = last_task_context->runner();
     opts.run_all_kernels_inline = last_task_context->run_all_kernels_inline();
+    // We do not set 'opts.rendezvous', since if the function is run multiple
+    // times in parallel with the same rendezvous, a _Send node from one run
+    // might be matched with a _Recv node of a different run. Not setting the
+    // rendezvous causes a new rendezvous to be used for each run.
     Notification done_notif;
 
     flib_->Run(opts, fhandle_, inputs, combined_outputs,

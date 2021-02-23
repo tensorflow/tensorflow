@@ -143,7 +143,8 @@ bool IsOpTensorCoreEligible(absl::string_view tf_op_name) {
       || absl::StrContains(tf_op_name, "CudnnRNNForward")
       || absl::StrContains(tf_op_name, "CudnnRNNBackprop")
       // Special cases.
-      || absl::EndsWith(tf_op_name, "XlaDot");
+      || absl::EndsWith(tf_op_name, "XlaDot")
+      || absl::EndsWith(tf_op_name, "XlaDotV2");
   // clang-format on
 }
 

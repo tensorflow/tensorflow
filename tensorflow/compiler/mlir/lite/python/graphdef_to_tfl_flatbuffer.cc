@@ -96,8 +96,8 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   }
 
   return internal::ConvertMLIRToTFLiteFlatBuffer(
-      toco_flags, std::move(module), pass_config, /*saved_model_tags=*/{},
-      result,
+      model_flags, toco_flags, std::move(module), pass_config,
+      /*saved_model_tags=*/{}, result,
       /*session=*/llvm::None);
 }
 

@@ -441,7 +441,8 @@ absl::flat_hash_map<int, HloInstruction*> CreateSinkedAllReduces(
       }
       CHECK(ContainsKey(tuple_index_to_old_buffer, tuple_index));
       HloInstruction* old_buffer = tuple_index_to_old_buffer.at(tuple_index);
-      CHECK(ShapeUtil::Equal(old_buffer->shape(), all_reduced_delta->shape()));
+      CHECK(Shape::Equal().IgnoreLayout()(old_buffer->shape(),
+                                          all_reduced_delta->shape()));
       HloInstruction* add_to_old_buffer =
           while_parent->AddInstruction(HloInstruction::CreateBinary(
               all_reduced_delta->shape(), HloOpcode::kAdd, old_buffer,

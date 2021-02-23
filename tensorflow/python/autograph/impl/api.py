@@ -511,17 +511,56 @@ def _fall_back_unconverted(f, args, kwargs, options, exc):
 #
 
 
+@tf_export('__internal__.autograph.tf_convert', v1=[])
 def tf_convert(f, ctx, convert_by_default=True, user_requested=False):
   """Decorator that applies AutoGraph to a function.
 
   Use in internal APIs.
 
   This API is suitable for high order functions internal to the TensorFlow API,
-  and more generally any function to which Autograph is not applied.
+  and more generally any function to which AutoGraph is not applied.
 
-  Guidance: convert was a decorator meant for use directly by developers, and
-  will be soon deprecated in favor of tf.function. tf_convert is to be called
-  from high order functions internal to TF.
+  Guidance: `convert` was a decorator meant for use directly by developers, but
+  most of today's uses go through `tf.function`. `tf_convert` is to be called
+  from high order functions internal to TF. By default, all the internal
+  TensorFlow functions are skipped when AutoGraph processes the code. This may
+  lead to user-supplied functions to be incorrectly skipped as well.
+  `tf_convert` helps avoid that. See the following example for more details.
+
+  ```
+  =====tf_internal_module.py=====
+
+  def unconverted(input_fn):
+    return input_fn()
+
+  def converted(input_fn):
+    return tf.__internal__.autograph.tf_convert(
+       input_fn, ctx=tf.__internal__.autograph.control_status_ctx())()
+
+  ======user_module.py======
+
+  @tf.function
+  def foo(input_fn)
+    return unconverted(input_fn)
+
+  @tf.function
+  def bar(input_fn)
+    return converted(input_fn)
+
+  @tf.function(autograph=False)
+  def baz(input_fn)
+    return converted(input_fn)
+  ```
+
+  The `foo` method above will execute the `input_fn` without autograph
+  conversion, while the `bar` method will run an autographed `input_fn`. The
+  `baz` method will run an unconverted `input_fn`, since `tf_convert` respect
+  the control status context.
+
+  Note that both methods in `tf_internal_module` are skipped by autograph when
+  tracing the `tf.function`. The configuration of whether a module/package
+  should be skipped by autograph is controlled in
+  tensorflow/python/autograph/core/config.py.
 
   Args:
     f: Callable.

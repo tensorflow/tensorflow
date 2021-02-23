@@ -374,7 +374,7 @@ void PrepareQuantizePass::runOnFunction() {
     patterns_1.insert<PrepareLstmOutputScale<UnidirectionalSequenceLSTMOp>>(
         ctx);
   }
-  applyPatternsAndFoldGreedily(func, std::move(patterns_1));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns_1));
 
   // During the legalization, unsigned quantized type is used, so we have to
   // convert all of them to signed.
@@ -399,7 +399,7 @@ void PrepareQuantizePass::runOnFunction() {
         ctx, quant_specs_);
     patterns_2.insert<ConvertSvdfStatsToQDQs>(ctx, quant_specs_);
   }
-  applyPatternsAndFoldGreedily(func, std::move(patterns_2));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns_2));
 
   SanityCheckAndAdjustment(func);
 

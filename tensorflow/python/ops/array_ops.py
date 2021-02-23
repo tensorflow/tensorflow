@@ -962,6 +962,9 @@ def _slice_helper(tensor, slice_spec, var=None):
       tf.newaxis or scalar int32/int64 tensors.
   """
   tensor = ops.convert_to_tensor(tensor)
+  # TODO(wangpeng): Consider supporting var
+  if var is None and ops._numpy_style_slicing:  # pylint: disable=protected-access
+    return tensor._numpy_style_getitem(slice_spec)  # pylint: disable=protected-access
 
   if isinstance(slice_spec, bool) or \
   (isinstance(slice_spec, ops.Tensor) and slice_spec.dtype == dtypes.bool) or \
@@ -2120,11 +2123,12 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   Raises:
     ValueError: If `num` is unspecified and cannot be inferred.
   """
-  size_splits = ops.convert_to_tensor(num_or_size_splits)
   if isinstance(num_or_size_splits,
                 (numbers.Integral, tensor_shape.Dimension)):
     return gen_array_ops.split(
         axis=axis, num_split=num_or_size_splits, value=value, name=name)
+
+  size_splits = ops.convert_to_tensor(num_or_size_splits)
 
   if size_splits._rank() == 0:
     raise ValueError(

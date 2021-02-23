@@ -27,18 +27,17 @@ from six.moves import range
 from six.moves import zip
 import tensorflow as tf
 
-from tensorflow.lite.kernels.hashtable import pywrap_hashtable_ops as hashtable_ops_registerer
 from tensorflow.lite.python import convert
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_v2_test_util
 from tensorflow.lite.python.convert import mlir_quantize
 from tensorflow.lite.python.interpreter import Interpreter
-from tensorflow.lite.python.interpreter import InterpreterWithCustomOps
 from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.ops import map_ops
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import save_options
@@ -876,9 +875,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     tflite_model = converter.convert()
 
     # Check values from converted model.
-    interpreter = InterpreterWithCustomOps(
-        model_content=tflite_model,
-        custom_op_registerers=[hashtable_ops_registerer.HashtableOpsRegisterer])
+    interpreter = Interpreter(model_content=tflite_model)
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
 
@@ -1435,18 +1432,25 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
         expected = expected.c
       self.assertAllClose(expected, actual)
 
-  @parameterized.named_parameters(('LSTM', tf.keras.layers.LSTM),
-                                  ('SimpleRNN', tf.keras.layers.SimpleRNN),
-                                  ('GRU', tf.keras.layers.GRU))
+  @parameterized.named_parameters(
+      ('LSTM_BatchSize_None', tf.keras.layers.LSTM, None),
+      ('SimpleRNN_BatchSize_None', tf.keras.layers.SimpleRNN, None),
+      ('GRU_BatchSize_None', tf.keras.layers.GRU, None),
+      ('LSTM_BatchSize_One', tf.keras.layers.LSTM, 1),
+      ('SimpleRNN_BatchSize_One', tf.keras.layers.SimpleRNN, 1),
+      ('GRU_BatchSize_One', tf.keras.layers.GRU, 1))
   @test_util.run_v2_only
-  def testKerasRNN(self, rnn_layer):
-    # This relies on TFLiteConverter to rewrite unknown batch size to 1. The
-    # model will fail if resizing the input to non-1 batch size.
+  def testKerasRNN(self, rnn_layer, batch_size):
+    # This test will run with `batch_size=1` and `batch_size=None`.
+    # When `batch_size=1`, the model will convert to fused RNN, and when
+    # `batch_size=None`, it will convert to unfused RNN
+    # (similar for tests below).
     input_data = tf.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
     rnn_obj = rnn_layer(units=10, input_shape=(10, 10))
     model = tf.keras.models.Sequential([
-        tf.keras.layers.Input(batch_size=1, shape=(10, 10), name='input'),
+        tf.keras.layers.Input(
+            batch_size=batch_size, shape=(10, 10), name='input'),
         rnn_obj,
     ])
 
@@ -1480,12 +1484,16 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     expected_value = model.predict(input_data)
     self.assertAllClose(expected_value, actual_value, atol=1e-05)
 
+  @parameterized.named_parameters(('BatchSize_None', None),
+                                  ('BatchSize_One', 1))
   @test_util.run_v2_only
-  def testKerasBidirectionalRNNReturnSequence(self):
+  def testKerasBidirectionalRNNReturnSequence(self, batch_size):
     input_data = tf.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
     model = tf.keras.models.Sequential()
-    model.add(tf.keras.layers.Input(batch_size=1, shape=(10, 10), name='input'))
+    model.add(
+        tf.keras.layers.Input(
+            batch_size=batch_size, shape=(10, 10), name='input'))
     model.add(
         tf.keras.layers.Bidirectional(
             tf.keras.layers.LSTM(units=10, return_sequences=True),
@@ -1503,12 +1511,16 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     expected_value = model.predict(input_data)
     self.assertAllClose(expected_value, actual_value, atol=1e-05)
 
+  @parameterized.named_parameters(('BatchSize_None', None),
+                                  ('BatchSize_One', 1))
   @test_util.run_v2_only
-  def testKerasBidirectionalRNN(self):
+  def testKerasBidirectionalRNN(self, batch_size):
     input_data = tf.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
     model = tf.keras.models.Sequential()
-    model.add(tf.keras.layers.Input(batch_size=1, shape=(10, 10), name='input'))
+    model.add(
+        tf.keras.layers.Input(
+            batch_size=batch_size, shape=(10, 10), name='input'))
     model.add(tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(units=10)))
     model.add(tf.keras.layers.Dense(5))
     model.add(tf.keras.layers.Activation('softmax'))
@@ -1706,6 +1718,329 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
         'None is only supported in the 1st dimension. Tensor '
         '\'in_tensor\' has invalid shape \'[1, None, 16, 3]\'.',
         str(error.exception))
+
+
+class ResourceAndVariantTypes(lite_v2_test_util.ModelTest):
+
+  @test_util.run_v2_only
+  def testVariants(self):
+
+    @tf.function(input_signature=[tf.TensorSpec(shape=[1], dtype=tf.float32)])
+    def model(v):
+      m = map_ops.empty_tensor_map()
+      k = tf.constant(1.0)
+      p = tf.add(k, v)
+      with ops.control_dependencies([m]):
+        m2 = map_ops.tensor_map_insert(m, p, v)
+        with ops.control_dependencies([m2]):
+          return map_ops.tensor_map_size(m2)
+
+    concrete_func = model.get_concrete_function()
+
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
+    ]
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    interpreter.allocate_tensors()
+
+    input_data = np.array([1.0], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(1, actual_value)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(1, actual_value)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(1, actual_value)
+
+  @test_util.run_v2_only
+  def testVariantsWithCond(self):
+
+    def create_v1_saved_model():
+      saved_model_dir = os.path.join(self.get_temp_dir(), 'variants_with_cond')
+      with tf.Graph().as_default():
+        with tf.compat.v1.Session() as sess:
+          m = map_ops.empty_tensor_map()
+
+          def body(i, m):
+            m = map_ops.tensor_map_insert(m, i, i)
+            return i + 1, m
+
+          in_tensor = tf.compat.v1.placeholder(
+              shape=[1], dtype=tf.int32, name='input')
+          _, result_m = tf.cond(in_tensor < 10, lambda: body(in_tensor, m),
+                                lambda: body(in_tensor + 1, m))
+          out_tensor = in_tensor + map_ops.tensor_map_size(result_m)
+
+          inputs = {'x': in_tensor}
+          outputs = {'z': out_tensor}
+          saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+      return saved_model_dir
+
+    saved_model_dir = create_v1_saved_model()
+
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
+    ]
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    interpreter.allocate_tensors()
+
+    input_data = np.array([0], dtype=np.int32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+
+    interpreter.invoke()
+    expected_value = np.array([1], dtype=np.int32)
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(expected_value, actual_value)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(expected_value, actual_value)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(expected_value, actual_value)
+
+  @test_util.run_v2_only
+  def testVariantsWithWhile(self):
+
+    def create_v1_saved_model():
+      saved_model_dir = os.path.join(self.get_temp_dir(), 'variants_with_while')
+      with tf.Graph().as_default():
+        with tf.compat.v1.Session() as sess:
+          m = map_ops.empty_tensor_map()
+
+          def cond(i, m):
+            del m
+            return i < 10
+
+          def body(i, m):
+            m = map_ops.tensor_map_insert(m, i, i)
+            return i + 1, m
+
+          _, result_m = tf.while_loop(cond, body, [0, m])
+          in_tensor = tf.compat.v1.placeholder(
+              shape=[1], dtype=tf.int32, name='input')
+          out_tensor = in_tensor + map_ops.tensor_map_size(result_m)
+
+          inputs = {'x': in_tensor}
+          outputs = {'z': out_tensor}
+          saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+      return saved_model_dir
+
+    saved_model_dir = create_v1_saved_model()
+
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
+    ]
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    interpreter.allocate_tensors()
+
+    input_data = np.array([0], dtype=np.int32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(10, actual_value)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(10, actual_value)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(10, actual_value)
+
+  @test_util.run_v2_only
+  def testResources(self):
+
+    def create_v1_saved_model():
+      saved_model_dir = os.path.join(self.get_temp_dir(), 'simple_resources')
+      with tf.Graph().as_default():
+        with tf.compat.v1.Session() as sess:
+          in_tensor = tf.compat.v1.placeholder(
+              shape=[1], dtype=tf.float32, name='input')
+
+          stack = tf.raw_ops.StackV2(max_size=10, elem_type=tf.float32)
+          w = tf.raw_ops.StackPushV2(handle=stack, elem=in_tensor)
+          with ops.control_dependencies([w]):
+            a = in_tensor + in_tensor
+            with ops.control_dependencies([a]):
+              out_tensor = a + tf.raw_ops.StackPopV2(
+                  handle=stack, elem_type=tf.float32)
+
+          inputs = {'x': in_tensor}
+          outputs = {'z': out_tensor}
+          saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+      return saved_model_dir
+
+    saved_model_dir = create_v1_saved_model()
+
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
+    ]
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    interpreter.allocate_tensors()
+
+    input_data = np.array([1.0], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(3.0, actual_value)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(3.0, actual_value)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(3.0, actual_value)
+
+  @test_util.run_v2_only
+  def testResourcesWithCond(self):
+
+    def create_v1_saved_model():
+      saved_model_dir = os.path.join(self.get_temp_dir(), 'resources_with_cond')
+      with tf.Graph().as_default():
+        with tf.compat.v1.Session() as sess:
+          in_tensor = tf.compat.v1.placeholder(
+              shape=[1], dtype=tf.float32, name='input')
+
+          def body(i, arr):
+            n = tf.raw_ops.StackPushV2(
+                handle=arr, elem=tf.cast(i, dtype=tf.float32))
+            return n, arr
+
+          arr = tf.raw_ops.StackV2(max_size=10, elem_type=tf.float32)
+          n, result_arr = tf.cond(in_tensor < 10, lambda: body(0, arr),
+                                  lambda: body(1, arr))
+
+          with ops.control_dependencies([result_arr, n]):
+            out_tensor = tf.raw_ops.StackPopV2(
+                handle=result_arr, elem_type=tf.float32)
+
+          inputs = {'x': in_tensor}
+          outputs = {'a': out_tensor}
+          saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+      return saved_model_dir
+
+    saved_model_dir = create_v1_saved_model()
+
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
+    ]
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    interpreter.allocate_tensors()
+
+    input_data = np.array([1.0], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(0.0, actual_value)
+
+  @test_util.run_v2_only
+  def testResourcesWithWhile(self):
+
+    def create_v1_saved_model():
+      saved_model_dir = os.path.join(self.get_temp_dir(),
+                                     'resources_with_while')
+      with tf.Graph().as_default():
+        with tf.compat.v1.Session() as sess:
+          in_tensor = tf.compat.v1.placeholder(
+              shape=[1], dtype=tf.float32, name='input')
+
+          def cond(i, arr, m):
+            del arr
+            del m
+            return i < 10
+
+          def body(i, arr, m):
+            del m
+            n = tf.raw_ops.StackPushV2(
+                handle=arr, elem=tf.cast(i, dtype=tf.float32))
+            return i + 1, arr, n
+
+          arr = tf.raw_ops.StackV2(max_size=10, elem_type=tf.float32)
+          _, result_arr, n = tf.while_loop(cond, body, [0, arr, 0.0])
+
+          with ops.control_dependencies([result_arr, n]):
+            out_tensor = tf.raw_ops.StackPopV2(
+                handle=result_arr, elem_type=tf.float32)
+
+          inputs = {'x': in_tensor}
+          outputs = {'a': out_tensor}
+          saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+      return saved_model_dir
+
+    saved_model_dir = create_v1_saved_model()
+
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
+    ]
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    interpreter.allocate_tensors()
+
+    input_data = np.array([1.0], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(9.0, actual_value)
 
 
 if __name__ == '__main__':

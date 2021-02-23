@@ -13,6 +13,9 @@ limitations under the License.
 #include "tensorflow/core/data/service/task_runner.h"
 
 #include "absl/memory/memory.h"
+#include "tensorflow/core/data/dataset.pb.h"
+#include "tensorflow/core/data/service/worker.pb.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -47,16 +50,19 @@ class TestTaskIterator : public TaskIterator {
 // Reads from the task runner, storing results in `*output`.
 Status RunConsumer(int64 consumer_index, int64 start_index, int64 end_index,
                    TaskRunner& task_runner, std::vector<int64>& output) {
-  bool end_of_sequence = false;
   for (int64 next_index = start_index; next_index < end_index; ++next_index) {
-    TaskRunner::Request request;
-    request.round_index = next_index;
-    request.consumer_index = consumer_index;
-    std::vector<Tensor> element;
-    TF_RETURN_IF_ERROR(task_runner.GetNext(request, element, end_of_sequence));
-    if (!end_of_sequence) {
-      output.push_back(element[0].flat<int64>()(0));
-    }
+    GetElementRequest request;
+    request.set_round_index(next_index);
+    request.set_consumer_index(consumer_index);
+    request.set_skipped_previous_round(false);
+    request.set_allow_skip(false);
+    GetElementResult result;
+    do {
+      TF_RETURN_IF_ERROR(task_runner.GetNext(request, result));
+      if (!result.end_of_sequence) {
+        output.push_back(result.components[0].flat<int64>()(0));
+      }
+    } while (result.skip);
   }
   return Status::OK();
 }
@@ -71,14 +77,13 @@ TEST(FirstComeFirstServedTaskRunner, GetNext) {
   }
   FirstComeFirstServedTaskRunner runner(
       absl::make_unique<TestTaskIterator>(elements));
-  TaskRunner::Request request;
+  GetElementRequest request;
+  GetElementResult result;
   for (auto& expected_element : elements) {
-    std::vector<Tensor> element;
-    bool end_of_sequence;
-    TF_ASSERT_OK(runner.GetNext(request, element, end_of_sequence));
-    ASSERT_FALSE(end_of_sequence);
-    ASSERT_EQ(element.size(), 1);
-    test::ExpectEqual(element[0], expected_element[0]);
+    TF_ASSERT_OK(runner.GetNext(request, result));
+    ASSERT_FALSE(result.end_of_sequence);
+    ASSERT_EQ(result.components.size(), 1);
+    test::ExpectEqual(result.components[0], expected_element[0]);
   }
 }
 
@@ -95,8 +100,10 @@ TEST_P(ConsumeParallelTest, ConsumeParallel) {
     element.push_back(Tensor(i));
     elements.push_back(element);
   }
-  RoundRobinTaskRunner runner(absl::make_unique<TestTaskIterator>(elements),
-                              num_consumers);
+  CancellationManager cancellation_manager;
+  RoundRobinTaskRunner runner(
+      absl::make_unique<TestTaskIterator>(elements), num_consumers,
+      /*worker_address=*/"test_worker_address", cancellation_manager);
   std::vector<std::vector<int64>> per_consumer_results;
   std::vector<std::unique_ptr<Thread>> consumers;
   mutex mu;
@@ -148,8 +155,10 @@ TEST(RoundRobinTaskRunner, ConsumeParallelPartialRound) {
     element.push_back(Tensor(i));
     elements.push_back(element);
   }
-  RoundRobinTaskRunner runner(absl::make_unique<TestTaskIterator>(elements),
-                              num_consumers);
+  CancellationManager cancellation_manager;
+  RoundRobinTaskRunner runner(
+      absl::make_unique<TestTaskIterator>(elements), num_consumers,
+      /*worker_address=*/"test_worker_address", cancellation_manager);
   std::vector<std::vector<int64>> per_consumer_results;
   std::vector<std::unique_ptr<Thread>> consumers;
   mutex mu;

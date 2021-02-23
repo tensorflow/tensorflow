@@ -205,7 +205,17 @@ class CapturableResourceDeleter(object):
   def __del__(self):
     if self._destroy_resource:
       with self._destruction_context():
-        self._destroy_resource()
+        try:
+          self._destroy_resource()
+
+        # There is a race condition between this and `ScopedTFFunction`
+        # whereby if an entire garbage collection chain containing both
+        # objects is moved to unreachable during the same garbage collection
+        # cycle, the __del__ for `ScopedTFFunction` can be collected before
+        # this method is called. In that case, we can't do much but
+        # continue.
+        except defun.FunctionAlreadyGarbageCollectedError:
+          pass
 
 
 class CapturableResource(base.Trackable):

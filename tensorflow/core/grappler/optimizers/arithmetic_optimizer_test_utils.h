@@ -153,6 +153,11 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     optimizer->options_.reorder_cast_like_and_value_preserving = true;
   }
 
+  void EnableOnlyReplaceMulWithBroadcastByTile(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.replace_mul_with_tile = true;
+  }
+
   void EnableOnlyReplaceMulWithSquare(ArithmeticOptimizer* optimizer) {
     DisableAllStages(optimizer);
     optimizer->options_.replace_mul_with_square = true;
@@ -258,6 +263,7 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     options.remove_negation = false;
     options.remove_logical_not = false;
     options.reorder_cast_like_and_value_preserving = false;
+    options.replace_mul_with_tile = false;
     options.replace_mul_with_square = false;
     options.simplify_aggregation = false;
     options.unary_ops_composition = false;

@@ -170,6 +170,7 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Polygamma",
                                           "QuantizeAndDequantizeV2",
                                           "QuantizeAndDequantizeV3",
+                                          "QuantizeAndDequantizeV4",
                                           "Pow",
                                           "Real",
                                           "RealDiv",

@@ -30,6 +30,7 @@ cc_library(
     hdrs = ["conv_emitter.h"],
     deps = [
         ":conv_emitter_transforms",
+        "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",

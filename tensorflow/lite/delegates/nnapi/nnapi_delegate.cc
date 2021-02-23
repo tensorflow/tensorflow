@@ -49,7 +49,6 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
-#include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/delegates/nnapi/quant_lstm_sup.h"
 #include "tensorflow/lite/delegates/utils.h"
@@ -58,6 +57,7 @@ limitations under the License.
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 #include "tensorflow/lite/nnapi/nnapi_util.h"
 #include "tensorflow/lite/util.h"
+#include <farmhash.h>
 
 namespace tflite {
 namespace {
@@ -379,6 +379,15 @@ bool IsHybridOperator(const TfLiteContext* context, int builtin_code,
     default:
       return false;
   }
+}
+
+bool HasUnspecifiedDimension(const TfLiteTensor* tensor) {
+  if (tensor->dims_signature) {
+    for (int i : TfLiteIntArrayView(tensor->dims_signature)) {
+      if (i == -1) return true;
+    }
+  }
+  return false;
 }
 
 ANeuralNetworksOperandType ConvertTensorTypeToNNType(
@@ -2048,7 +2057,11 @@ bool NNAPIDelegateKernel::Validate(
              NNAPIValidationFailureType::kUnsupportedOperandRank,
              "Input rank should be less than 4", &val_ctx);
 
-      if (context->tensors[node->inputs->data[0]].type == kTfLiteUInt8 &&
+      const auto& input_type = context->tensors[node->inputs->data[0]].type;
+      EXPECT_INPUT_TYPE_IN(input_type, kTfLiteFloat16, kTfLiteFloat32,
+                           kTfLiteUInt8, kTfLiteInt8);
+
+      if (input_type == kTfLiteUInt8 &&
           android_sdk_version < kMinSdkVersionForNNAPI12) {
         auto first_param = context->tensors[node->inputs->data[0]].params;
         for (int i = 1; i < node->inputs->size; i++) {
@@ -3649,9 +3662,10 @@ TfLiteStatus NNAPIDelegateKernel::Init(TfLiteContext* context,
     // TODO(b/133342794): use a generic token generator class.
     uint64_t token_parts[4];
     // Create bits from model_token.
-    // TODO(b/172237993): should not use std::hash, as that is not
+    // Using farmhash fingerprint instead of std::hash, as the latter is not
     // guaranteed to be stable across program invocations.
-    token_parts[0] = std::hash<std::string>{}(model_token);
+    token_parts[0] =
+        ::util::Fingerprint64(model_token, std::strlen(model_token));
     // Create bits from params->nodes_to_replace.
     token_parts[1] = GetHash(params->nodes_to_replace);
     // Create bits from params->input_tensors. These include the input tensor

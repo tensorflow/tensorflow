@@ -189,6 +189,9 @@ public final class Tensor {
     throwIfSrcShapeIsIncompatible(src);
     if (isBuffer(src)) {
       setTo((Buffer) src);
+    } else if (dtype == DataType.STRING && shapeCopy.length == 0) {
+      // Update scalar string input with 1-d byte array.
+      writeScalar(nativeHandle, src);
     } else if (src.getClass().isArray()) {
       writeMultiDimensionalArray(nativeHandle, src);
     } else {

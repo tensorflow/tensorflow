@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import threading
 import time
 
@@ -28,6 +29,7 @@ from tensorflow.python.data.experimental.ops import testing as dataset_testing
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import test_util
+from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -35,6 +37,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import collective_ops as _collective_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
@@ -731,6 +734,76 @@ class OpCancellationTest(test.TestCase, parameterized.TestCase):
     # proceed.
     collective_fn()
 
+  @combinations.generate(
+      combinations.times(
+          combinations.combine(
+              collective_op=[
+                  combinations.NamedObject('all_reduce_v2',
+                                           CollectiveOpsV2.all_reduce),
+                  combinations.NamedObject('all_gather_v2',
+                                           CollectiveOpsV2.all_gather),
+              ],
+              mode='eager'), device_combination))
+  def testCancelDuringParamResolution(self, collective_op, device,
+                                      communication):
+    dev0 = '/device:%s:0' % device
+    dev1 = '/device:%s:1' % device
+    group_size = 2
+    group_key = 100
+    instance_key = 100
+    in_tensor = constant_op.constant([1.])
+    t1_cancellation_manager = cancellation.CancellationManager()
+    t2_cancellation_manager = cancellation.CancellationManager()
+
+    @def_function.function
+    def _collective_fn(x):
+      # Run an assertion to crash one of the two function executions running
+      # collectives. We explicitly cancel the other in response.
+      assert_op = check_ops.assert_equal(x, in_tensor)
+      with ops.control_dependencies([assert_op]):
+        return collective_op(
+            in_tensor,
+            group_size,
+            group_key,
+            instance_key,
+            communication_hint=communication)
+
+    collective_concrete = _collective_fn.get_concrete_function(in_tensor)
+
+    finish_mu = threading.Lock()
+    finishes = 0
+
+    def _placement_wrapper(device, x, my_cancellation, other_cancellation):
+      try:
+        with ops.device(device):
+          cancelable_collective = my_cancellation.get_cancelable_function(
+              collective_concrete)
+          return cancelable_collective(x)
+      except errors.InvalidArgumentError:
+        # `assert_equal` failed for this execution of the function. The other
+        # function would deadlock without cancellation.
+        other_cancellation.start_cancel()
+      except errors.CancelledError:
+        pass
+      nonlocal finishes
+      with finish_mu:
+        finishes += 1
+
+    t1 = threading.Thread(
+        target=_placement_wrapper,
+        args=(dev0, constant_op.constant([1.]), t1_cancellation_manager,
+              t2_cancellation_manager))
+    t2 = threading.Thread(
+        target=_placement_wrapper,
+        # Will cause the assertion to fail
+        args=(dev1, constant_op.constant([2.]), t2_cancellation_manager,
+              t1_cancellation_manager))
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+    self.assertEqual(finishes, 2)
+
 
 @combinations.generate(collective_op_combinations)
 class TimeoutTest(test.TestCase, parameterized.TestCase):
@@ -952,5 +1025,6 @@ def _setup_context():
 
 
 if __name__ == '__main__':
+  os.environ['NCCL_DEBUG'] = 'INFO'
   v2_compat.enable_v2_behavior()
   test.main()

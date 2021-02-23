@@ -456,7 +456,7 @@ Status CreateTRTNode(const ConversionParams& params,
         trt_allocator.get(), /*calibrator=*/nullptr, &engine,
         info.use_calibration, params.use_implicit_batch,
         /*convert_successfully=*/nullptr,
-        /*profile=*/nullptr));
+        /*profile=*/nullptr, info.engine_name));
     TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
     segment_string = string(static_cast<const char*>(engine_data->data()),
                             engine_data->size());
