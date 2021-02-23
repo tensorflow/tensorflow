@@ -18,6 +18,7 @@ RUN add-apt-repository -y ppa:openjdk-r/ppa && \
 RUN /install/install_deb_packages.sh
 
 # Install gcc 7
+RUN apt install g++-7 -y
 RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 700 \
                          --slave /usr/bin/g++ g++ /usr/bin/g++-7
 
