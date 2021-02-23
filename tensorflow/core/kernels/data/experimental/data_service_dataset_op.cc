@@ -602,7 +602,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     // Searches for a task to process, returning nullptr if none is found.
-    std::shared_ptr<Task> GetTaskToProcess() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    std::shared_ptr<Task> GetTaskToProcess() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       VLOG(4) << "Searching for task to process";
       for (int i = 0; i < tasks_.size(); ++i) {
         std::shared_ptr<Task>& task = tasks_[next_task_index_];
