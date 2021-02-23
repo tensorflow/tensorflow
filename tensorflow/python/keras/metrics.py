@@ -3342,6 +3342,8 @@ def categorical_accuracy(y_true, y_pred):
   Returns:
     Categorical accuracy values.
   """
+  assert y_true.shape==y_pred.shape
+  
   return math_ops.cast(
       math_ops.equal(
           math_ops.argmax(y_true, axis=-1), math_ops.argmax(y_pred, axis=-1)),
