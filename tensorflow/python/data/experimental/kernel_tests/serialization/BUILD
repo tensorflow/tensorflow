@@ -174,8 +174,8 @@ tf_py_test(
     ],
     deps = [
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
+        "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "@absl_py//absl/testing:parameterized",
     ],
