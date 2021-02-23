@@ -37,12 +37,230 @@ namespace tflite {
 namespace optimized_ops {
 namespace resize_bilinear {
 
+#ifdef USE_NEON
+// These utility functions are split off not just for convenience. Most
+// incoporate packing or unpacking of data.
+//
+// (a) Optimizations can be tried experimentally.
+// (b) Optimizations can be specialized for architectures, eg Intel vs ARM.
+
+inline int16x8_t Load8IntoLowerS16(const uint8* data_ptr) {
+  return vreinterpretq_s16_u16(vmovl_u8(vld1_u8(data_ptr)));
+}
+
+inline uint16x8_t Move8IntoUpperU16(const uint8x8_t vec_val) {
+  // Alternatively one could zip with a zero vector.
+  return vshlq_n_u16(vmovl_u8(vec_val), 8);
+}
+
+inline uint16x8_t Load8IntoUpperU16(const uint8* data_ptr) {
+  return Move8IntoUpperU16(vld1_u8(data_ptr));
+}
+
+// Extract upper 8 bits from each 16-bit integer in vector registers. This is
+// performed for a pair, because instructions often work on pairs.
+inline void PairExtractUpper(const uint16x8_t accum_0, const uint16x8_t accum_1,
+                             uint8x8_t* res_0, uint8x8_t* res_1) {
+  uint8x16x2_t unzipped =
+      vuzpq_u8(vreinterpretq_u8_u16(accum_0), vreinterpretq_u8_u16(accum_1));
+  *res_0 = vget_low_u8(unzipped.val[1]);
+  *res_1 = vget_high_u8(unzipped.val[1]);
+}
+
+// This is an exceptional definition.
+//
+// Modify int16x8_t, adding operators.
+//
+// There are exceptional circumstances that make it reasonable to write code
+// on vector types for quantized resize bilinear in *some cases*.
+//
+// (a) In exact quant resize bilinear, it should be possible to guarantee that
+//     arithmetic never overflows.
+// (b) When the resize scaling is 2 or 4 or 8 it is possible to guarantee
+//     exact accumulation and exact incrementation.
+// (c) In quant resize bilinear the choice of unsigned vs signed accumulation
+//     and saturated vs unsaturated arithmetic is often unimportant.
+//
+// This pattern simplifies the code considerably. This pattern should not be
+// used more widely in code since it can hide important numerical detail.
+//
+// DO NOT add to this any "class-like" methods: only those that do no more than
+// redirecting operators to specific intrinsics functions.
+struct op_int16x8_t {
+  inline op_int16x8_t() = default;
+  inline explicit op_int16x8_t(const int16x8_t& initial_val) {
+    val = initial_val;
+  }
+  inline op_int16x8_t& operator=(const int16x8_t& new_val) {
+    val = new_val;
+    return *this;
+  }
+  inline op_int16x8_t operator+=(const op_int16x8_t& add_val) {
+    val = vaddq_s16(val, add_val.val);
+    return *this;
+  }
+  inline op_int16x8_t operator-=(const op_int16x8_t& sub_val) {
+    val = vsubq_s16(val, sub_val.val);
+    return *this;
+  }
+  // This really selects vshlq_n_s16, but requires a longer implementation to
+  // convert the shift argument back to a constant. In some compiles are macros
+  // requiring constant args.
+  inline op_int16x8_t operator<<=(int32 left_shift) {
+    switch (left_shift) {
+      case 1:
+        val = vshlq_n_s16(val, 1);
+        break;
+      case 4:
+        val = vshlq_n_s16(val, 4);
+        break;
+      case 8:
+        val = vshlq_n_s16(val, 8);
+        break;
+      default:
+        TFLITE_CHECK(false);
+        break;
+    }
+    return *this;
+  }
+  // This really selects vshrq_n_u16, but requires a longer implementation to
+  // convert the shift argument back to a constant. In some compiles are macros
+  // requiring constant args.
+  inline op_int16x8_t operator>>=(int32 right_shift) {
+    switch (right_shift) {
+      case 1:
+        val = vshrq_n_s16(val, 1);
+        break;
+      case 4:
+        val = vshrq_n_s16(val, 4);
+        break;
+      case 8:
+        val = vshrq_n_s16(val, 8);
+        break;
+      default:
+        TFLITE_CHECK(false);
+        break;
+    }
+    return *this;
+  }
+  friend inline op_int16x8_t operator+(op_int16x8_t lhs,
+                                       const op_int16x8_t& rhs) {
+    lhs += rhs;
+    return lhs;
+  }
+  friend inline op_int16x8_t operator-(op_int16x8_t lhs,
+                                       const op_int16x8_t& rhs) {
+    lhs -= rhs;
+    return lhs;
+  }
+  friend inline op_int16x8_t operator<<(op_int16x8_t lhs, int32 left_shift) {
+    lhs <<= left_shift;
+    return lhs;
+  }
+  friend inline op_int16x8_t operator>>(op_int16x8_t lhs, int32 right_shift) {
+    lhs >>= right_shift;
+    return lhs;
+  }
+
+  int16x8_t val;
+};
+
+// This is an exceptional definition.
+//
+// Modify uint16x8_t, adding operators.
+//
+// Important: See above notes on op_int16x8_t.
+struct op_uint16x8_t {
+  inline op_uint16x8_t() = default;
+  inline explicit op_uint16x8_t(const uint16x8_t initial_val) {
+    val = initial_val;
+  }
+  inline op_uint16x8_t& operator=(const uint16x8_t& new_val) {
+    val = new_val;
+    return *this;
+  }
+  inline op_uint16x8_t operator+=(const op_int16x8_t& add_val) {
+    val = vaddq_u16(val, vreinterpretq_u16_s16(add_val.val));
+    return *this;
+  }
+  inline op_uint16x8_t operator-=(const op_int16x8_t& sub_val) {
+    val = vsubq_u16(val, vreinterpretq_u16_s16(sub_val.val));
+    return *this;
+  }
+  // This really selects vshlq_n_s16, but requires a longer implementation to
+  // convert the shift argument back to a constant. In some compiles are macros
+  // requiring constant args.
+  inline op_uint16x8_t operator<<=(int32 left_shift) {
+    switch (left_shift) {
+      case 1:
+        val = vshlq_n_u16(val, 1);
+        break;
+      case 4:
+        val = vshlq_n_u16(val, 4);
+        break;
+      case 8:
+        val = vshlq_n_u16(val, 8);
+        break;
+      default:
+        TFLITE_CHECK(false);
+        break;
+    }
+    return *this;
+  }
+  // This really selects vshrq_n_u16, but requires a longer implementation to
+  // convert the shift argument back to a constant. In some compiles are macros
+  // requiring constant args.
+  inline op_uint16x8_t operator>>=(int32 right_shift) {
+    switch (right_shift) {
+      case 1:
+        val = vshrq_n_u16(val, 1);
+        break;
+      case 4:
+        val = vshrq_n_u16(val, 4);
+        break;
+      case 8:
+        val = vshrq_n_u16(val, 8);
+        break;
+      default:
+        TFLITE_CHECK(false);
+        break;
+    }
+    return *this;
+  }
+  friend inline op_uint16x8_t operator+(op_uint16x8_t lhs,
+                                        const op_int16x8_t& rhs) {
+    lhs += rhs;
+    return lhs;
+  }
+  friend inline op_uint16x8_t operator-(op_uint16x8_t lhs,
+                                        const op_int16x8_t& rhs) {
+    lhs -= rhs;
+    return lhs;
+  }
+  friend inline op_uint16x8_t operator<<(op_uint16x8_t lhs, int32 left_shift) {
+    lhs <<= left_shift;
+    return lhs;
+  }
+  friend inline op_uint16x8_t operator>>(op_uint16x8_t lhs, int32 right_shift) {
+    lhs >>= right_shift;
+    return lhs;
+  }
+
+  uint16x8_t val;
+};
+
+inline op_uint16x8_t VReinterpretQU16S16(const op_int16x8_t& other) {
+  op_uint16x8_t ret_val(vreinterpretq_u16_s16(other.val));
+  return ret_val;
+}
+#endif  // USE_NEON
+
 // Optimized resize-bilinear for the special case where the scaling is x8 in
 // width and height, and where we can operate on depth-8 blocks at a time. So
 // the output blocks are 8x8x8 in width-height-depth.
 //
-// This optimization is for the half_pixel_centers == true version, for uint8,
-// for non-NEON compilations.
+// This optimization is for the half_pixel_centers == true version, for uint8.
+// There are versions for NEON and non-NEON compilation.
 inline void ResizeBilinear888Uint8(int32 batches, int32 input_height,
                                    int32 input_width, int32 depth,
                                    const uint8* input_data,
@@ -59,6 +277,509 @@ inline void ResizeBilinear888Uint8(int32 batches, int32 input_height,
     uint8* output_base_ptr =
         output_data + b * output_row_stride * input_height * 8;
 
+#ifdef USE_NEON
+    for (int c_block = 0; c_block < depth; c_block += 8) {
+      op_uint16x8_t accum_c_v;
+      // Top-left margin corner.
+      {
+        uint8x8_t output_data = vld1_u8(&input_base_ptr[c_block]);
+        vst1_u8(&output_base_ptr[c_block], output_data);
+        vst1_u8(&output_base_ptr[c_block + depth], output_data);
+        vst1_u8(&output_base_ptr[c_block + depth * 2], output_data);
+        vst1_u8(&output_base_ptr[c_block + depth * 3], output_data);
+
+        // Accumulate in 8.8 representation, pre-adding 0.5 for later rounding.
+        accum_c_v = vaddq_u16(Move8IntoUpperU16(output_data), vdupq_n_s16(128));
+      }
+
+      // Top-centre margin.
+      op_int16x8_t wdelta_c_v;
+      op_int16x8_t wdelta_twice_c_v;
+      for (int j = 0; j < (input_width - 1); ++j) {
+        {
+          uint8x8_t output_data_alt;
+          uint8x8_t output_data;
+
+          const op_int16x8_t tl_val(
+              Load8IntoLowerS16(&input_base_ptr[c_block + depth * j]));
+          const op_int16x8_t tr_val(
+              Load8IntoLowerS16(&input_base_ptr[c_block + depth * (j + 1)]));
+          wdelta_c_v = (tr_val - tl_val) << 4;
+          wdelta_twice_c_v = wdelta_c_v << 1;
+
+          op_uint16x8_t accum_c_v_alt = accum_c_v + wdelta_c_v;
+          accum_c_v = accum_c_v_alt + wdelta_twice_c_v;
+          PairExtractUpper(accum_c_v_alt.val, accum_c_v.val, &output_data_alt,
+                           &output_data);
+
+          vst1_u8(&output_base_ptr[c_block + depth * j * 8 + depth * 4],
+                  output_data_alt);
+          vst1_u8(&output_base_ptr[c_block + depth * j * 8 + depth + depth * 4],
+                  output_data);
+
+          for (int p = 2; p < 8; p += 2) {
+            accum_c_v_alt = accum_c_v + wdelta_twice_c_v;
+            accum_c_v = accum_c_v_alt + wdelta_twice_c_v;
+            PairExtractUpper(accum_c_v_alt.val, accum_c_v.val, &output_data_alt,
+                             &output_data);
+
+            vst1_u8(&output_base_ptr[c_block + depth * j * 8 + depth * p +
+                                     depth * 4],
+                    output_data_alt);
+            vst1_u8(&output_base_ptr[c_block + depth * j * 8 + depth * (p + 1) +
+                                     depth * 4],
+                    output_data);
+          }
+          accum_c_v += wdelta_c_v;
+        }
+      }
+
+      // Top-right margin corner.
+      {
+        uint8x8_t output_data_discard;
+        uint8x8_t output_data;
+
+        // Accumulations have pre-added 0.5 for rounding, but that is just
+        // discarded and this just avoids re-loading.
+        PairExtractUpper(accum_c_v.val, accum_c_v.val, &output_data,
+                         &output_data_discard);
+
+        vst1_u8(&output_base_ptr[c_block + depth * (input_width - 1) * 8 +
+                                 depth * 4],
+                output_data);
+        vst1_u8(&output_base_ptr[c_block + depth * (input_width - 1) * 8 +
+                                 depth * 4 + depth],
+                output_data);
+        vst1_u8(&output_base_ptr[c_block + depth * (input_width - 1) * 8 +
+                                 depth * 4 + depth * 2],
+                output_data);
+        vst1_u8(&output_base_ptr[c_block + depth * (input_width - 1) * 8 +
+                                 depth * 4 + depth * 3],
+                output_data);
+      }
+    }
+    // Fill out remainder of top margin.
+    std::memcpy(output_base_ptr + output_row_stride, output_base_ptr,
+                output_row_stride * sizeof(uint8));
+    std::memcpy(output_base_ptr + output_row_stride * 2, output_base_ptr,
+                output_row_stride * sizeof(uint8));
+    std::memcpy(output_base_ptr + output_row_stride * 3, output_base_ptr,
+                output_row_stride * sizeof(uint8));
+    output_base_ptr += output_row_stride * 4;
+
+    // Main rows.
+    for (int k = 0; k < (input_height - 1); ++k) {
+      for (int c_block = 0; c_block < depth; c_block += 8) {
+        uint8* output_base_ptr_0 = output_base_ptr;
+        uint8* output_base_ptr_1;
+        uint8* output_base_ptr_2;
+        uint8* output_base_ptr_3;
+        uint8* output_base_ptr_4;
+        uint8* output_base_ptr_5;
+        uint8* output_base_ptr_6;
+        uint8* output_base_ptr_7;
+
+        op_uint16x8_t accum_0_c_v;
+        op_uint16x8_t accum_1_c_v;
+        op_uint16x8_t accum_2_c_v;
+        op_uint16x8_t accum_3_c_v;
+        op_uint16x8_t accum_4_c_v;
+        op_uint16x8_t accum_5_c_v;
+        op_uint16x8_t accum_6_c_v;
+        op_uint16x8_t accum_7_c_v;
+
+        op_int16x8_t hdelta_c_v;
+        op_int16x8_t hdelta_twice_c_v;
+
+        // Left margin for 8 rows.
+        {
+          uint8x8_t output_data_0_c;
+          uint8x8_t output_data_1_c;
+          uint8x8_t output_data_2_c;
+          uint8x8_t output_data_3_c;
+          uint8x8_t output_data_4_c;
+          uint8x8_t output_data_5_c;
+          uint8x8_t output_data_6_c;
+          uint8x8_t output_data_7_c;
+
+          const op_int16x8_t tl_val(
+              Load8IntoLowerS16(&input_base_ptr[c_block]));
+          const op_int16x8_t bl_val(
+              Load8IntoLowerS16(&input_base_ptr[c_block + input_row_stride]));
+          hdelta_c_v = (bl_val - tl_val) << 4;
+
+          // Accumulate in 8.8 representation, pre-adding 0.5 for later
+          // rounding.
+          accum_0_c_v = VReinterpretQU16S16(tl_val << 8);
+          accum_0_c_v = vaddq_u16(accum_0_c_v.val, vdupq_n_s16(128));
+
+          hdelta_twice_c_v = hdelta_c_v << 1;
+
+          accum_0_c_v += hdelta_c_v;
+          accum_1_c_v = accum_0_c_v + hdelta_twice_c_v;
+          PairExtractUpper(accum_0_c_v.val, accum_1_c_v.val, &output_data_0_c,
+                           &output_data_1_c);
+
+          vst1_u8(&output_base_ptr_0[c_block], output_data_0_c);
+          vst1_u8(&output_base_ptr_0[c_block + depth], output_data_0_c);
+          vst1_u8(&output_base_ptr_0[c_block + depth * 2], output_data_0_c);
+          vst1_u8(&output_base_ptr_0[c_block + depth * 3], output_data_0_c);
+
+          output_base_ptr_1 = output_base_ptr_0 + output_row_stride;
+          vst1_u8(&output_base_ptr_1[c_block], output_data_1_c);
+          vst1_u8(&output_base_ptr_1[c_block + depth], output_data_1_c);
+          vst1_u8(&output_base_ptr_1[c_block + depth * 2], output_data_1_c);
+          vst1_u8(&output_base_ptr_1[c_block + depth * 3], output_data_1_c);
+
+          //
+
+          output_base_ptr_2 = output_base_ptr_1 + output_row_stride;
+          accum_2_c_v = accum_1_c_v + hdelta_twice_c_v;
+          accum_3_c_v = accum_2_c_v + hdelta_twice_c_v;
+          PairExtractUpper(accum_2_c_v.val, accum_3_c_v.val, &output_data_2_c,
+                           &output_data_3_c);
+
+          vst1_u8(&output_base_ptr_2[c_block], output_data_2_c);
+          vst1_u8(&output_base_ptr_2[c_block + depth], output_data_2_c);
+          vst1_u8(&output_base_ptr_2[c_block + depth * 2], output_data_2_c);
+          vst1_u8(&output_base_ptr_2[c_block + depth * 3], output_data_2_c);
+
+          output_base_ptr_3 = output_base_ptr_2 + output_row_stride;
+          vst1_u8(&output_base_ptr_3[c_block], output_data_3_c);
+          vst1_u8(&output_base_ptr_3[c_block + depth], output_data_3_c);
+          vst1_u8(&output_base_ptr_3[c_block + depth * 2], output_data_3_c);
+          vst1_u8(&output_base_ptr_3[c_block + depth * 3], output_data_3_c);
+
+          //
+
+          output_base_ptr_4 = output_base_ptr_3 + output_row_stride;
+          accum_4_c_v = accum_3_c_v + hdelta_twice_c_v;
+          accum_5_c_v = accum_4_c_v + hdelta_twice_c_v;
+          PairExtractUpper(accum_4_c_v.val, accum_5_c_v.val, &output_data_4_c,
+                           &output_data_5_c);
+
+          vst1_u8(&output_base_ptr_4[c_block], output_data_4_c);
+          vst1_u8(&output_base_ptr_4[c_block + depth], output_data_4_c);
+          vst1_u8(&output_base_ptr_4[c_block + depth * 2], output_data_4_c);
+          vst1_u8(&output_base_ptr_4[c_block + depth * 3], output_data_4_c);
+
+          output_base_ptr_5 = output_base_ptr_4 + output_row_stride;
+          vst1_u8(&output_base_ptr_5[c_block], output_data_5_c);
+          vst1_u8(&output_base_ptr_5[c_block + depth], output_data_5_c);
+          vst1_u8(&output_base_ptr_5[c_block + depth * 2], output_data_5_c);
+          vst1_u8(&output_base_ptr_5[c_block + depth * 3], output_data_5_c);
+
+          //
+
+          output_base_ptr_6 = output_base_ptr_5 + output_row_stride;
+          accum_6_c_v = accum_5_c_v + hdelta_twice_c_v;
+          accum_7_c_v = accum_6_c_v + hdelta_twice_c_v;
+          PairExtractUpper(accum_6_c_v.val, accum_7_c_v.val, &output_data_6_c,
+                           &output_data_7_c);
+
+          vst1_u8(&output_base_ptr_6[c_block], output_data_6_c);
+          vst1_u8(&output_base_ptr_6[c_block + depth], output_data_6_c);
+          vst1_u8(&output_base_ptr_6[c_block + depth * 2], output_data_6_c);
+          vst1_u8(&output_base_ptr_6[c_block + depth * 3], output_data_6_c);
+
+          output_base_ptr_7 = output_base_ptr_6 + output_row_stride;
+          vst1_u8(&output_base_ptr_7[c_block], output_data_7_c);
+          vst1_u8(&output_base_ptr_7[c_block + depth], output_data_7_c);
+          vst1_u8(&output_base_ptr_7[c_block + depth * 2], output_data_7_c);
+          vst1_u8(&output_base_ptr_7[c_block + depth * 3], output_data_7_c);
+        }
+
+        // Main central body.
+        op_int16x8_t wdelta_c;
+        op_int16x8_t wdelta_twice_c;
+        op_int16x8_t hwdelta_c;
+        op_int16x8_t hwdelta_twice_c;
+
+        op_int16x8_t incr_0_c;
+        op_int16x8_t incr_1_c;
+        op_int16x8_t incr_2_c;
+        op_int16x8_t incr_3_c;
+        op_int16x8_t incr_4_c;
+        op_int16x8_t incr_5_c;
+        op_int16x8_t incr_6_c;
+        op_int16x8_t incr_7_c;
+
+        uint8x8_t output_data_0_c;
+        uint8x8_t output_data_1_c;
+        uint8x8_t output_data_2_c;
+        uint8x8_t output_data_3_c;
+        uint8x8_t output_data_4_c;
+        uint8x8_t output_data_5_c;
+        uint8x8_t output_data_6_c;
+        uint8x8_t output_data_7_c;
+        for (int j = 0; j < (input_width - 1); ++j) {
+          // output_base_ptr_0 = output_base_ptr;
+          // output_base_ptr_1 = output_base_ptr_0 + output_row_stride; ETC
+          {
+            const op_int16x8_t tl_val(
+                Load8IntoLowerS16(&input_base_ptr[c_block + depth * j]));
+            const op_int16x8_t bl_val(Load8IntoLowerS16(
+                &input_base_ptr[c_block + depth * j + input_row_stride]));
+            const op_int16x8_t tr_val(
+                Load8IntoLowerS16(&input_base_ptr[c_block + depth * (j + 1)]));
+            const op_int16x8_t br_val(Load8IntoLowerS16(
+                &input_base_ptr[c_block + depth * (j + 1) + input_row_stride]));
+
+            const op_int16x8_t tmp_diff = tr_val - tl_val;
+            wdelta_c = tmp_diff << 4;
+            wdelta_twice_c = wdelta_c << 1;
+            hwdelta_c = (br_val - bl_val) - tmp_diff;
+            hwdelta_twice_c = hwdelta_c << 1;
+
+            op_int16x8_t incr_base = wdelta_c + hwdelta_c;
+            accum_0_c_v += incr_base;
+            incr_0_c = incr_base << 1;
+            incr_base += hwdelta_twice_c;
+            accum_1_c_v += incr_base;
+            incr_1_c = incr_base << 1;
+
+            PairExtractUpper(accum_0_c_v.val, accum_1_c_v.val, &output_data_0_c,
+                             &output_data_1_c);
+            vst1_u8(&output_base_ptr_0[c_block + depth * j * 8 + depth * 4],
+                    output_data_0_c);
+            vst1_u8(&output_base_ptr_1[c_block + depth * j * 8 + depth * 4],
+                    output_data_1_c);
+
+            incr_base += hwdelta_twice_c;
+            accum_2_c_v += incr_base;
+            incr_2_c = incr_base << 1;
+            incr_base += hwdelta_twice_c;
+            accum_3_c_v += incr_base;
+            incr_3_c = incr_base << 1;
+
+            PairExtractUpper(accum_2_c_v.val, accum_3_c_v.val, &output_data_2_c,
+                             &output_data_3_c);
+            vst1_u8(&output_base_ptr_2[c_block + depth * j * 8 + depth * 4],
+                    output_data_2_c);
+            vst1_u8(&output_base_ptr_3[c_block + depth * j * 8 + depth * 4],
+                    output_data_3_c);
+
+            incr_base += hwdelta_twice_c;
+            accum_4_c_v += incr_base;
+            incr_4_c = incr_base << 1;
+            incr_base += hwdelta_twice_c;
+            accum_5_c_v += incr_base;
+            incr_5_c = incr_base << 1;
+
+            PairExtractUpper(accum_4_c_v.val, accum_5_c_v.val, &output_data_4_c,
+                             &output_data_5_c);
+            vst1_u8(&output_base_ptr_4[c_block + depth * j * 8 + depth * 4],
+                    output_data_4_c);
+            vst1_u8(&output_base_ptr_5[c_block + depth * j * 8 + depth * 4],
+                    output_data_5_c);
+
+            incr_base += hwdelta_twice_c;
+            accum_6_c_v += incr_base;
+            incr_6_c = incr_base << 1;
+            incr_base += hwdelta_twice_c;
+            accum_7_c_v += incr_base;
+            incr_7_c = incr_base << 1;
+
+            PairExtractUpper(accum_6_c_v.val, accum_7_c_v.val, &output_data_6_c,
+                             &output_data_7_c);
+            vst1_u8(&output_base_ptr_6[c_block + depth * j * 8 + depth * 4],
+                    output_data_6_c);
+            vst1_u8(&output_base_ptr_7[c_block + depth * j * 8 + depth * 4],
+                    output_data_7_c);
+
+            for (int p = 1; p < 8; ++p) {
+              accum_0_c_v += incr_0_c;
+              accum_1_c_v += incr_1_c;
+              PairExtractUpper(accum_0_c_v.val, accum_1_c_v.val,
+                               &output_data_0_c, &output_data_1_c);
+              vst1_u8(&output_base_ptr_0[c_block + depth * j * 8 + depth * p +
+                                         depth * 4],
+                      output_data_0_c);
+              vst1_u8(&output_base_ptr_1[c_block + depth * j * 8 + depth * p +
+                                         depth * 4],
+                      output_data_1_c);
+
+              accum_2_c_v += incr_2_c;
+              accum_3_c_v += incr_3_c;
+              PairExtractUpper(accum_2_c_v.val, accum_3_c_v.val,
+                               &output_data_2_c, &output_data_3_c);
+              vst1_u8(&output_base_ptr_2[c_block + depth * j * 8 + depth * p +
+                                         depth * 4],
+                      output_data_2_c);
+              vst1_u8(&output_base_ptr_3[c_block + depth * j * 8 + depth * p +
+                                         depth * 4],
+                      output_data_3_c);
+
+              accum_4_c_v += incr_4_c;
+              accum_5_c_v += incr_5_c;
+              PairExtractUpper(accum_4_c_v.val, accum_5_c_v.val,
+                               &output_data_4_c, &output_data_5_c);
+              vst1_u8(&output_base_ptr_4[c_block + depth * j * 8 + depth * p +
+                                         depth * 4],
+                      output_data_4_c);
+              vst1_u8(&output_base_ptr_5[c_block + depth * j * 8 + depth * p +
+                                         depth * 4],
+                      output_data_5_c);
+
+              accum_6_c_v += incr_6_c;
+              accum_7_c_v += incr_7_c;
+              PairExtractUpper(accum_6_c_v.val, accum_7_c_v.val,
+                               &output_data_6_c, &output_data_7_c);
+              vst1_u8(&output_base_ptr_6[c_block + depth * j * 8 + depth * p +
+                                         depth * 4],
+                      output_data_6_c);
+              vst1_u8(&output_base_ptr_7[c_block + depth * j * 8 + depth * p +
+                                         depth * 4],
+                      output_data_7_c);
+            }
+
+            accum_0_c_v += (incr_0_c >> 1);
+            accum_1_c_v += (incr_1_c >> 1);
+            accum_2_c_v += (incr_2_c >> 1);
+            accum_3_c_v += (incr_3_c >> 1);
+            accum_4_c_v += (incr_4_c >> 1);
+            accum_5_c_v += (incr_5_c >> 1);
+            accum_6_c_v += (incr_6_c >> 1);
+            accum_7_c_v += (incr_7_c >> 1);
+          }
+        }
+
+        // Right margin.
+        {
+          // Accumulations have pre-added 0.5 for rounding, but that is just
+          // discarded and this just avoids re-loading.
+          PairExtractUpper(accum_0_c_v.val, accum_1_c_v.val, &output_data_0_c,
+                           &output_data_1_c);
+          PairExtractUpper(accum_2_c_v.val, accum_3_c_v.val, &output_data_2_c,
+                           &output_data_3_c);
+          PairExtractUpper(accum_4_c_v.val, accum_5_c_v.val, &output_data_4_c,
+                           &output_data_5_c);
+          PairExtractUpper(accum_6_c_v.val, accum_7_c_v.val, &output_data_6_c,
+                           &output_data_7_c);
+          for (int p = 0; p < 4; ++p) {
+            vst1_u8(&output_base_ptr_0[c_block + depth * (input_width - 1) * 8 +
+                                       depth * 4 + depth * p],
+                    output_data_0_c);
+            vst1_u8(&output_base_ptr_1[c_block + depth * (input_width - 1) * 8 +
+                                       depth * 4 + depth * p],
+                    output_data_1_c);
+            vst1_u8(&output_base_ptr_2[c_block + depth * (input_width - 1) * 8 +
+                                       depth * 4 + depth * p],
+                    output_data_2_c);
+            vst1_u8(&output_base_ptr_3[c_block + depth * (input_width - 1) * 8 +
+                                       depth * 4 + depth * p],
+                    output_data_3_c);
+            vst1_u8(&output_base_ptr_4[c_block + depth * (input_width - 1) * 8 +
+                                       depth * 4 + depth * p],
+                    output_data_4_c);
+            vst1_u8(&output_base_ptr_5[c_block + depth * (input_width - 1) * 8 +
+                                       depth * 4 + depth * p],
+                    output_data_5_c);
+            vst1_u8(&output_base_ptr_6[c_block + depth * (input_width - 1) * 8 +
+                                       depth * 4 + depth * p],
+                    output_data_6_c);
+            vst1_u8(&output_base_ptr_7[c_block + depth * (input_width - 1) * 8 +
+                                       depth * 4 + depth * p],
+                    output_data_7_c);
+          }
+        }
+      }
+
+      output_base_ptr += output_row_stride * 8;
+      input_base_ptr += input_row_stride;
+    }
+
+    //
+
+    for (int c_block = 0; c_block < depth; c_block += 8) {
+      op_uint16x8_t accum_c_v;
+      // Bottom-left margin corner.
+      {
+        uint8x8_t output_data = vld1_u8(&input_base_ptr[c_block]);
+        vst1_u8(&output_base_ptr[c_block], output_data);
+        vst1_u8(&output_base_ptr[c_block + depth], output_data);
+        vst1_u8(&output_base_ptr[c_block + depth * 2], output_data);
+        vst1_u8(&output_base_ptr[c_block + depth * 3], output_data);
+
+        // Accumulate in 8.8 representation, pre-adding 0.5 for later rounding.
+        accum_c_v = vaddq_u16(Move8IntoUpperU16(output_data), vdupq_n_s16(128));
+      }
+
+      // Bottom-centre margin.
+      op_int16x8_t wdelta_c_v;
+      op_int16x8_t wdelta_twice_c_v;
+      for (int j = 0; j < (input_width - 1); ++j) {
+        {
+          uint8x8_t output_data_alt;
+          uint8x8_t output_data;
+
+          const op_int16x8_t tl_val(
+              Load8IntoLowerS16(&input_base_ptr[c_block + depth * j]));
+          const op_int16x8_t tr_val(
+              Load8IntoLowerS16(&input_base_ptr[c_block + depth * (j + 1)]));
+          wdelta_c_v = (tr_val - tl_val) << 4;
+          wdelta_twice_c_v = wdelta_c_v << 1;
+
+          op_uint16x8_t accum_c_v_alt = accum_c_v + wdelta_c_v;
+          accum_c_v = accum_c_v_alt + wdelta_twice_c_v;
+          PairExtractUpper(accum_c_v_alt.val, accum_c_v.val, &output_data_alt,
+                           &output_data);
+
+          vst1_u8(&output_base_ptr[c_block + depth * j * 8 + depth * 4],
+                  output_data_alt);
+          vst1_u8(&output_base_ptr[c_block + depth * j * 8 + depth + depth * 4],
+                  output_data);
+
+          for (int p = 2; p < 8; p += 2) {
+            accum_c_v_alt = accum_c_v + wdelta_twice_c_v;
+            accum_c_v = accum_c_v_alt + wdelta_twice_c_v;
+            PairExtractUpper(accum_c_v_alt.val, accum_c_v.val, &output_data_alt,
+                             &output_data);
+
+            vst1_u8(&output_base_ptr[c_block + depth * j * 8 + depth * p +
+                                     depth * 4],
+                    output_data_alt);
+            vst1_u8(&output_base_ptr[c_block + depth * j * 8 + depth * (p + 1) +
+                                     depth * 4],
+                    output_data);
+          }
+          accum_c_v += wdelta_c_v;
+        }
+      }
+
+      // Bottom-right margin corner.
+      {
+        uint8x8_t output_data_discard;
+        uint8x8_t output_data;
+
+        // Accumulations have pre-added 0.5 for rounding, but that is just
+        // discarded and this just avoids re-loading.
+        PairExtractUpper(accum_c_v.val, accum_c_v.val, &output_data,
+                         &output_data_discard);
+
+        vst1_u8(&output_base_ptr[c_block + depth * (input_width - 1) * 8 +
+                                 depth * 4],
+                output_data);
+        vst1_u8(&output_base_ptr[c_block + depth * (input_width - 1) * 8 +
+                                 depth * 4 + depth],
+                output_data);
+        vst1_u8(&output_base_ptr[c_block + depth * (input_width - 1) * 8 +
+                                 depth * 4 + depth * 2],
+                output_data);
+        vst1_u8(&output_base_ptr[c_block + depth * (input_width - 1) * 8 +
+                                 depth * 4 + depth * 3],
+                output_data);
+      }
+    }
+    // Fill out remainder of bottom margin.
+    std::memcpy(output_base_ptr + output_row_stride, output_base_ptr,
+                output_row_stride * sizeof(uint8));
+    std::memcpy(output_base_ptr + output_row_stride * 2, output_base_ptr,
+                output_row_stride * sizeof(uint8));
+    std::memcpy(output_base_ptr + output_row_stride * 3, output_base_ptr,
+                output_row_stride * sizeof(uint8));
+
+#else  // USE_NEON
     for (int c_block = 0; c_block < depth; c_block += 8) {
       uint8 output_data[8];
       uint16 accum[8];
@@ -497,6 +1218,8 @@ inline void ResizeBilinear888Uint8(int32 batches, int32 input_height,
                 output_row_stride * sizeof(uint8));
     std::memcpy(output_base_ptr + output_row_stride * 3, output_base_ptr,
                 output_row_stride * sizeof(uint8));
+
+#endif  // USE_NEON
   }
 }  // NOLINT(readability/fn_size)
 
