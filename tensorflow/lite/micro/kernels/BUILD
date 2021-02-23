@@ -91,6 +91,44 @@ cc_library(
 )
 
 cc_library(
+    name = "depthwise_conv",
+    srcs = [
+        "depthwise_conv_common.cc",
+    ] + select({
+        "//conditions:default": [
+            "depthwise_conv.cc",
+        ],
+        ":xtensa_hifimini": [
+            "xtensa/depthwise_conv.cc",
+        ],
+    }),
+    hdrs = ["depthwise_conv.h"],
+    copts = micro_copts(),
+    visibility = [
+        # Kernel variants need to be visible to the examples and benchmarks.
+        ":micro",
+    ],
+    deps = [
+        ":conv",
+        ":fixedpoint_utils",
+        ":kernel_util",
+        ":xtensa",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:common",
+        "//tensorflow/lite/kernels/internal:quantization_util",
+        "//tensorflow/lite/kernels/internal:reference_base",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels:padding",
+    ] + select({
+        "//conditions:default": [],
+        ":xtensa_hifimini": [
+            #"//third_party/xtensa/cstub64s:hifi_mini",
+        ],
+    }),
+)
+
+cc_library(
     name = "ethosu",
     srcs = [
         "ethosu.cc",
@@ -252,13 +290,11 @@ cc_library(
         "zeros_like.cc",
     ] + select({
         "//conditions:default": [
-            "depthwise_conv.cc",
             "quantize.cc",
             "softmax.cc",
             "svdf.cc",
         ],
         ":xtensa_hifimini": [
-            "xtensa/depthwise_conv.cc",
             "xtensa/quantize.cc",
             "xtensa/softmax.cc",
             "xtensa/svdf.cc",
