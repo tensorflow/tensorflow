@@ -3342,7 +3342,8 @@ def categorical_accuracy(y_true, y_pred):
   Returns:
     Categorical accuracy values.
   """
-  assert y_true.shape==y_pred.shape
+  #assert if both have same shape
+  assert y_true.shape==y_pred.shape,"Both inputs must have same shapes and must be one-hot encoded. Use tf.one_hot() to one hot encode the inputs."
   
   return math_ops.cast(
       math_ops.equal(
