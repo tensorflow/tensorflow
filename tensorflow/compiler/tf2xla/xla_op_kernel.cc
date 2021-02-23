@@ -177,8 +177,7 @@ Status XlaOpKernelContext::ConstantInputReshaped(
         "This error means that a shape or dimension argument could not be "
         "evaluated at compile time, usually because the value of the argument "
         "depends on a parameter to the computation, on a variable, or on a "
-        "stateful operation such as a random number generator.",
-        StackTrace());
+        "stateful operation such as a random number generator.");
   }
 
   Tensor temp(constant->dtype());
@@ -266,10 +265,13 @@ Status XlaOpKernelContext::ResolveInputDynamismIntoPred(int index, bool* out) {
   auto* client = compiler() ? compiler()->client() : nullptr;
   xla::StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism(client);
   if (!dynamism_or_status.ok()) {
-    Status status = dynamism_or_status.status();
-    errors::AppendToMessage(&status, "while evaluating input dynamism", index,
-                            " of ", context_->op_kernel().type_string());
-    return status;
+    // When failed to resolve dynamism, conservatively consider the value
+    // dynamic.
+    //
+    // TODO(b/176993339): Support resolving dynamism across computations so
+    // resolving dynamism will not fail.
+    *out = true;
+    return Status::OK();
   }
   Tensor dynamism = dynamism_or_status.ValueOrDie();
 
@@ -293,10 +295,13 @@ Status XlaOpKernelContext::ResolveInputDynamismIntoPredVector(
   auto* client = compiler() ? compiler()->client() : nullptr;
   xla::StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism(client);
   if (!dynamism_or_status.ok()) {
-    Status status = dynamism_or_status.status();
-    errors::AppendToMessage(&status, "while evaluating input dynamism", index,
-                            " of ", context_->op_kernel().type_string());
-    return status;
+    // When failed to resolve dynamism, conservatively consider the value
+    // dynamic.
+    //
+    // TODO(b/176993339): Support resolving dynamism across computations so
+    // resolving dynamism will not fail.
+    out->resize(InputShape(index).num_elements(), false);
+    return Status::OK();
   }
   Tensor dynamism = dynamism_or_status.ValueOrDie();
 
@@ -658,19 +663,29 @@ Status XlaOpKernelContext::AssignVariable(absl::string_view name, DataType type,
                               builder());
 }
 
+static Status GetStatusWithStackTrace(const Status& s,
+                                      const XlaOpKernelContext* ctx) {
+  if (s.code() == error::INVALID_ARGUMENT) {
+    return Status{s.code(),
+                  absl::StrCat(s.error_message(), "\n", ctx->StackTrace())};
+  }
+  return s;
+}
+
 void XlaOpKernelContext::CtxFailure(const Status& s) {
-  context_->CtxFailure(s);
+  context_->CtxFailure(GetStatusWithStackTrace(s, this));
 }
 void XlaOpKernelContext::CtxFailureWithWarning(const Status& s) {
-  context_->CtxFailureWithWarning(s);
+  context_->CtxFailureWithWarning(GetStatusWithStackTrace(s, this));
 }
+
 void XlaOpKernelContext::CtxFailure(const char* file, int line,
                                     const Status& s) {
-  context_->CtxFailure(file, line, s);
+  context_->CtxFailure(file, line, GetStatusWithStackTrace(s, this));
 }
 void XlaOpKernelContext::CtxFailureWithWarning(const char* file, int line,
                                                const Status& s) {
-  context_->CtxFailureWithWarning(file, line, s);
+  context_->CtxFailureWithWarning(file, line, GetStatusWithStackTrace(s, this));
 }
 
 const xla::XlaComputation* XlaOpKernelContext::GetOrCreateMax(

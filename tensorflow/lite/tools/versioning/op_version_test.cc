@@ -333,10 +333,33 @@ TEST(OpVersionTest, VersioningReduceMaxTest) {
 }
 
 TEST(OpVersionTest, VersioningAddTest) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_ADD,
+      .input_types = std::vector<TensorType>{TensorType_INT16},
+      .output_types = std::vector<TensorType>{TensorType_INT16}};
+  fake_op_sig.options.addsub.pot_scale_int16 = false;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+
   SimpleVersioningTest(BuiltinOperator_ADD);
 }
 
 TEST(OpVersionTest, VersioningSubTest) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_SUB,
+      .input_types = std::vector<TensorType>{TensorType_INT16},
+      .output_types = std::vector<TensorType>{TensorType_INT16}};
+  fake_op_sig.options.addsub.pot_scale_int16 = false;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
+
+  fake_op_sig.input_types = std::vector<TensorType>{TensorType_INT64};
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
+
+  fake_op_sig.input_types = std::vector<TensorType>{TensorType_INT8};
+  fake_op_sig.output_types = std::vector<TensorType>{TensorType_INT8};
+  fake_op_sig.options.addsub.need_broadcast = true;
+  fake_op_sig.options.addsub.num_dims = 5;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+
   SimpleVersioningTest(BuiltinOperator_SUB);
 }
 
@@ -659,6 +682,13 @@ TEST(OpVersionTest, VersioningGatherNdOperatorTest) {
           std::vector<TensorType>{TensorType_STRING, TensorType_INT32},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_GATHER_ND,
+      .input_types =
+          std::vector<TensorType>{TensorType_INT16, TensorType_INT32},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }
 TEST(OpVersionTest, VersioningDivTest) {
   OpSignature fake_op_sig = {
@@ -677,7 +707,15 @@ TEST(OpVersionTest, VersioningDivTest) {
 TEST(OpVersionTEst, VersioningFillTest) {
   OpSignature fake_op_sig = {.op = BuiltinOperator_FILL,
                              .input_types = std::vector<TensorType>{
-                                 TensorType_INT32, TensorType_BOOL}};
+                                 TensorType_INT32, TensorType_INT8}};
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+  fake_op_sig = {.op = BuiltinOperator_FILL,
+                 .input_types = std::vector<TensorType>{TensorType_INT64,
+                                                        TensorType_INT16}};
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+  fake_op_sig = {.op = BuiltinOperator_FILL,
+                 .input_types = std::vector<TensorType>{TensorType_INT32,
+                                                        TensorType_BOOL}};
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
   fake_op_sig = {.op = BuiltinOperator_FILL,
                  .input_types = std::vector<TensorType>{TensorType_INT32,
@@ -870,5 +908,28 @@ TEST(OpVersionTest, VersioningRsqrtTest) {
       .output_types = std::vector<TensorType>{TensorType_INT8},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+}
+TEST(OpVersionTest, VersioningBroadcastToTest) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_BROADCAST_TO,
+      .input_types = std::vector<TensorType>{TensorType_FLOAT32},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  // Quantized broadcast_to op is version 3.
+  fake_op_sig = {
+      .op = BuiltinOperator_BROADCAST_TO,
+      .input_types = std::vector<TensorType>{TensorType_INT8},
+      .output_types = std::vector<TensorType>{TensorType_INT8},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_BROADCAST_TO,
+      .input_types = std::vector<TensorType>{TensorType_INT16},
+      .output_types = std::vector<TensorType>{TensorType_INT16},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }
 }  // namespace tflite

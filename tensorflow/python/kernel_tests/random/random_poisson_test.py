@@ -104,7 +104,7 @@ class RandomPoissonTest(test.TestCase):
     merged.
     """
     for dtype in dtypes.float16, dtypes.float32, dtypes.float64:
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         rnd1 = random_ops.random_poisson(2.0, [24], dtype=dtype)
         rnd2 = random_ops.random_poisson(2.0, [24], dtype=dtype)
         diff = rnd2 - rnd1

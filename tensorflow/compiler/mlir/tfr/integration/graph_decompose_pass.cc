@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfr/integration/graph_decompose_pass.h"
 
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/mlir_graph_optimization_pass.h"
 #include "tensorflow/compiler/mlir/tfr/integration/tfr_decompose_ctx.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -29,15 +30,18 @@ auto* tf_core_op_expansion_graph_counter =
 
 namespace tfr {
 
-bool GraphDecomposePass::IsEnabled(const ConfigProto& config_proto,
-                                   const Graph& graph) const {
+MlirOptimizationPassState GraphDecomposePass::GetPassState(
+    const DeviceSet* device_set, const ConfigProto& config_proto,
+    const Graph& graph) const {
   const char* tfr_lib_env_val = getenv(std::string(kTFRLibEnv).c_str());
-  return tfr_lib_env_val != nullptr;
+  return tfr_lib_env_val != nullptr ? MlirOptimizationPassState::Enabled
+                                    : MlirOptimizationPassState::Disabled;
 }
 
 Status GraphDecomposePass::Run(const ConfigProto& config_proto,
                                mlir::ModuleOp module, const Graph& graph) {
-  if (!IsEnabled(config_proto, graph)) {
+  if (GetPassState(/*device_set=*/nullptr, config_proto, graph) ==
+      MlirOptimizationPassState::Disabled) {
     LOG_FIRST_N(INFO, 1) << "Skipping Graph Decomposition Pass, decomposition"
                             " library was not found";
     return Status::OK();

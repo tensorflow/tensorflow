@@ -538,6 +538,7 @@ xla_test(
         "//tensorflow/compiler/xla/tests:test_macros_header",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:tensor_float_32_utils",
     ],
 )
 
@@ -609,7 +610,6 @@ xla_test(
     name = "logdet_test",
     srcs = ["logdet_test.cc"],
     tags = [
-        "no_rocm",
         "optonly",
     ],
     deps = [

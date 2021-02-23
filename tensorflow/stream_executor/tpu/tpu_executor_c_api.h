@@ -20,7 +20,6 @@ limitations under the License.
 #include <stdint.h>
 
 #include "tensorflow/c/tf_attrtype.h"
-#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/tpu/libtftpu.h"
 #include "tensorflow/stream_executor/tpu/c_api_decl.h"
 
@@ -41,6 +40,7 @@ int64_t TpuPlatform_TpuMemoryLimit(SE_Platform* platform);
 bool TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopy(SE_Platform* platform);
 SE_TpuTopology* TpuPlatform_GetTopologyPtr(SE_Platform* platform);
 SE_TpuTopology_Host* TpuPlatform_GetHostLocation(SE_Platform* platform);
+TpuRuntimeVersion TpuPlatform_GetRuntimeVersion(SE_Platform* platform);
 
 void TpuExecutor_Init(SE_StreamExecutor* executor, int device_ordinal,
                       SE_DeviceOptions* device_options, TF_Status* status);
@@ -218,11 +218,9 @@ void TpuTransferManager_TransferBuffersToInfeed(XLA_TransferManager* manager,
                                                 int64_t* buffers_size_in_uint32,
                                                 int64_t buffers_array_size,
                                                 TF_Status* status);
-void TpuTransferManager_TransferLiteralFromOutfeed(XLA_TransferManager* manager,
-                                                   SE_StreamExecutor* executor,
-                                                   XLA_Shape* shape,
-                                                   XLA_Literal* c_literal,
-                                                   TF_Status* status);
+void TpuTransferManager_TransferLiteralFromOutfeed(
+    XLA_TransferManager* manager, SE_StreamExecutor* executor,
+    XLA_Shape* shape /*deprecated*/, XLA_Literal* c_literal, TF_Status* status);
 void TpuTransferManager_ResetDevices(XLA_TransferManager* manager,
                                      SE_StreamExecutor** executors,
                                      int64_t num_executors, TF_Status* status);
@@ -253,9 +251,12 @@ int TpuTopology_ChipBounds_X(SE_TpuTopology* tpu_topology);
 int TpuTopology_ChipBounds_Y(SE_TpuTopology* tpu_topology);
 int TpuTopology_ChipBounds_Z(SE_TpuTopology* tpu_topology);
 bool TpuTopology_HasChip(SE_TpuTopology* tpu_topology, int x, int y, int z);
-SE_TpuTopology_Core* TpuTopology_Core(SE_TpuTopology* tpu_topology, int x,
-                                      int y, int z,
-                                      TpuCoreTypeEnum tpu_core_type, int index);
+SE_TpuTopology_Core* TpuTopology_CoreForId(SE_TpuTopology* tpu_topology,
+                                           TpuCoreTypeEnum tpu_core_type,
+                                           int id);
+SE_TpuTopology_Core* TpuTopology_Core(SE_TpuTopology* tpu_topology,
+                                      TpuCoreTypeEnum tpu_core_type, int x,
+                                      int y, int z, int index);
 int TpuTopology_NumCores(SE_TpuTopology* tpu_topology,
                          TpuCoreTypeEnum tpu_core_type);
 // 'cores' should be a preallocated array of size TpuTopology_NumCores.
@@ -309,6 +310,18 @@ TFTPU_CAPI_EXPORT void TpuExecutable_ExecuteAsyncOnStream(
     SE_HloExecutionProfile* hlo_execution_profile,
     SE_ExecutionOutput* se_output, TF_Status* status);
 
+// This frees the XLA_ShapeIndex* array allocated when se_output is returned by
+// TpuExecutable_ExecuteAsyncOnStream.
+TFTPU_CAPI_EXPORT void TpuExecutable_FreeXlaShapeIndexArray(
+    XLA_ShapeIndex* array);
+
+// This frees the SE_MaybeOwningDeviceMemory* array allocated when se_output is
+// returned by TpuExecutable_ExecuteAsyncOnStream.
+// Note that this only frees the heap-allocated array itself, and does not
+// free any of the underlying device memory.
+TFTPU_CAPI_EXPORT void TpuExecutable_FreeMaybeOwningDeviceMemoryArray(
+    SE_MaybeOwningDeviceMemory* array);
+
 TFTPU_CAPI_EXPORT void TpuExecutable_Fingerprint(SE_Executable* executable,
                                                  const char** fingerprint,
                                                  size_t* size);
@@ -341,6 +354,7 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopy);
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_GetTopologyPtr);
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_GetHostLocation);
+  TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_GetRuntimeVersion);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_Init);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_Free);
@@ -446,6 +460,7 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_ChipBounds_Y);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_ChipBounds_Z);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_HasChip);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_CoreForId);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_Core);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_NumCores);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_Cores);
@@ -468,6 +483,8 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_Compile);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_ShapeSize);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_ExecuteAsyncOnStream);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_FreeXlaShapeIndexArray);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_FreeMaybeOwningDeviceMemoryArray);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_Fingerprint);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_HloModule);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_Free);

@@ -477,13 +477,13 @@ class TF_DerivedOperandTypeListAttr<int idx> : DerivedAttr<
   "return {mlir::OperandElementTypeIterator(values.begin()), "
           "mlir::OperandElementTypeIterator(values.end())};",
   [{
-    ArrayAttr::get(
+    ArrayAttr::get($_ctx, 
     [&]() {
       llvm::SmallVector<Attribute, 4> ret;
       for (auto t : $_self)
         ret.push_back(TypeAttr::get(t));
       return ret;
-    }(), $_ctx)
+    }())
   }]
 >;
 
@@ -497,13 +497,13 @@ class TF_DerivedOperandShapeListAttr<int idx> : DerivedAttr<
   "return {mlir::TF::OperandShapeIterator(values.begin()), "
           "mlir::TF::OperandShapeIterator(values.end())};",
   [{
-    ArrayAttr::get(
+    ArrayAttr::get($_ctx,
       [&](){
         llvm::SmallVector<Attribute, 4> ret;
         for (auto shape : $_self)
           ret.push_back(mlir::TF::ShapeAttr::get($_ctx, shape));
         return ret;
-      }(), $_ctx)
+      }())
   }]
 >;
 
@@ -533,13 +533,13 @@ class TF_DerivedResultTypeListAttr<int idx> : DerivedAttr<
   "return {mlir::ResultElementTypeIterator(values.begin()), "
           "mlir::ResultElementTypeIterator(values.end())};",
   [{
-    ArrayAttr::get(
+    ArrayAttr::get($_ctx, 
     [&]() {
       llvm::SmallVector<Attribute, 4> ret;
       for (auto t : $_self)
         ret.push_back(TypeAttr::get(t));
       return ret;
-    }(), $_ctx)
+    }())
   }]
 >;
 
@@ -553,39 +553,19 @@ class TF_DerivedResultShapeListAttr<int idx> : DerivedAttr<
   "return {mlir::TF::ResultShapeIterator(values.begin()), "
           "mlir::TF::ResultShapeIterator(values.end())};",
   [{
-    ArrayAttr::get(
+    ArrayAttr::get($_ctx,
       [&](){
         llvm::SmallVector<Attribute, 4> ret;
         for (auto shape : $_self)
           ret.push_back(mlir::TF::ShapeAttr::get($_ctx, shape));
         return ret;
-      }(), $_ctx)
+      }())
   }]
 >;
 
 // A derived attribute that returns the shape of the first result type.
 def TF_DerivedResultShapeAttr : DerivedAttr<"ShapedType",
   "return (*getOperation()->result_type_begin()).cast<ShapedType>();",
-  [{ mlir::TF::ShapeAttr::get($_ctx, $_self) }]>;
-
-// A derived attribute that returns the element type of the tensor held by a
-// named resource-type operand or result.
-class TF_DerivedOperandOrResultHandleTypeAttr<string name> : DerivedTypeAttr<
-  "auto resource_type =\n"
-  "  mlir::getElementTypeOrSelf(this->" # name # "())\n"
-  "  .cast<TF::ResourceType>();\n"
-  "assert(!resource_type.getSubtypes().empty() && \"unknown type\");\n"
-  "return mlir::getElementTypeOrSelf(*resource_type.getSubtypes().begin());">;
-
-// A derived attribute that returns the shape of the tensor held by a named
-// resource-type operand or result.
-class TF_DerivedOperandOrResultHandleShapeAttr<string name> : DerivedAttr<
-  "ShapedType",
-  "auto resource_type =\n"
-  "  mlir::getElementTypeOrSelf(this->" # name # "())\n"
-  "  .cast<TF::ResourceType>();\n"
-  "assert(!resource_type.getSubtypes().empty() && \"unknown shape\");\n"
-  "return resource_type.getSubtypes().begin()->cast<ShapedType>();",
   [{ mlir::TF::ShapeAttr::get($_ctx, $_self) }]>;
 
 def TF_IntTypeAttr : TypeAttrBase<"IntegerType", "integer type"> {

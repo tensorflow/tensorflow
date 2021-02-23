@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/arguments.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
 #include "tensorflow/lite/delegates/gpu/metal/gpu_object.h"
+#include "tensorflow/lite/delegates/gpu/metal/metal_device.h"
 
 namespace tflite {
 namespace gpu {
@@ -34,8 +35,8 @@ class MetalArguments : public ArgumentsBinder {
  public:
   MetalArguments() = default;
 
-  absl::Status Init(id<MTLDevice> device, int buffer_offset, Arguments* args,
-                    std::string* code);
+  absl::Status Init(const std::map<std::string, std::string>& linkables,
+                    MetalDevice* device, Arguments* args, std::string* code);
 
   // Move only
   MetalArguments(MetalArguments&& args) = default;
@@ -48,7 +49,8 @@ class MetalArguments : public ArgumentsBinder {
   absl::Status SetHalf(const std::string& name, half value) override;
   absl::Status SetObjectRef(const std::string& name, const GPUObject& object);
 
-  void Encode(id<MTLComputeCommandEncoder> encoder, int buffer_offset) const;
+  void Encode(id<MTLComputeCommandEncoder> encoder, int buffer_offset,
+              int texture_offset = 0) const;
 
  private:
   // creates structure with layout:
@@ -75,23 +77,33 @@ class MetalArguments : public ArgumentsBinder {
   void AddGPUResources(const std::string& name, const GPUResources& resources,
                        Arguments* args);
 
-  std::string GetListOfArgs(int buffer_offset);
+  std::string GetListOfArgs(int buffer_offset, int textures_offset = 0);
 
   absl::Status SetGPUResources(const std::string& name,
                                const GPUResourcesWithValue& resources);
 
   void AddBuffer(const std::string& name, const GPUBufferDescriptor& desc);
+  void AddImage2D(const std::string& name, const GPUImage2DDescriptor& desc);
+  void AddImage2DArray(const std::string& name,
+                       const GPUImage2DArrayDescriptor& desc);
+  void AddImage3D(const std::string& name, const GPUImage3DDescriptor& desc);
+  void AddImageBuffer(const std::string& name,
+                      const GPUImageBufferDescriptor& desc);
 
   absl::Status SetBuffer(const std::string& name, id<MTLBuffer> handle);
+  absl::Status SetImage2D(const std::string& name, id<MTLTexture> handle);
+  absl::Status SetImage2DArray(const std::string& name, id<MTLTexture> handle);
+  absl::Status SetImage3D(const std::string& name, id<MTLTexture> handle);
+  absl::Status SetImageBuffer(const std::string& name, id<MTLTexture> handle);
 
   absl::Status SetObjectsResources(const Arguments& args);
 
   absl::Status ResolveSelectorsPass(
-      const Arguments& args,
+      const GpuInfo& gpu_info, const Arguments& args,
       const std::map<std::string, std::string>& linkables, std::string* code);
 
   absl::Status ResolveSelector(
-      const Arguments& args,
+      const GpuInfo& gpu_info, const Arguments& args,
       const std::map<std::string, std::string>& linkables,
       const std::string& object_name, const std::string& selector,
       const std::vector<std::string>& function_args,
@@ -133,7 +145,28 @@ class MetalArguments : public ArgumentsBinder {
     GPUBufferDescriptor desc;
     id<MTLBuffer> handle;
   };
+  struct MetalImage2DDescriptor {
+    GPUImage2DDescriptor desc;
+    id<MTLTexture> handle;
+  };
+  struct MetalImage2DArrayDescriptor {
+    GPUImage2DArrayDescriptor desc;
+    id<MTLTexture> handle;
+  };
+  struct MetalImage3DDescriptor {
+    GPUImage3DDescriptor desc;
+    id<MTLTexture> handle;
+  };
+  struct MetalImageBufferDescriptor {
+    GPUImageBufferDescriptor desc;
+    id<MTLTexture> handle;
+  };
+
   std::map<std::string, MetalBufferDescriptor> buffers_;
+  std::map<std::string, MetalImage2DDescriptor> images2d_;
+  std::map<std::string, MetalImage2DArrayDescriptor> image2d_arrays_;
+  std::map<std::string, MetalImage3DDescriptor> images3d_;
+  std::map<std::string, MetalImageBufferDescriptor> image_buffers_;
 
   std::map<std::string, GPUObjectDescriptorPtr> object_refs_;
   std::vector<GPUObjectPtr> objects_;

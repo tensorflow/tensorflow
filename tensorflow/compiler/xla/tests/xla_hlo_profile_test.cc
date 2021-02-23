@@ -181,8 +181,8 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
   TF_ASSERT_OK(stream_ptr->BlockHostUntilDone());
   (void)execution_result;
 
-  *profile_output =
-      hlo_execution_profile.ToString(executor->GetDeviceDescription());
+  *profile_output = hlo_execution_profile.ToString(
+      executor->GetDeviceDescription().clock_rate_ghz());
 
   XLA_VLOG_LINES(4, *profile_output);
 }

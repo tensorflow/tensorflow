@@ -239,6 +239,12 @@ class Options(object):
     self.multi_gen_state = None
     self.use_experimental_converter = False
     self.mlir_quantizer = False
+    # The list of ops' name that should exist in the converted model.
+    # This feature is currently only supported in MLIR conversion path.
+    # Example of supported ops' name:
+    # - "AVERAGE_POOL_2D" for builtin op.
+    # - "NumericVerify" for custom op.
+    self.expected_ops_in_converted_model = []
 
 
 def _prepare_dir(options):
@@ -327,5 +333,6 @@ def generate_multi_set_examples(options, test_sets):
 
       generate_examples(new_options)
 
-    archive.writestr("manifest.txt", "".join(multi_gen_state.zip_manifest),
+    zipinfo = zipfile.ZipInfo("manifest.txt")
+    archive.writestr(zipinfo, "".join(multi_gen_state.zip_manifest),
                      zipfile.ZIP_DEFLATED)

@@ -14,7 +14,6 @@ load(
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_additional_env_hdrs",
     "tf_additional_lib_hdrs",
     "tf_additional_tensor_coding_deps",
     "tf_additional_test_srcs",
@@ -635,6 +634,11 @@ cc_library(
 )
 
 cc_library(
+    name = "stack_frame",
+    hdrs = ["stack_frame.h"],
+)
+
+cc_library(
     name = "status",
     srcs = ["status.cc"],
     hdrs = ["status.h"],
@@ -642,6 +646,7 @@ cc_library(
         ":logging",
         ":macros",
         ":mutex",
+        ":stack_frame",
         ":stacktrace",
         ":str_util",
         ":strcat",
@@ -981,6 +986,17 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "enable_tf2_utils",
+    srcs = ["enable_tf2_utils.cc"],
+    hdrs = ["enable_tf2_utils.h"],
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core/util:env_var",
+    ],
+    alwayslink = 1,
+)
+
 alias(
     name = "profile_utils_cpu_utils",
     actual = "//tensorflow/core/platform/profile_utils:profile_utils_cpu_utils",
@@ -989,6 +1005,12 @@ alias(
 filegroup(
     name = "tensor_float_32_hdr",
     srcs = ["tensor_float_32_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+)
+
+filegroup(
+    name = "enable_tf2_hdr",
+    srcs = ["enable_tf2_utils.h"],
     compatible_with = get_compatible_with_portable(),
 )
 
@@ -1044,6 +1066,20 @@ tf_cc_test(
         ":stacktrace",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "enable_tf2_utils_test",
+    size = "small",
+    srcs = [
+        "enable_tf2_utils_test.cc",
+    ],
+    deps = [
+        ":enable_tf2_utils",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/util:env_var",
     ],
 )
 
@@ -1351,14 +1387,11 @@ filegroup(
         "numa.h",
         "path.h",
         "prefetch.h",
-        "//tensorflow/core/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
-        "//tensorflow/core/platform/profile_utils:clock_cycle_profiler.h",
-        "//tensorflow/core/platform/profile_utils:cpu_utils.h",
-        "//tensorflow/core/platform/profile_utils:i_cpu_utils_helper.h",
         "protobuf.h",
         "ram_file_system.h",
         "random.h",
         "resource.h",
+        "stack_frame.h",
         "stacktrace.h",
         "stacktrace_handler.h",
         "status.h",
@@ -1370,7 +1403,12 @@ filegroup(
         "subprocess.h",
         "thread_annotations.h",
         ":base_hdrs",
-    ] + tf_additional_env_hdrs(),
+        # copybara:uncomment(GoogleFileSystem) "//tensorflow/core/platform/google:env.h",
+        "//tensorflow/core/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
+        "//tensorflow/core/platform/profile_utils:clock_cycle_profiler.h",
+        "//tensorflow/core/platform/profile_utils:cpu_utils.h",
+        "//tensorflow/core/platform/profile_utils:i_cpu_utils_helper.h",
+    ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
@@ -1602,6 +1640,7 @@ filegroup(
         "snappy.h",
         "stacktrace.h",
         "status.cc",
+        "stack_frame.h",
         "status.h",
         "str_util.cc",
         "str_util.h",

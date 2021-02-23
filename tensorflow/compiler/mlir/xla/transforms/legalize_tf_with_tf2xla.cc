@@ -134,7 +134,6 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::ErfcOp>(),
     TypeID::get<TF::ErfinvOp>(),
     TypeID::get<TF::ErfOp>(),
-    TypeID::get<TF::Expm1Op>(),
     TypeID::get<TF::ExtractImagePatchesOp>(),
     TypeID::get<TF::FFT2DOp>(),
     TypeID::get<TF::FFT3DOp>(),
@@ -194,6 +193,8 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::PadOp>(),
     TypeID::get<TF::ParameterizedTruncatedNormalOp>(),
     TypeID::get<TF::PlaceholderWithDefaultOp>(),
+    TypeID::get<TF::PolygammaOp>(),
+    TypeID::get<TF::PopulationCountOp>(),
     TypeID::get<TF::PowOp>(),
     // TODO(hinsu): Canonicalize QuantizeAndDequantize and
     // QuantizeAndDequantizeV2 to QuantizeAndDequantizeV3 by converting
@@ -231,7 +232,6 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::SpaceToBatchOp>(),
     TypeID::get<TF::SpaceToDepthOp>(),
     TypeID::get<TF::SparseToDenseOp>(),
-    TypeID::get<TF::SqrtGradOp>(),
     TypeID::get<TF::SquareOp>(),
     TypeID::get<TF::StatelessMultinomialOp>(),
     TypeID::get<TF::StatelessRandomGetAlgOp>(),
@@ -241,6 +241,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::StatelessRandomNormalV2Op>(),
     TypeID::get<TF::StatelessRandomUniformOp>(),
     TypeID::get<TF::StatelessRandomUniformFullIntOp>(),
+    TypeID::get<TF::StatelessRandomUniformFullIntV2Op>(),
     TypeID::get<TF::StatelessRandomUniformV2Op>(),
     TypeID::get<TF::StatelessRandomUniformIntOp>(),
     TypeID::get<TF::StatelessRandomUniformIntV2Op>(),
@@ -263,7 +264,9 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::UpperBoundOp>(),
     TypeID::get<TF::XlaBroadcastHelperOp>(),
     TypeID::get<TF::XlaConvOp>(),
+    TypeID::get<TF::XlaConvV2Op>(),
     TypeID::get<TF::XlaDotOp>(),
+    TypeID::get<TF::XlaDotV2Op>(),
     TypeID::get<TF::XlaDynamicSliceOp>(),
     TypeID::get<TF::XlaDynamicUpdateSliceOp>(),
     TypeID::get<TF::XlaEinsumOp>(),
@@ -271,7 +274,8 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::XlaPadOp>(),
     TypeID::get<TF::XlaSetDynamicDimensionSizeOp>(),
     TypeID::get<TF::XlaSortOp>(),
-    TypeID::get<TF::XlaSvdOp>()
+    TypeID::get<TF::XlaSvdOp>(),
+    TypeID::get<TF::ZetaOp>()
   };
   // clang-format on
 
@@ -405,6 +409,13 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
     if (!ranked_ty || !ranked_ty.hasStaticShape()) {
       return op_->emitRemark()
              << "lowering requires static shaped tensor operands";
+    }
+  }
+
+  for (const auto& attr : op_->getAttrs()) {
+    if (attr.second.isa<SymbolRefAttr>()) {
+      return op_->emitRemark()
+             << "ops with symbol references are not supported";
     }
   }
 
@@ -563,10 +574,9 @@ tensorflow::XlaExpression Tf2XlaRewriter::GetExprForOperand(Value operand,
 
 class Tf2XlaRewritePattern : public RewritePattern {
  public:
-  // Set benefit to 0 (= least benefit) so this pattern is only used as a
-  // fallback.
   explicit Tf2XlaRewritePattern(const std::string& device_type)
-      : RewritePattern(0, MatchAnyOpTypeTag()), device_type_(device_type) {}
+      : RewritePattern(/*benefit=*/1, MatchAnyOpTypeTag()),
+        device_type_(device_type) {}
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {

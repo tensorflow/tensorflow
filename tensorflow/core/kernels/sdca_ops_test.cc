@@ -227,37 +227,42 @@ void GetGraphs(const int32 num_examples, const int32 num_sparse_feature_groups,
   }
 }
 
-void BM_SDCA(const int iters, const int num_examples) {
-  testing::StopTiming();
+void BM_SDCA(::testing::benchmark::State& state) {
+  const int num_examples = state.range(0);
   Graph* init = nullptr;
   Graph* train = nullptr;
   GetGraphs(num_examples, 20 /* sparse feature groups */,
             5 /* sparse features per group */, 1 /* dense feature groups*/,
             20 /* dense features per group */, &init, &train);
-  testing::StartTiming();
-  test::Benchmark("cpu", train, GetSingleThreadedOptions(), init).Run(iters);
+  test::Benchmark("cpu", train, GetSingleThreadedOptions(), init, nullptr, "",
+                  /*old_benchmark_api*/ false)
+      .Run(state);
 }
 
-void BM_SDCA_LARGE_DENSE(const int iters, const int num_examples) {
-  testing::StopTiming();
+void BM_SDCA_LARGE_DENSE(::testing::benchmark::State& state) {
+  const int num_examples = state.range(0);
+
   Graph* init = nullptr;
   Graph* train = nullptr;
   GetGraphs(num_examples, 0 /* sparse feature groups */,
             0 /* sparse features per group */, 5 /* dense feature groups*/,
             200000 /* dense features per group */, &init, &train);
-  testing::StartTiming();
-  test::Benchmark("cpu", train, GetSingleThreadedOptions(), init).Run(iters);
+  test::Benchmark("cpu", train, GetSingleThreadedOptions(), init, nullptr, "",
+                  /*old_benchmark_api*/ false)
+      .Run(state);
 }
 
-void BM_SDCA_LARGE_SPARSE(const int iters, const int num_examples) {
-  testing::StopTiming();
+void BM_SDCA_LARGE_SPARSE(::testing::benchmark::State& state) {
+  const int num_examples = state.range(0);
+
   Graph* init = nullptr;
   Graph* train = nullptr;
   GetGraphs(num_examples, 65 /* sparse feature groups */,
             1e6 /* sparse features per group */, 0 /* dense feature groups*/,
             0 /* dense features per group */, &init, &train);
-  testing::StartTiming();
-  test::Benchmark("cpu", train, GetMultiThreadedOptions(), init).Run(iters);
+  test::Benchmark("cpu", train, GetMultiThreadedOptions(), init, nullptr, "",
+                  /*old_benchmark_api*/ false)
+      .Run(state);
 }
 }  // namespace
 

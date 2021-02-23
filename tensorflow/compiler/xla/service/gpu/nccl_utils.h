@@ -61,7 +61,7 @@ Status ToStatus(cudaError_t s, const char* file, int64 line, const char* expr);
 // It's tempting to say these macros belong in an XLA header somewhere, but in
 // practice we don't do much direct-to-CUDA-API stuff outside of this file.
 #define XLA_CUDA_STATUS(expr) \
-  ::xla::gpu::ToStatus(expr, __FILE__, __LINE__, #expr)
+  xla::gpu::ToStatus(expr, __FILE__, __LINE__, #expr)
 
 #define XLA_CUDA_RETURN_IF_ERROR(expr) \
   do {                                 \
@@ -100,8 +100,6 @@ class NcclClique {
   absl::Mutex mu_;
 };
 
-RefcountingHashMap<NcclCliqueKey, NcclClique>& NcclCliqueCache();
-
 struct LocalParticipant {
   int device_ordinal;
   int rank;
@@ -113,13 +111,12 @@ StatusOr<std::vector<LocalParticipant>> GetLocalParticipants(
 
 class LockedNcclClique {
  public:
-  LockedNcclClique(std::shared_ptr<NcclClique> clique,
-                   std::unique_ptr<absl::MutexLock> lock,
+  LockedNcclClique(NcclClique& clique, std::unique_ptr<absl::MutexLock> lock,
                    absl::BlockingCounter* counter);
   LockedNcclClique(LockedNcclClique&&);
   ~LockedNcclClique();
 
-  std::shared_ptr<NcclClique> clique;
+  NcclClique& clique;
 
  private:
   // Must come after clique, so it is destroyed first.
@@ -127,6 +124,27 @@ class LockedNcclClique {
   std::unique_ptr<absl::MutexLock> lock_;
   absl::BlockingCounter* counter_;
 };
+
+// Threadsafe leaky map from NcclCliqueKeys to NcclCliques.
+class NcclCliqueMap {
+ public:
+  StatusOr<NcclClique*> GetOrTryCreateIfAbsent(
+      const NcclCliqueKey& key,
+      const std::function<StatusOr<std::unique_ptr<NcclClique>>(
+          const NcclCliqueKey&)>& value_factory) ABSL_LOCKS_EXCLUDED(mu_);
+
+  // Runs a function over every key/value in the map.
+  void ForEach(
+      const std::function<void(const NcclCliqueKey&, const NcclClique&)>& fn)
+      ABSL_LOCKS_EXCLUDED(mu_);
+
+ private:
+  absl::Mutex mu_;
+  absl::flat_hash_map<NcclCliqueKey, std::unique_ptr<NcclClique>> map_
+      ABSL_GUARDED_BY(mu_);
+};
+
+NcclCliqueMap& NcclCliqueCache();
 
 // Acquires a locked NCCL clique for use in NCCL collective operations.
 StatusOr<LockedNcclClique> AcquireNcclClique(

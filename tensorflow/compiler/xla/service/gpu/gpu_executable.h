@@ -51,16 +51,16 @@ class GpuExecutable : public Executable {
  public:
   struct ConstantInfo {
     std::string symbol_name;
-    xla::Literal content;
+    std::vector<uint8> content;
     int allocation_index = -1;
   };
 
   struct OutputInfo {
-    // Output is passed-through from a parameter.
-    bool passthrough;
-
     // Corresponding allocation index.
     int allocation_index;
+
+    // Output is passed-through from a parameter.
+    bool passthrough = false;
 
     // Whether this output is hinted to alias a parameter (BufferAllocation*
     // would indicate the aliased parameter), and what kind of alias it is.
@@ -116,6 +116,17 @@ class GpuExecutable : public Executable {
       std::vector<ExecutionInput> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
+  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
+      const ServiceExecutableRunOptions* run_options,
+      absl::Span<const ShapedBuffer* const> arguments,
+      HloExecutionProfile* hlo_execution_profile);
+
+  using VariantArguments = absl::variant<absl::Span<const ShapedBuffer* const>,
+                                         absl::Span<ExecutionInput>>;
+  StatusOr<ExecutionOutput> ExecuteAsyncOnStreamImpl(
+      const ServiceExecutableRunOptions* run_options,
+      VariantArguments arguments, HloExecutionProfile* hlo_execution_profile);
+
   absl::Span<const BufferAllocation> GetAllocations() const {
     return allocations_;
   }
@@ -146,13 +157,13 @@ class GpuExecutable : public Executable {
       const ServiceExecutableRunOptions* run_options);
 
   StatusOr<BufferAllocations> GenerateBufferAllocations(
-      absl::Span<ExecutionInput const> arguments,
+      VariantArguments arguments,
       const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
       se::DeviceMemoryAllocator* const memory_allocator,
       se::StreamExecutor* executor);
 
   StatusOr<se::DeviceMemoryBase> BufferForAllocation(
-      absl::Span<ExecutionInput const> arguments,
+      VariantArguments arguments,
       const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
       const BufferAllocation& allocation,
       se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal,

@@ -38,11 +38,9 @@ def _get_env_var(ctx, name):
 # Checks if we should use the system lib instead of the bundled one
 def _use_system_lib(ctx, name):
     syslibenv = _get_env_var(ctx, "TF_SYSTEM_LIBS")
-    if syslibenv:
-        for n in syslibenv.strip().split(","):
-            if n.strip() == name:
-                return True
-    return False
+    if not syslibenv:
+        return False
+    return name in [n.strip() for n in syslibenv.split(",")]
 
 # Executes specified command with arguments and calls 'fail' if it exited with
 # non-zero code
@@ -57,9 +55,6 @@ def _execute_and_check_ret_code(repo_ctx, cmd_and_args):
             result.stderr,
         ))
 
-def _repos_are_siblings():
-    return Label("@foo//bar").workspace_root.startswith("../")
-
 # Apply a patch_file to the repository root directory.
 def _apply_patch(ctx, patch_file):
     ctx.patch(patch_file, strip = 1)
@@ -73,7 +68,23 @@ def _apply_delete(ctx, paths):
     cmd = _wrap_bash_cmd(ctx, ["rm", "-rf"] + [ctx.path(path) for path in paths])
     _execute_and_check_ret_code(ctx, cmd)
 
+def _maybe_label(label_string):
+    return Label(label_string) if label_string else None
+
+def _label_path_dict(ctx, dict):
+    return {Label(k): ctx.path(v) for k, v in dict.items()}
+
 def _tf_http_archive(ctx):
+    # Construct all labels early on to prevent rule restart. We want the
+    # attributes to be strings instead of labels because they refer to files
+    # in the TensorFlow repository, not files in repos depending on TensorFlow.
+    # See also https://github.com/bazelbuild/bazel/issues/10515.
+    patch_file = _maybe_label(ctx.attr.patch_file)
+    build_file = _maybe_label(ctx.attr.build_file)
+    system_build_file = _maybe_label(ctx.attr.system_build_file)
+    system_link_files = _label_path_dict(ctx, ctx.attr.system_link_files)
+    additional_build_files = _label_path_dict(ctx, ctx.attr.additional_build_files)
+
     if ("mirror.tensorflow.org" not in ctx.attr.urls[0] and
         (len(ctx.attr.urls) < 2 and
          ctx.attr.name not in _SINGLE_URL_WHITELIST.to_list())):
@@ -85,14 +96,6 @@ def _tf_http_archive(ctx):
 
     use_syslib = _use_system_lib(ctx, ctx.attr.name)
 
-    # Work around the bazel bug that redownloads the whole library.
-    # Remove this after https://github.com/bazelbuild/bazel/issues/10515 is fixed.
-    if ctx.attr.additional_build_files:
-        for internal_src in ctx.attr.additional_build_files:
-            _ = ctx.path(Label(internal_src))
-
-    # End of workaround.
-
     if not use_syslib:
         ctx.download_and_extract(
             ctx.attr.urls,
@@ -101,32 +104,26 @@ def _tf_http_archive(ctx):
             ctx.attr.type,
             ctx.attr.strip_prefix,
         )
-        if ctx.attr.delete:
+        if ctx.attr.delete:  # TODO(csigg): use a patch instead.
             _apply_delete(ctx, ctx.attr.delete)
-        if ctx.attr.patch_file != None:
-            _apply_patch(ctx, ctx.attr.patch_file)
+        if patch_file:
+            _apply_patch(ctx, patch_file)
 
-    if use_syslib and ctx.attr.system_build_file != None:
+    if use_syslib and system_build_file:
         # Use BUILD.bazel to avoid conflict with third party projects with
         # BUILD or build (directory) underneath.
-        ctx.template("BUILD.bazel", ctx.attr.system_build_file, {
-            "%prefix%": ".." if _repos_are_siblings() else "external",
-        }, False)
-
-    elif ctx.attr.build_file != None:
+        ctx.template("BUILD.bazel", system_build_file, executable = False)
+    elif build_file:
         # Use BUILD.bazel to avoid conflict with third party projects with
         # BUILD or build (directory) underneath.
-        ctx.template("BUILD.bazel", ctx.attr.build_file, {
-            "%prefix%": ".." if _repos_are_siblings() else "external",
-        }, False)
+        ctx.template("BUILD.bazel", build_file, executable = False)
 
     if use_syslib:
-        for internal_src, external_dest in ctx.attr.system_link_files.items():
-            ctx.symlink(Label(internal_src), ctx.path(external_dest))
+        for label, path in system_link_files.items():
+            ctx.symlink(label, path)
 
-    if ctx.attr.additional_build_files:
-        for internal_src, external_dest in ctx.attr.additional_build_files.items():
-            ctx.symlink(Label(internal_src), ctx.path(external_dest))
+    for label, path in additional_build_files.items():
+        ctx.symlink(label, path)
 
 tf_http_archive = repository_rule(
     attrs = {
@@ -138,9 +135,9 @@ tf_http_archive = repository_rule(
         "strip_prefix": attr.string(),
         "type": attr.string(),
         "delete": attr.string_list(),
-        "patch_file": attr.label(),
-        "build_file": attr.label(),
-        "system_build_file": attr.label(),
+        "patch_file": attr.string(),
+        "build_file": attr.string(),
+        "system_build_file": attr.string(),
         "system_link_files": attr.string_dict(),
         "additional_build_files": attr.string_dict(),
     },
@@ -148,16 +145,29 @@ tf_http_archive = repository_rule(
         "TF_SYSTEM_LIBS",
     ],
     implementation = _tf_http_archive,
-)
-
-"""Downloads and creates Bazel repos for dependencies.
+    doc = """Downloads and creates Bazel repos for dependencies.
 
 This is a swappable replacement for both http_archive() and
 new_http_archive() that offers some additional features. It also helps
 ensure best practices are followed.
-"""
+
+File arguments are relative to the TensorFlow repository by default. Dependent
+repositories that use this rule should refer to files either with absolute
+labels (e.g. '@foo//:bar') or from a label created in their repository (e.g.
+'str(Label("//:bar"))').""",
+)
 
 def _third_party_http_archive(ctx):
+    # Construct all labels early on to prevent rule restart. We want the
+    # attributes to be strings instead of labels because they refer to files
+    # in the TensorFlow repository, not files in repos depending on TensorFlow.
+    # See also https://github.com/bazelbuild/bazel/issues/10515.
+    build_file = _maybe_label(ctx.attr.build_file)
+    system_build_file = _maybe_label(ctx.attr.system_build_file)
+    patch_file = _maybe_label(ctx.attr.patch_file)
+    link_files = _label_path_dict(ctx, ctx.attr.link_files)
+    system_link_files = _label_path_dict(ctx, ctx.attr.system_link_files)
+
     if ("mirror.tensorflow.org" not in ctx.attr.urls[0] and
         (len(ctx.attr.urls) < 2 and
          ctx.attr.name not in _SINGLE_URL_WHITELIST.to_list())):
@@ -189,23 +199,23 @@ def _third_party_http_archive(ctx):
             ctx.attr.type,
             ctx.attr.strip_prefix,
         )
-        if ctx.attr.delete:
+        if ctx.attr.delete:  # TODO(csigg): use a patch instead.
             _apply_delete(ctx, ctx.attr.delete)
-        if ctx.attr.patch_file != None:
-            _apply_patch(ctx, ctx.attr.patch_file)
+        if ctx.attr.patch_file:
+            _apply_patch(ctx, Label(ctx.attr.patch_file))
         ctx.symlink(Label(ctx.attr.build_file), buildfile_path)
 
     link_dict = {}
     if use_syslib:
-        link_dict.update(ctx.attr.system_link_files)
+        link_dict.update(system_link_files)
 
-    for internal_src, external_dest in ctx.attr.link_files.items():
+    for label, path in link_files.items():
         # if syslib and link exists in both, use the system one
-        if external_dest not in link_dict.values():
-            link_dict[internal_src] = external_dest
+        if path not in link_dict.values():
+            link_dict[label] = path
 
-    for internal_src, external_dest in link_dict.items():
-        ctx.symlink(Label(internal_src), ctx.path(external_dest))
+    for label, path in link_dict.items():
+        ctx.symlink(label, path)
 
 # Downloads and creates Bazel repos for dependencies.
 #
@@ -224,13 +234,11 @@ third_party_http_archive = repository_rule(
         "type": attr.string(),
         "delete": attr.string_list(),
         "build_file": attr.string(mandatory = True),
-        "system_build_file": attr.string(mandatory = False),
-        "patch_file": attr.label(),
+        "system_build_file": attr.string(),
+        "patch_file": attr.string(),
         "link_files": attr.string_dict(),
         "system_link_files": attr.string_dict(),
     },
-    environ = [
-        "TF_SYSTEM_LIBS",
-    ],
+    environ = ["TF_SYSTEM_LIBS"],
     implementation = _third_party_http_archive,
 )

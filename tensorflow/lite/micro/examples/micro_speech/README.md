@@ -66,11 +66,12 @@ SDP platform can be generated with the following command:
 
 ```
 make -f tensorflow/lite/micro/tools/make/Makefile \
-TARGET=arc_emsdp TAGS=reduce_codesize  \
+TARGET=arc_emsdp ARC_TAGS=reduce_codesize  \
+OPTIMIZED_KERNEL_DIR=arc_mli \
 generate_micro_speech_mock_make_project
 ```
 
-Note that `TAGS=reduce_codesize` applies example specific changes of code to
+Note that `ARC_TAGS=reduce_codesize` applies example specific changes of code to
 reduce total size of application. It can be omitted.
 
 ### Build and Run Example
@@ -266,7 +267,7 @@ The following command will download the required dependencies and then compile a
 binary for the SparkFun Edge:
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile TARGET=sparkfun_edge TAGS="cmsis-nn" micro_speech_bin
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=sparkfun_edge TAGS="cmsis_nn" micro_speech_bin
 ```
 
 The binary will be created in the following location:

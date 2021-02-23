@@ -27,6 +27,11 @@ limitations under the License.
 
 namespace tensorflow {
 namespace testing {
+namespace internal {
+
+void UseCharPointer(char const volatile*) {}
+
+}  // namespace internal
 
 static std::vector<Benchmark*>* all_benchmarks = nullptr;
 static std::string label;

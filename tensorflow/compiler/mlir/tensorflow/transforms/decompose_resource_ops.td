@@ -21,6 +21,8 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 class GetScalarOfType<int value> : NativeCodeCall<
   "GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
 
+def NonScalarType : Type<Neg<HasAnyRankOfPred<[0]>>, "Non scalar type">;
+
 // Creates a tf.ReadVariable op that reads a resource `$2` that has the same
 // element type as `$1`. The op created will use location of `$0`.
 def CreateTFReadVariableOp : NativeCodeCall<
@@ -326,8 +328,10 @@ def DecomposeResourceGather : Pat<
 
 // Pattern to decompose tf.ResourceScatterUpdate into tf.ReadVariable,
 // tf.TensorScatterUpdate, and tf.AssignVariable.
+// TODO(b/178725329): Support scalar `updates` during decomposition.
 def DecomposeResourceScatterUpdate : Pat<
-  (TF_ResourceScatterUpdateOp:$src_op $resource, $indices, $updates),
+  (TF_ResourceScatterUpdateOp:$src_op
+    $resource, $indices, NonScalarType:$updates),
   (TF_AssignVariableOp
     $resource,
     (TF_TensorScatterUpdateOp
@@ -353,7 +357,7 @@ def DecomposeResourceApplyCenteredRMSProp :
   Pattern<
     (TF_ResourceApplyCenteredRMSPropOp:$src_op
        $var_resource, $mg_resource, $ms_resource, $mom_resource, $lr, $rho, $momentum, $epsilon,
-       $grad, ConstBoolAttrFalse:$use_locking
+       $grad, $use_locking
     ),
     [(TF_ConstOp:$one (GetScalarOfType<1> $grad)),
      (CreateTFReadVariableOp $src_op, $grad, $ms_resource),
@@ -415,7 +419,7 @@ def DecomposeResourceApplyRMSProp :
   Pattern<
     (TF_ResourceApplyRMSPropOp:$src_op
        $var_resource, $ms_resource, $mom_resource, $lr, $rho, $momentum, $epsilon,
-       $grad, ConstBoolAttrFalse:$use_locking
+       $grad, $use_locking
     ),
     [(TF_ConstOp:$one (GetScalarOfType<1> $grad)),
      (CreateTFReadVariableOp $src_op, $grad, $ms_resource),
@@ -452,7 +456,7 @@ def DecomposeResourceApplyProximalAdagrad :
   Pattern<
     (TF_ResourceApplyProximalAdagradOp:$src_op
        $var_resource, $accum_resource, $lr, $l1, $l2, $grad,
-       ConstBoolAttrFalse:$use_locking
+       $use_locking
     ),
     [(TF_ConstOp:$one (GetScalarOfType<1> $grad)),
      (TF_ConstOp:$zero (GetScalarOfType<0> $grad)),

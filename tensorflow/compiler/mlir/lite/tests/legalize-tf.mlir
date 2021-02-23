@@ -1996,3 +1996,125 @@ func @rfft2d_invalid(%arg0: tensor<10x20x10x30xf64>, %arg1: tensor<2xi32>) -> te
   // CHECK-LABEL: rfft2d_invalid
   // CHECK-NOT: "tfl.RFFT2D"
 }
+
+
+func @conv3d_valid(%arg0: tensor<?x?x?x?x?xf32>,%arg1:  tensor<?x?x?x?x?xf32>) -> tensor<?x?x?x?x?xf32> {
+  %0 = "tf.Conv3D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1, 1]} : (tensor<?x?x?x?x?xf32>, tensor<?x?x?x?x?xf32>) -> tensor<?x?x?x?x?xf32>
+  return %0: tensor<?x?x?x?x?xf32>
+
+  // CHECK-LABEL: conv3d_valid
+  // CHECK:  %cst = constant unit
+  // CHECK:  [[BCT:%.*]] = "tfl.conv_3d"(%arg0, %arg1, %cst) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<?x?x?x?x?xf32>, tensor<?x?x?x?x?xf32>, none) -> tensor<?x?x?x?x?xf32>
+  // CHECK:  return [[BCT]] : tensor<?x?x?x?x?xf32>
+}
+
+func @conv3d_invalid_strides(%arg0: tensor<?x?x?x?x?xf32>,%arg1:  tensor<?x?x?x?x?xf32>) -> tensor<?x?x?x?x?xf32> {
+  %0 = "tf.Conv3D"(%arg0, %arg1) {padding = "SAME", strides = [2, 1, 1, 1, 1]} : (tensor<?x?x?x?x?xf32>, tensor<?x?x?x?x?xf32>) -> tensor<?x?x?x?x?xf32>
+  return %0: tensor<?x?x?x?x?xf32>
+  // CHECK-LABEL: conv3d_invalid_strides
+  // CHECK:  [[BCT:%.*]] = "tf.Conv3D"(%arg0, %arg1) {padding = "SAME", strides = [2, 1, 1, 1, 1]} : (tensor<?x?x?x?x?xf32>, tensor<?x?x?x?x?xf32>) -> tensor<?x?x?x?x?xf32>
+  // CHECK:  return [[BCT]] : tensor<?x?x?x?x?xf32>
+}
+
+func @complex_abs(%arg0: tensor<1 x complex<f32>>) -> tensor<1xf32> {
+  %0 = "tf.ComplexAbs"(%arg0) : (tensor<1 x complex<f32>>) -> tensor<1xf32>
+  return %0: tensor<1xf32>
+
+// CHECK-LABEL: complex_abs
+// CHECK:  "tfl.complex_abs"(%arg0) : (tensor<1xcomplex<f32>>) -> tensor<1xf32>
+// CHECK:  return
+}
+
+func @real(%arg0: tensor<1 x complex<f64>>) -> tensor<1xf64> {
+  %0 = "tf.Real"(%arg0) : (tensor<1 x complex<f64>>) -> tensor<1xf64>
+  return %0: tensor<1xf64>
+
+// CHECK-LABEL: real
+// CHECK:  "tfl.real"(%arg0) : (tensor<1xcomplex<f64>>) -> tensor<1xf64>
+// CHECK:  return
+}
+
+func @imag(%arg0: tensor<1 x complex<f64>>) -> tensor<1xf64> {
+  %0 = "tf.Imag"(%arg0) : (tensor<1 x complex<f64>>) -> tensor<1xf64>
+  return %0: tensor<1xf64>
+
+// CHECK-LABEL: imag
+// CHECK:  "tfl.imag"(%arg0) : (tensor<1xcomplex<f64>>) -> tensor<1xf64>
+// CHECK:  return
+}
+
+func @hashtable() {
+  %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf.string, shared_name = "hash_table_1dd4fef4-646d-491f-a3a8-bf5334f45813", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf.resource>
+  // CHECK-LABEL: hashtable
+  // CHECK-NEXT:  [[HASH_TABLE:%.*]] = "tfl.hashtable"() {key_dtype = !tf.string, table_id = -1323619995 : i32, value_dtype = i64} : () -> tensor<1x!tf.resource>
+  return
+}
+
+func @hashtable_find(%arg0: tensor<i64>) -> tensor<*x!tf.string> {
+  %cst = constant dense<"f"> : tensor<!tf.string>
+  %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = i64, shared_name = "hash_table_e308c10b-91c8-416c-81f9-af5bf6aba847", use_node_name_sharing = false, value_dtype = !tf.string} : () -> tensor<!tf.resource>
+  %1 = "tf.LookupTableFindV2"(%0, %arg0, %cst) {device = ""} : (tensor<!tf.resource>, tensor<i64>, tensor<!tf.string>) -> tensor<*x!tf.string>
+  // CHECK-LABEL: hashtable_find
+  // CHECK:       [[CST:%.*]] = constant dense<"f"> : tensor<!tf.string>
+  // CHECK-NEXT:  [[HASH_TABLE:%.*]] = "tfl.hashtable"() {key_dtype = i64, table_id = 1530976467 : i32, value_dtype = !tf.string} : () -> tensor<1x!tf.resource>
+  // CHECK-NEXT:  [[FIND:%.*]] = "tfl.hashtable_find"([[HASH_TABLE]], %arg0, [[CST]]) : (tensor<1x!tf.resource>, tensor<i64>, tensor<!tf.string>) -> tensor<*x!tf.string>
+  // CHECK-NEXT:  return [[FIND]] : tensor<*x!tf.string>
+  return %1 : tensor<*x!tf.string>
+}
+
+func @hashtable_import(%arg0: tensor<5x!tf.string>) {
+  %cst = constant dense<["emerson", "lake", "palmer"]> : tensor<3x!tf.string>
+  %cst_0 = constant dense<[0, 1, 2]> : tensor<3xi64>
+  %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf.string, shared_name = "hash_table_1dd4fef4-646d-491f-a3a8-bf5334f45813", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf.resource>
+  "tf.LookupTableImportV2"(%0, %cst, %cst_0) {device = ""} : (tensor<!tf.resource>, tensor<3x!tf.string>, tensor<3xi64>) -> ()
+  return
+  // CHECK-LABEL: hashtable_import
+  // CHECK:       [[CST:%.*]] = constant dense<["emerson", "lake", "palmer"]> : tensor<3x!tf.string>
+  // CHECK-NEXT:  [[CST_0:%.*]] = constant dense<[0, 1, 2]> : tensor<3xi64>
+  // CHECK-NEXT:  [[HASH_TABLE:%.*]] = "tfl.hashtable"() {key_dtype = !tf.string, table_id = -1323619995 : i32, value_dtype = i64} : () -> tensor<1x!tf.resource>
+  // CHECK-NEXT:   "tfl.hashtable_import"([[HASH_TABLE]], [[CST]], [[CST_0]]) : (tensor<1x!tf.resource>, tensor<3x!tf.string>, tensor<3xi64>) -> ()
+}
+
+func @hashtable_size(%arg0: tensor<5x!tf.string>) -> tensor<i64> {
+  %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf.string, shared_name = "hash_table_1dd4fef4-646d-491f-a3a8-bf5334f45813", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf.resource>
+  %1 = "tf.LookupTableSizeV2"(%0) {device = ""} : (tensor<!tf.resource>) -> tensor<i64>
+  // CHECK-LABEL: hashtable_size
+  // CHECK-NEXT:  [[HASH_TABLE:%.*]] = "tfl.hashtable"() {key_dtype = !tf.string, table_id = -1323619995 : i32, value_dtype = i64} : () -> tensor<1x!tf.resource>
+  // CHECK-NEXT:  [[SIZE:%.*]] = "tfl.hashtable_size"([[HASH_TABLE]]) : (tensor<1x!tf.resource>) -> tensor<i64>
+  // CHECK-NEXT:  return [[SIZE]] : tensor<i64>
+  return %1 : tensor<i64>
+}
+
+func @hashtable_import_then_find(%arg0: tensor<5x!tf.string>) -> tensor<*xi64> {
+  %cst = constant dense<["emerson", "lake", "palmer"]> : tensor<3x!tf.string>
+  %cst_0 = constant dense<-1> : tensor<i64>
+  %cst_1 = constant dense<[0, 1, 2]> : tensor<3xi64>
+  %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf.string, shared_name = "hash_table_1dd4fef4-646d-491f-a3a8-bf5334f45813", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf.resource>
+  "tf.LookupTableImportV2"(%0, %cst, %cst_1) {device = ""} : (tensor<!tf.resource>, tensor<3x!tf.string>, tensor<3xi64>) -> ()
+  %1 = "tf.LookupTableFindV2"(%0, %arg0, %cst_0) {device = ""} : (tensor<!tf.resource>, tensor<5x!tf.string>, tensor<i64>) -> tensor<*xi64>
+  // CHECK-LABEL: hashtable_import_then_find
+  // CHECK:       [[CST:%.*]] = constant dense<["emerson", "lake", "palmer"]> : tensor<3x!tf.string>
+  // CHECK-NEXT:  [[CST_0:%.*]] = constant dense<-1> : tensor<i64>
+  // CHECK-NEXT:  [[CST_1:%.*]] = constant dense<[0, 1, 2]> : tensor<3xi64>
+  // CHECK-NEXT:  [[HASH_TABLE:%.*]] = "tfl.hashtable"() {key_dtype = !tf.string, table_id = -1323619995 : i32, value_dtype = i64} : () -> tensor<1x!tf.resource>
+  // CHECK-NEXT:   "tfl.hashtable_import"([[HASH_TABLE]], [[CST]], [[CST_1]]) : (tensor<1x!tf.resource>, tensor<3x!tf.string>, tensor<3xi64>) -> ()
+  // CHECK-NEXT:  [[FIND:%.*]] = "tfl.hashtable_find"([[HASH_TABLE]], %arg0, [[CST_0]]) : (tensor<1x!tf.resource>, tensor<5x!tf.string>, tensor<i64>) -> tensor<*xi64>
+  // CHECK-NEXT:  return [[FIND]] : tensor<*xi64>
+  return %1 : tensor<*xi64>
+}
+
+func @hashtable_import_then_size(%arg0: tensor<5x!tf.string>) -> tensor<i64> {
+  %cst = constant dense<["emerson", "lake", "palmer"]> : tensor<3x!tf.string>
+  %cst_0 = constant dense<[0, 1, 2]> : tensor<3xi64>
+  %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf.string, shared_name = "hash_table_1dd4fef4-646d-491f-a3a8-bf5334f45813", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf.resource>
+  "tf.LookupTableImportV2"(%0, %cst, %cst_0) {device = ""} : (tensor<!tf.resource>, tensor<3x!tf.string>, tensor<3xi64>) -> ()
+  %1 = "tf.LookupTableSizeV2"(%0) {device = ""} : (tensor<!tf.resource>) -> tensor<i64>
+  // CHECK-LABEL: hashtable_import_then_size
+  // CHECK:       [[CST:%.*]] = constant dense<["emerson", "lake", "palmer"]> : tensor<3x!tf.string>
+  // CHECK-NEXT:  [[CST_0:%.*]] = constant dense<[0, 1, 2]> : tensor<3xi64>
+  // CHECK-NEXT:  [[HASH_TABLE:%.*]] = "tfl.hashtable"() {key_dtype = !tf.string, table_id = -1323619995 : i32, value_dtype = i64} : () -> tensor<1x!tf.resource>
+  // CHECK-NEXT:   "tfl.hashtable_import"([[HASH_TABLE]], [[CST]], [[CST_0]]) : (tensor<1x!tf.resource>, tensor<3x!tf.string>, tensor<3xi64>) -> ()
+  // CHECK-NEXT:  [[SIZE:%.*]] = "tfl.hashtable_size"([[HASH_TABLE]]) : (tensor<1x!tf.resource>) -> tensor<i64>
+  // CHECK-NEXT:  return [[SIZE]] : tensor<i64>
+  return %1 : tensor<i64>
+}

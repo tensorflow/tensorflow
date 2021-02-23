@@ -97,7 +97,8 @@ class ExecuteNode : public EagerNode {
       const core::RefCountPtr<KernelAndDevice>& kernel,
       GraphCollector* graph_collector,
       CancellationManager* cancellation_manager,
-      absl::Span<TensorHandle*> retvals)
+      absl::Span<TensorHandle*> retvals,
+      absl::optional<ManagedStackTrace> stack_trace)
       : EagerNode(),
         ctx_(ctx),
         inputs_(inputs),
@@ -105,7 +106,8 @@ class ExecuteNode : public EagerNode {
         kernel_(kernel),
         graph_collector_(graph_collector),
         cancellation_manager_(cancellation_manager),
-        retvals_(retvals) {}
+        retvals_(retvals),
+        stack_trace_(stack_trace) {}
 
   Status Run() override {
     int i = 0;
@@ -120,8 +122,8 @@ class ExecuteNode : public EagerNode {
       ++i;
     }
     return EagerKernelExecute(ctx_, inputs_, remote_func_params_, kernel_,
-                              graph_collector_, cancellation_manager_,
-                              retvals_);
+                              graph_collector_, cancellation_manager_, retvals_,
+                              stack_trace_);
   }
 
   void Abort(Status status) override {}
@@ -140,6 +142,7 @@ class ExecuteNode : public EagerNode {
   GraphCollector* graph_collector_;
   CancellationManager* const cancellation_manager_;
   absl::Span<TensorHandle*> retvals_;
+  absl::optional<ManagedStackTrace> stack_trace_;
 };
 
 class AsyncExecuteNode : public EagerNode {
@@ -198,7 +201,7 @@ class AsyncExecuteNode : public EagerNode {
     }
     Status status = EagerKernelExecute(
         ctx_, inputs_, remote_func_params_, kernel_, graph_collector_,
-        cancellation_manager_, absl::MakeSpan(retvals_));
+        cancellation_manager_, absl::MakeSpan(retvals_), stack_trace_);
     if (!status.ok()) {
       if (stack_trace_.has_value()) {
         status = Status(status.code(), status.error_message(),

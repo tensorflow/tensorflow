@@ -80,7 +80,7 @@ Status EmitFusedDynamicUpdateSliceInPlace(HloInstruction* fusion,
 // Same as EmitFusedDynamicUpdateSliceInPlace, except emits a parallel loop with
 // the given launch dimensions.
 Status EmitParallelFusedDynamicUpdateSliceInPlace(
-    HloInstruction* fusion, const IrArray& fusion_output_array,
+    const HloComputation* fusion, const IrArray& fusion_output_array,
     FusedIrEmitter* fused_emitter,
     const gpu::LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* b);
 

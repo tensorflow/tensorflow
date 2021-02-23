@@ -215,7 +215,7 @@ void SetOpSharding(Operation* op, int64_t tpu_core) {
   std::string sharding_serialized =
       ::xla::sharding_builder::AssignDevice(tpu_core).SerializeAsString();
   op->setAttr(kShardingAttr,
-              StringAttr::get(sharding_serialized, op->getContext()));
+              StringAttr::get(op->getContext(), sharding_serialized));
 }
 
 // Assigns frontend attributes holding information about data type and
@@ -229,7 +229,7 @@ void SetFrontendAttributes(Operation* op, int32_t index, StringRef key,
       device_to_host ? llvm::formatv("{0}_dtoh_{1}", key, index).str()
                      : llvm::formatv("{0}_htod_{1}", key, index).str();
 
-  auto rendezvous_name = StringAttr::get(formatted_key, context);
+  auto rendezvous_name = StringAttr::get(context, formatted_key);
   auto rendezvous_name_attr = NamedAttribute(
       Identifier::get(kXlaHostTransferRendezvousNameAttr, context),
       rendezvous_name);
@@ -238,14 +238,14 @@ void SetFrontendAttributes(Operation* op, int32_t index, StringRef key,
   auto xla_element_type = ::xla::TypeToPrimitiveType(element_type);
   const std::string& xla_element_type_str =
       ::xla::primitive_util::LowercasePrimitiveTypeName(xla_element_type);
-  auto original_type = StringAttr::get(xla_element_type_str, context);
+  auto original_type = StringAttr::get(context, xla_element_type_str);
   auto original_type_attr =
       NamedAttribute(Identifier::get(kXlaHostTransferOriginalTypeAttr, context),
                      original_type);
 
   auto frontend_attributes = DictionaryAttr::get(
-      ArrayRef<NamedAttribute>{rendezvous_name_attr, original_type_attr},
-      context);
+      context,
+      ArrayRef<NamedAttribute>{rendezvous_name_attr, original_type_attr});
   op->setAttr(kFrontendAttributesAttr, frontend_attributes);
 }
 

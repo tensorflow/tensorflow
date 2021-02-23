@@ -25,7 +25,6 @@ from six.moves import range
 import tensorflow as tf
 
 from tensorflow.lite.python import util
-from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import dtypes
@@ -39,36 +38,6 @@ from tensorflow.python.platform import test
 
 # TODO(nupurgarg): Add test for Grappler and frozen graph related functions.
 class UtilTest(test_util.TensorFlowTestCase):
-
-  def testConvertDtype(self):
-    self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.float32), _types_pb2.FLOAT)
-    self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.float16), _types_pb2.FLOAT16)
-    self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.int32), _types_pb2.INT32)
-    self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.uint8),
-        _types_pb2.QUANTIZED_UINT8)
-    self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.int64), _types_pb2.INT64)
-    self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.string), _types_pb2.STRING)
-    self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.bool), _types_pb2.BOOL)
-    self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.int16),
-        _types_pb2.QUANTIZED_INT16)
-    self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.complex64),
-        _types_pb2.COMPLEX64)
-    self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.int8), _types_pb2.INT8)
-    self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.float64), _types_pb2.FLOAT64)
-    self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.complex128),
-        _types_pb2.COMPLEX128)
 
   def testConvertEnumToDtype(self):
     self.assertEqual(
@@ -89,13 +58,16 @@ class UtilTest(test_util.TensorFlowTestCase):
         util._convert_tflite_enum_type_to_tf_type(10), dtypes.float64)
     self.assertEqual(
         util._convert_tflite_enum_type_to_tf_type(11), dtypes.complex128)
+    self.assertEqual(
+        util._convert_tflite_enum_type_to_tf_type(16), dtypes.uint32)
     with self.assertRaises(ValueError) as error:
       util._convert_tflite_enum_type_to_tf_type(20)
     self.assertEqual(
         "Unsupported enum 20. The valid map of enum to tf types is : "
         "{0: tf.float32, 1: tf.float16, 2: tf.int32, 3: tf.uint8, 4: tf.int64, "
         "5: tf.string, 6: tf.bool, 7: tf.int16, 8: tf.complex64, 9: tf.int8, "
-        "10: tf.float64, 11: tf.complex128}", str(error.exception))
+        "10: tf.float64, 11: tf.complex128, 16: tf.uint32}",
+        str(error.exception))
 
   def testTensorName(self):
     with ops.Graph().as_default():
@@ -107,6 +79,30 @@ class UtilTest(test_util.TensorFlowTestCase):
     for i in range(len(expect_names)):
       got_name = util.get_tensor_name(out_tensors[i])
       self.assertEqual(got_name, expect_names[i])
+
+  def testUint32PassThrough(self):
+    model = tf.keras.Sequential([
+        tf.keras.layers.InputLayer(input_shape=(4,), dtype=tf.uint32),
+        tf.keras.layers.Reshape(target_shape=(2, 2))
+    ])
+    converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    tflite_model = converter.convert()
+    interpreter = tf.lite.Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()[0]
+    output_details = interpreter.get_output_details()[0]
+
+    self.assertEqual(input_details["dtype"], np.uint32)
+    self.assertEqual(output_details["dtype"], np.uint32)
+
+    in_array = np.array([[1, 1, 1, 1]], dtype="uint32") * ((1 << 32) - 1)
+    expected_out = np.reshape(in_array, (2, 2))
+
+    interpreter.set_tensor(input_details["index"], in_array)
+    interpreter.invoke()
+
+    output_data = interpreter.get_tensor(output_details["index"])[0]
+    self.assertAllEqual(expected_out, output_data)
 
   @test_util.enable_control_flow_v2
   def testRemoveLowerUsingSwitchMerge(self):
@@ -232,16 +228,14 @@ class TensorFunctionsTest(test_util.TensorFlowTestCase):
 
 def _generate_integer_tflite_model(quantization_type=dtypes.int8):
   """Define an integer post-training quantized tflite model."""
-  # Load MNIST dataset
+  # Define a pseudo MNIST dataset (as downloading the dataset on-the-fly causes
+  # network connection failures)
   n = 10  # Number of samples
-  (train_images, train_labels), (test_images, test_labels) = \
-      tf.keras.datasets.mnist.load_data()
-  train_images, train_labels, test_images, test_labels = \
-      train_images[:n], train_labels[:n], test_images[:n], test_labels[:n]
+  images = np.random.randint(low=0, high=255, size=[n, 28, 28], dtype=np.uint8)
+  labels = np.random.randint(low=0, high=9, size=(n,), dtype=np.uint8)
 
   # Normalize the input image so that each pixel value is between 0 to 1.
-  train_images = train_images / 255.0
-  test_images = test_images / 255.0
+  images = images / 255.0
 
   # Define TF model
   model = tf.keras.Sequential([
@@ -260,8 +254,8 @@ def _generate_integer_tflite_model(quantization_type=dtypes.int8):
       metrics=["accuracy"])
 
   model.fit(
-      train_images,
-      train_labels,
+      images,
+      labels,
       epochs=1,
       validation_split=0.1,
   )

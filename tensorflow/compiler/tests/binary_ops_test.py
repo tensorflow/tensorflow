@@ -206,6 +206,18 @@ class BinaryOpsTest(xla_test.XLATestCase):
           rtol=1e-4,
           atol=1e-8)
 
+      # Check -inf logits doesn't create NaNs.
+      self._testBinary(
+          gen_nn_ops.sparse_softmax_cross_entropy_with_logits,
+          np.array([[-np.inf, 0.]], dtype=dtype),
+          np.array([1], dtype=np.int32),
+          expected=[
+              np.array([0.], dtype=dtype),
+              np.array([[0., 0.]], dtype=dtype)],
+          equality_test=self.ListsAreClose,
+          rtol=1e-4,
+          atol=1e-8)
+
       # TODO(b/68813416): Fails with bfloat16.
       if dtype != dtypes.bfloat16.as_numpy_dtype:
         self._testBinary(
@@ -502,8 +514,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
             expected=expected,
             equality_test=NextAfterEqualityTest)
 
-  @test_util.disable_mlir_bridge(
-      "Complex types not supported in CreateDenseElementsAttrFromLiteral")
   def testComplexOps(self):
     for dtype in self.complex_types:
       ctypes = {np.complex64: np.float32, np.complex128: np.float64}

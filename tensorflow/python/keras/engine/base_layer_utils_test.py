@@ -111,33 +111,31 @@ class OpLayerTest(keras_parameterized.TestCase):
         _ = keras.Model(int_values, float_values)
 
   def test_ragged_op_layer_keras_tensors(self):
-    with testing_utils.use_keras_tensors_scope(True):
-      int_values = keras.Input(shape=(None,), dtype=dtypes.int32, ragged=True)
-      float_values = math_ops.cast(int_values, dtypes.float32)
-      model = keras.Model(int_values, float_values)
-      model.compile(loss='mse')
+    int_values = keras.Input(shape=(None,), dtype=dtypes.int32, ragged=True)
+    float_values = math_ops.cast(int_values, dtypes.float32)
+    model = keras.Model(int_values, float_values)
+    model.compile(loss='mse')
 
-      input_data = ragged_factory_ops.constant(
-          [[1, 2], [3, 4]], dtype=np.int32)
-      expected = [[1.0, 2.0], [3.0, 4.0]]
-      output = model.predict(input_data)
-      self.assertIsInstance(output, ragged_tensor.RaggedTensor)
-      self.assertAllClose(expected, output)
+    input_data = ragged_factory_ops.constant(
+        [[1, 2], [3, 4]], dtype=np.int32)
+    expected = [[1.0, 2.0], [3.0, 4.0]]
+    output = model.predict(input_data)
+    self.assertIsInstance(output, ragged_tensor.RaggedTensor)
+    self.assertAllClose(expected, output)
 
   def test_sparse_op_layer_keras_tensors(self):
-    with testing_utils.use_keras_tensors_scope(True):
-      int_values = keras.Input(shape=(None,), dtype=dtypes.int32, sparse=True)
-      float_values = math_ops.cast(int_values, dtypes.float32)
-      _ = keras.Model(int_values, float_values)
-      model = keras.Model(int_values, float_values)
-      model.compile(loss='mse')
+    int_values = keras.Input(shape=(None,), dtype=dtypes.int32, sparse=True)
+    float_values = math_ops.cast(int_values, dtypes.float32)
+    _ = keras.Model(int_values, float_values)
+    model = keras.Model(int_values, float_values)
+    model.compile(loss='mse')
 
-      input_data = sparse_ops.from_dense(
-          np.array([[1, 2], [3, 4]], dtype=np.int32))
-      expected = [[1.0, 2.0], [3.0, 4.0]]
-      output = model.predict(input_data)
-      self.assertIsInstance(output, sparse_tensor.SparseTensor)
-      self.assertAllClose(expected, sparse_ops.sparse_tensor_to_dense(output))
+    input_data = sparse_ops.from_dense(
+        np.array([[1, 2], [3, 4]], dtype=np.int32))
+    expected = [[1.0, 2.0], [3.0, 4.0]]
+    output = model.predict(input_data)
+    self.assertIsInstance(output, sparse_tensor.SparseTensor)
+    self.assertAllClose(expected, sparse_ops.sparse_tensor_to_dense(output))
 
 
 if __name__ == '__main__':

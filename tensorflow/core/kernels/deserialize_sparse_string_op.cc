@@ -35,6 +35,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+using CPUDevice = Eigen::ThreadPoolDevice;
+
 namespace {
 
 using sparse::SparseTensor;
@@ -204,9 +206,9 @@ class DeserializeSparseOp : public OpKernel {
       target_shape.vec<int64>()(i + ndims - 1) = output.shape().data()[i + 1];
     }
 
-    ReshapeSparseTensor(context, output.indices(), input_shape, target_shape,
-                        0 /* output indices index */,
-                        2 /* output shape index */);
+    ReshapeSparseTensor<CPUDevice>(context, output.indices(), input_shape,
+                                   target_shape, 0 /* output indices index */,
+                                   2 /* output shape index */);
     context->set_output(1, output.values());
   }
 

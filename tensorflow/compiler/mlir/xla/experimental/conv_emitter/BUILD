@@ -30,6 +30,7 @@ cc_library(
     hdrs = ["conv_emitter.h"],
     deps = [
         ":conv_emitter_transforms",
+        "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
@@ -61,9 +62,6 @@ cc_library(
 tf_cc_test(
     name = "conv_emitter_test",
     srcs = ["conv_emitter_test.cc"],
-    tags = [
-        "no_oss",  # TODO(b/148143101): Test should pass in OSS.
-    ],
     deps = [
         ":conv_emitter",
         "//tensorflow/compiler/xla/service:hlo_parser",

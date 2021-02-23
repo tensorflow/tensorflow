@@ -10,7 +10,7 @@ package(
 
 tf_py_test(
     name = "batch_test",
-    size = "small",
+    size = "medium",
     srcs = ["batch_test.py"],
     deps = [
         ":test_base",
@@ -315,6 +315,7 @@ tf_py_test(
     tags = [
         "no_oss",  # Test flaky due to port collisions.
         "no_windows",
+        "nomsan",  # b/180655981
     ],
     deps = [
         ":test_base",
@@ -741,6 +742,7 @@ tf_py_test(
 py_library(
     name = "test_base",
     srcs = ["test_base.py"],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

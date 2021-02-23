@@ -355,8 +355,8 @@ class HashtableGraph {
     }
 
     // Resource id tensor.
-    interpreter_->SetTensorParametersReadWrite(kResourceTensorId, kTfLiteInt32,
-                                               "", {1}, TfLiteQuantization());
+    interpreter_->SetTensorParametersReadWrite(
+        kResourceTensorId, kTfLiteResource, "", {1}, TfLiteQuantization());
 
     // Key tensor for import.
     interpreter_->SetTensorParametersReadWrite(kKeyTensorId, key_type_, "",
@@ -389,7 +389,7 @@ class HashtableGraph {
     if (table_two_initialization) {
       // Resource id tensor.
       interpreter_->SetTensorParametersReadWrite(
-          kResourceTwoTensorId, kTfLiteInt32, "", {1}, TfLiteQuantization());
+          kResourceTwoTensorId, kTfLiteResource, "", {1}, TfLiteQuantization());
 
       // Key tensor for import.
       interpreter_->SetTensorParametersReadWrite(
@@ -627,7 +627,8 @@ TEST(HashtableOpsTest, TestImportDifferentKeyAndValueSize) {
   graph.SetQuery({"2", "3", "4"}, -1);
   graph.AddTensors();
   graph.BuildDefaultGraph();
-  EXPECT_EQ(graph.AllocateTensors(), kTfLiteError);
+  EXPECT_EQ(graph.AllocateTensors(), kTfLiteOk);
+  EXPECT_EQ(graph.Invoke(), kTfLiteError);
 }
 
 // HashtableOpModel creates a model with one signle Hashtable op.
@@ -635,7 +636,7 @@ class HashtableOpModel : public SingleOpModel {
  public:
   explicit HashtableOpModel(const char* table_name, TensorType key_dtype,
                             TensorType value_dtype) {
-    output_ = AddOutput(GetTensorType<int>());
+    output_ = AddOutput({TensorType_RESOURCE, {1}});
 
     // Set up and pass in custom options using flexbuffer.
     flexbuffers::Builder fbb;
@@ -650,7 +651,10 @@ class HashtableOpModel : public SingleOpModel {
     BuildInterpreter({});
   }
 
-  std::vector<int> GetOutput() { return ExtractVector<int>(output_); }
+  std::vector<int> GetOutput() {
+    TfLiteTensor* tensor_ptr = interpreter_->tensor(output_);
+    return std::vector<int>(tensor_ptr->data.i32, tensor_ptr->data.i32 + 1);
+  }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 
   resource::ResourceMap& GetResources() {
@@ -744,7 +748,20 @@ class BaseHashtableOpModel : public SingleOpModel {
   BaseHashtableOpModel() {}
 
   void SetResourceId(const std::vector<int>& data) {
-    PopulateTensor(resource_id_, data);
+    int32_t* tensor_buffer =
+        reinterpret_cast<int32_t*>(malloc(sizeof(int32_t)));
+    tensor_buffer[0] = data[0];
+
+    TfLiteIntArray* dims = TfLiteIntArrayCreate(1);
+    dims->data[0] = 1;
+
+    auto resource_handle_tensor = interpreter_->tensor(resource_id_);
+
+    TfLiteTensorReset(
+        resource_handle_tensor->type, resource_handle_tensor->name, dims,
+        resource_handle_tensor->params, reinterpret_cast<char*>(tensor_buffer),
+        sizeof(int32_t), kTfLiteDynamic, resource_handle_tensor->allocation,
+        resource_handle_tensor->is_variable, resource_handle_tensor);
   }
 
   void CreateHashtableResource(int resource_id) {
@@ -786,7 +803,7 @@ class HashtableFindOpModel : public BaseHashtableOpModel {
     key_type_ = key_type;
     value_type_ = value_type;
 
-    resource_id_ = AddInput({TensorType_INT32, {1}});
+    resource_id_ = AddInput({TensorType_RESOURCE, {1}});
     lookup_ = AddInput({key_type, {lookup_size}});
     default_value_ = AddInput({value_type, {1}});
 
@@ -864,7 +881,7 @@ class HashtableImportOpModel : public BaseHashtableOpModel {
     key_type_ = key_type;
     value_type_ = value_type;
 
-    resource_id_ = AddInput({TensorType_INT32, {1}});
+    resource_id_ = AddInput({TensorType_RESOURCE, {1}});
     keys_ = AddInput({key_type, {initdata_size}});
     values_ = AddInput({value_type, {initdata_size}});
 
@@ -941,7 +958,7 @@ class HashtableSizeOpModel : public BaseHashtableOpModel {
     key_type_ = key_type;
     value_type_ = value_type;
 
-    resource_id_ = AddInput({TensorType_INT32, {1}});
+    resource_id_ = AddInput({TensorType_RESOURCE, {1}});
 
     output_ = AddOutput({TensorType_INT64, {1}});
 

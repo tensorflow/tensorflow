@@ -21,8 +21,10 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
+#include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
+#include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
@@ -111,10 +113,9 @@ struct HloBufferizePass : public HloBufferizePassBase<HloBufferizePass> {
     OwningRewritePatternList patterns;
     auto& context = getContext();
     ConversionTarget target(context);
-    target.addLegalDialect<lmhlo::LmhloDialect>();
-    target.addLegalDialect<StandardOpsDialect>();
-    target.addLegalDialect<lmhlo::LmhloDialect, StandardOpsDialect>();
-    target.addLegalDialect<tensor::TensorDialect>();
+    target.addLegalDialect<complex::ComplexDialect, lmhlo::LmhloDialect,
+                           StandardOpsDialect, tensor::TensorDialect,
+                           math::MathDialect>();
     target.addIllegalDialect<mhlo::MhloDialect>();
 
     CustomBufferizeTypeConverter converter;
@@ -162,16 +163,16 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
   void runOnOperation() override {
     auto& context = getContext();
     ConversionTarget target(context);
-    target.addLegalDialect<scf::SCFDialect, StandardOpsDialect,
-                           tensor::TensorDialect,
+    target.addLegalDialect<complex::ComplexDialect, scf::SCFDialect,
+                           StandardOpsDialect, tensor::TensorDialect,
                            tf_framework::TFFrameworkDialect, AffineDialect,
                            shape::ShapeDialect, lmhlo::LmhloDialect,
-                           linalg::LinalgDialect>();
+                           linalg::LinalgDialect, math::MathDialect>();
     target.addLegalOp<FuncOp, ModuleOp, ModuleTerminatorOp>();
 
     target.addIllegalDialect<mhlo::MhloDialect>();
-    target.addIllegalOp<DynamicTensorFromElementsOp, tensor::ExtractOp,
-                        TensorFromElementsOp, tensor::CastOp, TensorLoadOp,
+    target.addIllegalOp<tensor::GenerateOp, tensor::ExtractOp,
+                        tensor::FromElementsOp, tensor::CastOp, TensorLoadOp,
                         TensorToMemrefOp>();
     BufferizeTypeConverter converter;
     auto typesAreLegal = [&converter](Operation* op) {
@@ -212,4 +213,3 @@ std::unique_ptr<OperationPass<ModuleOp> > CreateFinalBufferizePass() {
 }  // namespace transforms
 }  // namespace kernel_gen
 }  // namespace mlir
-

@@ -624,15 +624,10 @@ bool ReplicateOp::IsPackedBlockArgument(BlockArgument block_arg) {
 // block argument (of the replicate op) and a valid replica is provided.
 unsigned ReplicateOp::GetReplicaOperandIndexForBlockArgument(
     BlockArgument block_arg, unsigned replica) {
-  const int32_t num_replicas = nAttr().getInt();
-  assert(replica < num_replicas && block_arg.getOwner() == &GetBody());
+  MutableArrayRef<OpOperand> operands = GetOperandsForBlockArgument(block_arg);
+  if (operands.size() == 1) return operands.front().getOperandNumber();
 
-  const unsigned num_replicated_args = GetNumReplicatedBlockArguments();
-  if (block_arg.getArgNumber() < num_replicated_args)
-    return block_arg.getArgNumber() * num_replicas + replica;
-
-  return block_arg.getArgNumber() - num_replicated_args +
-         replicated_inputs().size();
+  return operands[replica].getOperandNumber();
 }
 
 // Returns the operand being forwarded as a replicated/packed block argument for
@@ -640,9 +635,34 @@ unsigned ReplicateOp::GetReplicaOperandIndexForBlockArgument(
 // and a valid replica is provided.
 Value ReplicateOp::GetReplicaOperandForBlockArgument(BlockArgument block_arg,
                                                      unsigned replica) {
-  const unsigned operand_index =
-      GetReplicaOperandIndexForBlockArgument(block_arg, replica);
-  return getOperand(operand_index);
+  MutableArrayRef<OpOperand> operands = GetOperandsForBlockArgument(block_arg);
+  if (operands.size() == 1) return operands.front().get();
+
+  return operands[replica].get();
+}
+
+// Returns the list of replica op operands that maps to the given block
+// argument. Returns list with num_replicas elements for replicated operands
+// and list with a single element for packed operands.
+//
+// Requires that block argument is of this replicate op.
+MutableArrayRef<OpOperand> ReplicateOp::GetOperandsForBlockArgument(
+    BlockArgument block_arg) {
+  assert(block_arg.getOwner() == &GetBody());
+
+  unsigned arg_number = block_arg.getArgNumber();
+  unsigned num_replicated_args = GetNumReplicatedBlockArguments();
+  int32_t num_replicas = nAttr().getInt();
+  MutableArrayRef<OpOperand> operands = getOperation()->getOpOperands();
+
+  // All replicated arguments are before packed arguments so return replicated
+  // operands if the given argument is one of the replicated arguments.
+  if (arg_number < num_replicated_args)
+    return operands.slice(arg_number * num_replicas, num_replicas);
+
+  operands = operands.drop_front(num_replicated_args * num_replicas);
+  arg_number -= num_replicated_args;
+  return operands.slice(arg_number, 1);
 }
 
 // Checks if a tf_device.replicate wraps a single operation and the single

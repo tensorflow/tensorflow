@@ -38,6 +38,14 @@ cc_library(
     hdrs = ["tag_constants.h"],
 )
 
+# copybara:uncomment_begin(google-only)
+# cc_library(
+#     name = "mobile_only_deps",
+#     visibility = ["//visibility:private"],
+#     deps = if_mobile(["//tensorflow/core:portable_tensorflow_lib"]),
+# )
+# copybara:uncomment_end
+
 cc_library(
     name = "reader",
     srcs = ["reader.cc"],

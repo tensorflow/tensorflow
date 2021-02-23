@@ -628,6 +628,10 @@ def MakeNdarray(tensor):
     values = np.fromiter(tensor.int_val, dtype=dtype)
   elif tensor_dtype == dtypes.int64:
     values = np.fromiter(tensor.int64_val, dtype=dtype)
+  elif tensor_dtype == dtypes.uint32:
+    values = np.fromiter(tensor.uint32_val, dtype=dtype)
+  elif tensor_dtype == dtypes.uint64:
+    values = np.fromiter(tensor.uint64_val, dtype=dtype)
   elif tensor_dtype == dtypes.complex64:
     it = iter(tensor.scomplex_val)
     values = np.array([complex(x[0], x[1]) for x in zip(it, it)], dtype=dtype)

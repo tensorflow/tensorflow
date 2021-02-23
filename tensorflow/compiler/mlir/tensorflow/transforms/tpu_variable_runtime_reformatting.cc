@@ -261,8 +261,8 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
     }
   }
   // Update the metadata of the compile op.
-  compile.setAttr("metadata", StringAttr::get(metadata.SerializeAsString(),
-                                              compile.getContext()));
+  compile.setAttr("metadata", StringAttr::get(compile.getContext(),
+                                              metadata.SerializeAsString()));
   return mapping;
 }
 

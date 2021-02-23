@@ -119,32 +119,32 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       // Compute memrefs for the value to reduce. This makes it easier to just
       // inline the body.
       auto output = *reduce_op.out().begin();
-      // TODO(herhut) Move this to the SliceOp builder.
       auto resType = MemRefType::get(
-          llvm::None, output.getType().cast<MemRefType>().getElementType(),
+          llvm::None, getElementTypeOrSelf(output.getType()),
           makeStridedLinearLayoutMap(llvm::None,
                                      MemRefType::getDynamicStrideOrOffset(),
                                      rewriter.getContext()));
-      auto accumulator = rewriter.create<mlir::linalg::SliceOp>(
-          loc, resType, output, ArrayRef<Value>{launch_op.getThreadIds().x});
+      OpFoldResult offset = launch_op.getThreadIds().x;
+      auto oneAttr = rewriter.getI64IntegerAttr(1);
+      OpFoldResult size = oneAttr;
+      OpFoldResult stride = oneAttr;
+      auto accumulator = rewriter.create<SubViewOp>(loc, resType, output,
+                                                    offset, size, stride);
       llvm::SmallVector<Value, 4> indexings;
       auto input_buffer = *reduce_op.operands().begin();
-      auto input_type = input_buffer.getType().cast<MemRefType>();
-      for (int64_t dim = 0; dim < input_type.getRank(); ++dim) {
-        indexings.push_back(dim == reducing_dimension
-                                ? loop.getInductionVar()
-                                : launch_op.getThreadIds().x);
-      }
-      // TODO(herhut) Move this to the SliceOp builder.
-      auto input = *reduce_op.operand_begin();
-      auto rhs = rewriter.create<mlir::linalg::SliceOp>(
-          loc,
-          MemRefType::get(
-              llvm::None, input_type.getElementType(),
-              makeStridedLinearLayoutMap(llvm::None,
-                                         MemRefType::getDynamicStrideOrOffset(),
-                                         rewriter.getContext())),
-          input, indexings);
+      auto input_type_rank =
+          input_buffer.getType().cast<MemRefType>().getRank();
+
+      Value input = *reduce_op.operand_begin();
+      SmallVector<OpFoldResult> offsets = llvm::to_vector<4>(llvm::map_range(
+          llvm::seq<int>(0, input_type_rank), [&](int dim) -> OpFoldResult {
+            return dim == reducing_dimension ? loop.getInductionVar()
+                                             : launch_op.getThreadIds().x;
+          }));
+      SmallVector<OpFoldResult> sizes(input_type_rank, oneAttr);
+      SmallVector<OpFoldResult> strides(input_type_rank, oneAttr);
+      auto rhs = rewriter.create<SubViewOp>(loc, accumulator.getType(), input,
+                                            offsets, sizes, strides);
 
       // Now copy over the actual body of the reduction, leaving out the
       // terminator.

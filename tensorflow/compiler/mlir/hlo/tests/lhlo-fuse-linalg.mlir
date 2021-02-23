@@ -92,7 +92,7 @@ func @fusion_of_three(%arg0: memref<100x10xf32>,
      ins(%1 : memref<100x10xf32>)
     outs(%arg2 : memref<100x10xf32>) {
      ^bb0(%arg3: f32, %arg4: f32): // no predecessors
-       %2 = exp %arg3 : f32
+       %2 = math.exp %arg3 : f32
        linalg.yield %2 : f32
      }
  dealloc %1 : memref<100x10xf32>
