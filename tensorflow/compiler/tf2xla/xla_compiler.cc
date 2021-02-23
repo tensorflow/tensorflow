@@ -1245,10 +1245,11 @@ Status ValidateGraph(const Graph* graph,
       }
       if (std::shared_ptr<AbstractStackTrace> stack_trace =
               node->GetStackTrace()) {
-        absl::StrAppend(&errmsg, "\nThe op is created at: \n",
-                        stack_trace->ToString({.show_line_contents = true,
-                                               .filter_common_prefix = true,
-                                               .drop_internal_frames = true}));
+        absl::StrAppend(
+            &errmsg, "\nThe op is created at: \n",
+            stack_trace->ToString({/*show_line_contents =*/true,
+                                   /*filter_common_prefix =*/true,
+                                   /*drop_internal_frames =*/true}));
       }
 
       return errors::InvalidArgument(errmsg);
