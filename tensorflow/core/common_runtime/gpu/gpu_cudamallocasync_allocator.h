@@ -97,6 +97,8 @@ class GpuCudaMallocAsyncAllocator : public Allocator {
   // If null, then the instanciation failed and the first allocation
   // will return an error.
   CUmemoryPool pool_;
+  static std::vector<CUmemoryPool*> all_pools_;
+  static std::vector<PlatformGpuId> all_ids_;
 #endif  // TF_CUDA_MALLOC_ASYNC_SUPPORTED
 
   string name_;

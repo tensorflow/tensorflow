@@ -113,6 +113,32 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
         pool_, CU_MEMPOOL_ATTR_REUSE_ALLOW_INTERNAL_DEPENDENCIES, &disable);
   }
 
+  // Set read/write access to all GPUs.
+  for(int i = 0; i < all_pools_.size(); ++i) {
+    // Set the current pool access to the previous GPUs.
+    CUmemAccessDesc map;
+    map.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
+    map.location.id = all_ids_[i].value();
+
+    map.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+    if (auto status = cuMemPoolSetAccess(pool_, &map, 1)) {
+      pool_ = nullptr;
+      LOG(FATAL) << "could not set access to the pool : "
+                 << GetCudaErrorMessage(status);
+    }
+
+    // Set the previous pools access to the current GPU.
+    map.location.id = platform_gpu_id.value();
+
+    if (auto status = cuMemPoolSetAccess(*all_pools_[i], &map, 1)) {
+      pool_ = nullptr;
+      LOG(FATAL) << "could not set access to the pool : "
+                 << GetCudaErrorMessage(status);
+    }
+  }
+  all_pools_.push_back(&pool_);
+  all_ids_.push_back(platform_gpu_id);
+
   VLOG(2) << Name() << " GpuCudaMallocAsyncAllocator PoolSize " << pool_size;
   int64 prealloc_size = 0;
   // TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC=-1 is a special value that
@@ -247,4 +273,6 @@ void GpuCudaMallocAsyncAllocator::ClearStats() {
   stats_->largest_alloc_size = 0;
 }
 
+std::vector<CUmemoryPool*> GpuCudaMallocAsyncAllocator::all_pools_;
+std::vector<PlatformGpuId> GpuCudaMallocAsyncAllocator::all_ids_;
 }  // namespace tensorflow
