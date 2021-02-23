@@ -1679,8 +1679,17 @@ func @ReorderReshapex2Add(%arg0: tensor<1x2x3x4xf32>, %arg1: tensor<1x2x3x4xf32>
   // CHECK: return %[[VAL_1]]
 }
 
-// CHECK-LABEL: ConvertSliceToIdentity
-func @ConvertSliceToIdentity(%arg0: tensor<2x3x4x5xf32>) -> tensor<2x3x4x5xf32> {
+// CHECK-LABEL: ConvertSliceToIdentityI32
+func @ConvertSliceToIdentityI32(%arg0: tensor<2x3x4x5xf32>) -> tensor<2x3x4x5xf32> {
+  %begin = constant dense<0> : tensor<4xi32>
+  %shape = constant dense<[2,3,4,5]> : tensor<4xi32>
+  %0 = "tfl.slice"(%arg0, %begin, %shape) : (tensor<2x3x4x5xf32>, tensor<4xi32>, tensor<4xi32>) -> tensor<2x3x4x5xf32>
+  return %0 : tensor<2x3x4x5xf32>
+  // CHECK: return %arg0
+}
+
+// CHECK-LABEL: ConvertSliceToIdentityI64
+func @ConvertSliceToIdentityI64(%arg0: tensor<2x3x4x5xf32>) -> tensor<2x3x4x5xf32> {
   %begin = constant dense<0> : tensor<4xi64>
   %shape = constant dense<[2,3,4,5]> : tensor<4xi64>
   %0 = "tfl.slice"(%arg0, %begin, %shape) : (tensor<2x3x4x5xf32>, tensor<4xi64>, tensor<4xi64>) -> tensor<2x3x4x5xf32>
