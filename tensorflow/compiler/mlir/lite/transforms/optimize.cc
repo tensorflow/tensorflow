@@ -84,8 +84,20 @@ bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
 using ::llvm::cast;
 
 // Optimize TFLite operations in functions.
-struct Optimize : public PassWrapper<Optimize, FunctionPass> {
+class OptimizePass : public PassWrapper<OptimizePass, FunctionPass> {
+ public:
+  OptimizePass() = default;
+  OptimizePass(const OptimizePass &) {}
+  explicit OptimizePass(bool enable_canonicalization) {
+    enable_canonicalization_ = enable_canonicalization;
+  }
   void runOnFunction() override;
+
+ private:
+  Option<bool> enable_canonicalization_{
+      *this, "enable-canonicalization",
+      llvm::cl::desc("Enable canonicalization during optimization pass."),
+      llvm::cl::init(false)};
 };
 
 // Returns whether the given type `a` is broadcast-compatible with `b`.
@@ -1067,7 +1079,14 @@ using FuseBinaryOpToFollowingDepthwiseConv2D =
     FuseBinaryOpToFollowingAffineOp<DepthwiseConv2DOp>;
 using FuseBinaryOpToFollowingConv2D = FuseBinaryOpToFollowingAffineOp<Conv2DOp>;
 
-void Optimize::runOnFunction() {
+// Adds canonicalization patterns to the list of patterns.
+void AddCanonicalizationPatterns(MLIRContext *context,
+                                 OwningRewritePatternList *patterns) {
+  for (auto *op : context->getRegisteredOperations())
+    op->getCanonicalizationPatterns(*patterns, context);
+}
+
+void OptimizePass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto *ctx = &getContext();
   auto func = getFunction();
@@ -1081,6 +1100,7 @@ void Optimize::runOnFunction() {
                   FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
                   FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
                   FuseFullyConnectedAndMul>(ctx);
+  if (enable_canonicalization_) AddCanonicalizationPatterns(ctx, &patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Fuse the binary ops with the following ops.
@@ -1098,17 +1118,19 @@ void Optimize::runOnFunction() {
       FuseBinaryOpToFollowingFullyConnected, FuseConv2DAndMulWithQDQs,
       FuseDepthwiseConv2DAndMulWithQDQs, ConvertTrivialTransposeOpToReshapeOp,
       RemoveReshapeBeforeFullyConnected>(ctx);
+  if (enable_canonicalization_)
+    AddCanonicalizationPatterns(ctx, &phase_2_patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
-
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass() {
-  return std::make_unique<Optimize>();
+std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass(
+    bool enable_canonicalization) {
+  return std::make_unique<OptimizePass>(enable_canonicalization);
 }
 
-static PassRegistration<Optimize> pass(
+static PassRegistration<OptimizePass> pass(
     "tfl-optimize", "Optimize within the TensorFlow Lite dialect");
 
 }  // namespace TFL

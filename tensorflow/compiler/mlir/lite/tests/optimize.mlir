@@ -1,7 +1,7 @@
 // Run optimize pass only and check the results.
 // RUN: tf-opt %s -tfl-optimize | FileCheck %s
 // Run optimize pass and then canonicalize pass, and make sure some folding is applied.
-// RUN: tf-opt %s -tfl-optimize -canonicalize | FileCheck --check-prefix=FOLD %s
+// RUN: tf-opt %s -tfl-optimize='enable-canonicalization=true' | FileCheck --check-prefix=FOLD %s
 
 // Run legalize pass and then optimize pass, and make sure some fusing is applied.
 // RUN: tf-opt %s -tfl-legalize-tf -tfl-optimize | FileCheck --check-prefix=Fusing %s
