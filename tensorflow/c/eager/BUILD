@@ -773,7 +773,7 @@ tf_cuda_cc_test(
     ],
     tags = [
         "guitar",
-        "multi_gpu",
+        # "multi_gpu",  b/180748118
     ],
     deps = [
         ":c_api",
