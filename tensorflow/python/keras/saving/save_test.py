@@ -1003,6 +1003,39 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
     loaded = keras.models.load_model(saved_model_dir)
     self.assertIs(loaded.layers[1], loaded.layers[2].layer)
 
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def test_multi_output_metrics_name_stay_same(self):
+    """Tests that metric names don't change with each save/load cycle.
+
+    e.g. "head_0_accuracy" should not become "head_0_head_0_accuracy" after
+    saving and loading a model.
+    """
+    input_ = keras.Input((4,))
+    model = keras.Model(
+        input_,
+        [keras.layers.Softmax(name='head_0')(keras.layers.Dense(3)(input_)),
+         keras.layers.Softmax(name='head_1')(keras.layers.Dense(5)(input_))])
+    metric = keras.metrics.BinaryAccuracy()
+    model.compile(optimizer='rmsprop',
+                  loss='mse',
+                  metrics={'head_0': [metric, 'accuracy']})
+
+    # Run one iteration.
+    x = np.random.rand(2, 4)
+    y = {'head_0': np.random.randint(2, size=(2, 3)),
+         'head_1': np.random.randint(2, size=(2, 5))}
+    model.fit(x, y, verbose=0)
+
+    # Save and reload.
+    save_format = testing_utils.get_save_format()
+    saved_model_dir = self._save_model_dir()
+    keras.models.save_model(model, saved_model_dir, save_format=save_format)
+    loaded = keras.models.load_model(saved_model_dir)
+
+    # Make sure the metrics names from the model before saving match the loaded
+    # model.
+    self.assertSequenceEqual(model.metrics_names, loaded.metrics_names)
+
 
 # Factory functions to create models that will be serialized inside a Network.
 def _make_graph_network(input_size, output_size):
