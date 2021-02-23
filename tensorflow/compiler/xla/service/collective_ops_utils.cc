@@ -120,11 +120,10 @@ StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
   int replica_count = device_assignment.replica_count();
   int partition_count = device_assignment.computation_count();
 
-  std::pair<int, int> logical_ids;
-  TF_ASSIGN_OR_RETURN(logical_ids,
-                      device_assignment.LogicalIdsForDevice(device_id));
-  int current_replica_id = logical_ids.first;
-  int current_partition_id = logical_ids.second;
+  TF_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID logical_id,
+                      device_assignment.LogicalIdForDevice(device_id));
+  int current_replica_id = logical_id.replica_id;
+  int current_partition_id = logical_id.computation_id;
 
   std::vector<GlobalDeviceId> participants;
   switch (group_mode) {

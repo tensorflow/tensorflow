@@ -139,12 +139,12 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
       params.run_id, std::move(participants), local_participants.size(),
       config().collective_op_kind, config().op_id);
   if (VLOG_IS_ON(2)) {
-    std::pair<int, int> logical_ids;
     TF_ASSIGN_OR_RETURN(
-        logical_ids, params.device_assn->LogicalIdsForDevice(global_device_id));
+        DeviceAssignment::LogicalID logical_id,
+        params.device_assn->LogicalIdForDevice(global_device_id));
     VLOG(2) << "global device " << global_device_id << ", (r"
-            << logical_ids.first << ", p" << logical_ids.second << ") key "
-            << rendezvous_key.ToString() << "\n";
+            << logical_id.replica_id << ", p" << logical_id.computation_id
+            << ") key " << rendezvous_key.ToString() << "\n";
   }
 
   int device_ordinal = params.stream->parent()->device_ordinal();
