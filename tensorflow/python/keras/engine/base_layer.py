@@ -1660,8 +1660,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         self.mean = tf.keras.metrics.Mean(name='metric_1')
 
       def call(self, inputs):
-        self.add_metric(self.mean(x))
-        self.add_metric(tf.reduce_sum(x), name='metric_2')
+        self.add_metric(self.mean(inputs))
+        self.add_metric(tf.reduce_sum(inputs), name='metric_2')
         return inputs
     ```
 
