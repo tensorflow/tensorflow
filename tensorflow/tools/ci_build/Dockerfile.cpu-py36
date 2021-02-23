@@ -18,13 +18,8 @@ RUN add-apt-repository -y ppa:openjdk-r/ppa && \
 RUN /install/install_deb_packages.sh
 
 # Install gcc 7
-RUN apt-get install -y software-properties-common
-RUN add-apt-repository ppa:ubuntu-toolchain-r/test
-RUN apt update
-RUN apt install g++-7 -y
-RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 60 \
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 700 \
                          --slave /usr/bin/g++ g++ /usr/bin/g++-7
-RUN update-alternatives --config gcc
 
 # The following line installs the Python 3.6 cross-compilation toolchain.
 RUN /install/install_pi_python3x_toolchain.sh "3.6"
