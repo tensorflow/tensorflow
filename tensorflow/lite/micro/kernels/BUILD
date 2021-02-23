@@ -109,6 +109,7 @@ cc_library(
         ":micro",
     ],
     deps = [
+        ":conv",
         ":fixedpoint_utils",
         ":kernel_util",
         ":xtensa",
