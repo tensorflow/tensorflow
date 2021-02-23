@@ -80,13 +80,14 @@ class ArithmeticOptimizer : public GraphOptimizer {
     bool reorder_cast_like_and_value_preserving = true;
     bool replace_mul_with_tile = true;
     bool replace_mul_with_square = true;
-    bool simplify_aggregation = true;
+    bool replace_pack_reshape_with_tile = true;
     bool convert_pow = true;
     bool convert_log1p = true;
     bool convert_log_softmax = true;
     bool convert_expm1 = true;
     bool unary_ops_composition = true;
     bool remove_stack_slice_same_axis = true;
+    bool simplify_aggregation = true;
     bool simplify_embedding_lookup = true;
     bool remove_cast_into_segment_reduction = true;
 
