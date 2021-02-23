@@ -107,7 +107,7 @@ absl::string_view CollectiveOpGroupModeToString(
     case CollectiveOpGroupMode::kCrossPartition:
       return "kCrossPartition";
     case CollectiveOpGroupMode::kCrossReplicaAndPartition:
-      return "kCrossReplicAndPartition";
+      return "kCrossReplicaAndPartition";
     case CollectiveOpGroupMode::kFlattenedID:
       return "kFlattenedID";
   }

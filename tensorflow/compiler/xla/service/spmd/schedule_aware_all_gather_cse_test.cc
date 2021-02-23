@@ -112,9 +112,9 @@ HloModule module
 ENTRY entry {
   param0 = s32[1,8]{1,0} parameter(0)
   ag1 = s32[1,16]{1,0} all-gather(param0), replica_groups={{0,1}}, dimensions={1},
-    channel_id=0, use_global_device_ids=true
+    channel_id=0
   ag2 = s32[1,16]{1,0} all-gather(param0), replica_groups={{0,1}},
-    dimensions={1}, use_global_device_ids=true
+    dimensions={1}
   ROOT tuple = (s32[1,16]{1,0}, s32[1,16]{1,0}) tuple(ag1, ag2)
 })";
   auto module_status = RunPass(hlo_string);
