@@ -3974,6 +3974,18 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
 
 Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* optimized_graph) {
+  // When we are compiling an XLA cluster and extracting a subgraph of it out
+  // onto another device, it is possible for constant folding to rearrange the
+  // constants in the graph to create communication deadlocks, where the
+  // subgraph needs to use the output of an op on another device which itself
+  // uses a constant in the subgraph. Since only one send/recv is created for
+  // the device boundary, these deadlocks will manifest as cycles in the graph.
+  if (item.xla_hints.contains_outside_subgraph) {
+    VLOG(1) << "Skipping constant folding since it's unsafe for XLA.";
+    *optimized_graph = item.graph;
+    return Status::OK();
+  }
+
   // TensorFlow flushes denormals to zero and rounds to nearest, so we do
   // the same here.
   port::ScopedFlushDenormal flush;

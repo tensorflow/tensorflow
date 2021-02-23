@@ -514,12 +514,13 @@ void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
 
 bool SchedulingPass(Cluster* cluster, std::unique_ptr<GraphMemory>* memory_ptr,
                     GrapplerItem* item) {
-  // This pass involves making TemporaryVariables, which are not necessarily
-  // supported by XLA devices. Skip if the item will be compiled by XLA later.
-  // Ideally we would do a check to see if the compiling XLA device implements
-  // the TemporaryVariable XlaOpKernel, but when Grappler is run we don't yet
-  // know what the compiling device will be.
-  if (item->will_be_compiled_by_xla) {
+  // This pass potentially adds TemporaryVariable nodes to the graph, which is
+  // unsafe if the item will be compiled by XLA, since the compiling XLA device
+  // may not implement the TemporaryVariable op and we cannot check this
+  // because we do not yet know the compiling device.
+  if (item->xla_hints.will_be_compiled_by_xla) {
+    VLOG(1) << "Skipping the scheduling pass of memory optimizer since it's"
+               " unsafe for XLA.";
     return false;
   }
 

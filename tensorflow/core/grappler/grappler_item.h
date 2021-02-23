@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variable.pb.h"
+#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/protobuf/queue_runner.pb.h"
 
 namespace tensorflow {
@@ -70,10 +71,9 @@ struct GrapplerItem {
   // ensure that the optimized metagraph can still be loaded.
   std::vector<string> keep_ops;
 
-  // A hint for if this item will later be compiled by XLA.
-  // Grappler optimizers can use this hint to avoid making changes to the
-  // item that might not be compatible with XLA.
-  bool will_be_compiled_by_xla = false;
+  // A set of hints that can be used by Grappler optimizers to conditionally
+  // disable certain optimizations that are not compatible with XLA.
+  GrapplerXlaHints xla_hints;
 
   // Return the set of node evaluated during a regular train/inference step.
   std::vector<const NodeDef*> MainOpsFanin() const;

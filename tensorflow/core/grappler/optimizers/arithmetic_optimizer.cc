@@ -3787,6 +3787,15 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
 Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
                                      const GrapplerItem& item,
                                      GraphDef* optimized_graph) {
+  // Do not rearrange arithmetic if the item will be compiled by XLA and
+  // contains an extracted subgraph, since the rearrangement can interleave the
+  // subgraphs in such a way as to cause a host<->device communication deadlock.
+  if (item.xla_hints.contains_outside_subgraph) {
+    VLOG(1) << "Skipping arithmetic optimizer since it's unsafe for XLA.";
+    optimized_graph->Swap(optimized_graph_);
+    return Status::OK();
+  }
+
   // Set up helper data structures.
   nodes_to_preserve_ = item.NodesToPreserve();
   fetch_nodes_known_ = !item.fetch.empty();

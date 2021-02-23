@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/remapper.h"
 #include "tensorflow/core/grappler/optimizers/scoped_allocator_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/shape_optimizer.h"
+#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/canonicalizer.h"
 #include "tensorflow/core/grappler/utils/colocation.h"
 #include "tensorflow/core/grappler/utils/functions.h"
@@ -738,50 +739,11 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
     find_differentiable_functions(function.node_def());
   }
 
-  // Find functions that will be compiled by XLA later.
-  // We do it by looking for XlaLaunch ops that call functions, then depth first
-  // search down those functions to find transitively called functions.
-  // The grappler items created from these functions will be marked as being
-  // compiled by XLA later, which means grappler optimizers can check this hint
-  // first before doing rewrites that are potentially not supported by XLA.
-  absl::flat_hash_set<string> xla_compiled_functions;
-  std::function<void(const string&)> find_all_functions;
-  find_all_functions = [&](const string& func) -> void {
-    // Ignore call cycles in the graph
-    if (xla_compiled_functions.contains(func)) return;
-    // Find func in the flib
-    const FunctionDef* func_def = flib.Find(func);
-    CHECK(func_def) << "not found: " << func;
-    // Mark function to be ignored by grappler
-    xla_compiled_functions.insert(func);
-    // Depth first search through the func for transitively called funcs
-    for (const NodeDef& node : func_def->node_def()) {
-      for (const auto attr : node.attr()) {
-        const AttrValue& attr_value = attr.second;
-        if (attr_value.has_func()) {
-          find_all_functions(attr_value.func().name());
-        }
-      }
-    }
-  };
+  // Generate XLA hints. Some optimizations grappler does can be incompatible
+  // with XLA. With these hints, grappler optimizers can conditionally apply
+  // only XLA-compatible optimizations to functions.
+  auto xla_hints = GenerateXlaHints(optimized_graph, flib);
 
-  auto find_xla_compiled_functions = [&](const NodeDefs& nodes) -> void {
-    NameAttrList function;
-    for (const NodeDef& node : nodes) {
-      // Look only for XlaLaunch nodes that call a function
-      if (!IsXlaLaunch(node)) continue;
-      if (!GetNodeAttr(node, "function", &function).ok()) continue;
-      // Find all transitively called functions
-      find_all_functions(function.name());
-    }
-  };
-
-  // XlaLaunch ops inside the main graph ...
-  find_xla_compiled_functions(optimized_graph->node());
-  // ... and inside the function library.
-  for (const FunctionDef& function : optimized_graph->library().function()) {
-    find_xla_compiled_functions(function.node_def());
-  }
   // Propagate `_tf_data_function` attributes from functions to their callees.
   PropagateTFDataAttrs(flib, *optimized_graph->mutable_library());
 
@@ -825,10 +787,8 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
       TF_RETURN_IF_ERROR(
           MakeGrapplerFunctionItem(func, flib, producer, &func_item));
 
-      // Add a hint to functions that will be compiled by XLA.
-      if (xla_compiled_functions.contains(func_name)) {
-        func_item.will_be_compiled_by_xla = true;
-      }
+      // Add XLA hints
+      func_item.xla_hints = xla_hints[func_name];
 
       // If we need to compute the gradient of optimized function at runtime, we
       // can't perform non-differentiable rewrites.
