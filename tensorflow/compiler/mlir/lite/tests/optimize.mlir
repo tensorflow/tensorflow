@@ -1806,3 +1806,19 @@ func @DontRemoveReshapeBeforeFullyConnectedChangeLastDim(%arg0: tensor<128x64xf3
   // CHECK: %[[FULLY_CONNECTED:.*]] = "tfl.fully_connected"(%[[RESHAPE]], %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x256x32xf32>, tensor<32x32xf32>, tensor<32xf32>) -> tensor<256x32xf32>
   // CHECK: return %[[FULLY_CONNECTED]] : tensor<256x32xf32>
 }
+
+// CHECK-LABEL: DontFuseAddWithConvActivationFunc
+func @DontFuseAddWithConvActivationFunc(%arg0: tensor<1x3x1x1xf32>) -> tensor<1x2x1x3xf32> {
+  %cst = constant dense<1.5> : tensor<1xf32>
+  %cst_1 = constant dense<0.0> : tensor<3xf32>
+  %cst_2 = constant dense<1.1> : tensor<3x2x1x1xf32>
+  %0 = "tfl.add"(%arg0, %cst) {fused_activation_function = "RELU6"} : (tensor<1x3x1x1xf32>, tensor<1xf32>) -> tensor<1x3x1x1xf32>
+  %1 = "tfl.conv_2d"(%0, %cst_2, %cst_1) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x3x1x1xf32>, tensor<3x2x1x1xf32>, tensor<3xf32>) -> tensor<1x2x1x3xf32>
+  return %1 : tensor<1x2x1x3xf32>
+  // CHECK: %[[CST:.*]] = constant dense<1.500000e+00> : tensor<1xf32>
+  // CHECK: %[[CST_1:.*]] = constant dense<0.000000e+00> : tensor<3xf32>
+  // CHECK: %[[CST_2:.*]] = constant dense<1.100000e+00> : tensor<3x2x1x1xf32>
+  // CHECK: %[[ADD:.*]] = "tfl.add"(%arg0, %[[CST]]) {fused_activation_function = "RELU6"} : (tensor<1x3x1x1xf32>, tensor<1xf32>) -> tensor<1x3x1x1xf32>
+  // CHECK: %[[CONV:.*]] = "tfl.conv_2d"(%[[ADD]], %[[CST_2]], %[[CST_1]]) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x3x1x1xf32>, tensor<3x2x1x1xf32>, tensor<3xf32>) -> tensor<1x2x1x3xf32>
+  // CHECK: return %[[CONV]]
+}

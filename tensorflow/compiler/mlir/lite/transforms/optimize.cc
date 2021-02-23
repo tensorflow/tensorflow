@@ -707,6 +707,12 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
     if (!bias.getType().isa<NoneType>() &&
         !matchPattern(bias, m_Constant(&bias_cst)))
       return failure();
+    auto binary_op_activation_func =
+        binary_op->template getAttrOfType<StringAttr>(
+            "fused_activation_function");
+    if (!binary_op_activation_func ||
+        binary_op_activation_func.getValue() != "NONE")
+      return failure();
     ShapedType filter_type = filter_cst.getType();
 
     if (llvm::isa<AddOp, SubOp>(binary_op)) {
