@@ -40,6 +40,7 @@ tensorflow/security/fuzzing/tf_fuzzing.bzl
 tensorflow/stream_executor/build_defs.bzl
 tensorflow/third_party/BUILD
 tensorflow/third_party/__init__.py
+tensorflow/third_party/absl/com_google_absl.BUILD
 tensorflow/third_party/android/BUILD
 tensorflow/third_party/android/android.bzl.tpl
 tensorflow/third_party/android/android_configure.BUILD.tpl
@@ -53,7 +54,6 @@ tensorflow/third_party/clang_toolchain/BUILD
 tensorflow/third_party/clang_toolchain/cc_configure_clang.bzl
 tensorflow/third_party/clang_toolchain/download_clang.bzl
 tensorflow/third_party/codegen.BUILD
-tensorflow/third_party/com_google_absl.BUILD
 tensorflow/third_party/common.bzl
 tensorflow/third_party/coremltools.BUILD
 tensorflow/third_party/cub.BUILD
@@ -89,7 +89,6 @@ tensorflow/third_party/eigen3/unsupported/Eigen/CXX11/src/FixedPoint/TypeCasting
 tensorflow/third_party/eigen3/unsupported/Eigen/MatrixFunctions
 tensorflow/third_party/eigen3/unsupported/Eigen/SpecialFunctions
 tensorflow/third_party/enum34.BUILD
-tensorflow/third_party/farmhash.BUILD
 tensorflow/third_party/fft2d/BUILD
 tensorflow/third_party/fft2d/LICENSE
 tensorflow/third_party/fft2d/fft.h
