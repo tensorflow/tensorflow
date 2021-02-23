@@ -113,6 +113,45 @@ Status CGraphOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   return Status::OK();
 }
 
+#define CONFIG_TOGGLE(optimizer)                             \
+  if (tp_configs.optimizer == TF_TriState_Off)               \
+    configs.toggle_config[#optimizer] = RewriterConfig::OFF; \
+  else                                                       \
+    configs.toggle_config[#optimizer] = RewriterConfig::ON;
+
+void CGraphOptimizerRegister(
+    const PluginGraphOptimizerRegistry::Creator& creator,
+    const TP_OptimizerConfigs tp_configs, const char* device_type) {
+  ConfigsList configs;
+  // disable_model_pruning is turned off by default.
+  if (tp_configs.disable_model_pruning == TF_TriState_On)
+    configs.disable_model_pruning = true;
+  else
+    configs.disable_model_pruning = false;
+  // The other configs are turned on by default.
+  CONFIG_TOGGLE(implementation_selector);
+  CONFIG_TOGGLE(function_optimization);
+  CONFIG_TOGGLE(common_subgraph_elimination);
+  CONFIG_TOGGLE(arithmetic_optimization);
+  CONFIG_TOGGLE(debug_stripper);
+  CONFIG_TOGGLE(constant_folding);
+  CONFIG_TOGGLE(shape_optimization);
+  CONFIG_TOGGLE(auto_mixed_precision);
+  CONFIG_TOGGLE(auto_mixed_precision_mkl);
+  CONFIG_TOGGLE(pin_to_host_optimization);
+  CONFIG_TOGGLE(layout_optimizer);
+  CONFIG_TOGGLE(remapping);
+  CONFIG_TOGGLE(loop_optimization);
+  CONFIG_TOGGLE(dependency_optimization);
+  CONFIG_TOGGLE(auto_parallel);
+  CONFIG_TOGGLE(memory_optimization);
+  CONFIG_TOGGLE(scoped_allocator_optimization);
+  PluginGraphOptimizerRegistry::RegisterPluginOptimizerOrDie(
+      creator, device_type, configs);
+}
+
+#undef CONFIG_TOGGLE
+
 tensorflow::Status InitGraphPlugin(void* dso_handle) {
   tensorflow::Env* env = tensorflow::Env::Default();
 
