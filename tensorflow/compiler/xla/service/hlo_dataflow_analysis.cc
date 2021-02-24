@@ -1445,7 +1445,8 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
         user->fused_parameter(user->operand_index(operand));
     // We don't require the same dimensions but only the same number of elements
     // and type (to make sure the same buffer size).
-    return ShapeUtil::ElementsIn(operand_subshape) ==
+    return operand_subshape.IsArray() && user_subshape.IsArray() &&
+           ShapeUtil::ElementsIn(operand_subshape) ==
                ShapeUtil::ElementsIn(user_subshape) &&
            ShapeUtil::SameElementType(operand_subshape, user_subshape) &&
            AreTransitiveUsesEffectivelyElementwise(
