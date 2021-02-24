@@ -167,7 +167,6 @@ class MklMatMulOp : public OpKernel {
 #endif  // ENABLE_MKLDNN_THREADPOOL
   }
 
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
   void MklBlasGemm(OpKernelContext* ctx, bool transa, bool transb, const int m,
                    const int n, const int k, const bfloat16* a, const int lda,
                    const bfloat16* b, const int ldb, bfloat16* c,
@@ -181,7 +180,6 @@ class MklMatMulOp : public OpKernel {
     dnnl_gemm<bfloat16>(ftrans[index_transa], ftrans[index_transb], m, n, k,
                         alpha, a, lda, b, ldb, beta, c, ldc, ctx);
   }
-#endif  // ENABLE_INTEL_MKL_BFLOAT16
 };
 
 #define REGISTER_CPU(T)                                   \
@@ -196,9 +194,7 @@ class MklMatMulOp : public OpKernel {
 // TODO(inteltf) Consider template specialization when adding/removing
 // additional types
 TF_CALL_float(REGISTER_CPU);
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
 TF_CALL_bfloat16(REGISTER_CPU);
-#endif  // ENABLE_INTEL_MKL_BFLOAT16
 #endif  // ENABLE_MKL
 }  // namespace tensorflow
 #endif  // INTEL_MKL

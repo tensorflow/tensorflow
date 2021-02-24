@@ -29,10 +29,6 @@ limitations under the License.
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/numa.h"
 
-#ifndef INTEL_MKL_DNN_ONLY
-#include "i_malloc.h"
-#endif
-
 #ifdef _WIN32
 typedef unsigned int uint;
 #endif
@@ -186,14 +182,6 @@ class MklCPUAllocator : public Allocator {
         new MklSmallSizeAllocator(sub_allocator_, max_mem_bytes, kName);
     large_size_allocator_ =
         new BFCAllocator(sub_allocator_, max_mem_bytes, kAllowGrowth, kName);
-#ifndef INTEL_MKL_DNN_ONLY
-    // For redirecting all allocations from MKL to this allocator
-    // From: http://software.intel.com/en-us/node/528565
-    i_malloc = MallocHook;
-    i_calloc = CallocHook;
-    i_realloc = ReallocHook;
-    i_free = FreeHook;
-#endif
     return Status::OK();
   }
 
