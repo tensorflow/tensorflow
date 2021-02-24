@@ -364,33 +364,33 @@ TEST_F(HorizontalLoopFusionTest, RMSPropLike) {
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1.0e-5, 1.0e-5}));
 }
 
-TEST_F(HorizontalLoopFusionTest, NegativeTestForDynamicUpdateSlice) {
+TEST_F(HorizontalLoopFusionTest, DynamicUpdateSlice) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule NegativeTestForDynamicUpdateSlice
 
   fusion.1 {
     p.0 = f16[5,9,10]{2,1,0} parameter(0)
-    p.1 = s32[1]{0} parameter(1)
+    p.1 = s32[] parameter(1)
     p.2 = f16[1,9,10]{2,1,0} parameter(2)
     c.0 = s32[] constant(0)
-    pad = s32[3]{0} pad(p.1, c.0), padding=0_2
-    ROOT %dynamic-update-slice = f16[5,9,10]{2,1,0} dynamic-update-slice(p.0, p.2, pad)
+    ROOT %dynamic-update-slice =
+        f16[5,9,10]{2,1,0} dynamic-update-slice(p.0, p.2, p.1, c.0, c.0)
   }
 
   fusion.2 {
     p.0 = f16[5,9,10]{2,1,0} parameter(0)
-    p.1 = s32[1]{0} parameter(1)
+    p.1 = s32[] parameter(1)
     p.2 = f16[1,9,10]{2,1,0} parameter(2)
     c.0 = s32[] constant(0)
-    pad = s32[3]{0} pad(p.1, c.0), padding=0_2
-    ROOT %dynamic-update-slice = f16[5,9,10]{2,1,0} dynamic-update-slice(p.0, p.2, pad)
+    ROOT %dynamic-update-slice =
+        f16[5,9,10]{2,1,0} dynamic-update-slice(p.0, p.2, p.1, c.0, c.0)
   }
 
   ENTRY entry {
     p.00 = f16[5,9,10]{2,1,0} parameter(0)
     p.01 = f16[5,9,10]{2,1,0} parameter(1)
-    p.10 = s32[1]{0} parameter(2)
-    p.11 = s32[1]{0} parameter(3)
+    p.10 = s32[] parameter(2)
+    p.11 = s32[] parameter(3)
     p.20 = f16[1,9,10]{2,1,0} parameter(4)
     p.21 = f16[1,9,10]{2,1,0} parameter(5)
 
@@ -398,6 +398,46 @@ TEST_F(HorizontalLoopFusionTest, NegativeTestForDynamicUpdateSlice) {
     f2 = f16[5,9,10] fusion(p.01, p.11, p.21), kind=kLoop, calls=fusion.2
     ROOT tuple = (f16[5,9,10],f16[5,9,10]) tuple(f1, f2)
   })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(HloDCE().Run(module.get()).ValueOrDie());
+
+  VLOG(2) << "Dump after horizontal fusion:";
+  VLOG(2) << module->ToString();
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec{0, 0}));
+}
+
+TEST_F(HorizontalLoopFusionTest, NegativeTestForSharedParam) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+ HloModule BasicTest
+
+ fused_computation.1 {
+   arg.1 = f16[123]{0} parameter(0)
+   arg.2 = f16[123]{0} parameter(1)
+   ROOT mul.1 = f16[123]{0} multiply(arg.1, arg.2)
+ }
+
+ fused_computation.2 {
+   arg.1 = f16[123]{0} parameter(0)
+   arg.2 = f16[123]{0} parameter(1)
+   ROOT add.1 = f16[123]{0} add(arg.1, arg.2)
+ }
+
+ ENTRY entry_computation {
+   arg.1 = f16[123]{0} parameter(0)
+   // arg.2 is shared by fusion.1 and fusion.2
+   arg.2 = f16[123]{0} parameter(1)
+   arg.3 = f16[123]{0} parameter(2)
+   fusion.1 = f16[123]{0}
+       fusion(arg.1, arg.2), kind=kLoop, calls=fused_computation.1
+   fusion.2 = f16[123]{0}
+       fusion(arg.3, arg.2), kind=kLoop, calls=fused_computation.2
+   ROOT tuple.1 = (f16[123]{0}, f16[123]{0})
+       tuple(fusion.1, fusion.2)
+ }
+)")
                     .ValueOrDie();
 
   EXPECT_FALSE(GpuHorizontalLoopFusion().Run(module.get()).ValueOrDie());
