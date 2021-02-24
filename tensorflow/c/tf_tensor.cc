@@ -182,7 +182,17 @@ void TF_TensorBitcastFrom(const TF_Tensor* from, TF_DataType type,
 
 namespace tensorflow {
 
-void TensorInterface::Release() { delete this; }
+void TensorInterface::Release() {
+  // If TF_Tensor is copied from a C++ Tensor(through TF_TensorFromTensor), and
+  // it is used in kernel(retrived through TF_GetInput, TF_AllcoateOutput..), it
+  // will increments reference count by one as it has been decremented in
+  // TF_TensorFromTensor.
+  if (src_tensor_ptr_ != nullptr && !increment_refcount_by_one_) {
+    TensorBuffer* buf = tensorflow::TensorCApi::Buffer(*src_tensor_ptr_);
+    if (buf != nullptr) buf->Ref();
+  }
+  delete this;
+}
 
 bool TensorInterface::CanMove() const {
   // It is safe to move the Tensor if and only if we own the unique reference to
@@ -222,6 +232,25 @@ Status TensorInterface::BitcastFrom(const TensorInterface& from, DataType type,
   for (int i = 0; i < num_new_dims; ++i) {
     s.AddDim(new_dims[i]);
   }
+  // If tensor_ is copied from a C++ tensor(through TF_TensorFromTensor), and it
+  // is used in kernel(retrived through TF_GetInput, TF_AllocateOutput..),
+  // BitcastFrom will also replace the buf_ in original C++ tensor.
+  // Examples:
+  //   ```c++
+  //     TF_Tensor* a = TF_AllocateOutput(ctx, 0);//c++ tensor:x.
+  //     TF_Tensor* b = TF_AllocateTemp(ctx);
+  //     TF_TensorBitcastFrom(b, a);// b->buf_ = a->buf_.
+  //     // x->buf_ is not modified.
+  //   ```
+  if (src_tensor_ptr_ != nullptr && !increment_refcount_by_one_) {
+    TensorBuffer* src_buf = tensorflow::TensorCApi::Buffer(*src_tensor_ptr_);
+    if (src_buf != nullptr) src_buf->Ref();
+    Status status = const_cast<tensorflow::Tensor*>(src_tensor_ptr_)
+                        ->BitcastFrom(from.tensor_, type, s);
+    if (!status.ok()) return status;
+    TensorBuffer* from_buf = tensorflow::TensorCApi::Buffer(from.tensor_);
+    if (from_buf != nullptr) from_buf->Unref();
+  }
   return tensor_.BitcastFrom(from.tensor_, type, s);
 }
 
@@ -256,7 +285,8 @@ static TF_Tensor* EmptyTensor(TF_DataType dtype,
 namespace tensorflow {
 
 // Non-static for testing.
-TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status) {
+TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status,
+                               bool increment_refcount_by_one) {
   *status = tensorflow::Status::OK();
   if (!src.IsInitialized()) {
     *status = FailedPrecondition(
@@ -288,7 +318,17 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status) {
   if (!tensor.CopyFrom(src, src.shape())) {
     return nullptr;
   }
-  return new TF_Tensor{new tensorflow::TensorInterface(std::move(tensor))};
+
+  // If TF_Tensor is used in kernel(retrived through TF_GetInput,
+  // TF_AllocateOutput..) and copied from a C++ tensor, it will decrements
+  // reference count by one so that the c++ tensor can match the condition of
+  // RefCountIsOne.
+  if (!increment_refcount_by_one) {
+    TensorBuffer* buf = tensorflow::TensorCApi::Buffer(src);
+    if (buf != nullptr) buf->Unref();
+  }
+  return new TF_Tensor{new tensorflow::TensorInterface(
+      std::move(tensor), &src, increment_refcount_by_one)};
 }
 
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {

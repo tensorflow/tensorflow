@@ -238,8 +238,8 @@ void TF_GetInput(TF_OpKernelContext* ctx, int i, TF_Tensor** tensor,
     return;
   }
   const ::tensorflow::Tensor& cc_tensor(cc_ctx->input(i));
-  TF_Tensor* result =
-      ::tensorflow::TF_TensorFromTensor(cc_tensor, &status->status);
+  TF_Tensor* result = ::tensorflow::TF_TensorFromTensor(
+      cc_tensor, &status->status, /*increment_refcount_by_one*/ false);
   if (TF_GetCode(status) == TF_OK) {
     *tensor = result;
   }
@@ -472,7 +472,8 @@ TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
     ::tensorflow::Set_TF_Status_from_Status(status, s);
     return nullptr;
   }
-  TF_Tensor* tf_tensor = TF_TensorFromTensor(*tensor, &s);
+  TF_Tensor* tf_tensor =
+      TF_TensorFromTensor(*tensor, &s, /*increment_refcount_by_one*/ false);
   if (!s.ok()) {
     ::tensorflow::Set_TF_Status_from_Status(status, s);
     return nullptr;
@@ -502,7 +503,8 @@ TF_Tensor* TF_ForwardInputOrAllocateOutput(
     ::tensorflow::Set_TF_Status_from_Status(status, s);
     return nullptr;
   }
-  TF_Tensor* tf_tensor_output = TF_TensorFromTensor(*output_tensor_pointer, &s);
+  TF_Tensor* tf_tensor_output = TF_TensorFromTensor(
+      *output_tensor_pointer, &s, /*increment_refcount_by_one*/ false);
   if (!s.ok()) {
     ::tensorflow::Set_TF_Status_from_Status(status, s);
     return nullptr;

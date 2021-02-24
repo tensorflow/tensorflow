@@ -91,7 +91,16 @@ void deallocate_buffer(void* data, size_t len, void* arg);
 class TensorInterface : public AbstractTensorInterface {
  public:
   TensorInterface() {}
-  explicit TensorInterface(tensorflow::Tensor t) : tensor_(std::move(t)) {}
+  explicit TensorInterface(tensorflow::Tensor t)
+      : tensor_(std::move(t)),
+        src_tensor_ptr_(nullptr),
+        increment_refcount_by_one_(true) {}
+  explicit TensorInterface(tensorflow::Tensor t,
+                           const tensorflow::Tensor* t_ptr,
+                           bool increment_refcount_by_one)
+      : tensor_(std::move(t)),
+        src_tensor_ptr_(t_ptr),
+        increment_refcount_by_one_(increment_refcount_by_one) {}
   ~TensorInterface() override {}
 
   void Release() override;
@@ -113,6 +122,8 @@ class TensorInterface : public AbstractTensorInterface {
 
  private:
   tensorflow::Tensor tensor_;
+  const tensorflow::Tensor* src_tensor_ptr_;
+  bool increment_refcount_by_one_;
 };
 
 inline Tensor& TensorFromInterface(AbstractTensorInterface* tensor) {
@@ -121,7 +132,10 @@ inline Tensor& TensorFromInterface(AbstractTensorInterface* tensor) {
 
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 
-TF_Tensor* TF_TensorFromTensor(const Tensor& src, Status* status);
+// increment_refcount_by_one flag indicates whether src tensor's reference count
+// needs to be incremented by one if a TF_Tensor is copied from src c++ tensor.
+TF_Tensor* TF_TensorFromTensor(const Tensor& src, Status* status,
+                               bool increment_refcount_by_one = true);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_C_TF_TENSOR_INTERNAL_H_

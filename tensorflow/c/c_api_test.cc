@@ -53,7 +53,8 @@ limitations under the License.
 #include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
-TF_Tensor* TF_TensorFromTensor(const Tensor& src, Status* status);
+TF_Tensor* TF_TensorFromTensor(const Tensor& src, Status* status,
+                               bool increment_refcount_by_one = true);
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 
 namespace {
@@ -1504,6 +1505,37 @@ TEST(CAPI, DeletingNullPointerIsSafe) {
   TF_DeleteApiDefMap(nullptr);
 
   TF_DeleteStatus(status);
+}
+
+TEST(CAPI, TestBitcastFrom) {
+  Tensor x(DT_FLOAT, TensorShape({2, 3}));
+  x.flat<float>().setConstant(0.0);
+  Tensor y(DT_FLOAT, TensorShape({2, 3}));
+  y.flat<float>().setConstant(1.0);
+  Status status;
+  TF_Tensor* a =
+      TF_TensorFromTensor(x, &status, /*increment_refcount_by_one*/ false);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+  TF_Tensor* b =
+      TF_TensorFromTensor(y, &status, /*increment_refcount_by_one*/ false);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+  TF_Status* tf_status = TF_NewStatus();
+  int64_t dims[] = {2, 3};
+  TF_TensorBitcastFrom(b, TF_FLOAT, a, dims, 2, tf_status);
+  ASSERT_EQ(TF_OK, TF_GetCode(tf_status));
+  TF_DeleteStatus(tf_status);
+
+  TF_Tensor* c =
+      TF_TensorFromTensor(x, &status, /*increment_refcount_by_one*/ false);
+  ASSERT_TRUE(status.ok()) << status.error_message();
+  // Check that c++ tensor modified with TF_Tensor a.
+  EXPECT_EQ(1.0, *(static_cast<float*>(TF_TensorData(a))));
+  EXPECT_EQ(1.0, *(static_cast<float*>(TF_TensorData(b))));
+  EXPECT_EQ(1.0, *(static_cast<float*>(TF_TensorData(c))));
+
+  TF_DeleteTensor(a);
+  TF_DeleteTensor(b);
+  TF_DeleteTensor(c);
 }
 
 TEST(CAPI, TestBitcastFrom_Reshape) {

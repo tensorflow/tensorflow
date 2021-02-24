@@ -546,7 +546,8 @@ Status NdarrayToTensor(TFE_Context* ctx, PyObject* ndarray,
 }
 
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
-TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status);
+TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status,
+                               bool used_by_kernel);
 
 Status NdarrayToTensor(PyObject* obj, Tensor* ret) {
   Safe_TF_TensorPtr tf_tensor = make_safe(static_cast<TF_Tensor*>(nullptr));
