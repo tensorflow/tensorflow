@@ -77,17 +77,17 @@ TfLiteStatus EvalQuantizedInt8CEVA(TfLiteContext* context, TfLiteNode* node,
                                    TfLiteEvalTensor* output) {
   tflite::FullyConnectedParams op_params = FullyConnectedParamsQuantized(data);
 
-  int input_shape_DimensionsCount =
+  int input_shape_dimensions_count =
       tflite::micro::GetTensorShape(input).DimensionsCount();
-  int weights_shape_DimensionsCount =
+  int weights_shape_dimensions_count =
       tflite::micro::GetTensorShape(filter).DimensionsCount();
-  int* weights_shape_DimsData =
+  int* weights_shape_dims_data =
       const_cast<int*>(tflite::micro::GetTensorShape(filter).DimsData());
-  int bias_shape_DimensionsCount =
+  int bias_shape_dimensions_count =
       tflite::micro::GetTensorShape(bias).DimensionsCount();
-  int output_shape_DimensionsCount =
+  int output_shape_dimensions_count =
       tflite::micro::GetTensorShape(output).DimensionsCount();
-  int* output_shape_DimsData =
+  int* output_shape_dims_data =
       const_cast<int*>(tflite::micro::GetTensorShape(output).DimsData());
 
   void* params = (void*)&op_params;
@@ -101,30 +101,30 @@ TfLiteStatus EvalQuantizedInt8CEVA(TfLiteContext* context, TfLiteNode* node,
       const_cast<int8_t*>(tflite::micro::GetTensorData<int8_t>(output));
 
 #ifdef MCPS_MEASUREMENT
-  int batches = output_shape_DimsData[0];
-  int output_depth = weights_shape_DimsData[weights_shape_DimensionsCount - 2];
-  int accum_depth = weights_shape_DimsData[weights_shape_DimensionsCount - 1];
+  int batches = output_shape_dims_data[0];
+  int output_depth = weights_shape_dims_data[weights_shape_dimensions_count - 2];
+  int accum_depth = weights_shape_dims_data[weights_shape_dimensions_count - 1];
   MCPS_START_ONE;
 #endif
 
-  int sizeof_scr = output_shape_DimsData[1];
+  int sizeof_scratch_required = output_shape_dims_data[1];
 
-  if (sizeof_scr > CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL) {
+  if (sizeof_scratch_required > CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL) {
     TF_LITE_KERNEL_LOG(context, "Scratch size (%d) less that required (%d)",
-                       CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL, sizeof_scr);
+                       CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL, sizeof_scratch_required);
     return kTfLiteError;
   }
 
   CEVA_TFLM_FullyConnected_int8(
       params,
-      input_shape_DimensionsCount,  // GetTensorShape(input),
+      input_shape_dimensions_count,  
       inputp,
-      weights_shape_DimensionsCount,  // GetTensorShape(filter),
-      weights_shape_DimsData, filterp,
-      bias_shape_DimensionsCount,  // GetTensorShape(bias),
+      weights_shape_dimensions_count,  
+      weights_shape_dims_data, filterp,
+      bias_shape_dimensions_count,  
       biasp,
-      output_shape_DimensionsCount,  // GetTensorShape(output),
-      output_shape_DimsData, outputp, CEVA_TFLM_KERNELS_SCRATCH);
+      output_shape_dimensions_count,  
+      output_shape_dims_data, outputp, CEVA_TFLM_KERNELS_SCRATCH);
 #ifdef MCPS_MEASUREMENT
   MCPS_STOP_ONE(
       "Test params:Call CEVA_TFLM_FullyConnected_int8 inetrnal loop = %dx%dx%d",
@@ -140,24 +140,25 @@ TfLiteStatus EvalFloatCEVA(TfLiteContext* context, TfLiteNode* node,
                            const TfLiteEvalTensor* filter,
                            const TfLiteEvalTensor* bias,
                            TfLiteEvalTensor* output) {
-  float output_activation_min, output_activation_max;
-  CalculateActivationRange(activation, &output_activation_min,
-                           &output_activation_max);
+  //float output_activation_min, output_activation_max;
   tflite::FullyConnectedParams op_params;
-  op_params.float_activation_min = output_activation_min;
-  op_params.float_activation_max = output_activation_max;
+  CalculateActivationRange(activation, &op_params.float_activation_min,
+                           &op_params.float_activation_max);
+  
+  //op_params.float_activation_min = output_activation_min;
+  //op_params.float_activation_max = output_activation_max;
 
-  int input_shape_DimensionsCount =
+  int input_shape_dimensions_count =
       tflite::micro::GetTensorShape(input).DimensionsCount();
-  int weights_shape_DimensionsCount =
+  int weights_shape_dimensions_count =
       tflite::micro::GetTensorShape(filter).DimensionsCount();
-  int* weights_shape_DimsData =
+  int* weights_shape_dims_data =
       const_cast<int*>(tflite::micro::GetTensorShape(filter).DimsData());
-  int bias_shape_DimensionsCount =
+  int bias_shape_dimensions_count =
       tflite::micro::GetTensorShape(bias).DimensionsCount();
-  int output_shape_DimensionsCount =
+  int output_shape_dimensions_count =
       tflite::micro::GetTensorShape(output).DimensionsCount();
-  int* output_shape_DimsData =
+  int* output_shape_dims_data =
       const_cast<int*>(tflite::micro::GetTensorShape(output).DimsData());
 
   void* params = (void*)&op_params;
@@ -172,23 +173,23 @@ TfLiteStatus EvalFloatCEVA(TfLiteContext* context, TfLiteNode* node,
 #ifdef MCPS_MEASUREMENT
   int batches = 1;
   int i;
-  for (i = 0; i < (output_shape_DimensionsCount - 1); i++)
-    batches *= output_shape_DimsData[i];
+  for (i = 0; i < (output_shape_dimensions_count - 1); i++)
+    batches *= output_shape_dims_data[i];
 
-  int output_depth = weights_shape_DimsData[weights_shape_DimensionsCount - 2];
-  int accum_depth = weights_shape_DimsData[weights_shape_DimensionsCount - 1];
+  int output_depth = weights_shape_dims_data[weights_shape_dimensions_count - 2];
+  int accum_depth = weights_shape_dims_data[weights_shape_dimensions_count - 1];
   MCPS_START_ONE;
 #endif
   CEVA_TFLM_FullyConnected_Float32(
       params,
-      input_shape_DimensionsCount,  // GetTensorShape(input),
+      input_shape_dimensions_count,  // GetTensorShape(input),
       inputp,
-      weights_shape_DimensionsCount,  // GetTensorShape(filter),
-      weights_shape_DimsData, filterp,
-      bias_shape_DimensionsCount,  // GetTensorShape(bias),
+      weights_shape_dimensions_count,  // GetTensorShape(filter),
+      weights_shape_dims_data, filterp,
+      bias_shape_dimensions_count,  // GetTensorShape(bias),
       biasp,
-      output_shape_DimensionsCount,  // GetTensorShape(output),
-      output_shape_DimsData, outputp);
+      output_shape_dimensions_count,  // GetTensorShape(output),
+      output_shape_dims_data, outputp);
 #ifdef MCPS_MEASUREMENT
   MCPS_STOP_ONE(
       "Test params:Call CEVA_TFLM_FullyConnected_Float32 inetrnal loop = "
