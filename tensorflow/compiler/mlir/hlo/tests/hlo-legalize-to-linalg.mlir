@@ -960,7 +960,8 @@ func @dot_matmul(%arg0: tensor<2x3xf32>,
                                    tensor<3x?xf32>) -> tensor<2x?xf32>
   return %0 : tensor<2x?xf32>
 }
-// CHECK: func @dot_matmul(%[[ARG0:.*]]: tensor<2x3xf32>, %[[ARG1:.*]]: tensor<3x?xf32>)
+// CHECK-LABEL: func @dot_matmul(
+// CHECK-SAME: %[[ARG0:.*]]: tensor<2x3xf32>, %[[ARG1:.*]]: tensor<3x?xf32>)
 // CHECK: %[[C1:.*]] = constant 1 : index
 // CHECK: %[[D1:.*]] = dim %[[ARG1]], %[[C1]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [2, %[[D1]]]
@@ -968,6 +969,58 @@ func @dot_matmul(%arg0: tensor<2x3xf32>,
 // CHECK: linalg.matmul
 // CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<2x3xf32>, tensor<3x?xf32>)
 // CHECK-SAME: outs(%[[FILL]] : tensor<2x?xf32>)
+
+func @dot_matmul_i8_i8_i32(%arg0: tensor<2x3xi8>,
+                 %arg1: tensor<3x?xi8>) -> tensor<2x?xi32> {
+  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<2x3xi8>,
+                                   tensor<3x?xi8>) -> tensor<2x?xi32>
+  return %0 : tensor<2x?xi32>
+}
+// CHECK-LABEL: func @dot_matmul_i8_i8_i32(
+// CHECK-SAME: %[[ARG0:.*]]: tensor<2x3xi8>, %[[ARG1:.*]]: tensor<3x?xi8>)
+// CHECK: %[[C1:.*]] = constant 1 : index
+// CHECK: %[[D1:.*]] = dim %[[ARG1]], %[[C1]]
+// CHECK: %[[INIT:.*]] = linalg.init_tensor [2, %[[D1]]]
+// CHECK: %[[FILL:.*]] = linalg.fill(%[[INIT]]
+// CHECK: linalg.matmul_i8_i8_i32
+// CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<2x3xi8>, tensor<3x?xi8>)
+// CHECK-SAME: outs(%[[FILL]] : tensor<2x?xi32>)
+
+// -----
+
+func @dot_matmul_i16_i16_i32(%arg0: tensor<2x3xi16>,
+                 %arg1: tensor<3x?xi16>) -> tensor<2x?xi32> {
+  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<2x3xi16>,
+                                   tensor<3x?xi16>) -> tensor<2x?xi32>
+  return %0 : tensor<2x?xi32>
+}
+// CHECK-LABEL: func @dot_matmul_i16_i16_i32(
+// CHECK-SAME: %[[ARG0:.*]]: tensor<2x3xi16>, %[[ARG1:.*]]: tensor<3x?xi16>)
+// CHECK: %[[C1:.*]] = constant 1 : index
+// CHECK: %[[D1:.*]] = dim %[[ARG1]], %[[C1]]
+// CHECK: %[[INIT:.*]] = linalg.init_tensor [2, %[[D1]]]
+// CHECK: %[[FILL:.*]] = linalg.fill(%[[INIT]]
+// CHECK: linalg.matmul_i16_i16_i32
+// CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<2x3xi16>, tensor<3x?xi16>)
+// CHECK-SAME: outs(%[[FILL]] : tensor<2x?xi32>)
+
+// -----
+
+func @dot_matmul_i32_i32_i32(%arg0: tensor<2x3xi32>,
+                 %arg1: tensor<3x?xi32>) -> tensor<2x?xi32> {
+  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<2x3xi32>,
+                                   tensor<3x?xi32>) -> tensor<2x?xi32>
+  return %0 : tensor<2x?xi32>
+}
+// CHECK-LABEL: func @dot_matmul_i32_i32_i32(
+// CHECK-SAME: %[[ARG0:.*]]: tensor<2x3xi32>, %[[ARG1:.*]]: tensor<3x?xi32>)
+// CHECK: %[[C1:.*]] = constant 1 : index
+// CHECK: %[[D1:.*]] = dim %[[ARG1]], %[[C1]]
+// CHECK: %[[INIT:.*]] = linalg.init_tensor [2, %[[D1]]]
+// CHECK: %[[FILL:.*]] = linalg.fill(%[[INIT]]
+// CHECK: linalg.matmul_i32_i32_i32
+// CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<2x3xi32>, tensor<3x?xi32>)
+// CHECK-SAME: outs(%[[FILL]] : tensor<2x?xi32>)
 
 // -----
 
@@ -977,7 +1030,8 @@ func @dot_matvec(%arg0: tensor<?x3xf32>,
                                    tensor<3xf32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
 }
-// CHECK: func @dot_matvec(%[[ARG0:.*]]: tensor<?x3xf32>, %[[ARG1:.*]]: tensor<3xf32>)
+// CHECK-LABEL: func @dot_matvec(
+// CHECK-SAME: %[[ARG0:.*]]: tensor<?x3xf32>, %[[ARG1:.*]]: tensor<3xf32>)
 // CHECK: %[[C0:.*]] = constant 0 : index
 // CHECK: %[[D0:.*]] = dim %[[ARG0]], %[[C0]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[D0]]]
@@ -993,7 +1047,8 @@ func @dot_dot(%arg0: tensor<?xf32>,
   %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<?xf32>, tensor<?xf32>) -> tensor<f32>
   return %0 : tensor<f32>
 }
-// CHECK: func @dot_dot(%[[ARG0:.*]]: tensor<?xf32>, %[[ARG1:.*]]: tensor<?xf32>)
+// CHECK-LABEL: func @dot_dot(
+// CHECK-SAME: %[[ARG0:.*]]: tensor<?xf32>, %[[ARG1:.*]]: tensor<?xf32>)
 // CHECK: %[[INIT:.*]] = linalg.init_tensor []
 // CHECK: %[[FILL:.*]] = linalg.fill(%[[INIT]]
 // CHECK: linalg.dot
@@ -1002,7 +1057,7 @@ func @dot_dot(%arg0: tensor<?xf32>,
 
 // -----
 
-func @dot_general(%arg0: tensor<?x?x3xf32>,
+func @dot_general_batch_matmul(%arg0: tensor<?x?x3xf32>,
                   %arg1: tensor<?x3x?xf32>) -> tensor<?x?x?xf32> {
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
       dot_dimension_numbers = {
@@ -1015,7 +1070,8 @@ func @dot_general(%arg0: tensor<?x?x3xf32>,
   } : (tensor<?x?x3xf32>, tensor<?x3x?xf32>) -> tensor<?x?x?xf32>
   return %0 : tensor<?x?x?xf32>
 }
-// CHECK: func @dot_general(%[[ARG0:.*]]: tensor<?x?x3xf32>, %[[ARG1:.*]]: tensor<?x3x?xf32>)
+// CHECK-LABEL: func @dot_general_batch_matmul(
+// CHECK-SAME: %[[ARG0:.*]]: tensor<?x?x3xf32>, %[[ARG1:.*]]: tensor<?x3x?xf32>)
 // CHECK: %[[C0:.*]] = constant 0 : index
 // CHECK: %[[D0:.*]] = dim %[[ARG0]], %[[C0]]
 // CHECK: %[[C1:.*]] = constant 1 : index
@@ -1030,7 +1086,65 @@ func @dot_general(%arg0: tensor<?x?x3xf32>,
 
 // -----
 
-func @batch_matmul_large
+func @dot_general_batch_matmul_i8_i8_i32(%arg0: tensor<?x?x3xi8>,
+                  %arg1: tensor<?x3x?xi8>) -> tensor<?x?x?xi32> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+      dot_dimension_numbers = {
+          lhs_batching_dimensions = dense<0> : tensor<1xi64>,
+          lhs_contracting_dimensions = dense<2> : tensor<1xi64>,
+          rhs_batching_dimensions = dense<0> : tensor<1xi64>,
+          rhs_contracting_dimensions = dense<1> : tensor<1xi64>
+      },
+      precision_config = ["DEFAULT", "DEFAULT"]
+  } : (tensor<?x?x3xi8>, tensor<?x3x?xi8>) -> tensor<?x?x?xi32>
+  return %0 : tensor<?x?x?xi32>
+}
+// CHECK-LABEL: func @dot_general_batch_matmul_i8_i8_i32(
+// CHECK-SAME: %[[ARG0:.*]]: tensor<?x?x3xi8>, %[[ARG1:.*]]: tensor<?x3x?xi8>)
+// CHECK: %[[C0:.*]] = constant 0 : index
+// CHECK: %[[D0:.*]] = dim %[[ARG0]], %[[C0]]
+// CHECK: %[[C1:.*]] = constant 1 : index
+// CHECK: %[[D1:.*]] = dim %[[ARG0]], %[[C1]]
+// CHECK: %[[C2:.*]] = constant 2 : index
+// CHECK: %[[D2:.*]] = dim %[[ARG1]], %[[C2]]
+// CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
+// CHECK: %[[FILL:.*]] = linalg.fill(%[[INIT]]
+// CHECK: linalg.batch_matmul_i8_i8_i32
+// CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<?x?x3xi8>, tensor<?x3x?xi8>)
+// CHECK-SAME: outs(%[[FILL]] : tensor<?x?x?xi32>)
+
+// -----
+
+func @dot_general_batch_matmul_i16_i16_i32(%arg0: tensor<?x?x3xi16>,
+                  %arg1: tensor<?x3x?xi16>) -> tensor<?x?x?xi32> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+      dot_dimension_numbers = {
+          lhs_batching_dimensions = dense<0> : tensor<1xi64>,
+          lhs_contracting_dimensions = dense<2> : tensor<1xi64>,
+          rhs_batching_dimensions = dense<0> : tensor<1xi64>,
+          rhs_contracting_dimensions = dense<1> : tensor<1xi64>
+      },
+      precision_config = ["DEFAULT", "DEFAULT"]
+  } : (tensor<?x?x3xi16>, tensor<?x3x?xi16>) -> tensor<?x?x?xi32>
+  return %0 : tensor<?x?x?xi32>
+}
+// CHECK-LABEL: func @dot_general_batch_matmul_i16_i16_i32(
+// CHECK-SAME: %[[ARG0:.*]]: tensor<?x?x3xi16>, %[[ARG1:.*]]: tensor<?x3x?xi16>)
+// CHECK: %[[C0:.*]] = constant 0 : index
+// CHECK: %[[D0:.*]] = dim %[[ARG0]], %[[C0]]
+// CHECK: %[[C1:.*]] = constant 1 : index
+// CHECK: %[[D1:.*]] = dim %[[ARG0]], %[[C1]]
+// CHECK: %[[C2:.*]] = constant 2 : index
+// CHECK: %[[D2:.*]] = dim %[[ARG1]], %[[C2]]
+// CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
+// CHECK: %[[FILL:.*]] = linalg.fill(%[[INIT]]
+// CHECK: linalg.batch_matmul_i16_i16_i32
+// CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<?x?x3xi16>, tensor<?x3x?xi16>)
+// CHECK-SAME: outs(%[[FILL]] : tensor<?x?x?xi32>)
+
+// -----
+
+func @dot_general_batch_matmul_large
   (%arg0: tensor<2x16x32xf32>, %arg1: tensor<2x32x32xf32>) -> tensor<2x16x32xf32> {
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = {
@@ -1042,7 +1156,7 @@ func @batch_matmul_large
     : (tensor<2x16x32xf32>, tensor<2x32x32xf32>) -> tensor<2x16x32xf32>
   return %0 : tensor<2x16x32xf32>
 }
-// CHECK: func @batch_matmul_large(
+// CHECK-LABEL: func @dot_general_batch_matmul_large(
 // CHECK-SAME: %[[ARG0:[a-zA-Z0-9_]*]]: tensor<2x16x32xf32>,
 // CHECK-SAME: %[[ARG1:[a-zA-Z0-9_]*]]: tensor<2x32x32xf32>)
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [2, 16, 32]
