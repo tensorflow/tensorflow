@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_MICRO_KERNELS_CONV_H_
-#define TENSORFLOW_LITE_MICRO_KERNELS_CONV_H_
+#ifndef TENSORFLOW_LITE_MICRO_KERNELS_CONV_TEST_H_
+#define TENSORFLOW_LITE_MICRO_KERNELS_CONV_TEST_H_
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
@@ -26,46 +26,46 @@ limitations under the License.
 namespace tflite {
 namespace testing {
 
-TfLiteStatus InvokeConv(TfLiteTensor* tensors, int tensors_size,
-                        int output_length, TfLiteConvParams* conv_params,
-                        TfLiteRegistration registration, float* output_data);
+TfLiteStatus InvokeConv(
+    TfLiteTensor* tensors, int tensors_size, int output_length,
+    TfLiteConvParams* conv_params, float* output_data,
+    TfLiteRegistration registration = tflite::Register_CONV_2D());
 
-TfLiteStatus InvokeConv(TfLiteTensor* tensors, int tensors_size,
-                        int output_length, TfLiteConvParams* conv_params,
-                        TfLiteRegistration registration, int8_t* output_data);
+TfLiteStatus InvokeConv(
+    TfLiteTensor* tensors, int tensors_size, int output_length,
+    TfLiteConvParams* conv_params, int8_t* output_data,
+    TfLiteRegistration registration = tflite::Register_CONV_2D());
 
-TfLiteStatus InvokeConv(TfLiteTensor* tensors, int tensors_size,
-                        int output_length, TfLiteConvParams* conv_params,
-                        TfLiteRegistration registration, uint8_t* output_data);
+TfLiteStatus InvokeConv(
+    TfLiteTensor* tensors, int tensors_size, int output_length,
+    TfLiteConvParams* conv_params, uint8_t* output_data,
+    TfLiteRegistration registration = tflite::Register_CONV_2D());
 
-TfLiteStatus ValidateConvGoldens(TfLiteTensor* tensors, int tensors_size,
-                                 const float* expected_output_data,
-                                 int output_length,
-                                 TfLiteConvParams* conv_params,
-                                 TfLiteRegistration registration,
-                                 float* output_data, float tolerance = 1e-5);
+TfLiteStatus ValidateConvGoldens(
+    TfLiteTensor* tensors, int tensors_size, const float* expected_output_data,
+    int output_length, TfLiteConvParams* conv_params, float* output_data,
+    float tolerance = 1e-5,
+    TfLiteRegistration registration = tflite::Register_CONV_2D());
 
-TfLiteStatus ValidateConvGoldens(TfLiteTensor* tensors, int tensors_size,
-                                 const int8_t* expected_output_data,
-                                 int output_length,
-                                 TfLiteConvParams* conv_params,
-                                 TfLiteRegistration registration,
-                                 int8_t* output_data, float tolerance = 1e-5);
+TfLiteStatus ValidateConvGoldens(
+    TfLiteTensor* tensors, int tensors_size, const int8_t* expected_output_data,
+    int output_length, TfLiteConvParams* conv_params, int8_t* output_data,
+    float tolerance = 1e-5,
+    TfLiteRegistration registration = tflite::Register_CONV_2D());
 
-TfLiteStatus ValidateConvGoldens(TfLiteTensor* tensors, int tensors_size,
-                                 const uint8_t* expected_output_data,
-                                 int output_length,
-                                 TfLiteConvParams* conv_params,
-                                 TfLiteRegistration registration,
-                                 uint8_t* output_data, float tolerance = 1e-5);
+TfLiteStatus ValidateConvGoldens(
+    TfLiteTensor* tensors, int tensors_size,
+    const uint8_t* expected_output_data, int output_length,
+    TfLiteConvParams* conv_params, uint8_t* output_data, float tolerance = 1e-5,
+    TfLiteRegistration registration = tflite::Register_CONV_2D());
 
-TfLiteStatus TestConvFloat(const int* input_dims_data, const float* input_data,
-                           const int* filter_dims_data,
-                           const float* filter_data, const int* bias_dims_data,
-                           const float* bias_data, const int* output_dims_data,
-                           const float* expected_output_data,
-                           TfLiteConvParams* conv_params,
-                           TfLiteRegistration registration, float* output_data);
+TfLiteStatus TestConvFloat(
+    const int* input_dims_data, const float* input_data,
+    const int* filter_dims_data, const float* filter_data,
+    const int* bias_dims_data, const float* bias_data,
+    const int* output_dims_data, const float* expected_output_data,
+    TfLiteConvParams* conv_params, float* output_data,
+    TfLiteRegistration registration = tflite::Register_CONV_2D());
 
 TfLiteStatus TestConvQuantizedPerLayer(
     const int* input_dims_data, const float* input_data,
@@ -74,8 +74,8 @@ TfLiteStatus TestConvQuantizedPerLayer(
     const int* bias_dims_data, const float* bias_data, int32_t* bias_quantized,
     const int* output_dims_data, const float* expected_output_data,
     uint8_t* expected_output_quantized, float output_scale,
-    TfLiteConvParams* conv_params, TfLiteRegistration registration,
-    uint8_t* output_data);
+    TfLiteConvParams* conv_params, uint8_t* output_data,
+    TfLiteRegistration registration = tflite::Register_CONV_2D());
 
 TfLiteStatus TestConvQuantizedPerChannel(
     const int* input_dims_data, const float* input_data,
@@ -86,7 +86,8 @@ TfLiteStatus TestConvQuantizedPerChannel(
     int* bias_zero_points, const int* output_dims_data,
     const float* expected_output_data, int8_t* expected_output_data_quantized,
     float output_scale, int output_zero_point, TfLiteConvParams* conv_params,
-    TfLiteRegistration registration, int8_t* output_data);
+    int8_t* output_data,
+    TfLiteRegistration registration = tflite::Register_CONV_2D());
 
 }  // namespace testing
 }  // namespace tflite
