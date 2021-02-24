@@ -1,4 +1,0 @@
-diff --git a/build_defs.bzl b/build_defs.bzl.orig
-similarity index 100%
-rename from build_defs.bzl
-rename to build_defs.bzl.orig
