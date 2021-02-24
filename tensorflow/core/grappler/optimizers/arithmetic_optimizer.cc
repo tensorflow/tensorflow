@@ -50,7 +50,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -198,53 +197,6 @@ bool NodeIsOnCpu(const NodeDef& node) {
   string device;
   return DeviceNameUtils::SplitDeviceName(node.device(), &task, &device) &&
          absl::StrContains(device, DEVICE_CPU);
-}
-
-// True if all regular (non-control) inputs reference the same node or if there
-// are no non-control inputs
-bool AllRegularInputsEqual(const NodeDef& node) {
-  if (!HasRegularInputs(node)) return true;
-  for (int i = 1; i < node.input_size(); ++i) {
-    if (IsControlInput(node.input(i))) {
-      break;
-    }
-    if (node.input(0) != node.input(i)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-// Create a constant node with the value set to the elementwise ratio between
-// two shapes, i.e., ratio = lhs / rhs
-Status ShapeRatioAsConstNode(const TensorShapeProto& lhs,
-                             const TensorShapeProto& rhs, NodeDef* ratio) {
-  if (lhs.unknown_rank() || rhs.unknown_rank() ||
-      lhs.dim_size() != rhs.dim_size()) {
-    return Status(error::INVALID_ARGUMENT, "lhs and rhs ranks do not match");
-  }
-
-  Tensor ratio_tensor(DT_INT32, TensorShape({lhs.dim_size()}));
-  for (int i = 0; i < lhs.dim_size(); ++i) {
-    const auto& ldim = lhs.dim(i);
-    const auto& rdim = rhs.dim(i);
-    if (IsUnknown(ldim) || IsUnknown(rdim)) {
-      return Status(error::INVALID_ARGUMENT, "unknown shape dimension");
-    }
-    if (ldim.size() < rdim.size() || ldim.size() % rdim.size() != 0) {
-      return Status(error::OUT_OF_RANGE, "ldim not integer multiple of rdim");
-    }
-    int64 size = ldim.size() / rdim.size();
-    if (TF_PREDICT_FALSE(size > INT_MAX)) {
-      return Status(error::OUT_OF_RANGE, "int32 overflow");
-    }
-    ratio_tensor.flat<int32>()(i) = static_cast<int32>(size);
-  }
-
-  TF_RETURN_IF_ERROR(ConstantFolding::CreateNodeDef(
-      ratio->name(), TensorValue(&ratio_tensor), ratio));
-
-  return Status::OK();
 }
 
 // Graph optimizer context extension specific to ArithmeticOptimizer.
@@ -2628,100 +2580,6 @@ class ReplaceMulWithBroadcastByTile : public ArithmeticOptimizerStage {
   }
 };
 
-// Replace a Pack node with identical inputs with Tile
-class ReplacePackReshapeWithTile : public ArithmeticOptimizerStage {
- public:
-  explicit ReplacePackReshapeWithTile(const GraphOptimizerContext& ctx,
-                                      const ArithmeticOptimizerContext& ctx_ext)
-      : ArithmeticOptimizerStage("ReplacePackReshapeWithTile", ctx, ctx_ext) {}
-  ~ReplacePackReshapeWithTile() override = default;
-
-  bool IsSupported(const NodeDef* node) const override {
-    return IsReshape(*node) && !IsInPreserveSet(*node);
-  }
-
-  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
-    // 1. traverse the chain of Pack ops and find the original input node
-    std::vector<const NodeDef*> chain;
-    NodeDef* input;
-    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &input));
-    while (IsPack(*input) && !IsInPreserveSet(*input)) {
-      // Only pack operations with all identical inputs are supported
-      if (!AllRegularInputsEqual(*input)) {
-        break;
-      }
-      chain.push_back(input);
-      TF_RETURN_IF_ERROR(GetInputNode(input->input(0), &input));
-    }
-
-    // Must be at least one pack operation to consider for replacement
-    if (chain.empty()) {
-      return Status::OK();
-    }
-
-    // Avoid optimizing the same node twice
-    const NodeScopeAndName node_scope_and_name =
-        ParseNodeScopeAndName(node->name());
-    const string new_const_name =
-        OptimizedNodeName(node_scope_and_name, "Const");
-    const string new_tile_name = OptimizedNodeName(node_scope_and_name, "Tile");
-    if (ctx().node_map->NodeExists(new_const_name) ||
-        ctx().node_map->NodeExists(new_tile_name)) {
-      return Status::OK();
-    }
-
-    // 2. Create constant node with correct multiples value
-    NodeDef* new_const_node = AddEmptyNode(new_const_name);
-    TF_RETURN_IF_ERROR(MakeMultiplesNode(*node, *input, new_const_node));
-    new_const_node->set_device(node->device());
-    MaybeAddControlInput(input->name(), new_const_node, ctx().optimized_graph,
-                         ctx().node_map);
-    AddToOptimizationQueue(new_const_node);
-
-    // 3. Replace the Pack node with Tile(Const(N), input);
-    NodeDef* new_tile_node = AddEmptyNode(new_tile_name);
-    DataType dtype = GetDataTypeFromAttr(*node, "T");
-    MakeTileNode(dtype, *input, *new_const_node, new_tile_node);
-    new_tile_node->set_device(node->device());
-
-    // Tile inherits all control dependencies from both the pack chain and the
-    // original reshape node
-    ForwardControlDependencies(new_tile_node, chain);
-    ForwardControlDependencies(new_tile_node, {node});
-    *simplified_node_name = new_tile_node->name();
-
-    return Status::OK();
-  }
-
- protected:
-  void MakeTileNode(DataType dtype, const NodeDef& input,
-                    const NodeDef& multiples, NodeDef* tile) {
-    tile->set_op("Tile");
-    SetDataTypeToAttr(dtype, "T", tile);
-
-    auto multiples_dtype = GetDataTypeFromAttr(multiples, "dtype");
-    SetDataTypeToAttr(multiples_dtype, "Tmultiples", tile);
-
-    tile->add_input(input.name());
-    ctx().node_map->AddOutput(input.name(), tile->name());
-    tile->add_input(multiples.name());
-    ctx().node_map->AddOutput(multiples.name(), tile->name());
-  }
-
-  Status MakeMultiplesNode(const NodeDef& reshape, const NodeDef& input,
-                           NodeDef* multiples) {
-    const OpInfo::TensorProperties* reshape_props;
-    TF_RETURN_IF_ERROR(GetTensorProperties(reshape.name(), &reshape_props));
-
-    const OpInfo::TensorProperties* input_props;
-    TF_RETURN_IF_ERROR(GetTensorProperties(input.name(), &input_props));
-
-    const auto& reshape_shape = reshape_props->shape();
-    const auto& input_shape = input_props->shape();
-    return ShapeRatioAsConstNode(reshape_shape, input_shape, multiples);
-  }
-};
-
 // Simplify aggregation (e.g. AddN) nodes:
 //
 // 1. Discard aggregate nodes with a single input and no control dependencies.
@@ -3966,8 +3824,6 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<RemoveRedundantReshapeOrBroadcastTo>(ctx, ctx_ext);
   if (options_.remove_negation)
     pipeline.AddStage<RemoveNegationStage>(ctx, ctx_ext);
-  if (options_.replace_pack_reshape_with_tile)
-    pipeline.AddStage<ReplacePackReshapeWithTile>(ctx, ctx_ext);
   if (options_.replace_mul_with_square)
     pipeline.AddStage<ReplaceMulWithSquare>(ctx, ctx_ext);
   if (options_.replace_mul_with_tile)
