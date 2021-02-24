@@ -164,6 +164,7 @@ Status DataServiceWorkerImpl::GetElementResult(
       if (finished_tasks_.contains(request->task_id())) {
         VLOG(3) << "Task is already finished";
         result->end_of_sequence = true;
+        result->skip = false;
         return Status::OK();
       } else {
         // Perhaps the workers hasn't gotten the task from the dispatcher yet.
