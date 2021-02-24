@@ -9,7 +9,7 @@ def repo():
     third_party_http_archive(
         name = "aws",
         urls = [
-            "https://mirror.bazel.build/github.com/aws/aws-sdk-cpp/archive/1.7.336.tar.gz",
+            "https://mirror.tensorflow.org/github.com/aws/aws-sdk-cpp/archive/1.7.336.tar.gz",
             "https://github.com/aws/aws-sdk-cpp/archive/1.7.336.tar.gz",
         ],
         sha256 = "758174f9788fed6cc1e266bcecb20bf738bd5ef1c3d646131c9ed15c2d6c5720",

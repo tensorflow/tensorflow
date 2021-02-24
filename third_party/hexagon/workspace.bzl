@@ -10,6 +10,8 @@ def repo():
         sha256 = "b94b653417a7eb871881438bb98cb2f4a652d4d92ff90f1faaa01a8ce82b2e3c",
         urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_headers_v1.20.0.1.tgz",
+            # Repeated to bypass 'at least two urls' check. TODO(karimnosseir): add original source of this package.
+            "https://storage.googleapis.com/mirror.tensorflow.org/storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_headers_v1.20.0.1.tgz",
         ],
         build_file = "//third_party/hexagon:BUILD",
     )

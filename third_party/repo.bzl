@@ -14,21 +14,6 @@
 
 """Utilities for defining TensorFlow Bazel dependencies."""
 
-_SINGLE_URL_WHITELIST = depset([
-    "arm_compiler",
-])
-
-def _is_windows(ctx):
-    return ctx.os.name.lower().find("windows") != -1
-
-def _wrap_bash_cmd(ctx, cmd):
-    if _is_windows(ctx):
-        bazel_sh = _get_env_var(ctx, "BAZEL_SH")
-        if not bazel_sh:
-            fail("BAZEL_SH environment variable is not set")
-        cmd = [bazel_sh, "-l", "-c", " ".join(["\"%s\"" % s for s in cmd])]
-    return cmd
-
 def _get_env_var(ctx, name):
     if name in ctx.os.environ:
         return ctx.os.environ[name]
@@ -42,31 +27,9 @@ def _use_system_lib(ctx, name):
         return False
     return name in [n.strip() for n in syslibenv.split(",")]
 
-# Executes specified command with arguments and calls 'fail' if it exited with
-# non-zero code
-def _execute_and_check_ret_code(repo_ctx, cmd_and_args):
-    result = repo_ctx.execute(cmd_and_args, timeout = 60)
-    if result.return_code != 0:
-        fail(("Non-zero return code({1}) when executing '{0}':\n" + "Stdout: {2}\n" +
-              "Stderr: {3}").format(
-            " ".join([str(x) for x in cmd_and_args]),
-            result.return_code,
-            result.stdout,
-            result.stderr,
-        ))
-
 # Apply a patch_file to the repository root directory.
 def _apply_patch(ctx, patch_file):
     ctx.patch(patch_file, strip = 1)
-
-def _apply_delete(ctx, paths):
-    for path in paths:
-        if path.startswith("/"):
-            fail("refusing to rm -rf path starting with '/': " + path)
-        if ".." in path:
-            fail("refusing to rm -rf path containing '..': " + path)
-    cmd = _wrap_bash_cmd(ctx, ["rm", "-rf"] + [ctx.path(path) for path in paths])
-    _execute_and_check_ret_code(ctx, cmd)
 
 def _maybe_label(label_string):
     return Label(label_string) if label_string else None
@@ -85,9 +48,7 @@ def _tf_http_archive(ctx):
     system_link_files = _label_path_dict(ctx, ctx.attr.system_link_files)
     additional_build_files = _label_path_dict(ctx, ctx.attr.additional_build_files)
 
-    if ("mirror.tensorflow.org" not in ctx.attr.urls[0] and
-        (len(ctx.attr.urls) < 2 and
-         ctx.attr.name not in _SINGLE_URL_WHITELIST.to_list())):
+    if len(ctx.attr.urls) < 2 or "mirror.tensorflow.org" not in ctx.attr.urls[0]:
         fail("tf_http_archive(urls) must have redundant URLs. The " +
              "mirror.tensorflow.org URL must be present and it must come first. " +
              "Even if you don't have permission to mirror the file, please " +
@@ -104,8 +65,6 @@ def _tf_http_archive(ctx):
             ctx.attr.type,
             ctx.attr.strip_prefix,
         )
-        if ctx.attr.delete:  # TODO(csigg): use a patch instead.
-            _apply_delete(ctx, ctx.attr.delete)
         if patch_file:
             _apply_patch(ctx, patch_file)
 
@@ -128,13 +87,9 @@ def _tf_http_archive(ctx):
 tf_http_archive = repository_rule(
     attrs = {
         "sha256": attr.string(mandatory = True),
-        "urls": attr.string_list(
-            mandatory = True,
-            allow_empty = False,
-        ),
+        "urls": attr.string_list(mandatory = True),
         "strip_prefix": attr.string(),
         "type": attr.string(),
-        "delete": attr.string_list(),
         "patch_file": attr.string(),
         "build_file": attr.string(),
         "system_build_file": attr.string(),
@@ -168,9 +123,7 @@ def _third_party_http_archive(ctx):
     link_files = _label_path_dict(ctx, ctx.attr.link_files)
     system_link_files = _label_path_dict(ctx, ctx.attr.system_link_files)
 
-    if ("mirror.tensorflow.org" not in ctx.attr.urls[0] and
-        (len(ctx.attr.urls) < 2 and
-         ctx.attr.name not in _SINGLE_URL_WHITELIST.to_list())):
+    if len(ctx.attr.urls) < 2 or "mirror.tensorflow.org" not in ctx.attr.urls[0]:
         fail("tf_http_archive(urls) must have redundant URLs. The " +
              "mirror.tensorflow.org URL must be present and it must come first. " +
              "Even if you don't have permission to mirror the file, please " +
@@ -199,8 +152,6 @@ def _third_party_http_archive(ctx):
             ctx.attr.type,
             ctx.attr.strip_prefix,
         )
-        if ctx.attr.delete:  # TODO(csigg): use a patch instead.
-            _apply_delete(ctx, ctx.attr.delete)
         if ctx.attr.patch_file:
             _apply_patch(ctx, Label(ctx.attr.patch_file))
         ctx.symlink(Label(ctx.attr.build_file), buildfile_path)
@@ -232,7 +183,6 @@ third_party_http_archive = repository_rule(
         ),
         "strip_prefix": attr.string(),
         "type": attr.string(),
-        "delete": attr.string_list(),
         "build_file": attr.string(mandatory = True),
         "system_build_file": attr.string(),
         "patch_file": attr.string(),

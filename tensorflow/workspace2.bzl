@@ -830,7 +830,7 @@ def _tf_repositories():
     tf_http_archive(
         name = "cython",
         build_file = "//third_party:cython.BUILD",
-        delete = ["BUILD.bazel"],
+        patch_file = "//third_party:cython.patch",
         sha256 = "e2e38e1f0572ca54d6085df3dec8b607d20e81515fb80215aed19c81e8fe2079",
         strip_prefix = "cython-0.29.21",
         system_build_file = "//third_party/systemlibs:cython.BUILD",
