@@ -46,13 +46,13 @@ class ExtractVolumePatches(test.TestCase):
     strides = [1] + strides + [1]
 
     for dtype in [np.float16, np.float32, np.float64]:
-        out_tensor = array_ops.extract_volume_patches(
-            constant_op.constant(image.astype(dtype)),
-            ksizes=ksizes,
-            strides=strides,
-            padding=padding,
-            name="im2col_3d")
-        self.assertAllClose(patches.astype(dtype), self.evaluate(out_tensor))
+      out_tensor = array_ops.extract_volume_patches(
+          constant_op.constant(image.astype(dtype)),
+          ksizes=ksizes,
+          strides=strides,
+          padding=padding,
+          name="im2col_3d")
+      self.assertAllClose(patches.astype(dtype), self.evaluate(out_tensor))
 
   # pylint: disable=bad-whitespace
   def testKsize1x1x1Stride1x1x1(self):
