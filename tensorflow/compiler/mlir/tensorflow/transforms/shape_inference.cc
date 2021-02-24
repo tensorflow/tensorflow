@@ -117,7 +117,8 @@ bool IsSupportedNonTFOp(Operation* op) {
              tf_executor::GraphOp, tf_executor::IslandOp,
              tf_executor::LoopCondOp, tf_executor::MergeOp,
              tf_executor::NextIterationSinkOp, tf_executor::SwitchNOp,
-             tf_executor::SwitchOp, tf_executor::YieldOp>(op);
+             tf_executor::SwitchOp, tf_executor::YieldOp>(op) ||
+         isa<InferTypeOpInterface>(op);
 }
 
 // Returns whether a cast back would need to be inserted, e.g., whether the

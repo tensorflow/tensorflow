@@ -328,6 +328,7 @@ cc_library(
     deps = [
         ":libtftpu_header",
         ":tpu_api",
+        ":tpu_api_dlsym_initializer",
         ":tpu_api_dlsym_set_fn",
         ":tpu_executor_init_fns",
         ":tpu_initializer_helper",

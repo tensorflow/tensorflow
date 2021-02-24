@@ -289,7 +289,7 @@ inline void ResizeBilinear888Uint8(int32 batches, int32 input_height,
         vst1_u8(&output_base_ptr[c_block + depth * 3], output_data);
 
         // Accumulate in 8.8 representation, pre-adding 0.5 for later rounding.
-        accum_c_v = vaddq_u16(Move8IntoUpperU16(output_data), vdupq_n_s16(128));
+        accum_c_v = vaddq_u16(Move8IntoUpperU16(output_data), vdupq_n_u16(128));
       }
 
       // Top-centre margin.
@@ -411,7 +411,7 @@ inline void ResizeBilinear888Uint8(int32 batches, int32 input_height,
           // Accumulate in 8.8 representation, pre-adding 0.5 for later
           // rounding.
           accum_0_c_v = VReinterpretQU16S16(tl_val << 8);
-          accum_0_c_v = vaddq_u16(accum_0_c_v.val, vdupq_n_s16(128));
+          accum_0_c_v = vaddq_u16(accum_0_c_v.val, vdupq_n_u16(128));
 
           hdelta_twice_c_v = hdelta_c_v << 1;
 
@@ -702,7 +702,7 @@ inline void ResizeBilinear888Uint8(int32 batches, int32 input_height,
         vst1_u8(&output_base_ptr[c_block + depth * 3], output_data);
 
         // Accumulate in 8.8 representation, pre-adding 0.5 for later rounding.
-        accum_c_v = vaddq_u16(Move8IntoUpperU16(output_data), vdupq_n_s16(128));
+        accum_c_v = vaddq_u16(Move8IntoUpperU16(output_data), vdupq_n_u16(128));
       }
 
       // Bottom-centre margin.

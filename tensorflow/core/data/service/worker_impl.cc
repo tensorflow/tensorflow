@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/service/utils.h"
 #include "tensorflow/core/data/standalone.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
@@ -47,11 +48,6 @@ namespace data {
 const constexpr uint64 kRetryIntervalMicros = 5ull * 1000 * 1000;
 
 namespace {
-auto* tf_data_service_created =
-    monitoring::Gauge<bool, 0>::New("/tensorflow/data/service/created",
-                                    "Whether a tf.data service server "
-                                    "has been created.");
-
 // Moves the element into the response. If the tensor contains a single
 // CompressedElement variant, the move will be zero-copy. Otherwise, the tensor
 // data will be serialized as TensorProtos.
@@ -81,7 +77,7 @@ Status MoveElementToResponse(std::vector<Tensor>&& element,
 DataServiceWorkerImpl::DataServiceWorkerImpl(
     const experimental::WorkerConfig& config)
     : config_(config) {
-  tf_data_service_created->GetCell()->Set(true);
+  metrics::RecordTFDataServiceWorkerCreated();
 }
 
 DataServiceWorkerImpl::~DataServiceWorkerImpl() {

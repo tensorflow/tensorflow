@@ -296,9 +296,11 @@ Status GpuCompiler::OptimizeHloModule(
     // Layout assignment uses alias analysis, which requires the call graph to
     // be flattened.
     pipeline.AddPass<FlattenCallGraph>();
+    ChannelLayoutConstraints layout_constraints;
     pipeline.AddPass<GpuLayoutAssignment>(
         hlo_module->mutable_entry_computation_layout(),
-        LayoutAssignment::InstructionCanChangeLayout, stream_exec);
+        LayoutAssignment::InstructionCanChangeLayout, stream_exec,
+        &layout_constraints);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 

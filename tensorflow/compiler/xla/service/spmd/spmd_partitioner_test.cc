@@ -7220,6 +7220,36 @@ ENTRY %module {
   EXPECT_EQ(*iterations->literal().GetFirstInteger(), 2);
 }
 
+TEST_F(SpmdPartitioningTest, ContractingPartitionDotOperandsSlicedWrong) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[8,2,15,4] parameter(0)
+  %lhs.copy = f32[8,2,15,4] copy(%lhs),
+    sharding={devices=[1,2,4,1]0,1,2,3,4,5,6,7}
+  %rhs = f32[2,15,4] parameter(1)
+  %rhs.copy = f32[2,15,4] copy(%rhs),
+    sharding={devices=[2,4,1]0,1,2,3,4,5,6,7}
+  %dot = f32[8,2,2] dot(%lhs.copy, %rhs.copy),
+    lhs_batch_dims={}, rhs_batch_dims={},
+    lhs_contracting_dims={2,3}, rhs_contracting_dims={1,2},
+    operand_precision={HIGH,HIGH},
+    sharding={devices=[2,2,2]0,1,2,3,4,5,6,7}
+  ROOT %output = f32[8,2,2] copy(%dot), sharding={replicated}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(hlo_string, /*num_devices=*/8,
+                           /*conv_halo_exchange_always_on_lhs =*/true,
+                           /*choose_faster_windowed_einsum =*/true));
+
+  const HloInstruction* dot_op = FindInstruction(module.get(), "dot.1");
+  auto op1 = op::Shape("f32[4,2,4,4]");
+  auto op2 = op::Shape("f32[2,4,4]");
+  EXPECT_THAT(dot_op, op::Dot(op1, op2));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

@@ -163,8 +163,6 @@ PYBIND11_MODULE(xla_extension, m) {
 
   py::class_<PjRtTpuDevice, PjRtDevice, ClientAndPtr<PjRtTpuDevice>>(
       m, "TpuDevice")
-      .def_property_readonly("host_id", &PjRtTpuDevice::task_id)
-      .def_property_readonly("task_id", &PjRtTpuDevice::task_id)
       .def_property_readonly(
           "coords",
           [](const PjRtTpuDevice& device) -> pybind11::tuple {

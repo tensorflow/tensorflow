@@ -308,6 +308,7 @@ class Model(training_lib.Model):
 
     # Prepare Session arguments (legacy).
     kwargs.pop('cloning', None)  # Legacy DistStrat argument, never used.
+    kwargs.pop('from_serialized', None)  # Not used in v1.
     allowed_kwargs = {'feed_dict', 'fetches', 'options', 'run_metadata'}
     unknown_kwargs = set(kwargs.keys()) - allowed_kwargs
     if unknown_kwargs:

@@ -432,9 +432,9 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
       quant::QuantizedType::getDefaultMaximumForInteger(/*isSigned=*/true, 32);
   if (axis_size == 1) {
     return quant::UniformQuantizedType::getChecked(
+        builder.getUnknownLoc(),
         /*flags=*/true, storage_type, expressed_type, scales[0],
-        /*zeroPoint=*/0, storage_type_min, storage_type_max,
-        builder.getUnknownLoc());
+        /*zeroPoint=*/0, storage_type_min, storage_type_max);
   } else {
     llvm::SmallVector<int64_t, 4> zero_points(axis_size, 0);
     // TODO(b/141508873): Assume the bias is a 1-D tensor, and set the
@@ -442,9 +442,9 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
     // larger than 1, this returned quantized type couldn't be used to
     // quantize the bias.
     return quant::UniformQuantizedPerAxisType::getChecked(
+        builder.getUnknownLoc(),
         /*flags=*/true, storage_type, expressed_type, scales, zero_points,
-        /*quantizedDimension=*/0, storage_type_min, storage_type_max,
-        builder.getUnknownLoc());
+        /*quantizedDimension=*/0, storage_type_min, storage_type_max);
   }
 }
 
@@ -782,8 +782,9 @@ quant::UniformQuantizedType GetFixedOutputRange(bool is_signed, int bit_width,
     storage_max += 128;
   }
   return quant::UniformQuantizedType::getChecked(
-      is_signed, storage_type, result_type.getElementType(), scale, zero_point,
-      storage_min, storage_max, builder.getUnknownLoc());
+      builder.getUnknownLoc(), is_signed, storage_type,
+      result_type.getElementType(), scale, zero_point, storage_min,
+      storage_max);
 }
 }  // namespace quant
 }  // namespace mlir

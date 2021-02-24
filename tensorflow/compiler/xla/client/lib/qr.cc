@@ -33,59 +33,115 @@ limitations under the License.
 
 namespace xla {
 
-namespace {
+QrDecomposition Qr(XlaOp a) {
+  auto result = [&]() -> StatusOr<QrDecomposition> {
+    XlaBuilder* builder = a.builder();
+    TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+    const int num_dims = a_shape.rank();
+    if (num_dims < 2) {
+      return InvalidArgument(
+          "Arguments to QR must have rank >= 2: got shape %s",
+          a_shape.ToString());
+    }
+    const int64 m = ShapeUtil::GetDimension(a_shape, -2);
+    const int64 n = ShapeUtil::GetDimension(a_shape, -1);
 
+    std::vector<int64> taus_dims(a_shape.dimensions().begin(),
+                                 a_shape.dimensions().end());
+    taus_dims.pop_back();
+    taus_dims.back() = std::min(m, n);
+    auto taus_shape = ShapeUtil::MakeShape(a_shape.element_type(), taus_dims);
 
+    Shape qr_shape = ShapeUtil::MakeTupleShape({a_shape, taus_shape});
+    auto qr = CustomCall(a.builder(), "Qr", {a}, qr_shape);
+    a = GetTupleElement(qr, 0);
+    auto taus = GetTupleElement(qr, 1);
 
-}  // namespace
-
-// Block Householder QR Factorization. Algorithm 5.2.2 of Golub and van Loan.
-// def qr_blocked(a, block_size):
-//   m = a.shape[0]
-//   n = a.shape[1]
-//   q = np.eye(m)
-//   for i in xrange(0, min(m, n), block_size):
-//     k = min(block_size, min(m, n) - s)
-//     (a, taus) = qr(a[i:, i:i+k])
-//     y = np.eye(m, n) + np.tril(a, -1)
-//     t = CompactWYRepresentation(vs, taus, m-i, k)
-//     a[i:, i+k:] += (y @ t.T) @ (y.T @ a[i:, i+k:])
-//     q[:, i:] += (q[:, i:] @ y) @ (y @ t.T).T
-//   return (q, a)
-StatusOr<QRDecompositionResult> QRDecomposition(
-    XlaOp a, bool full_matrices, int64 block_size,
-    PrecisionConfig::Precision precision) {
-  XlaBuilder* builder = a.builder();
-  TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-  const int num_dims = a_shape.rank();
-  if (num_dims < 2) {
-    return InvalidArgument("Arguments to QR must have rank >= 2: got shape %s",
-                           a_shape.ToString());
+    return QrDecomposition{a, taus};
+  }();
+  if (!result.ok()) {
+    XlaOp error = a.builder()->ReportError(result.status());
+    return QrDecomposition{error, error};
   }
+  return result.ValueOrDie();
+}
+
+XlaOp ProductOfElementaryHouseholderReflectors(XlaOp a, XlaOp taus) {
+  XlaBuilder* builder = a.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+    TF_ASSIGN_OR_RETURN(Shape taus_shape, builder->GetShape(taus));
+    if (a_shape.rank() < 2) {
+      return InvalidArgument(
+          "Matrix `a` must have >= 2 dimensions: got shape %s",
+          a_shape.ToString());
+    }
+    if (taus_shape.rank() + 1 != a_shape.rank()) {
+      return InvalidArgument(
+          "Matrix `taus` must have one fewer dimension than `a`: got shapes "
+          "%s and %s",
+          taus_shape.ToString(), a_shape.ToString());
+    }
+    const int64 m = ShapeUtil::GetDimension(a_shape, -2);
+    const int64 n = ShapeUtil::GetDimension(a_shape, -1);
+    if (m < n) {
+      return InvalidArgument(
+          "Argument to product of elementary Householder "
+          "reflectors must have m >= n, got shape %s",
+          a_shape.ToString());
+    }
+    absl::Span<const int64> a_batch_dims =
+        absl::MakeConstSpan(a_shape.dimensions().begin(),
+                            a_shape.dimensions().begin() + a_shape.rank() - 2);
+    absl::Span<const int64> taus_batch_dims = absl::MakeConstSpan(
+        taus_shape.dimensions().begin(),
+        taus_shape.dimensions().begin() + taus_shape.rank() - 1);
+    const int64 k = ShapeUtil::GetDimension(taus_shape, -1);
+    if (a_shape.element_type() != taus_shape.element_type() ||
+        a_batch_dims != taus_batch_dims || k > n) {
+      return InvalidArgument("Invalid shape for `taus`, got a=%s and taus=%s",
+                             taus_shape.ToString(), a_shape.ToString());
+    }
+    return CustomCall(a.builder(), "ProductOfElementaryHouseholderReflectors",
+                      {a, taus}, a_shape);
+  });
+}
+
+void QrExplicit(XlaOp a, bool full_matrices, XlaOp& q, XlaOp& r) {
+  StatusOr<Shape> a_shape_or = a.builder()->GetShape(a);
+  if (!a_shape_or.ok()) {
+    q = a.builder()->ReportError(a_shape_or.status());
+    r = q;
+    return;
+  }
+  Shape a_shape = a_shape_or.ValueOrDie();
   const int64 m = ShapeUtil::GetDimension(a_shape, -2);
   const int64 n = ShapeUtil::GetDimension(a_shape, -1);
   const int64 p = std::min(m, n);
 
-  if (block_size < 1) {
-    return InvalidArgument("block_size argument to QR must be >= 1; got %d",
-                           block_size);
-  }
-
-  Shape q_shape = a_shape;
-  q_shape.mutable_dimensions().back() = m;
-
-  Shape qr_shape = ShapeUtil::MakeTupleShape({q_shape, a_shape});
-  auto qr = CustomCall(a.builder(), "QrDecomposition", {a}, qr_shape);
-  auto q = GetTupleElement(qr, 0);
-  auto r = GetTupleElement(qr, 1);
-
-  // full_matrices is false when only a partial result in needed. Slice to the
-  // needed dimensions here.
-  if (!full_matrices) {
+  auto qr = Qr(a);
+  if (full_matrices) {
+    XlaOp t;
+    if (m < n) {
+      t = SliceInMinorDims(qr.q_and_r, {0, 0}, {m, m});
+    } else {
+      t = PadInDim(qr.q_and_r, Zero(a.builder(), a_shape.element_type()),
+                   a_shape.dimensions_size() - 1, /*pad_lo=*/0,
+                   /*pad_hi=*/m - n);
+    }
+    q = ProductOfElementaryHouseholderReflectors(t, qr.taus);
+    r = UpperTriangle(qr.q_and_r);
+  } else {
+    XlaOp t;
+    if (m < n) {
+      t = SliceInMinorDims(qr.q_and_r, {0, 0}, {m, m});
+    } else {
+      t = qr.q_and_r;
+    }
+    q = ProductOfElementaryHouseholderReflectors(t, qr.taus);
     q = SliceInMinorDims(q, {0, 0}, {m, p});
-    r = SliceInMinorDims(r, {0, 0}, {p, n});
+    r = UpperTriangle(SliceInMinorDims(qr.q_and_r, {0, 0}, {p, n}));
   }
-  return QRDecompositionResult{q, r};
 }
 
 }  // namespace xla

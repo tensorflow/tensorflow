@@ -526,7 +526,7 @@ struct TransformUnrankedHloPass
 
     // Populate rewrite patterns.
     OwningRewritePatternList patterns;
-    PopulateTransformUnrankedHloPatterns(&ctx, &patterns);
+    mhlo::PopulateTransformUnrankedHloPatterns(&ctx, &patterns);
 
     // Apply transformation.
     if (failed(
@@ -536,6 +536,8 @@ struct TransformUnrankedHloPass
 };
 
 }  // namespace
+
+namespace mhlo {
 
 void PopulateTransformUnrankedHloPatterns(MLIRContext *context,
                                           OwningRewritePatternList *patterns) {
@@ -565,4 +567,5 @@ std::unique_ptr<FunctionPass> createTransformUnrankedHloPass() {
   return std::make_unique<TransformUnrankedHloPass>();
 }
 
+}  // namespace mhlo
 }  // namespace mlir

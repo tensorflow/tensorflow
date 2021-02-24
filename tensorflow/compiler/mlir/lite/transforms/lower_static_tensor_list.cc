@@ -79,6 +79,9 @@ struct LowerStaticTensorListPass
     : public PassWrapper<LowerStaticTensorListPass, OperationPass<ModuleOp>> {
   LowerStaticTensorListPass() = default;
   LowerStaticTensorListPass(const LowerStaticTensorListPass &) {}
+  explicit LowerStaticTensorListPass(bool allow_tensorlist_pass_through) {
+    this->allow_tensorlist_pass_through = allow_tensorlist_pass_through;
+  }
 
   void runOnOperation() override;
 
@@ -1058,9 +1061,10 @@ void LowerStaticTensorListPass::runOnOperation() {
 
 /// Creates an instance of the TensorFlow Lite dialect LowerStaticTensorList
 /// pass.
-std::unique_ptr<OperationPass<ModuleOp>>
-TFL::CreateLowerStaticTensorListPass() {
-  return std::make_unique<LowerStaticTensorListPass>();
+std::unique_ptr<OperationPass<ModuleOp>> TFL::CreateLowerStaticTensorListPass(
+    bool allow_tensorlist_pass_through) {
+  return std::make_unique<LowerStaticTensorListPass>(
+      allow_tensorlist_pass_through);
 }
 
 static PassRegistration<LowerStaticTensorListPass> pass(
