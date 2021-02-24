@@ -33,8 +33,10 @@ if [ ! -f $BZL_FILE_PATH ]; then
   exit 1;
 fi
 
-EIGEN_URL="$(grep -o 'https.*gitlab.com/libeigen/eigen/-/archive/.*tar\.gz' "${BZL_FILE_PATH}" | grep -v mirror.tensorflow | head -n1)"
-EIGEN_SHA="$(eval echo $(grep '# SHARED_EIGEN_SHA' "${BZL_FILE_PATH}" | grep -o '\".*\"'))"
+EIGEN_WORKSPACE_BZL_PATH="third_party/eigen3/workspace.bzl"
+EIGEN_COMMIT="$(grep -oP 'EIGEN_COMMIT = "\K[0-9a-f]{40}' "${EIGEN_WORKSPACE_BZL_PATH}")"
+EIGEN_URL="https://gitlab.com/libeigen/eigen/-/archive/"${EIGEN_COMMIT}"/eigen-"${EIGEN_COMMIT}".tar.gz"
+EIGEN_SHA="$(grep -oP 'EIGEN_SHA256 = "\K[0-9a-f]{64}' "${EIGEN_WORKSPACE_BZL_PATH}")"
 GEMMLOWP_WORKSPACE_BZL_PATH="third_party/gemmlowp/workspace.bzl"
 GEMMLOWP_COMMIT="$(grep -oP 'GEMMLOWP_COMMIT = "\K[0-9a-f]{40}' "${GEMMLOWP_WORKSPACE_BZL_PATH}")"
 GEMMLOWP_URL="https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/gemmlowp/archive/"${GEMMLOWP_COMMIT}".zip"
