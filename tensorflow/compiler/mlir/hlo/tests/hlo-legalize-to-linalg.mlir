@@ -1256,3 +1256,29 @@ func @reduce_dynamic(%arg0: tensor<?x?xi32>, %arg1: tensor<i32>) -> tensor<?xi32
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32):
 // CHECK-NEXT:   %[[RESULT:.*]] = addi %[[LHS_IN]], %[[RHS_IN]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
+
+// -----
+
+func @slice_whole_stride(%arg0: tensor<3x4xi32>) -> tensor<1x4xi32> {
+  %0 = "mhlo.slice"(%arg0) {
+    start_indices = dense<[1, 0]> : tensor<2xi64>,
+    limit_indices = dense<[2, 4]> : tensor<2xi64>,
+    strides = dense<1> : tensor<2xi64>
+  } : (tensor<3x4xi32>) -> tensor<1x4xi32>
+  return %0 : tensor<1x4xi32>
+}
+// CHECK-LABEL: func @slice_whole_stride
+//       CHECK:   subtensor %{{.*}}[1, 0] [1, 4] [1, 1] : tensor<3x4xi32> to tensor<1x4xi32>
+
+// -----
+
+func @slice_stride_part(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
+  %0 = "mhlo.slice"(%arg0) {
+    start_indices = dense<[1, 1]> : tensor<2xi64>,
+    limit_indices = dense<[2, 3]> : tensor<2xi64>,
+    strides = dense<1> : tensor<2xi64>
+  } : (tensor<3x4xi32>) -> tensor<1x2xi32>
+  return %0 : tensor<1x2xi32>
+}
+// CHECK-LABEL: func @slice_stride_part
+//       CHECK:   subtensor %{{.*}}[1, 1] [1, 2] [1, 1]  : tensor<3x4xi32> to tensor<1x2xi32>

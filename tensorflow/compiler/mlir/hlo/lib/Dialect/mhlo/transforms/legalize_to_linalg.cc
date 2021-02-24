@@ -1035,16 +1035,16 @@ class ReverseConverter
   }
 };
 
-class SliceConverter : public OpConversionPattern<lmhlo::SliceOp> {
+template <typename OpTy, bool isLHLO = true>
+class SliceConverter : public OpConversionPattern<OpTy> {
  public:
-  using OpConversionPattern<lmhlo::SliceOp>::OpConversionPattern;
+  using OpConversionPattern<OpTy>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      lmhlo::SliceOp slice_op, ArrayRef<Value> args,
+      OpTy slice_op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = slice_op.getLoc();
-    auto arg_type =
-        slice_op.getOperand(0).getType().template dyn_cast<ShapedType>();
+    auto arg_type = args[0].getType().template dyn_cast<ShapedType>();
     if (!arg_type || !arg_type.hasRank()) {
       emitError(loc, "lhlo to linalg conversion expects known-rank args");
       return failure();
@@ -1053,17 +1053,22 @@ class SliceConverter : public OpConversionPattern<lmhlo::SliceOp> {
     SmallVector<OpFoldResult, 3> offsets, sizes, strides;
     for (int i = 0, e = arg_type.getRank(); i < e; ++i) {
       offsets.push_back(rewriter.getI64IntegerAttr(
-          slice_op.start_indices().getValue<int64_t>(i)));
+          slice_op.start_indices().template getValue<int64_t>(i)));
       sizes.push_back(rewriter.getI64IntegerAttr(
-          slice_op.limit_indices().getValue<int64_t>(i) -
-          slice_op.start_indices().getValue<int64_t>(i)));
-      strides.push_back(
-          rewriter.getI64IntegerAttr(slice_op.strides().getValue<int64_t>(i)));
+          slice_op.limit_indices().template getValue<int64_t>(i) -
+          slice_op.start_indices().template getValue<int64_t>(i)));
+      strides.push_back(rewriter.getI64IntegerAttr(
+          slice_op.strides().template getValue<int64_t>(i)));
     }
-    auto linalg_slice = rewriter.create<SubViewOp>(loc, slice_op.getOperand(0),
-                                                   offsets, sizes, strides);
-    rewriter.create<linalg::CopyOp>(loc, linalg_slice, slice_op.getOperand(1));
-    rewriter.eraseOp(slice_op);
+    if (isLHLO) {
+      auto linalg_op =
+          rewriter.create<SubViewOp>(loc, args[0], offsets, sizes, strides);
+      rewriter.create<linalg::CopyOp>(loc, linalg_op, args[1]);
+      rewriter.eraseOp(slice_op);
+    } else {
+      rewriter.replaceOpWithNewOp<SubTensorOp>(slice_op, args[0], offsets,
+                                               sizes, strides);
+    }
     return success();
   }
 };
@@ -1430,7 +1435,7 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    ReverseConverter<lmhlo::ReverseOp>,
                    ScalarPointwiseToStandardConverter<lmhlo::AddOp>,
                    ScalarPointwiseToStandardConverter<lmhlo::MaxOp>,
-                   SliceConverter,
+                   SliceConverter<lmhlo::SliceOp>,
                    TransposeConverter<lmhlo::TransposeOp>
                   >(context);
   // clang-format on
@@ -1554,6 +1559,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgConverter<mhlo::XorOp, false>,
       ReshapeOpConverter<mhlo::ReshapeOp, false>,
       ReverseConverter<mhlo::ReverseOp, false>,
+      SliceConverter<mhlo::SliceOp, false>,
       TransposeConverter<mhlo::TransposeOp, false>, DotOpOnTensorsConversion,
       DotGeneralOpOnTensorsConversion, ReduceOnTensorsConversion>(context);
   patterns->insert<ReduceRegionXLAOpConversion<mhlo::AddOp>,
