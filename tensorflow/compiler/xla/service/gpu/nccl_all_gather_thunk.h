@@ -35,7 +35,7 @@ struct NcclAllGatherConfig {
 class NcclAllGatherThunk : public NcclCollectiveThunk {
  public:
   NcclAllGatherThunk(ThunkInfo thunk_info, mlir::lmhlo::AllGatherOp op,
-                     int64 replica_count, std::vector<Buffer> buffers);
+                     std::vector<Buffer> buffers);
 
   // Returns whether the given instruction can be lowered to a nccl all-gather
   // call.
@@ -46,13 +46,26 @@ class NcclAllGatherThunk : public NcclCollectiveThunk {
 
   static const char* GetName() { return "AllGather"; }
 
+  static bool IsDegenerate(mlir::lmhlo::AllGatherOp op, int64 replica_count,
+                           int64 partition_count) {
+    return GetNcclAllGatherConfig(op).config.IsDegenerate(replica_count,
+                                                          partition_count);
+  }
+
+  static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::AllGatherOp op) {
+    return GetNcclAllGatherConfig(op).config.group_mode;
+  }
+
  protected:
   Status RunNcclCollective(const ExecuteParams& params,
                            ncclComm_t comm) override;
 
-  const NcclCollectiveConfig& config() const override;
+  const NcclCollectiveConfig& config() const override { return config_.config; }
 
  private:
+  static NcclAllGatherConfig GetNcclAllGatherConfig(
+      mlir::lmhlo::AllGatherOp op);
+
   const NcclAllGatherConfig config_;
   const std::vector<Buffer> buffers_;
 };

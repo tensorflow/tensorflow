@@ -328,7 +328,9 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
           strings::Printf("%lld", static_cast<long long>(max_batch_results))));
       result.push_back(std::make_pair(
           "parallelism",
-          strings::Printf("%lld", static_cast<long long>(parallelism))));
+          parallelism == -1
+              ? kTraceInfoUnavailable
+              : strings::Printf("%lld", static_cast<long long>(parallelism))));
       return result;
     }
 

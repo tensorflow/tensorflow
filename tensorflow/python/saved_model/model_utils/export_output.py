@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# LINT.IfChange
 """Classes for different types of export output."""
 
 from __future__ import absolute_import
@@ -406,3 +407,4 @@ class EvalOutput(_SupervisedOutput):
 
   def _get_signature_def_fn(self):
     return signature_def_utils.supervised_eval_signature_def
+# LINT.ThenChange(//tensorflow/python/keras/saving/utils_v1/export_output.py)

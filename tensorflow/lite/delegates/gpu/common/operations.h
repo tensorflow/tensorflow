@@ -85,6 +85,7 @@ enum class OperationType {
   SOFTMAX,
   SPACE_TO_BATCH,
   SPACE_TO_DEPTH,
+  SPLIT,
   SQRT,
   SQUARE,
   SQUARED_DIFF,
@@ -545,6 +546,11 @@ BHWDC CalculateOutputShape(const BHWDC& input,
 
 struct SpaceToDepthAttributes {
   int block_size;
+};
+
+struct SplitAttributes {
+  // Defines axis by which to split.
+  Axis axis = Axis::UNKNOWN;
 };
 
 // These help perform a combination of Quantize & Dequantize to adjust float

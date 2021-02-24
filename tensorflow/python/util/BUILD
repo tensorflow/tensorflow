@@ -90,6 +90,34 @@ tf_python_pybind_extension(
 )
 
 tf_python_pybind_extension(
+    name = "_pywrap_nest",
+    srcs = ["nest_wrapper.cc"],
+    hdrs = ["nest.h"],
+    module_name = "_pywrap_nest",
+    deps = [
+        "//tensorflow/python:pybind11_lib",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
+cc_library(
+    name = "cpp_nest",
+    srcs = ["nest.cc"],
+    hdrs = ["nest.h"],
+    deps = [
+        ":cpp_python_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:stringpiece",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
+        "//third_party/python_runtime:headers",
+    ],
+    alwayslink = 1,
+)
+
+tf_python_pybind_extension(
     name = "_pywrap_kernel_registry",
     srcs = ["kernel_registry_wrapper.cc"],
     hdrs = ["kernel_registry.h"],

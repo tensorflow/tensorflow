@@ -2790,22 +2790,12 @@ void MklLayoutRewritePass::CopyAttrsQuantizedConv2D(const Node* orig_node,
 
 void MklLayoutRewritePass::CopyAttrsQuantizedMatMulWithBiasAndDequantize(
     const Node* orig_node, NodeBuilder* nb, bool change_format) {
-  DataType T1, T2, Toutput;
+  CopyAttrsAll(orig_node, nb, change_format);
 
-  // Get all attributes from old node.
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T1", &T1));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T2", &T2));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "Toutput", &Toutput));
-
-  // Add attributes to new node.
-  nb->Attr("T1", T1);
-  nb->Attr("T2", T2);
-  nb->Attr("Toutput", Toutput);
-
-  // Requantization attr Tbias
-  DataType Tbias;
-  Status bias_status = GetNodeAttr(orig_node->def(), "Tbias", &Tbias);
-  if (bias_status.ToString() == "OK") nb->Attr("Tbias", Tbias);
+  // Check and set filter attribute.
+  Node* filter_node = nullptr;
+  TF_CHECK_OK(orig_node->input_node(1, &filter_node));
+  nb->Attr("is_weight_const", filter_node->IsConstant());
 }
 
 void MklLayoutRewritePass::CopyAttrsQuantizedMatMulWithBias(

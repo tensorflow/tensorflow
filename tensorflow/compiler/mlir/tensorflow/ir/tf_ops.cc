@@ -355,8 +355,6 @@ Type TensorFlowDialect::parseType(DialectAsmParser &parser) const {
   StringRef data;
   if (parser.parseKeyword(&data)) return Type();
 
-  Location loc = parser.getEncodedSourceLoc(parser.getNameLoc());
-
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
   if (data == name) return tftype##Type::get(getContext());
 // Custom TensorFlow types are handled separately at the end as they do partial
@@ -365,9 +363,18 @@ Type TensorFlowDialect::parseType(DialectAsmParser &parser) const {
 // NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
 
-  if (data.startswith("resource")) return ParseResourceType(parser, loc);
-  if (data.startswith("variant")) return ParseVariantType(parser, loc);
-  return (emitError(loc, "unknown TensorFlow type: " + data), nullptr);
+  llvm::SMLoc loc = parser.getNameLoc();
+  if (data.startswith("resource")) {
+    Type ret = ParseResourceType(parser);
+    if (!ret) parser.emitError(loc, "invalid resource type");
+    return ret;
+  }
+  if (data.startswith("variant")) {
+    Type ret = ParseVariantType(parser);
+    if (!ret) parser.emitError(loc, "invalid variant type");
+    return ret;
+  }
+  return (parser.emitError(loc, "unknown TensorFlow type: " + data), nullptr);
 }
 
 // Prints a type registered to this dialect.
@@ -391,8 +398,7 @@ void TensorFlowDialect::printType(Type ty, DialectAsmPrinter &os) const {
 
 namespace {
 template <typename TypeWithSubtype>
-Type ParseTypeWithSubtype(MLIRContext *context, DialectAsmParser &parser,
-                          Location loc) {
+Type ParseTypeWithSubtype(MLIRContext *context, DialectAsmParser &parser) {
   // Default type without inferred subtypes.
   if (failed(parser.parseOptionalLess())) return TypeWithSubtype::get(context);
 
@@ -401,11 +407,19 @@ Type ParseTypeWithSubtype(MLIRContext *context, DialectAsmParser &parser,
   do {
     TensorType tensor_ty;
     if (parser.parseType(tensor_ty)) return Type();
+
+    // Each of the subtypes should be a valid TensorFlow type.
+    // TODO(jpienaar): Remove duplication.
+    if (!IsValidTFTensorType(tensor_ty)) {
+      parser.emitError(parser.getNameLoc()) << "invalid subtype: " << tensor_ty;
+      return Type();
+    }
     subtypes.push_back(tensor_ty);
   } while (succeeded(parser.parseOptionalComma()));
 
   if (parser.parseGreater()) return Type();
-  return TypeWithSubtype::getChecked(subtypes, context, loc);
+
+  return TypeWithSubtype::get(subtypes, context);
 }
 
 template <typename TypeWithSubtype>
@@ -421,9 +435,8 @@ void PrintTypeWithSubtype(StringRef type, TypeWithSubtype ty,
 }
 }  // anonymous namespace
 
-Type TensorFlowDialect::ParseResourceType(DialectAsmParser &parser,
-                                          Location loc) const {
-  return ParseTypeWithSubtype<ResourceType>(getContext(), parser, loc);
+Type TensorFlowDialect::ParseResourceType(DialectAsmParser &parser) const {
+  return ParseTypeWithSubtype<ResourceType>(getContext(), parser);
 }
 
 void TensorFlowDialect::PrintResourceType(ResourceType ty,
@@ -431,9 +444,8 @@ void TensorFlowDialect::PrintResourceType(ResourceType ty,
   return PrintTypeWithSubtype("resource", ty, os);
 }
 
-Type TensorFlowDialect::ParseVariantType(DialectAsmParser &parser,
-                                         Location loc) const {
-  return ParseTypeWithSubtype<VariantType>(getContext(), parser, loc);
+Type TensorFlowDialect::ParseVariantType(DialectAsmParser &parser) const {
+  return ParseTypeWithSubtype<VariantType>(getContext(), parser);
 }
 
 void TensorFlowDialect::PrintVariantType(VariantType ty,

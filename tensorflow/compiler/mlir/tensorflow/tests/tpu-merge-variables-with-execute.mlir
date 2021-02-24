@@ -327,8 +327,8 @@ func @missing_read_write(
   %arg0: tensor<*x!tf.resource<tensor<32xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
   %arg1: tensor<!tf.string>) {
   %read0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
-    // expected-error @+1 {{resource that was neither read nor written to}}
   %execute:2 = "tf_device.launch"() ( {
+    // expected-error @+1 {{resource that was neither read nor written to}}
     %0:2 = "tf.TPUExecute"(%arg0, %read0, %arg1)
       : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>, tensor<!tf.string>) -> (tensor<32xf32>, tensor<32xf32>)
     tf_device.return %0#0, %0#1 : tensor<32xf32>, tensor<32xf32>

@@ -60,6 +60,9 @@ struct SpmdPartitionerOptions {
   // memory-efficient, and the compiler can use the ScheduleAwareAllGatherCSE
   // pass to CSE some all-gathers which are relatively close to each other.
   bool cache_all_gather = true;
+  // When making a compromise between windowed einsum speed and memory usage
+  // prefer the former if true.
+  bool choose_faster_windowed_einsum_over_mem = false;
 };
 
 // Class to wrap the computation builder to capture information during SPMD

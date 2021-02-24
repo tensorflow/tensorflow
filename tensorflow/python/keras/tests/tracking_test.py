@@ -47,7 +47,7 @@ class HasList(training.Model):
 
   def __init__(self):
     super(HasList, self).__init__()
-    self.layer_list = data_structures.List([core.Dense(3)])
+    self.layer_list = data_structures.wrap_or_unwrap([core.Dense(3)])
     self.layer_list.append(core.Dense(4))
     self.layer_list.extend(
         [core.Dense(5),
@@ -57,13 +57,13 @@ class HasList(training.Model):
         core.Dense(8)
     ]
     self.layer_list += (
-        data_structures.List([core.Dense(9)]) + data_structures.List(
-            [core.Dense(10)]))
+        data_structures.wrap_or_unwrap([core.Dense(9)]) +
+        data_structures.wrap_or_unwrap([core.Dense(10)]))
     self.layer_list.extend(
-        data_structures.List(
+        data_structures.wrap_or_unwrap(
             list([core.Dense(11)]) + [core.Dense(12)]))
-    self.layers_with_updates = data_structures.List(
-        (normalization.BatchNormalization(),))
+    self.layers_with_updates = data_structures.wrap_or_unwrap(
+        [normalization.BatchNormalization()])
 
   def call(self, x):
     aggregation = 0.
@@ -234,7 +234,7 @@ class ListWrapperTest(test.TestCase):
 
   def testLayerCollectionWithExternalMutation(self):
     l = []
-    l_wrapper = data_structures.ListWrapper(l)
+    l_wrapper = data_structures.wrap_or_unwrap(l)
     layer = core.Dense(1)
     l.append(layer)
     self.assertEqual([layer], l_wrapper.layers)
@@ -244,9 +244,9 @@ class HasMapping(training.Model):
 
   def __init__(self):
     super(HasMapping, self).__init__()
-    self.layer_dict = data_structures.Mapping(output=core.Dense(7))
-    self.layer_dict["norm"] = data_structures.List()
-    self.layer_dict["dense"] = data_structures.List()
+    self.layer_dict = data_structures.wrap_or_unwrap(dict(output=core.Dense(7)))
+    self.layer_dict["norm"] = data_structures.wrap_or_unwrap([])
+    self.layer_dict["dense"] = data_structures.wrap_or_unwrap([])
     self.layer_dict["dense"].extend(
         [core.Dense(5),
          core.Dense(6, kernel_regularizer=math_ops.reduce_sum)])
@@ -302,7 +302,7 @@ class MappingTests(keras_parameterized.TestCase):
   def testDictWrapperBadKeys(self):
     a = module.Module()
     a.d = {}
-    a.d[1] = data_structures.List()
+    a.d[1] = data_structures.wrap_or_unwrap([])
     model = training.Model()
     model.sub = a
     save_path = os.path.join(self.get_temp_dir(), "ckpt")

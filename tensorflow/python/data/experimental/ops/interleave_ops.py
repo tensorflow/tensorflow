@@ -115,10 +115,10 @@ class _DirectedInterleaveDataset(dataset_ops.DatasetV2):
       if (dataset_ops.get_legacy_output_types(data_input) != first_output_types
           or dataset_ops.get_legacy_output_classes(data_input)
           != first_output_classes):
-        raise TypeError(f"All datasets must have the same type and class.\n"
-                        f"dataset 0 types vs dataset {i+1} types: %s; %s\n"
-                        f"dataset 0 classes vs dataset {i+1} classes: %s; %s" %
-                        (first_output_types,
+        raise TypeError("All datasets must have the same type and class.\n"
+                        "dataset 0 vs dataset %s types: %s ; %s\n"
+                        "classes: %s ; %s" %
+                        (i + 1, first_output_types,
                          dataset_ops.get_legacy_output_types(data_input),
                          first_output_classes,
                          dataset_ops.get_legacy_output_classes(data_input)))

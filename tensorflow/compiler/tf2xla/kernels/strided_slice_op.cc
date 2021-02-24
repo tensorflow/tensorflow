@@ -68,11 +68,12 @@ class StridedSliceOp : public XlaOpKernel {
                   errors::InvalidArgument(
                       "Strides have to be one when inputs are not constant."));
     }
-    // Infer static output shape, reconsile unknown dimension with input dim
+    // Infer static output shape, reconcile unknown dimension with input dim
     // size.
     for (int64 i = 0; i < partial_final_shape.dims(); ++i) {
       if (partial_final_shape.dim_size(i) == -1) {
-        // Use input shape shape_spec.
+        // Use input shape to update unknown dimension of partial shape -- if a
+        // dimension is unknown, we use input shape as bound.
         partial_final_shape.set_dim(
             i,
             input_shape.dim_size(shape_spec.output_to_processing_mapping[i]));
@@ -87,7 +88,8 @@ class StridedSliceOp : public XlaOpKernel {
                         ", output shape must be a compile-time constant"));
     for (int64 i = 0; i < partial_processing_shape.dims(); ++i) {
       if (partial_processing_shape.dim_size(i) == -1) {
-        // Use input shape shape_spec.
+        // Use input shape to update unknown dimension of partial shape -- if a
+        // dimension is unknown, we use input shape as bound.
         partial_processing_shape.set_dim(i, input_shape.dim_size(i));
       }
     }
@@ -408,15 +410,23 @@ class StridedSliceGradOp : public XlaOpKernel {
                                   "one when inputs are not constant."));
     }
 
-    auto zero = XlaHelpers::Zero(ctx->builder(), ctx->expected_output_dtype(0));
-    zero = xla::Broadcast(zero, input_shape.dim_sizes());
     xla::XlaOp grad = ctx->Input(4);
     xla::Shape grad_shape = ctx->InputXlaShape(4).ValueOrDie();
-    // Undo any new/shrink axes.
     VLOG(1) << "xla grad shape" << grad_shape;
+    VLOG(1) << "xla final_shape" << final_shape;
     VLOG(1) << "input_shape" << input_shape.DebugString();
-    std::vector<xla::XlaOp> begins(processing_shape.dims(),
-                                   xla::Zero(ctx->builder(), xla::S32));
+    auto input_sizes = input_shape.dim_sizes();
+    // For unknown output dim the bound of the output shape is input.  Pad and
+    // double the size of input shape to leave enough buffer to avoid OOB
+    // dynamic update slice.
+    auto input_sizes_padded = input_shape.dim_sizes();
+    bool need_padding = false;
+    for (int64 i = 0; i < processing_shape.dims(); ++i) {
+      if (processing_shape.dim_size(i) == -1) {
+        input_sizes_padded[i] *= 2;
+        need_padding = true;
+      }
+    }
     for (int64 i = 0; i < grad_shape.rank(); ++i) {
       // Use grad shape, which is known, to update unknown processing shape.
       // Grad shape is the output of the ValidateStridedSliceOp function in
@@ -425,26 +435,44 @@ class StridedSliceGradOp : public XlaOpKernel {
         processing_shape.set_dim(shape_spec.output_to_processing_mapping[i],
                                  grad_shape.dimensions(i));
       }
-
-      // Similarly, use output_to_sparse_mapping to find out corresponding
-      // begin dim of the output, as indices for dynamic update slice.
-      int64 begin_dim = shape_spec.output_to_sparse_mapping[i];
-      if (begin_dim != -1) {
-        auto begin_index =
-            xla::Slice(ctx->Input(1), {begin_dim}, {begin_dim + 1}, {1});
-        auto begin_index_scalar = xla::Reshape(
-            xla::ShapeUtil::MakeScalarShape(xla::S32), begin_index);
-        begins[shape_spec.output_to_sparse_mapping[i]] = begin_index_scalar;
-      }
     }
-    VLOG(1) << "processing_shape" << processing_shape.DebugString();
-    TensorShape full_processing_shape;
-    OP_REQUIRES(ctx, processing_shape.AsTensorShape(&full_processing_shape),
-                errors::InvalidArgument(
-                    "Processing shape ", processing_shape.DebugString(),
-                    " can't be fully inferred from grad shape"));
-    grad = xla::Reshape(grad, full_processing_shape.dim_sizes());
+
+    std::vector<xla::XlaOp> begins;
+    begins.reserve(processing_shape.dims());
+    for (int64 i = 0; i < input_shape.dims(); ++i) {
+      bool begin_mask = (1 << i) & shape_spec.begin_dense_mask;
+      // Similarly, use processing_to_sparse_mapping to find out corresponding
+      // begin dim of the gradient, as indices for dynamic update slice.
+      int64 begin_dim = shape_spec.processing_to_sparse_mapping[i];
+      xla::XlaOp begin_index;
+      auto zero = xla::Zero(ctx->builder(), ctx->InputXlaType("begin"));
+      if (begin_mask) {
+        begin_index = zero;
+      } else {
+        xla::XlaOp dim_size = xla::Slice(ctx->Input(0), {i}, {i + 1}, {1});
+        dim_size = xla::Reshape(dim_size, {});
+        begin_index =
+            xla::Slice(ctx->Input(1), {begin_dim}, {begin_dim + 1}, {1});
+        begin_index = xla::Reshape(begin_index, {});
+        auto index_negative = xla::Lt(begin_index, zero);
+        auto wrapped_index = xla::Add(dim_size, begin_index);
+        // Wrap negative indices around.
+        begin_index = xla::Select(index_negative, wrapped_index, begin_index);
+      }
+      begins.push_back(begin_index);
+    }
+    auto zero = XlaHelpers::Zero(ctx->builder(), ctx->expected_output_dtype(0));
+
+    zero = xla::Broadcast(zero, input_sizes_padded);
+    grad = xla::Reshape(grad, processing_shape.dim_sizes());
     grad = xla::DynamicUpdateSlice(zero, grad, begins);
+    if (need_padding) {
+      // We padded the input shape to avoid OOB when DUS. Now slice out the
+      // padding in the final result.
+      std::vector<int64> strides(input_shape.dims(), 1);
+      std::vector<int64> start_indices(input_shape.dims(), 0);
+      grad = xla::Slice(grad, start_indices, input_sizes, strides);
+    }
     ctx->SetOutput(0, grad);
   }
   void Compile(XlaOpKernelContext* ctx) override {

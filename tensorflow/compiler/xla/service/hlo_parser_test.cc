@@ -401,6 +401,32 @@ ENTRY %CustomCall () -> f32[1,2,3] {
 
 )"
 },
+
+// CustomCall with literal.
+{
+"CustomCallWithLiteral",
+R"(HloModule custom_call
+
+ENTRY %CustomCall () -> f32[1,2,3] {
+  %constant = f32[1]{0} constant({12345})
+  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo\"bar", literal=(f32[1] {0.1})
+}
+
+)"
+},
+
+// CustomCall with literal R0.
+{
+"CustomCallWithLiteralR0",
+R"(HloModule custom_call
+
+ENTRY %CustomCall () -> f32[1,2,3] {
+  %constant = f32[1]{0} constant({12345})
+  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo\"bar", literal=(f32[] 0.1)
+}
+
+)"
+},
 // reduce window
 {
 "ReduceWindow",

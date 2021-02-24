@@ -51,6 +51,8 @@ const char* TensorTypeName(TfLiteType type) {
       return "kTfLiteFloat32";
     case kTfLiteInt32:
       return "kTfLiteInt32";
+    case kTfLiteUInt32:
+      return "kTfLiteUInt32";
     case kTfLiteUInt8:
       return "kTfLiteUInt8";
     case kTfLiteInt8:

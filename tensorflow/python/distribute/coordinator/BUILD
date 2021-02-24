@@ -40,7 +40,7 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 50,
     tags = [
-        "no_oss",  # TODO(b/162119374)
+        "no_pip",
         "notsan",  # TODO(b/171040359): Flaky timeout, even if maximum shards
     ],
     deps = [
@@ -90,6 +90,7 @@ tf_py_test(
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:parameter_server_strategy_v2",
+        "//tensorflow/python/distribute:test_util",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",

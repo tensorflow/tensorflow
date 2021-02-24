@@ -59,6 +59,16 @@ inline std::vector<int> Split(const string& s, const string& delimiter) {
 }
 
 template <>
+inline std::vector<uint32_t> Split(const string& s, const string& delimiter) {
+  std::vector<uint32_t> fields;
+  for (const auto& p : SplitToPos(s, delimiter)) {
+    // NOLINTNEXTLINE(runtime/deprecated_fn)
+    fields.push_back(strtol(s.data() + p.first, nullptr, 10));
+  }
+  return fields;
+}
+
+template <>
 inline std::vector<int64_t> Split(const string& s, const string& delimiter) {
   std::vector<int64_t> fields;
   for (const auto& p : SplitToPos(s, delimiter)) {

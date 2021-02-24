@@ -70,8 +70,9 @@ def validate_destinations(destinations):
   """Validates the `destination` is one of expected types."""
   if not isinstance(
       destinations,
-      (value_lib.DistributedValues, ops.Tensor, ps_values.AggregatingVariable,
-       six.string_types, tpu_values.TPUMirroredVariable
+      (value_lib.DistributedValues, ops.Tensor, ops.IndexedSlices,
+       ps_values.AggregatingVariable, six.string_types,
+       tpu_values.TPUMirroredVariable
       )) and not resource_variable_ops.is_resource_variable(destinations):
     raise ValueError("destinations must be one of a `DistributedValues` object,"
                      " a tf.Variable object, or a device string.")
@@ -532,25 +533,25 @@ class CrossDeviceOps(object):
   def _all_reduce(self, reduce_op, value, replica_id, options):
     """All-reduce the `value` across all replicas so that all get the result.
 
-    `value` can be a nested structure of tensors. The implementation should
-    generally batch the all-reduces when possible. `options` can be set to
-    hint the batching behavior.
+    `value` can be a nested structure of tensors or `IndexedSlices`. The
+    implementation should generally batch the all-reduces when possible.
+    `options` can be set to hint the batching behavior.
 
     This API must be called in a replica context.
 
     Args:
       reduce_op: A `tf.distribute.ReduceOp` value specifying how values should
-        be combined. Allows using string representation of the enum such as
-        "SUM", "MEAN".
-      value: Value to be reduced. A tensor or a nested structure of tensors.
+        be combined.
+      value: Value to be reduced. A tensor or a nested structure of tensors or
+        `IndexedSlices`.
       replica_id: An interger indicating the id of the replica where this
         all_reduce is called under. This is the local replica id that ranges
         from 0 to len(local_devices) - 1.
       options: A `tf.distribute.experimental.CommunicationOptions`.
 
     Returns:
-      A tensor or a nested strucutre of tensors with the reduced values. The
-      structure is the same as `value`.
+      A tensor/IndexedSlices or a nested strucutre of tensors/IndexedSlices with
+      the reduced values. The structure is the same as `value`.
     """
     raise NotImplementedError("_all_reduce must be implemented in descendants.")
 
@@ -1083,48 +1084,74 @@ class CollectiveAllReduce(CrossDeviceOps):
     # TODO(b/122840926): reuse this method in _batch_all_reduce.
     flat_values = nest.flatten(value)
 
-    if isinstance(flat_values[0], ops.IndexedSlices):
-      raise NotImplementedError("all_reduce doesn't support IndexedSlices.")
-
-    batch_size = len(flat_values)
-
     implementation = options.implementation.value
     # If NCCL launches can't be ordered (self._limited_nccl == True), we only
-    # use NCCL only when batch_size > 1, hoping that there's only one batched
-    # all-reduce, which is the gradients.
+    # use NCCL when batch_size > 1, hoping that there's only one batched
+    # all-reduce, which is the gradient aggregation in optimizer. For TF 2.x,
+    # NCCL launches are always ordered.
     if (self._limited_nccl and
         options.implementation == CommunicationImplementation.NCCL and
-        batch_size == 1):
+        len(flat_values) == 1):
       implementation = CommunicationImplementation.AUTO.value
 
-    # Reverse the lists so that there's better chance that values follows
-    # the order in which they are calculated (e.g. when they're gradients), so
-    # as to overlap calculation with communication. However, this may not be
-    # optimal for cases like gradients of complicated non-sequential models.
-    #
-    # Note that we reverse the list before packing so that the first pack won't
-    # be too small, since it's more likely for first few packs to have long
-    # queuing time due to concurrent intense computation.
-    #
-    # TODO(b/147393503): explore solutions for optimal ordering.
-    flat_values.reverse()
-    packs = cross_device_utils.group_by_size(flat_values,
-                                             options.bytes_per_pack)
-
     launcher = self._launchers[replica_id]
-    if not context.executing_eagerly() and replica_id == 0:
-      logging.info(
-          "Collective all_reduce: %d all-reduces, num_devices = %d, "
-          "group_size = %d, implementation = %s, num_packs = %d", batch_size,
-          len(self._launchers), self._group_size, implementation, len(packs))
-    flat_results = launcher.batch_all_reduce(packs, implementation,
-                                             options.timeout_seconds)
+    dense_values, dense_indices, sparse_values, sparse_indices = (
+        cross_device_utils.split_by_sparsity(flat_values))
+    dense_results = []
+    sparse_results = []
 
-    if reduce_op == reduce_util.ReduceOp.MEAN:
-      for i, v in enumerate(flat_results):
-        flat_results[i] = v / self._group_size
-    flat_results.reverse()
+    if dense_values:
+      # Reverse the lists so that there's better chance that values follows
+      # the order in which they are calculated (e.g. when they're gradients), so
+      # as to overlap calculation with communication. However, this may not be
+      # optimal for cases like gradients of complicated non-sequential models.
+      #
+      # Note that we reverse the list before packing so that the first pack
+      # won't be too small, since it's more likely for first few packs to have
+      # long queuing time due to concurrent intense computation.
+      #
+      # TODO(b/147393503): explore solutions for optimal ordering.
+      dense_values.reverse()
+      packs = cross_device_utils.group_by_size(dense_values,
+                                               options.bytes_per_pack)
 
+      if not context.executing_eagerly() and replica_id == 0:
+        logging.info(
+            "Collective all_reduce tensors: %d all_reduces, num_devices = %d, "
+            "group_size = %d, implementation = %s, num_packs = %d",
+            len(dense_values), len(self._launchers), self._group_size,
+            implementation, len(packs))
+
+      dense_results = launcher.batch_all_reduce(packs, implementation,
+                                                options.timeout_seconds)
+      if reduce_op == reduce_util.ReduceOp.MEAN:
+        for i, v in enumerate(dense_results):
+          with ops.device(self._devices[replica_id]):
+            dense_results[i] = v / self._group_size
+      dense_results.reverse()
+
+    if sparse_values:
+      if not context.executing_eagerly() and replica_id == 0:
+        logging.info(
+            "Collective all_reduce IndexedSlices: %d all_reduces, num_devices ="
+            "%d, group_size = %d, implementation = %s", len(dense_values),
+            len(self._launchers), self._group_size, implementation)
+
+      for indexed_slice in sparse_values:
+        sparse_results.append(
+            launcher.all_reduce_indexed_slices(indexed_slice, implementation,
+                                               options.timeout_seconds))
+
+      if reduce_op == reduce_util.ReduceOp.MEAN:
+        for i, v in enumerate(sparse_results):
+          with ops.device(self._devices[replica_id]):
+            sparse_results[i] = ops.IndexedSlices(
+                values=sparse_results[i].values / self._group_size,
+                indices=sparse_results[i].indices,
+                dense_shape=sparse_results[i].dense_shape)
+
+    flat_results = cross_device_utils.stitch_values(
+        ((dense_results, dense_indices), (sparse_results, sparse_indices)))
     return nest.pack_sequence_as(value, flat_results)
 
   def reduce_implementation(self, reduce_op, per_replica_value, destinations,

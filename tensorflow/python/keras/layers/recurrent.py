@@ -236,7 +236,7 @@ class RNN(Layer):
         `batch_size` is a scalar tensor that represents the batch size
         of the inputs. `dtype` is `tf.DType` that represents the dtype of
         the inputs.
-        For backward compatible reason, if this method is not implemented
+        For backward compatibility, if this method is not implemented
         by the cell, the RNN layer will create a zero filled tensor with the
         size of [batch_size, cell.state_size].
       In the case that `cell` is a list of RNN cell instances, the cells

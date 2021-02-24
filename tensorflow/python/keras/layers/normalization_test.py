@@ -104,7 +104,7 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_batchnorm_convnet(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.session(use_gpu=True):
+      with self.session():
         model = keras.models.Sequential()
         norm = keras.layers.BatchNormalization(
             axis=1, input_shape=(3, 4, 4), momentum=0.8)

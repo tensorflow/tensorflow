@@ -144,6 +144,11 @@ TfLiteRegistration* RegisterDenseImageWarp() {
   return &reg;
 }
 
+// Alias for selective build.
+TfLiteRegistration* Register_DENSE_IMAGE_WARP() {
+  return RegisterDenseImageWarp();
+}
+
 }  // namespace custom
 }  // namespace ops
 }  // namespace tflite

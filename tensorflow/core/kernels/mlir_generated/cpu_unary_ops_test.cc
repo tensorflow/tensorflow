@@ -67,5 +67,24 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Abs, DT_INT64, DT_INT64, test::NearZeroAndExtremeInput<int64>(), std::abs,
     test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
 
+/// Test `tf.Sqrt`.
+
+// Forwards to Eigen, necessary since Eigen passes by `const T&` but existing
+// Test class expects passing by value.  Eigen::numext::sqrt works properly for
+// Eigen::half and Eigen::bfloat16, which do not have a std::sqrt
+// implementation.
+template <typename T>
+T baseline_sqrt(T x) {
+  using Eigen::numext::sqrt;
+  return sqrt(x);
+}
+
+GENERATE_DEFAULT_TEST(Sqrt, DT_HALF, DT_HALF, baseline_sqrt,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Sqrt, DT_FLOAT, DT_FLOAT, baseline_sqrt,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Sqrt, DT_DOUBLE, DT_DOUBLE, baseline_sqrt,
+                      test::OpsTestConfig().NoBufferReuse())
+
 }  // namespace
 }  // namespace tensorflow

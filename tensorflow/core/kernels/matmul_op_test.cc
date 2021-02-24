@@ -361,12 +361,14 @@ static Graph* Matmul(int m, int k, int n, bool transpose_a, bool transpose_b,
 
 #define BM_MatmulDev(M, K, N, TA, TB, T, TFTYPE, DEVICE)                       \
   static void BM_Matmul##_##M##_##K##_##N##_##TA##_##TB##_##TFTYPE##_##DEVICE( \
-      int iters) {                                                             \
-    testing::UseRealTime();                                                    \
-    testing::ItemsProcessed(static_cast<int64>(iters) * M * K * N * 2);        \
-    test::Benchmark(#DEVICE, Matmul<T>(M, K, N, TA, TB, TFTYPE)).Run(iters);   \
+      ::testing::benchmark::State& state) {                                    \
+    test::Benchmark(#DEVICE, Matmul<T>(M, K, N, TA, TB, TFTYPE),               \
+                    /*old_benchmark_api*/ false)                               \
+        .Run(state);                                                           \
+    state.SetItemsProcessed(state.iterations() * M * K * N * 2);               \
   }                                                                            \
-  BENCHMARK(BM_Matmul##_##M##_##K##_##N##_##TA##_##TB##_##TFTYPE##_##DEVICE);
+  BENCHMARK(BM_Matmul##_##M##_##K##_##N##_##TA##_##TB##_##TFTYPE##_##DEVICE)   \
+      ->UseRealTime();
 
 #ifdef GOOGLE_CUDA
 

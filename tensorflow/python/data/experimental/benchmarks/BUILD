@@ -43,6 +43,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
         "//tensorflow/python/data/benchmarks:benchmark_base",
+        "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],

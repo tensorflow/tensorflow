@@ -568,7 +568,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         dataset,
         self._input_workers_with_options(options),
         self._container_strategy(),
-        num_replicas_in_sync=self._num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync,
+        options=options)
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     return numpy_dataset.one_host_numpy_dataset(
@@ -792,11 +793,6 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     assert distribute_utils.is_mirrored(replica_local_var)
     return array_ops.identity(replica_local_var._get())
     # pylint: enable=protected-access
-
-  def _local_results(self, val):
-    if isinstance(val, values.DistributedValues):
-      return val._values  # pylint: disable=protected-access
-    return (val,)
 
   def value_container(self, val):
     return distribute_utils.value_container(val)

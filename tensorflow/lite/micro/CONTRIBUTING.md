@@ -236,9 +236,9 @@ Below are some tips that might be useful and improve the development experience.
     want to test:
 
     ```
-    CC=clang bazel test ---config=asan tensorflow/lite/micro:micro_interpreter_test
-    CC=clang bazel test ---config=msan tensorflow/lite/micro:micro_interpreter_test
-    CC=clang bazel test ---config=ubsan tensorflow/lite/micro:micro_interpreter_test
+    CC=clang bazel run --config=asan tensorflow/lite/micro:micro_interpreter_test
+    CC=clang bazel run --config=msan tensorflow/lite/micro:micro_interpreter_test
+    CC=clang bazel run --config=ubsan tensorflow/lite/micro:micro_interpreter_test
     ```
 
 ## During the PR review

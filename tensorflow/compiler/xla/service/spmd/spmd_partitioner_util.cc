@@ -1231,7 +1231,8 @@ absl::optional<int64> GetKValueInTopKWhenPartitionSortDim(HloInstruction* hlo) {
   }
 
   // Check if partitioned at sort dimension.
-  for (int64 dim : sort->dimensions()) {
+  for (int64 dim = 0; dim < sort->shape().tuple_shapes(0).dimensions_size();
+       ++dim) {
     if (sharding.tile_assignment().dim(dim) > 1) {
       if (dim != sort_dim) {
         return absl::nullopt;
@@ -1561,7 +1562,7 @@ Shape GetPerGroupBaseShape(const GroupedSharding& grouped_sharding,
       continue;
     }
     int64 groups = grouped_sharding.group_dim_sizes[i];
-    result.set_dimensions(dim, result.dimensions(dim) / groups);
+    result.set_dimensions(dim, CeilOfRatio(result.dimensions(dim), groups));
   }
   return result;
 }

@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 
-#include <set>
-
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -183,65 +183,87 @@ Status ShapeVerifier::HandleCholesky(HloInstruction* hlo) {
 
 // Checks that `hlo`'s set of ReplicaGroups:
 //
-//  - names each replica 0 through n-1 exactly once, and
+//  - names each replica 0 through n-1 exactly once (where n is either number of
+//    replicas, or number of partitions, or their product)
 //  - does not contain any empty ReplicaGroups.
 //
 // Note that although none of the groups may be empty, `hlo` is allowed to have
-// 0 groups.  That just means it has one big group.
+// empty groups when group mode is not kFlattenedID. That just means it has one
+// big group.
 //
-// This is just a minimal set of checks; some instructions may have additional
-// requirements.  For example, all-to-all requires that all ReplicaGroups have
-// the same number of replicas, but that isn't checked here.
+// In general, if replica groups is not empty, all replica groups should be of
+// the same size. The exception is all-reduce, where non-uniform replica groups
+// are allowed. This is controlled by `uniform_replica_group_size`.
 static Status CheckReplicaGroups(HloInstruction* hlo,
-                                 bool use_global_device_ids) {
-  std::set<int64> replicas_seen;
-  for (const ReplicaGroup& g : hlo->replica_groups()) {
-    if (g.replica_ids().empty()) {
-      return InternalError("Instruction cannot have an empty replica group: %s",
-                           hlo->ToString());
-    }
-    for (int64 i : g.replica_ids()) {
-      if (!replicas_seen.insert(i).second) {
+                                 CollectiveOpGroupMode group_mode,
+                                 bool uniform_replica_group_size = true) {
+  if (!hlo->replica_groups().empty()) {
+    absl::flat_hash_set<int64> replicas_seen;
+    for (const ReplicaGroup& g : hlo->replica_groups()) {
+      if (g.replica_ids().empty()) {
         return InternalError(
-            "Replica %d is repeated in instruction's replica-groups: %s", i,
+            "Instruction cannot have an empty replica group: %s",
+            hlo->ToString());
+      }
+      for (int64 i : g.replica_ids()) {
+        if (!replicas_seen.insert(i).second) {
+          return InternalError(
+              "Replica %d is repeated in instruction's replica-groups: %s", i,
+              hlo->ToString());
+        }
+      }
+    }
+    size_t n = replicas_seen.size();
+    for (int64 i = 0; i < n; ++i) {
+      if (!replicas_seen.count(i)) {
+        return InternalError(
+            "Replica %d is not named in instruction's replica-groups: %s", i,
             hlo->ToString());
       }
     }
-  }
-  for (int64 i = 0; i < replicas_seen.size(); ++i) {
-    if (!replicas_seen.count(i)) {
-      return InternalError(
-          "Replica %d is not named in instruction's replica-groups: %s", i,
-          hlo->ToString());
-    }
-  }
 
-  // If use_global_device_ids() is set, replica_groups cannot be empty.
-  // When the channel_id() or use_global_device_ids() is set, device ids in
-  // ReplicaGroup config no longer only mean replica ids. So we skip the check
-  // on the replica count.
-  if (use_global_device_ids) {
-    if (hlo->replica_groups().empty()) {
-      return InternalError(
-          "Replica group must be specified when use_global_device_ids is true");
+    // replica-groups have numbers [0, n). This n should be either replica or
+    // partition count, or their product. In some cases, replica and/or
+    // partition count is not set in the HloModule config and has a default
+    // value of 1. For those cases, skip this part of the verification.
+    int64 replica_count = hlo->GetModule()->config().replica_count();
+    int64 num_partitions = hlo->GetModule()->config().num_partitions();
+    switch (group_mode) {
+      case CollectiveOpGroupMode::kCrossReplica:
+      case CollectiveOpGroupMode::kCrossReplicaAndPartition: {
+        TF_RET_CHECK(replica_count == 1 || n == replica_count)
+            << "In " << CollectiveOpGroupModeToString(group_mode)
+            << " mode, replica groups should contain " << replica_count
+            << " replicas, but found " << n << ": " << hlo->ToString();
+        break;
+      }
+      case CollectiveOpGroupMode::kCrossPartition: {
+        TF_RET_CHECK(num_partitions == 1 || n == num_partitions)
+            << "In " << CollectiveOpGroupModeToString(group_mode)
+            << " mode, replica groups should contain " << num_partitions
+            << " partitions, but found " << n << ": " << hlo->ToString();
+        break;
+      }
+      case CollectiveOpGroupMode::kFlattenedID: {
+        const int64 num_flattened_ids = replica_count * num_partitions;
+        TF_RET_CHECK(num_flattened_ids == 1 || n == num_flattened_ids)
+            << "In " << CollectiveOpGroupModeToString(group_mode)
+            << " mode, replica groups should contain " << num_flattened_ids
+            << " flattened IDs, but found " << n << ": " << hlo->ToString();
+        break;
+      }
     }
-    // No need to check replica_count.
-    return Status::OK();
-  }
 
-  if (auto channel_instr = DynCast<HloChannelInstruction>(hlo)) {
-    if (channel_instr->channel_id()) {
-      return Status::OK();
+    if (uniform_replica_group_size) {
+      int64 size = hlo->replica_groups()[0].replica_ids_size();
+      for (const ReplicaGroup& g : hlo->replica_groups()) {
+        TF_RET_CHECK(size == g.replica_ids_size())
+            << "Replica groups expected to be of uniform size";
+      }
     }
-  }
-
-  int64 replica_count = hlo->GetModule()->config().replica_count();
-  if (replica_count != 1 && !replicas_seen.empty() &&
-      replicas_seen.size() != replica_count) {
-    return InternalError(
-        "Replica count in HloModuleConfig is %d, but ReplicaGroup config "
-        "contains %d replicas: %s",
-        replica_count, replicas_seen.size(), hlo->ToString());
+  } else {
+    TF_RET_CHECK(group_mode != CollectiveOpGroupMode::kFlattenedID)
+        << "Replica groups must be specified in flattened-id mode";
   }
 
   return Status::OK();
@@ -249,7 +271,10 @@ static Status CheckReplicaGroups(HloInstruction* hlo,
 
 Status ShapeVerifier::HandleAllGather(HloInstruction* hlo) {
   auto ag = Cast<HloAllGatherInstruction>(hlo);
-  TF_RETURN_IF_ERROR(CheckReplicaGroups(ag, ag->use_global_device_ids()));
+  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                      GetCollectiveOpGroupMode(ag->channel_id().has_value(),
+                                               ag->use_global_device_ids()));
+  TF_RETURN_IF_ERROR(CheckReplicaGroups(ag, group_mode));
   TF_RET_CHECK(ag->all_gather_dimension() >= 0);
   TF_RET_CHECK(ag->all_gather_dimension() < ag->shape().rank());
   TF_RET_CHECK(ag->all_gather_dimension() < ag->operand(0)->shape().rank());
@@ -257,21 +282,36 @@ Status ShapeVerifier::HandleAllGather(HloInstruction* hlo) {
   int64 shard_count = CeilOfRatio(
       ag->shape().dimensions(ag->all_gather_dimension()),
       ag->operand(0)->shape().dimensions(ag->all_gather_dimension()));
-  if (ag->channel_id().has_value()) {
-    if (ag->use_global_device_ids()) {
-      TF_RET_CHECK(shard_count == ag->replica_groups()[0].replica_ids_size());
-    } else {
-      if (ag->replica_groups().empty() ||
-          ag->replica_groups()[0].replica_ids_size() != 1) {
+  const HloModuleConfig& config = hlo->GetModule()->config();
+  // empty replica groups imply all replicas form a single group.
+  int64 replica_subgroup_size =
+      ag->replica_groups().empty() ? config.replica_count()
+                                   : ag->replica_groups()[0].replica_ids_size();
+
+  auto get_subgroup_size = [&]() -> StatusOr<int64> {
+    switch (group_mode) {
+      case CollectiveOpGroupMode::kCrossReplica:
+      case CollectiveOpGroupMode::kFlattenedID:
+        return replica_subgroup_size;
+
+      case CollectiveOpGroupMode::kCrossReplicaAndPartition:
+        // Replicas from all partitions participate.
+        return replica_subgroup_size * config.num_partitions();
+
+      case CollectiveOpGroupMode::kCrossPartition:
         return InternalError(
-            "Replica group size must be 1 when use_global_device_ids is "
-            "false if the all-gather is also cross-partition");
-      }
+            "kCrossPartition group mode not expected for all-gather");
     }
-  } else if (!ag->replica_groups().empty()) {
-    // Cross-replica all-gather: shard count is subgroup size.
-    TF_RET_CHECK(shard_count == ag->replica_groups()[0].replica_ids_size());
-  }
+  };
+
+  // If replica and partition count is not explicitly set, it will have a
+  // default value of 1, in which case the subgroup_size will be 1 as well. Skip
+  // these verification checks in that case.
+  TF_ASSIGN_OR_RETURN(int64 subgroup_size, get_subgroup_size());
+  TF_RET_CHECK(subgroup_size == 1 || shard_count == subgroup_size)
+      << "shard_count = " << shard_count
+      << ", subgroup_size = " << subgroup_size << ", " << hlo->ToString();
+
   return CheckShape(ag, ShapeInference::InferAllGatherShape(
                             ag->operand(0)->shape(), ag->all_gather_dimension(),
                             shard_count));
@@ -279,7 +319,11 @@ Status ShapeVerifier::HandleAllGather(HloInstruction* hlo) {
 
 Status ShapeVerifier::HandleAllReduce(HloInstruction* hlo) {
   auto ar = Cast<HloAllReduceInstruction>(hlo);
-  TF_RETURN_IF_ERROR(CheckReplicaGroups(ar, ar->use_global_device_ids()));
+  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                      GetCollectiveOpGroupMode(ar->channel_id().has_value(),
+                                               ar->use_global_device_ids()));
+  TF_RETURN_IF_ERROR(
+      CheckReplicaGroups(ar, group_mode, /*uniform_replica_group_size=*/false));
 
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : hlo->operands()) {
@@ -290,7 +334,11 @@ Status ShapeVerifier::HandleAllReduce(HloInstruction* hlo) {
 
 Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
   auto* all_to_all = Cast<HloAllToAllInstruction>(hlo);
-  TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo, /*use_global_device_ids=*/false));
+  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                      GetCollectiveOpGroupMode(
+                          all_to_all->channel_id().has_value(), absl::nullopt));
+
+  TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo, group_mode));
 
   TF_RET_CHECK(all_to_all != nullptr);
   if (all_to_all->split_dimension()) {
@@ -300,21 +348,13 @@ Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
     }
   }
 
-  // The size of each replica group must be the same (the split count of the
-  // operaion). In case the default replica group is used (empty replica group,
-  // must not be an array all-to-all, as checked above), infer from the number
-  // of operands.
+  // The size of each replica group must be the same (checked in
+  // CheckReplicaGroups). This is the split count of the operation). In case the
+  // empty replica group is used must not be an array all-to-all, as checked
+  // above), infer from the number of operands.
   const int64 split_count = hlo->replica_groups().empty()
                                 ? hlo->operand_count()
                                 : hlo->replica_groups()[0].replica_ids_size();
-  for (const ReplicaGroup& g : hlo->replica_groups()) {
-    if (g.replica_ids_size() != split_count) {
-      return InternalError(
-          "Replica group has size %d, but all replica groups in an all-to-all "
-          "must have size N: %s",
-          g.replica_ids_size(), hlo->ToString());
-    }
-  }
 
   if (all_to_all->split_dimension()) {
     TF_RET_CHECK(hlo->operand_count() == 1);

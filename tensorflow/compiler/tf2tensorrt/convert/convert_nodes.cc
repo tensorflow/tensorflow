@@ -5417,12 +5417,13 @@ Status ConvertGather(OpConverterParams* params) {
 Status ConvertFullyConnectedHelper(OpConverterParams* params,
                                    nvinfer1::ITensor* tensor_a,
                                    TRT_ShapedWeights weights_b,
-                                   bool transpose_b, const NodeDef& node_def) {
+                                   bool transpose_b) {
   // Reshape input to 3D - this will be a no-op unless using int8 precision.
   auto input_dim = tensor_a->getDimensions();
   while (input_dim.nbDims < 3) {
     input_dim.d[input_dim.nbDims++] = 1;
   }
+  const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(PrepareTensorForShape(
       params->converter, TRT_TensorOrWeights(tensor_a), input_dim,
       /*validation_only=*/false, &tensor_a, node_def, /*op_instance=*/0));
@@ -5459,7 +5460,7 @@ Status ConvertFullyConnectedHelper(OpConverterParams* params,
 Status ConvertMatMulHelper(OpConverterParams* params,
                            TRT_TensorOrWeights input_a,
                            TRT_TensorOrWeights input_b, bool transpose_a,
-                           bool transpose_b, const NodeDef& node_def) {
+                           bool transpose_b) {
   // TODO: ReorderCKtoKC is currently not general enough to transpose weights
   // that are not 2D.
   if ((transpose_a && input_a.is_weights() &&
@@ -5496,8 +5497,8 @@ Status ConvertMatMulHelper(OpConverterParams* params,
   // does not support int8 at this time.
   if (should_use_fc || (can_use_fc && params->converter->precision_mode() ==
                                           TrtPrecisionMode::INT8)) {
-    return ConvertFullyConnectedHelper(
-        params, input_a.tensor(), input_b.weights(), transpose_b, node_def);
+    return ConvertFullyConnectedHelper(params, input_a.tensor(),
+                                       input_b.weights(), transpose_b);
   }
 
   const auto get_matrix_op = [](nvinfer1::ITensor* in,
@@ -5537,6 +5538,7 @@ Status ConvertMatMulHelper(OpConverterParams* params,
           *tensor_a, get_matrix_op(tensor_a, transpose_a), *tensor_b,
           get_matrix_op(tensor_b, transpose_b));
 
+  const auto& node_def = params->node_def;
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   params->converter->SetLayerName(layer, node_def);
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
@@ -5561,7 +5563,7 @@ Status ConvertMatMul(OpConverterParams* params) {
   bool transpose_b = attrs.get<bool>("transpose_b");
 
   return ConvertMatMulHelper(params, inputs.at(0), inputs.at(1), transpose_a,
-                             transpose_b, node_def);
+                             transpose_b);
 }
 
 Status ConvertBatchMatMul(OpConverterParams* params) {
@@ -5633,7 +5635,7 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
 
   return ConvertMatMulHelper(params, TRT_TensorOrWeights(tensor_l),
                              TRT_TensorOrWeights(tensor_r), transpose_a,
-                             transpose_b, node_def);
+                             transpose_b);
 }
 
 Status ConvertSoftmax(OpConverterParams* params) {

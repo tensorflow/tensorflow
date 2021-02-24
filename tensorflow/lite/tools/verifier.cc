@@ -422,6 +422,9 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
     case TensorType_INT32:
       bytes_required *= sizeof(int32_t);
       break;
+    case TensorType_UINT32:
+      bytes_required *= sizeof(uint32_t);
+      break;
     case TensorType_UINT8:
       bytes_required *= sizeof(uint8_t);
       break;

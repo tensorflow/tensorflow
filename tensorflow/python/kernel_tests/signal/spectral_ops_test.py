@@ -266,7 +266,7 @@ class SpectralOpsTest(test.TestCase, parameterized.TestCase):
     # TODO(rjryan): Update gradient tests for Eager.
     if context.executing_eagerly():
       return
-    with self.session(use_gpu=True) as sess:
+    with self.session() as sess:
       signal_length = 512
 
       # An all-zero signal has all zero gradients with respect to the sum of the

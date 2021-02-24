@@ -23,24 +23,9 @@ include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
+include "tensorflow/compiler/mlir/lite/ir/tfl_structs.td"
 include "tensorflow/compiler/mlir/lite/quantization/quantization.td"
-
-def TFL_Dialect : Dialect {
-  let name = "tfl";
-
-  let description = [{
-    The TensorFlow Lite dialect.
-
-    This dialect maps to TensorFlow Lite operations.
-
-    Invariants:
-
-    * All values are of Tensor type (in particular, scalars are
-      represented using zero-dimensional tensors);
-  }];
-
-  let cppNamespace = "::mlir::TFL";
-}
+include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 
 //===----------------------------------------------------------------------===//
 // TFLite dialect string type - uses the TF string type as implementation
@@ -173,6 +158,7 @@ def TFL_I32OrI64Tensor : TFL_TensorOf<[TFL_Int32Or64]>;
 def TFL_I32Tensor : TFL_TensorOf<[I32]>;
 def TFL_I64Tensor : TFL_TensorOf<[I64]>;
 def TFL_Complex64Tensor : TFL_TensorOf<[Complex<F<32>>]>;
+def TFL_ResourceTensor : TFL_TensorOf<[TF_Resource]>;
 
 // TODO(jpienaar): Expand to all int types.
 def TFL_IntTensor : TypeAlias<TFL_I32Tensor, "tensor of any integer type">;
@@ -492,9 +478,13 @@ class TFL_Op<string mnemonic, list<OpTrait> traits = []> :
   string customOption = ?;
 }
 
-class TFL_ConvOp<string mnemonic, string opSummary, int index> :
-    TFL_Op<mnemonic, [NoSideEffect, AccumulatorUniformScale<2, 0, 1>,
-    AffineQuantizedOpInterface, AffineOpCoefficient<index, 1>, TFL_SparseOp]> {
+class TFL_ConvOp<string mnemonic, string opSummary, int index,
+                 list<OpTrait> additional_traits = []> :
+    TFL_Op<mnemonic,[NoSideEffect,
+                     AccumulatorUniformScale<2, 0, 1>,
+                     AffineQuantizedOpInterface,
+                     AffineOpCoefficient<index, 1>,
+                     TFL_SparseOp] # additional_traits> {
   let summary = opSummary # " operator";
 
   let description = [{
@@ -836,33 +826,6 @@ def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [ConstantLike, NoSideEffect,
   ];
 }
 
-// Attributes used for encoding sparse tensors.
-// Please find detailed explanation of these parameters in the TFLite schema.
-def TFL_DT_Dense : StrEnumAttrCase<"DENSE", 0>;
-def TFL_DT_SparseCSR : StrEnumAttrCase<"SPARSE_CSR", 1>;
-
-def TFL_DimensionTypeAttr : StrEnumAttr<
-    "DimensionType", "dimension type", [TFL_DT_Dense, TFL_DT_SparseCSR]>;
-
-def DimensionMetadataAttr : StructAttr<"DimensionMetadataAttr", TFL_Dialect, [
-                            StructFieldAttr<"format", TFL_DimensionTypeAttr>,
-                            StructFieldAttr<"dense_size", I32Attr>,
-                            StructFieldAttr<"segments", I32ArrayAttr>,
-                            StructFieldAttr<"indices", I32ArrayAttr>] > {
-  let summary = "Dimension metadata.";
-}
-
-def DimensionMetadataArrayAttr : TypedArrayAttrBase<DimensionMetadataAttr,
-    "Array of DimensionMetadata">{}
-
-def SparsityParameterAttr : StructAttr<"SparsityParameterAttr", TFL_Dialect, [
-                            StructFieldAttr<"traversal_order", I32ArrayAttr>,
-                            StructFieldAttr<"block_map", I32ArrayAttr>,
-                            StructFieldAttr<"dim_metadata", DimensionMetadataArrayAttr>]> {
-  let summary = "Sparsity parameter.";
-  let storageType = [{ TFL::SparsityParameterAttr }];
-}
-
 def TFL_SparseConstOp : Op<TFL_Dialect, "pseudo_sparse_const", [
     NoSideEffect,
     FirstAttrDerivedResultType]> {
@@ -904,7 +867,10 @@ def TFL_ExternalConstOp : Op<TFL_Dialect, "external_const", [NoSideEffect]> {
   let results = (outs AnyTensor:$output);
 }
 
-def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0> {
+def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0,
+      [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let hasCanonicalizer = 1;
+
   let extraClassDeclaration = [{
     // AffineQuantizedOpInterface:
     int GetChannelDimIndex() { return 0; }
@@ -913,6 +879,9 @@ def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0> {
     std::vector<int> GetSparseOperands() { return {1}; }
     std::vector<std::vector<int>> GetFloatBlockSize() { return {}; }
     std::vector<std::vector<int>> GetQuantizedBlockSize() { return {}; }
+
+    // Returns whether the return types are compatible.
+    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r);
   }];
 }
 
@@ -973,6 +942,8 @@ def TFL_DepthwiseConv2DOp :
     I32Attr:$depth_multiplier
   );
 
+  let hasCanonicalizer = 1;
+
   let extraClassDeclaration = [{
     // AffineQuantizedOpInterface:
     int GetChannelDimIndex() { return 3; }
@@ -1019,6 +990,10 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
   let verifier = [{ return Verify(*this); }];
 
   let hasOptions = 1;
+
+  let hasCanonicalizer = 1;
+
+  let hasFolder = 1;
 
   let extraClassDeclaration = [{
     // AffineQuantizedOpInterface:
@@ -1923,6 +1898,17 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
         /*scale=*/1.0 / 256, /*zero_point=*/-128);
   }
   }];
+
+  // This builder doesn't work with quantized type, so it can only be used by
+  // non-quantization tablegen patterns. Currently, it is used by the
+  // elementwise-move reordering pattern in the optimize_patterns.td
+  let builders = [
+    OpBuilderDAG<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(input.getType());
+    }]>
+  ];
 }
 
 def TFL_LogOp: TFL_Op<"log", [
@@ -3488,6 +3474,10 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
   let hasOptions = 1;
 }
 
+// If there is a change in supporting more types in the TFLite cast op kernel,
+// the While loop outline pass should be updated since it inserts cast op(s)
+// after the TF -> TFL legalization pass is done.
+// LINT.IfChange
 def TFL_CastOp : TFL_Op<"cast", [
     NoSideEffect,
     SameOperandsAndResultShape,
@@ -3510,6 +3500,7 @@ def TFL_CastOp : TFL_Op<"cast", [
 
   let hasFolder = 1;
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/transforms/while_loop_outline.cc)
 
 def TFL_MirrorPadOp: TFL_Op<"mirror_pad", [
                      NoSideEffect, TFL_OperandHasRank<1, 2>]> {
@@ -3929,6 +3920,8 @@ Ba et al. 'Layer Normalization'
   let regions = (region AnyRegion:$internal);
 
   let hasOptions = 1;
+
+  let hasCanonicalizer = 1;
 
   let verifier = [{ return Verify(*this); }];
 
@@ -4743,6 +4736,77 @@ is the real part and *b* is the imaginary part returned by this operation.
 
   let results = (outs
     TFL_TensorOf<[F32, F64]>:$output
+  );
+}
+
+def TFL_HashtableOp: TFL_Op<"hashtable", []> {
+  let summary = "Creates a non-initialized hash table.";
+  let description = [{
+This op creates a hash table, specifying the type of its keys and values.
+Before using the table you will have to initialize it.  After initialization the
+table will be immutable.
+  }];
+
+  let arguments = (ins
+    I32Attr:$table_id,
+    TypeAttr:$key_dtype,
+    TypeAttr:$value_dtype
+  );
+
+  let results = (outs TFL_ResourceTensor:$out);
+
+  let hasOptions = 1;
+}
+
+def TFL_HashtableFindOp: TFL_Op<"hashtable_find", []> {
+  let summary = "Looks up keys in a table, outputs the corresponding values.";
+
+  let description = [{
+The tensor `keys` must of the same type as the keys of the table.
+The output `values` is of the type of the table values.
+
+The scalar `default_value` is the value output for keys not present in the
+table. It must also be of the same type as the table values.
+  }];
+
+  let arguments = (ins
+    TFL_ResourceTensor:$hash_table,
+    TFL_TensorOf<[I32, TFL_Str, I64]>:$keys,
+    TFL_TensorOf<[F32, I32, TFL_Str, I64]>:$default_value
+  );
+
+  let results = (outs TFL_TensorOf<[F32, I32, TFL_Str, I64]>:$out);
+}
+
+def TFL_HashtableImportOp: TFL_Op<"hashtable_import", []> {
+  let summary = [{
+Replaces the contents of the table with the specified keys and values.
+  }];
+
+  let description = [{
+The tensor `keys` must be of the same type as the keys of the table.
+The tensor `values` must be of the type of the table values.
+  }];
+
+  let arguments = (ins
+    TFL_ResourceTensor:$hash_table,
+    TFL_TensorOf<[I32, TFL_Str, I64]>:$keys,
+    TFL_TensorOf<[F32, I32, TFL_Str, I64]>:$values
+  );
+
+  let results = (outs);
+}
+
+
+def TFL_HashtableSizeOp: TFL_Op<"hashtable_size", []> {
+  let summary = "Computes the number of elements in the given table.";
+
+  let arguments = (ins
+    TFL_ResourceTensor:$hash_table
+  );
+
+  let results = (outs
+    TFL_I64Tensor:$out
   );
 }
 

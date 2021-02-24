@@ -421,6 +421,7 @@ static void TFLInterpreterErrorReporter(void *user_data, const char *format, va_
     case kTfLiteString:
     case kTfLiteComplex64:
     case kTfLiteComplex128:
+    case kTfLiteUInt32:
     case kTfLiteUInt64:
     case kTfLiteResource:
     case kTfLiteVariant:

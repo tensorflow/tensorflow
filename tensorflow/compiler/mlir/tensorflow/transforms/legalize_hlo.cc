@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -705,6 +706,170 @@ class ConvertReduceOpToTfMin
   }
 };
 
+template <typename TfReduce, typename TfArgReduce>
+class ConvertReduceOpToTfArgMinMax
+    : public OpConversionPattern<mhlo::ReduceOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      mhlo::ReduceOp reduce_op, ArrayRef<Value> args,
+      ConversionPatternRewriter &rewriter) const final {
+    if (reduce_op.operands().size() != 2) return failure();
+    if (reduce_op.dimensions().getNumElements() != 1) return failure();
+
+    // Check that the input init is the expected value.
+    DenseElementsAttr input_init;
+    if (!matchPattern(reduce_op.init_values().front(), m_Constant(&input_init)))
+      return failure();
+    if (!IsValueInitValue(input_init)) return failure();
+
+    // Check that the iota init is zero.
+    DenseElementsAttr iota_init;
+    if (!matchPattern(reduce_op.init_values().back(), m_Constant(&iota_init)))
+      return failure();
+    if (*iota_init.getIntValues().begin() != 0) return failure();
+
+    // Verify that the second argument is an Iota op along the same dimenion as
+    // the reduction.
+    Value iota = reduce_op.operands().back();
+    mhlo::BroadcastInDimOp iota_broadcast =
+        llvm::dyn_cast_or_null<mhlo::BroadcastInDimOp>(iota.getDefiningOp());
+    if (!iota_broadcast ||
+        iota_broadcast.broadcast_dimensions() != reduce_op.dimensions())
+      return failure();
+    if (!llvm::isa<mhlo::IotaOp>(iota_broadcast.operand().getDefiningOp()))
+      return failure();
+
+    // Match the reduction computation.
+    if (failed(matchReduceComputation(reduce_op.body()))) return failure();
+
+    Value input = reduce_op.operands().front();
+    int64_t axis = reduce_op.dimensions().getValue<int64_t>({0});
+
+    auto dim_type = RankedTensorType::get({1}, rewriter.getI64Type());
+    auto reduction_indices = rewriter.create<ConstOp>(
+        reduce_op.getLoc(), dim_type, rewriter.getI64TensorAttr({axis}));
+
+    // Generate a Max and an ArgMax of as the mhlo op returns both while in TF
+    // we have separate ops for them. If only one of them is used then the other
+    // one will be garbage collected later.
+    auto result_type = reduce_op.getType(0).cast<TupleType>();
+    auto tf_reduce_op = rewriter.create<TfReduce>(
+        reduce_op.getLoc(), result_type.getType(0), input, reduction_indices,
+        /*keep_dim=*/rewriter.getBoolAttr(false));
+    auto tf_argreduce_op = rewriter.create<TfArgReduce>(
+        reduce_op.getLoc(), result_type.getType(1), input, reduction_indices);
+
+    // Pack the result into a TupleOp to match return type. The Tuple will be
+    // optimised out by a subsequent pass.
+    SmallVector<Value, 2> result{tf_reduce_op, tf_argreduce_op};
+    rewriter.replaceOpWithNewOp<mhlo::TupleOp>(reduce_op, result);
+    return success();
+  }
+
+  // Pattern matches the following reduction function for ArgMax/ArgMin:
+  // %0 = compare{GT}(%lhs_value, %rhs_value)
+  // %1 = select(%0, %lhs_value, %rhs_value)
+  // %2 = compare{EQ}(%lhs_value, %rhs_value)
+  // %3 = compare{LT}(%lhs_index, %rhs_index)
+  // %4 = and(%2, %3)
+  // %5 = or(%0, %4)
+  // %6 = select(%5, %lhs_index, %rhs_index)
+  // %7 = tuple(%1, %6)
+  // return %7
+  LogicalResult matchReduceComputation(Region &computation) const {
+    Block &body = computation.front();
+    if (body.getNumArguments() != 4) return failure();
+
+    mhlo::ReturnOp return_op = dyn_cast<mhlo::ReturnOp>(body.back());
+    if (!return_op) return failure();
+    if (return_op.getNumOperands() != 1) return failure();
+
+    mhlo::TupleOp return_tuple = llvm::dyn_cast_or_null<mhlo::TupleOp>(
+        return_op.getOperand(0).getDefiningOp());
+    if (!return_tuple ||
+        return_tuple.getType().cast<TupleType>().getTypes().size() != 2)
+      return failure();
+
+    mhlo::SelectOp value_select = llvm::dyn_cast_or_null<mhlo::SelectOp>(
+        return_tuple.getOperand(0).getDefiningOp());
+    if (!value_select || value_select.on_true() != body.getArgument(0) ||
+        value_select.on_false() != body.getArgument(2))
+      return failure();
+
+    mhlo::SelectOp index_select = llvm::dyn_cast_or_null<mhlo::SelectOp>(
+        return_tuple.getOperand(1).getDefiningOp());
+    if (!index_select || index_select.on_true() != body.getArgument(1) ||
+        index_select.on_false() != body.getArgument(3))
+      return failure();
+
+    mhlo::CompareOp value_gt = llvm::dyn_cast_or_null<mhlo::CompareOp>(
+        value_select.pred().getDefiningOp());
+    if (!value_gt || value_gt.comparison_direction() != CompareDirection() ||
+        value_gt.lhs() != body.getArgument(0) ||
+        value_gt.rhs() != body.getArgument(2))
+      return failure();
+
+    mhlo::OrOp index_or =
+        llvm::dyn_cast_or_null<mhlo::OrOp>(index_select.pred().getDefiningOp());
+    if (!index_or || index_or.lhs() != value_gt) return failure();
+
+    mhlo::AndOp index_and =
+        llvm::dyn_cast_or_null<mhlo::AndOp>(index_or.rhs().getDefiningOp());
+    if (!index_and) return failure();
+
+    mhlo::CompareOp value_eq = llvm::dyn_cast_or_null<mhlo::CompareOp>(
+        index_and.lhs().getDefiningOp());
+    if (!value_eq || value_eq.comparison_direction() != "EQ" ||
+        value_eq.lhs() != body.getArgument(0) ||
+        value_eq.rhs() != body.getArgument(2))
+      return failure();
+
+    mhlo::CompareOp index_lt = llvm::dyn_cast_or_null<mhlo::CompareOp>(
+        index_and.rhs().getDefiningOp());
+    if (!index_lt || index_lt.comparison_direction() != "LT" ||
+        index_lt.lhs() != body.getArgument(1) ||
+        index_lt.rhs() != body.getArgument(3))
+      return failure();
+
+    return success();
+  }
+
+  virtual const char *CompareDirection() const = 0;
+
+  virtual bool IsValueInitValue(const DenseElementsAttr &attr) const = 0;
+};
+
+class ConvertReduceOpToTfArgmax
+    : public ConvertReduceOpToTfArgMinMax<TF::MaxOp, TF::ArgMaxOp> {
+ public:
+  using ConvertReduceOpToTfArgMinMax::ConvertReduceOpToTfArgMinMax;
+
+  const char *CompareDirection() const override { return "GT"; }
+  bool IsValueInitValue(const DenseElementsAttr &attr) const override {
+    if (attr.getNumElements() != 1 ||
+        !attr.getType().getElementType().isa<FloatType>())
+      return false;
+    auto value = *attr.getFloatValues().begin();
+    return value.isNegative() && value.isInfinity();
+  }
+};
+
+class ConvertReduceOpToTfArgmin
+    : public ConvertReduceOpToTfArgMinMax<TF::MinOp, TF::ArgMinOp> {
+ public:
+  using ConvertReduceOpToTfArgMinMax::ConvertReduceOpToTfArgMinMax;
+
+  const char *CompareDirection() const override { return "LT"; }
+  bool IsValueInitValue(const DenseElementsAttr &attr) const override {
+    if (attr.getNumElements() != 1 ||
+        !attr.getType().getElementType().isa<FloatType>())
+      return false;
+    auto value = *attr.getFloatValues().begin();
+    return !value.isNegative() && value.isInfinity();
+  }
+};
+
 class ConvertIotaOpToTfRange : public OpConversionPattern<mhlo::IotaOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
@@ -1236,6 +1401,7 @@ void LegalizeHloToTf::runOnFunction() {
   ConversionTarget target(context);
   target.addLegalDialect<TensorFlowDialect>();
   target.addLegalOp<CallOp, ConstantOp>();
+  target.addLegalOp<mhlo::TupleOp>();
   if (failed(
           applyPartialConversion(getFunction(), target, std::move(patterns)))) {
     getFunction().emitError("mhlo to TF legalization failed.");
@@ -1250,12 +1416,13 @@ static PassRegistration<LegalizeHloToTf> pass(
 
 void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList *patterns,
                                      MLIRContext *context) {
-  patterns
-      ->insert<ConvertAvgPoolOp, ConvertConvOp, ConvertDynamicSliceOp,
-               ConvertGatherOp, ConvertScatterAddOp, ConvertScatterMaxOp,
-               ConvertScatterMinOp, ConvertScatterSubOp, ConvertScatterUpdateOp,
-               ConvertSliceOp, ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
-               ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
+  patterns->insert<ConvertAvgPoolOp, ConvertConvOp, ConvertDynamicSliceOp,
+                   ConvertGatherOp, ConvertScatterAddOp, ConvertScatterMaxOp,
+                   ConvertScatterMinOp, ConvertScatterSubOp,
+                   ConvertScatterUpdateOp, ConvertSliceOp,
+                   ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
+                   ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
+                   ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
   populateWithGenerated(context, *patterns);
 }
 

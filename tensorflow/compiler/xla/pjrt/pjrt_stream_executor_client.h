@@ -367,7 +367,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
         case kDonated:
           return InvalidArgument("Buffer has been donated");
         case kError:
-          return buffer_or_.status();
+          return status_;
         default:
           CHECK(false) << "Unexpected state value " << state_;
       }
@@ -377,8 +377,8 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
     // Access to the underlying device buffer storage. Requires this->ok().
     const std::shared_ptr<TrackedDeviceBuffer>& buffer() const {
       CHECK_EQ(state_, kValid);
-      CHECK_NE(buffer_or_.ValueOrDie(), nullptr);
-      return buffer_or_.ValueOrDie();
+      CHECK_NE(buffer_, nullptr);
+      return buffer_;
     }
     TrackedDeviceBuffer* operator->() const { return buffer().get(); }
     const TrackedDeviceBuffer& operator*() const { return *buffer(); }
@@ -420,9 +420,8 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
 
     // Helper struct that makes it possible to move a ScopedHold through a
     // closure.
-    using ForClosure =
-        std::tuple<PjRtStreamExecutorBuffer*, Type, State,
-                   StatusOr<std::shared_ptr<TrackedDeviceBuffer>>>;
+    using ForClosure = std::tuple<PjRtStreamExecutorBuffer*, Type, State,
+                                  Status, std::shared_ptr<TrackedDeviceBuffer>>;
 
     ScopedHold(PjRtStreamExecutorBuffer* parent, Type type)
         : parent_(parent), type_(type), state_(kUninitialized) {}
@@ -430,15 +429,16 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
         : parent_(std::get<0>(closure_helper)),
           type_(std::get<1>(closure_helper)),
           state_(std::get<2>(closure_helper)),
-          buffer_or_(std::get<3>(closure_helper)) {
+          status_(std::get<3>(closure_helper)),
+          buffer_(std::get<4>(closure_helper)) {
       // Check the buffer is not in an error state.
-      CHECK(buffer_or_.ValueOrDie() != nullptr);
+      CHECK(status_.ok() && buffer_ != nullptr);
     }
 
     // Sets buffer state.
     void SetState(State state) { state_ = state; }
 
-    // Sets buffer_or_. Called by parent_ to initialize the hold.
+    // Sets buffer_ and status_. Called by parent_ to initialize the hold.
     void Acquire(StatusOr<std::shared_ptr<TrackedDeviceBuffer>>&& buffer_or);
     // Releases the contents of *this, so *this can subsequently be
     // deleted without releasing the parent's hold. Should be passed to the
@@ -450,9 +450,10 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
     const Type type_;
 
     // There is an invariant that if ok() then
-    // buffer_or_.ValueOrDie() != nullptr.
+    // buffer_.ValueOrDie() != nullptr.
     State state_;
-    StatusOr<std::shared_ptr<TrackedDeviceBuffer>> buffer_or_;
+    Status status_;
+    std::shared_ptr<TrackedDeviceBuffer> buffer_;
   };
 
   PjRtStreamExecutorBuffer(Shape on_device_shape,

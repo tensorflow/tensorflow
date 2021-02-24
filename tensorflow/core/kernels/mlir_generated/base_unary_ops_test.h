@@ -37,15 +37,15 @@ class UnaryOpsTestBase : public OpsTestBase {
 
   template <typename T, typename OutT>
   void SetOpKernel(const std::string& op_name, const TensorShape& shape,
-                   const absl::InlinedVector<T, 10>& input, bool add_t,
-                   bool add_tout) {
+                   const absl::InlinedVector<T, 10>& input,
+                   const test::OpsTestConfig& config) {
     NodeDefBuilder builder("some_name", op_name);
     builder.Input(FakeInput(DataTypeToEnum<T>::v()));
-    if (add_t) {
-      builder.Attr("T", DataTypeToEnum<T>::v());
+    if (config.add_t) {
+      builder.Attr(config.input_attribute, DataTypeToEnum<T>::v());
     }
-    if (add_tout) {
-      builder.Attr("Tout", DataTypeToEnum<OutT>::v());
+    if (config.add_tout) {
+      builder.Attr(config.output_attribute, DataTypeToEnum<OutT>::v());
     }
     TF_ASSERT_OK(builder.Finalize(node_def()));
 
@@ -58,7 +58,7 @@ class UnaryOpsTestBase : public OpsTestBase {
                           const absl::InlinedVector<T, 10>& input,
                           const absl::InlinedVector<OutT, 10>& expected_output,
                           const test::OpsTestConfig& config) {
-    SetOpKernel<T, OutT>(op_name, shape, input, config.add_t, config.add_tout);
+    SetOpKernel<T, OutT>(op_name, shape, input, config);
     TF_ASSERT_OK(RunOpKernel());
 
     // Assert buffer reuse if expected.
@@ -147,7 +147,7 @@ class UnaryOpsTestBase : public OpsTestBase {
 #define GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(                   \
     op_name, InT, BaselineT, OutT, BaselineOutT, input_values,                \
     baseline_callback, config)                                                \
-  TEST_F(UnaryOpsTest, op_name##InT) {                                        \
+  TEST_F(UnaryOpsTest, op_name##InT##OutT) {                                  \
     using NativeT = EnumToDataType<InT>::Type;                                \
     using NativeBaselineT = EnumToDataType<BaselineT>::Type;                  \
     using NativeOutT = EnumToDataType<OutT>::Type;                            \
@@ -156,7 +156,7 @@ class UnaryOpsTestBase : public OpsTestBase {
         #op_name, test::DefaultInputShape(), input_values, baseline_callback, \
         config);                                                              \
   }                                                                           \
-  TEST_F(UnaryOpsTest, op_name##InT##EmptyShape) {                            \
+  TEST_F(UnaryOpsTest, op_name##InT##OutT##EmptyShape) {                      \
     using NativeT = EnumToDataType<InT>::Type;                                \
     using NativeOutT = EnumToDataType<OutT>::Type;                            \
     TestEmptyShape<NativeT, NativeOutT>(#op_name, config);                    \

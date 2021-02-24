@@ -37,7 +37,9 @@ TfLiteStatus PrepareHashtableFind(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input_resource_id_tensor;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputResourceIdTensor,
                                           &input_resource_id_tensor));
-  TF_LITE_ENSURE_EQ(context, input_resource_id_tensor->type, kTfLiteInt32);
+
+  TF_LITE_ENSURE(context, input_resource_id_tensor->type == kTfLiteResource ||
+                              input_resource_id_tensor->type == kTfLiteInt32);
   TF_LITE_ENSURE_EQ(context, NumDimensions(input_resource_id_tensor), 1);
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(input_resource_id_tensor, 0), 1);
 
@@ -94,6 +96,11 @@ TfLiteRegistration* Register_HASHTABLE_FIND() {
                                  hashtable::PrepareHashtableFind,
                                  hashtable::EvalHashtableFind};
   return &r;
+}
+
+// Alias for selective build.
+TfLiteRegistration* Register_LOOKUP_TABLE_FIND_V2() {
+  return Register_HASHTABLE_FIND();
 }
 
 }  // namespace custom

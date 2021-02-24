@@ -105,7 +105,9 @@ class InitializeTableFromTextFileOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("vocab_size", &vocab_size_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("key_index", &key_index_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("value_index", &value_index_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("offset", &offset_));
+    if (ctx->HasAttr("offset")) {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("offset", &offset_));
+    }
     string delimiter;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("delimiter", &delimiter));
     OP_REQUIRES(ctx, delimiter.size() == 1,
@@ -155,7 +157,7 @@ class InitializeTableFromTextFileOp : public OpKernel {
   char delimiter_;
   int64 key_index_;
   int64 value_index_;
-  int64 offset_;
+  int64 offset_ = 0;
 
   TF_DISALLOW_COPY_AND_ASSIGN(InitializeTableFromTextFileOp);
 };

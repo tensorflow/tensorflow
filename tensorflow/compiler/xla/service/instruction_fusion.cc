@@ -557,6 +557,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
         }
 
         if (fusion_instruction == nullptr) {
+          fusion_queue->NotFusingInstruction(operand, instruction);
           continue;
         }
 

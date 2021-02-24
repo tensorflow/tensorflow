@@ -29,7 +29,7 @@ class InTopKTest(test.TestCase):
 
   def _validateInTopK(self, predictions, target, k, expected):
     np_ans = np.array(expected, np.bool)
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       precision = nn_ops.in_top_k(predictions, target, k)
       out = self.evaluate(precision)
       self.assertAllClose(np_ans, out)

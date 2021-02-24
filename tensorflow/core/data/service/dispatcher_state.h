@@ -136,6 +136,8 @@ class DispatcherState {
       }
     }
 
+    bool IsRoundRobin() const { return num_consumers.has_value(); }
+
     const int64 job_id;
     const int64 dataset_id;
     const ProcessingMode processing_mode;
@@ -163,7 +165,10 @@ class DispatcherState {
     const std::string transfer_address;
     int64 starting_round = 0;
     bool finished = false;
+    bool removed = false;
   };
+
+  using TasksById = absl::flat_hash_map<int64, std::shared_ptr<Task>>;
 
   // Returns the next available dataset id.
   int64 NextAvailableDatasetId() const;
@@ -216,6 +221,7 @@ class DispatcherState {
   void ProduceSplit(const ProduceSplitUpdate& produce_split);
   void AcquireJobClient(const AcquireJobClientUpdate& acquire_job_client);
   void ReleaseJobClient(const ReleaseJobClientUpdate& release_job_client);
+  void RemoveTask(const RemoveTaskUpdate& remove_task);
   void CreatePendingTask(const CreatePendingTaskUpdate& create_pending_task);
   void ClientHeartbeat(const ClientHeartbeatUpdate& client_heartbeat);
   void CreateTask(const CreateTaskUpdate& create_task);
@@ -244,14 +250,12 @@ class DispatcherState {
 
   int64 next_available_task_id_ = 4000;
   // Tasks, keyed by task ids.
-  absl::flat_hash_map<int64, std::shared_ptr<Task>> tasks_;
-  // Tasks, keyed by job ids.
+  TasksById tasks_;
+  // List of tasks associated with each job.
   absl::flat_hash_map<int64, std::vector<std::shared_ptr<Task>>> tasks_by_job_;
   // Tasks, keyed by worker addresses. The values are a map from task id to
   // task.
-  absl::flat_hash_map<std::string,
-                      absl::flat_hash_map<int64, std::shared_ptr<Task>>>
-      tasks_by_worker_;
+  absl::flat_hash_map<std::string, TasksById> tasks_by_worker_;
 };
 
 }  // namespace data
