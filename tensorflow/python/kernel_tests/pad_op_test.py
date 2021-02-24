@@ -111,7 +111,7 @@ class PadOpTest(test.TestCase):
 
     with self.cached_session():
       jacob_t, jacob_n = gradient_checker_v2.compute_gradient(pad, [x])
-      tol = 1e-3 if x.dtype==np.float16 else 4e-5
+      tol = 1e-3 if x.dtype == np.float16 else 4e-5
       self.assertAllClose(jacob_t, jacob_n, rtol=tol, atol=tol)
 
   def _testAll(self, np_inputs, paddings, constant_values):
