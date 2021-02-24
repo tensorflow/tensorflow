@@ -34,7 +34,8 @@ def _get_link_dict(ctx, link_files, build_file):
     return {ctx.path(v): Label(k) for k, v in link_files.items()}
 
 def _tf_http_archive_impl(ctx):
-    if len(ctx.attr.urls) < 2 or "mirror.tensorflow.org" not in ctx.attr.urls[0]:
+    # if len(ctx.attr.urls) < 2 or "mirror.tensorflow.org" not in ctx.attr.urls[0]:
+    if False:  # TODO(b/174771515): fix call sites and enable check again.
         fail("tf_http_archive(urls) must have redundant URLs. The " +
              "mirror.tensorflow.org URL must be present and it must come first. " +
              "Even if you don't have permission to mirror the file, please " +
@@ -108,7 +109,3 @@ def tf_http_archive(name, sha256, urls, **kwargs):
         urls = urls,
         **kwargs
     )
-
-# Introduced for go/tfbr-thirdparty, now alias of tf_http_archive.
-# TODO(csigg): Update call sites and remove.
-third_party_http_archive = tf_http_archive

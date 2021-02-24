@@ -1,11 +1,11 @@
 """Loads the Hexagon NN Header files library, used by TF Lite."""
 
-load("//third_party:repo.bzl", "third_party_http_archive")
+load("//third_party:repo.bzl", "tf_http_archive")
 
 # Note: Use libhexagon_nn_skel version 1.20 Only with the current version.
 # This comment will be updated with compatible version.
 def repo():
-    third_party_http_archive(
+    tf_http_archive(
         name = "hexagon_nn",
         sha256 = "b94b653417a7eb871881438bb98cb2f4a652d4d92ff90f1faaa01a8ce82b2e3c",
         urls = [
