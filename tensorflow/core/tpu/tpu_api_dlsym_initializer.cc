@@ -16,12 +16,17 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_api_dlsym_initializer.h"
 
 #include <dlfcn.h>
+#include <sys/mman.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/tpu_api_dlsym_set_fn.h"
 
 #if !defined(PLATFORM_GOOGLE)
+#include "tensorflow/core/platform/cloud/gcs_file_system.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_initializer_helper.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
@@ -64,6 +69,44 @@ Status InitializeTpuLibrary(void* library_handle) {
   return s;
 }
 
+void* CreateGcsFilesystemFn() {
+  return new tensorflow::RetryingGcsFileSystem();
+}
+
+// This is a temporary fix for including GCS file system on TPU builds.
+// Will be removed once b/176954917 is fully resolved with the build fix.
+void InitializeCreateGcsFileSystemFnPtr() {
+  int fd = shm_open(absl::StrCat("/tmp_tf_gcs_fs_pointer_", getpid()).data(),
+                    O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+  if (fd == -1) {
+    LOG(ERROR) << "Unable to open shared memory for GCS file system creator.";
+    return;
+  }
+
+  if (ftruncate(fd, sizeof(tensorflow::FileSystem*)) == -1) {
+    LOG(ERROR)
+        << "Unable to allocate shared memory for GCS file system creator.";
+    return;
+  }
+
+  void* (**fn)() = reinterpret_cast<void* (**)()>(mmap(
+      NULL, sizeof(void* (*)()), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
+  if (fn == MAP_FAILED) {
+    LOG(ERROR) << "Cannot mmap shared memory for GCS file system creator.";
+    return;
+  }
+
+  *fn = &CreateGcsFilesystemFn;
+
+  munmap(fn, sizeof(void* (*)()));
+  close(fd);
+
+  // Clean up shared memory on a clean exit.
+  atexit([]() {
+    shm_unlink(absl::StrCat("/tmp_tf_gcs_fs_pointer_", getpid()).data());
+  });
+}
+
 bool FindAndLoadTpuLibrary() {
   void* library = dlopen("libtpu.so", RTLD_NOW);
   if (library) {
@@ -73,6 +116,8 @@ bool FindAndLoadTpuLibrary() {
       InitializeTpuLibrary(library);
     }
   }
+
+  InitializeCreateGcsFileSystemFnPtr();
   return true;
 }
 
