@@ -47,6 +47,33 @@ std::vector<int64> ConcatVectors(absl::Span<const int64> xs,
   return output;
 }
 
+// Computes sqrt(x^2 + y^2 + ...), avoiding overflow/underflow.
+// e.g. for 3 arguments:
+// def norm(x, y, z):
+//   xabs = np.abs(x)
+//   yabs = np.abs(y)
+//   zabs = np.abs(z)
+//   w = np.maximum(np.maximum(xabs, yabs), zabs)
+//   if w == 0:
+//     return 0
+//   else:
+//     return w * np.sqrt((xabs / w)**2 + (yabs / w) ** 2 + (zabs / w) ** 2)
+XlaOp Norm(std::vector<XlaOp> xs) {
+  CHECK(!xs.empty());
+  XlaOp w;
+  for (size_t i = 0; i < xs.size(); ++i) {
+    xs[i] = Abs(xs[i]);
+    w = i == 0 ? xs[i] : xla::Max(w, xs[i]);
+  }
+
+  XlaOp out;
+  for (size_t i = 0; i < xs.size(); ++i) {
+    XlaOp t = Square(xs[i] / w);
+    out = i == 0 ? t : xla::Add(out, t);
+  }
+  return Select(Eq(w, ZerosLike(w)), ZerosLike(w), w * Sqrt(out));
+}
+
 // Computes a Householder reflection of the form:
 // H = I - tau v v.T.
 // such that
@@ -102,15 +129,13 @@ Status House(XlaOp x, XlaOp k, absl::Span<const int64> batch_dims,
   XlaOp sigma_is_zero;
   if (primitive_util::IsComplexType(type)) {
     // sigma = np.dot(x[k+1:], np.conj(x[k+1:]))
-    // TODO(phawkins): this calculation may be numerically unstable.
     auto x_squared = Real(x_after_k * Conj(x_after_k));
     auto sigma =
         Reduce(x_squared, ScalarLike(x_squared, 0.0),
                CreateScalarAddComputation(
                    primitive_util::ComplexComponentType(type), builder),
                {minor_dim});
-    // mu = np.sqrt(x[k]*np.con(x[k]) + sigma)
-    auto mu = Sqrt(Real(alpha * Conj(alpha)) + sigma);
+    auto mu = Norm({Real(alpha), Imag(alpha), Sqrt(sigma)});
 
     sigma_is_zero = Eq(sigma, ScalarLike(sigma, 0));
     sigma_is_zero = And(sigma_is_zero, Eq(Imag(alpha), ScalarLike(sigma, 0)));
@@ -122,11 +147,9 @@ Status House(XlaOp x, XlaOp k, absl::Span<const int64> batch_dims,
     *tau = Complex((*beta - Real(alpha)) / *beta, -Imag(alpha) / *beta);
   } else {
     // sigma = np.dot(x[k+1:], x[k+1:])
-    // TODO(phawkins): this calculation may be numerically unstable.
     auto sigma = Reduce(x_after_k * x_after_k, zero,
                         CreateScalarAddComputation(type, builder), {minor_dim});
-    // mu = np.sqrt(x[k]*x[k] + sigma)
-    auto mu = Sqrt(Square(alpha) + sigma);
+    auto mu = Norm({alpha, Sqrt(sigma)});
     sigma_is_zero = Eq(sigma, zero);
 
     XlaOp one = ScalarLike(x, 1.0);

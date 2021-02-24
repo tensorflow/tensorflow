@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
+#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
@@ -132,6 +133,26 @@ XLA_TEST_F(QrTest, SimpleBatched) {
 
   ComputeAndCompareR3<float>(&builder, a_vals, {a_data.get()},
                              xla::ErrorSpec(1e-4, 1e-4));
+}
+
+XLA_TEST_F(QrTest, SubnormalComplex) {
+  tensorflow::enable_tensor_float_32_execution(false);
+
+  // Verifies that we don't get NaNs in the case that the norm of a complex
+  // number would be denormal but its imaginary value is not exactly 0.
+  xla::Array2D<xla::complex64> a_vals({
+      {xla::complex64(4e-20, 5e-23), 6, 80},
+      {0, 45, 54},
+      {0, 54, 146},
+  });
+
+  xla::XlaBuilder builder(TestName());
+  xla::XlaOp a, q, r;
+  auto a_data = CreateParameter<xla::complex64>(a_vals, 0, "a", &builder, &a);
+  xla::QrExplicit(a, /*full_matrices=*/true, q, r);
+  xla::BatchDot(q, r, xla::PrecisionConfig::HIGHEST);
+  ComputeAndCompare<xla::complex64>(&builder, a_vals, {a_data.get()},
+                                    xla::ErrorSpec(1e-4, 1e-4));
 }
 
 }  // namespace
