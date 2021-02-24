@@ -47,7 +47,7 @@ class TopKTest(test.TestCase):
                     sorted=True):  # pylint: disable=redefined-builtin
     np_expected_values = np.array(expected_values)
     np_expected_indices = np.array(expected_indices)
-    with self.cached_session() as sess:
+    with self.cached_session():
       values_op, indices_op = nn_ops.top_k(inputs, k, sorted=sorted)
       values, indices = self.evaluate([values_op, indices_op])
 

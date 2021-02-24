@@ -35,6 +35,7 @@ py_strict_library(
         ":tag_constants",
         ":utils",
         "//tensorflow/python:util",
+        "//tensorflow/python/saved_model/model_utils",
     ],
 )
 

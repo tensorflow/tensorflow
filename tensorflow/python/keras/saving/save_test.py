@@ -303,6 +303,28 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose(batch_loss, new_batch_loss)
 
+  @combinations.generate(combinations.combine(mode=['eager', 'graph']))
+  def test_save_include_optimizer_false(self):
+
+    def get_variables(file_name):
+      reader = training_module.load_checkpoint(
+          os.path.join(file_name, 'variables/variables'))
+      shape_from_key = reader.get_variable_to_shape_map()
+      return sorted(shape_from_key.keys())
+
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(1))
+    model.compile('adam', loss='mse')
+    x, y = np.ones((10, 10)), np.ones((10, 1))
+    model.train_on_batch(x, y)
+
+    path = os.path.join(self.get_temp_dir(), 'no_optimizer')
+    model.save(path, save_format='tf', include_optimizer=False)
+    variables = get_variables(path)
+
+    for v in variables:
+      self.assertNotIn('optimizer', v)
+
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_saving_model_with_custom_object(self):
     with generic_utils.custom_object_scope(), self.cached_session():
@@ -980,6 +1002,39 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
     keras.models.save_model(model, saved_model_dir, save_format=save_format)
     loaded = keras.models.load_model(saved_model_dir)
     self.assertIs(loaded.layers[1], loaded.layers[2].layer)
+
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def test_multi_output_metrics_name_stay_same(self):
+    """Tests that metric names don't change with each save/load cycle.
+
+    e.g. "head_0_accuracy" should not become "head_0_head_0_accuracy" after
+    saving and loading a model.
+    """
+    input_ = keras.Input((4,))
+    model = keras.Model(
+        input_,
+        [keras.layers.Softmax(name='head_0')(keras.layers.Dense(3)(input_)),
+         keras.layers.Softmax(name='head_1')(keras.layers.Dense(5)(input_))])
+    metric = keras.metrics.BinaryAccuracy()
+    model.compile(optimizer='rmsprop',
+                  loss='mse',
+                  metrics={'head_0': [metric, 'accuracy']})
+
+    # Run one iteration.
+    x = np.random.rand(2, 4)
+    y = {'head_0': np.random.randint(2, size=(2, 3)),
+         'head_1': np.random.randint(2, size=(2, 5))}
+    model.fit(x, y, verbose=0)
+
+    # Save and reload.
+    save_format = testing_utils.get_save_format()
+    saved_model_dir = self._save_model_dir()
+    keras.models.save_model(model, saved_model_dir, save_format=save_format)
+    loaded = keras.models.load_model(saved_model_dir)
+
+    # Make sure the metrics names from the model before saving match the loaded
+    # model.
+    self.assertSequenceEqual(model.metrics_names, loaded.metrics_names)
 
 
 # Factory functions to create models that will be serialized inside a Network.

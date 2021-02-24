@@ -706,6 +706,8 @@ package_group(
         "//learning/brain/mlir/...",
         "//learning/lib/ami/simple_ml/...",
         "//tensorflow/...",
+        "//tensorflow_decision_forests/...",
+        "//third_party/cloud_tpu/inference_converter/...",
     ],
 )
 

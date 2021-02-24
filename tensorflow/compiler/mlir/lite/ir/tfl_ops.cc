@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_structs.cc.inc"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 
 namespace mlir {
 namespace TFL {
@@ -834,6 +835,104 @@ LogicalResult Verify(FullyConnectedOp op) {
   return mlir::success();
 }
 
+LogicalResult FullyConnectedOp::fold(ArrayRef<Attribute> operands,
+                                     SmallVectorImpl<OpFoldResult> &results) {
+  assert(operands.size() == 3);
+
+  // Folding not implemented with any activation function or any weight type
+  // besides the default.
+  if (fused_activation_function() != "NONE") return failure();
+  if (weights_format() != "DEFAULT") return failure();
+
+  // Bias tensor is optional.
+  const bool has_bias = !(!bias() || bias().getType().isa<NoneType>());
+
+  // Get the tensors.
+  DenseElementsAttr input_tensor, weights_tensor, bias_tensor;
+  if (!matchPattern(input(), m_Constant(&input_tensor)) ||
+      !matchPattern(filter(), m_Constant(&weights_tensor)) ||
+      (has_bias && !matchPattern(bias(), m_Constant(&bias_tensor)))) {
+    return failure();
+  }
+
+  // Get the tensor types.
+  const auto input_type = input_tensor.getType().cast<ShapedType>();
+  const auto weights_type = weights_tensor.getType().cast<ShapedType>();
+  const auto bias_type =
+      has_bias ? bias_tensor.getType().cast<ShapedType>() : ShapedType{};
+
+  const auto output_type = getType(0).cast<ShapedType>();
+
+  // Folding only implemented for float tensors.
+  if (!input_type.getElementType().isF32() ||
+      !weights_type.getElementType().isF32() ||
+      !output_type.getElementType().isF32() ||
+      (has_bias && !bias_type.getElementType().isF32())) {
+    return failure();
+  }
+
+  // Folding only implemented for static shapes
+  if (!input_type.hasStaticShape() || !weights_type.hasStaticShape() ||
+      (has_bias && !bias_type.hasStaticShape())) {
+    return failure();
+  }
+
+  // Folding only implemented for 1D input, 2D weights and 1D bias
+  if (input_type.getShape().size() != 1 ||
+      weights_type.getShape().size() != 2 ||
+      (has_bias && bias_type.getShape().size() != 1)) {
+    return failure();
+  }
+
+  // Get the sizes
+  const auto input_size = input_type.getNumElements();
+  const auto output_size = output_type.getNumElements();
+
+  // Get iterators to the tensors.
+  const auto input_values_it = input_tensor.getValues<float>().begin();
+  const auto weights_values_ptr = weights_tensor.getValues<float>().begin();
+  auto weights_row_it = weights_values_ptr;
+  // The 'else' case could be nullptr, but the types don't match.
+  auto bias_values_it =
+      has_bias ? bias_tensor.getValues<float>().begin() : input_values_it;
+
+  // Do the actual folding, one output at a time.
+  std::vector<float> result_values;
+  result_values.reserve(output_size);
+
+  for (int i = 0; i < output_size; ++i) {
+    // Dot product with Kahan/Neumaier summation to minimize numeric errors.
+    float sum = has_bias ? *bias_values_it : 0.0f;
+    float compensation = 0.0f;
+    for (int j = 0; j < input_size; ++j) {
+      const float addend = input_values_it[j] * weights_row_it[j];
+      const float new_sum = sum + addend;
+      // DO NOT enable -funsafe-math-optimizations here.
+      // There is a test detecting unsafe optimizations.
+      // Unsafe math optimizations can reorder float formulas, and set the
+      // compensation to constant 0. The formula must be evaluated as written
+      // for the algorithm to work.
+      // (Note: -ffast-math is a superset of -funsafe-math-optimizations.)
+      if (std::abs(sum) >= std::abs(addend)) {
+        compensation += (sum - new_sum) + addend;
+      } else {
+        compensation += (addend - new_sum) + sum;
+      }
+      sum = new_sum;
+    }
+    result_values.push_back(sum + compensation);
+    weights_row_it += input_size;
+    bias_values_it++;
+  }
+
+  // Set result tensor
+  const auto folded =
+      DenseElementsAttr::get(output_type, ArrayRef<float>(result_values));
+  results.assign({folded});
+
+  return success();
+}
+
 void FullyConnectedOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.insert<RemoveOptionalZeroBias<FullyConnectedOp>>(context);
@@ -848,6 +947,108 @@ void Conv2DOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
   // TODO(b/180121750): Enable the pattern after the integration tests are
   // fixed.
   // results.insert<RemoveOptionalZeroBias<Conv2DOp>>(context);
+}
+
+static LogicalResult ComputeConvWindowedOutputSize(
+    int64_t input_size, int64_t filter_size, int64_t dilation_rate,
+    int64_t stride, tensorflow::Padding padding, int64_t *output_size) {
+  int64_t pad_low;
+  int64_t pad_high;
+
+  tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
+      input_size, filter_size, dilation_rate, stride, padding, output_size,
+      &pad_low, &pad_high);
+  // Return failure if expected_output_size could not be calculated.
+  if (!status.ok()) return failure();
+  return success();
+}
+
+LogicalResult Conv2DOp::inferReturnTypes(
+    MLIRContext *, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attr, RegionRange,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  Conv2DOpAdaptor op(operands, attr);
+
+  const Value input = op.input();
+  const Value filter = op.filter();
+
+  const RankedTensorType input_ty =
+      input.getType().dyn_cast_or_null<RankedTensorType>();
+  const RankedTensorType filter_ty =
+      filter.getType().dyn_cast_or_null<RankedTensorType>();
+  // If indeed both input type & filter type are ranked type and have ranks.
+  // We will need to check their ranks are valid.
+  if ((input_ty && input_ty.hasRank() && input_ty.getRank() != 4) ||
+      (filter_ty && filter_ty.hasRank() && filter_ty.getRank() != 4)) {
+    return emitOptionalError(location, "Invalid ranks");
+  }
+
+  // If either input or filter is unranked, we will just return unranked output
+  // shape.
+  if (!input_ty || !filter_ty || !input_ty.hasRank() || !filter_ty.hasRank()) {
+    Type result_type;
+    result_type = UnrankedTensorType::get(
+        input.getType().cast<ShapedType>().getElementType());
+    inferredReturnTypes.assign({result_type});
+    return success();
+  }
+
+  auto stride_h = op.stride_h().getInt();
+  auto stride_w = op.stride_w().getInt();
+  auto dilation_h = op.dilation_h_factor().getInt();
+  auto dilation_w = op.dilation_w_factor().getInt();
+
+  // We don't have EXPLICIT PADDING in TfLite.
+  auto paddings = op.padding().getValue();
+  tensorflow::Padding padding;
+  auto padding_is_valid = GetPaddingFromString(paddings.str(), &padding);
+  if (!padding_is_valid.ok()) {
+    return emitOptionalError(location, "invalid padding format provided");
+  }
+
+  // Output always have rank 4. All dimensions are initialized to
+  // dynamic size and can be partially inferred.
+  // TFL's conv2d is always NHWC format & the filter is OHWI.
+  SmallVector<int64_t, 4> return_shape(4, ShapedType::kDynamicSize);
+  return_shape[0] = input_ty.getDimSize(0);
+  return_shape[3] = filter_ty.getDimSize(0);
+
+  // Spatial dimensions can be inferred only when both input and filter are
+  // ranked because we need to get their spatial dimensions.
+
+  // Height.
+  if (!input_ty.isDynamicDim(1) && !filter_ty.isDynamicDim(1)) {
+    int64_t output_height;
+    if (failed(ComputeConvWindowedOutputSize(
+            input_ty.getDimSize(1), filter_ty.getDimSize(1), dilation_h,
+            stride_h, padding, &output_height))) {
+      return failure();
+    }
+    return_shape[1] = output_height;
+  }
+
+  // Width.
+  if (!input_ty.isDynamicDim(2) && !filter_ty.isDynamicDim(2)) {
+    int64_t output_width;
+    if (failed(ComputeConvWindowedOutputSize(
+            input_ty.getDimSize(2), filter_ty.getDimSize(2), dilation_w,
+            stride_w, padding, &output_width))) {
+      return failure();
+    }
+    return_shape[2] = output_width;
+  }
+
+  auto result_type =
+      mlir::RankedTensorType::get(return_shape, input_ty.getElementType());
+
+  inferredReturnTypes.assign({result_type});
+  return success();
+}
+
+bool Conv2DOp::isCompatibleReturnTypes(ArrayRef<Type> lhs, ArrayRef<Type> rhs) {
+  if (lhs.size() != rhs.size() || lhs.size() != 1) return false;
+  if (failed(mlir::verifyCompatibleShape(lhs[0], rhs[0]))) return false;
+  return true;
 }
 
 //===----------------------------------------------------------------------===//

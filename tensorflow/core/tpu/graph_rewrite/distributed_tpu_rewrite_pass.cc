@@ -3934,6 +3934,7 @@ DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
   TF_RETURN_IF_ERROR(GetTPUDeviceNames(replicate_node.requested_device(),
                                        device_set, tpu_compilation_device,
                                        &num_tpus_per_task, &tpu_devices));
+  *num_tasks = tpu_devices.size();
 
   string topology;
   TF_RETURN_IF_ERROR(

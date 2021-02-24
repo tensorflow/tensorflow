@@ -270,6 +270,7 @@ tensorflow/lite/micro/kernels/depthwise_conv_test.cc \
 tensorflow/lite/micro/kernels/dequantize_test.cc \
 tensorflow/lite/micro/kernels/detection_postprocess_test.cc \
 tensorflow/lite/micro/kernels/elementwise_test.cc \
+tensorflow/lite/micro/kernels/elu_test.cc \
 tensorflow/lite/micro/kernels/exp_test.cc \
 tensorflow/lite/micro/kernels/fill_test.cc \
 tensorflow/lite/micro/kernels/floor_test.cc \
@@ -317,11 +318,14 @@ tensorflow/lite/micro/kernels/circular_buffer.cc \
 tensorflow/lite/micro/kernels/comparisons.cc \
 tensorflow/lite/micro/kernels/concatenation.cc \
 tensorflow/lite/micro/kernels/conv.cc \
+tensorflow/lite/micro/kernels/conv_common.cc \
 tensorflow/lite/micro/kernels/conv_test_common.cc \
 tensorflow/lite/micro/kernels/depthwise_conv.cc \
+tensorflow/lite/micro/kernels/depthwise_conv_common.cc \
 tensorflow/lite/micro/kernels/dequantize.cc \
 tensorflow/lite/micro/kernels/detection_postprocess.cc \
 tensorflow/lite/micro/kernels/elementwise.cc \
+tensorflow/lite/micro/kernels/elu.cc \
 tensorflow/lite/micro/kernels/ethosu.cc \
 tensorflow/lite/micro/kernels/exp.cc \
 tensorflow/lite/micro/kernels/fill.cc \
@@ -409,6 +413,7 @@ tensorflow/lite/kernels/internal/reference/conv.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h \
 tensorflow/lite/kernels/internal/reference/dequantize.h \
+tensorflow/lite/kernels/internal/reference/elu.h \
 tensorflow/lite/kernels/internal/reference/exp.h \
 tensorflow/lite/kernels/internal/reference/fill.h \
 tensorflow/lite/kernels/internal/reference/floor.h \

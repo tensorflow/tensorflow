@@ -96,8 +96,9 @@ class Array {
 
   using value_type = T;
 
-  // Creates a new array with the specified dimensions.
-  explicit Array(absl::Span<const int64> sizes) : Array(sizes, T()) {}
+  // Creates a new array with the specified dimensions and initialized elements.
+  explicit Array(absl::Span<const int64> sizes)
+      : sizes_(sizes.begin(), sizes.end()), values_(new T[num_elements()]()) {}
 
   // Creates a new array with the specified dimensions and specified value for
   // every cell.

@@ -31,6 +31,7 @@ tf_fuzz_target(
 tf_fuzz_target(
     name = "bfloat16_fuzz",
     srcs = ["bfloat16_fuzz.cc"],
+    tags = ["no_oss"],  # b/175698644
     deps = [
         "//tensorflow/core:test",
         "//tensorflow/core/framework:bfloat16",
@@ -41,6 +42,7 @@ tf_fuzz_target(
 tf_fuzz_target(
     name = "AreAttrValuesEqual_fuzz",
     srcs = ["AreAttrValuesEqual_fuzz.cc"],
+    tags = ["no_oss"],  # b/175698644
     deps = [
         "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/framework:attr_value_util",
@@ -51,6 +53,7 @@ tf_fuzz_target(
 tf_fuzz_target(
     name = "ParseAttrValue_fuzz",
     srcs = ["ParseAttrValue_fuzz.cc"],
+    tags = ["no_oss"],  # b/175698644
     deps = [
         "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/framework:attr_value_util",

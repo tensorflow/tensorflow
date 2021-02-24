@@ -122,6 +122,12 @@ void TpuExecutor_BlockUntilDoneOrFailed(SE_StreamExecutor* executor,
 void TpuExecutor_SyncAndForgetFailedStreams(SE_StreamExecutor* executor);
 bool TpuExecutor_SynchronizeAllActivity(SE_StreamExecutor* executor);
 
+void TpuExecutor_UnloadAllPrograms(SE_StreamExecutor* executor,
+                                   TF_Status* status);
+void TpuExecutor_EnqueueCompactionOnStreamForHbm(SE_StreamExecutor* executor,
+                                                 SE_Stream* compaction_stream,
+                                                 TF_Status* status);
+
 SE_Stream* TpuStream_New(SE_StreamExecutor* parent);
 void TpuStream_Free(SE_Stream*);
 void* TpuStream_Stream(SE_Stream*);
@@ -389,6 +395,8 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_BlockUntilDoneOrFailed);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_SyncAndForgetFailedStreams);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_SynchronizeAllActivity);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_UnloadAllPrograms);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_EnqueueCompactionOnStreamForHbm);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuStream_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuStream_Free);

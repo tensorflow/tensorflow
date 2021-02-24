@@ -20,9 +20,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-GENERATE_BINARY_GPU_KERNEL2(Complex, f32, c64, std::complex<float>, float);
-REGISTER_COMPLEX_GPU_KERNEL(Complex, f32, c64, std::complex<float>, float);
-GENERATE_BINARY_GPU_KERNEL2(Complex, f64, c128, std::complex<double>, double);
-REGISTER_COMPLEX_GPU_KERNEL(Complex, f64, c128, std::complex<double>, double);
+GENERATE_BINARY_GPU_KERNEL2(Complex, DT_FLOAT, DT_COMPLEX64);
+REGISTER_COMPLEX_GPU_KERNEL(Complex, DT_FLOAT, DT_COMPLEX64);
+GENERATE_BINARY_GPU_KERNEL2(Complex, DT_DOUBLE, DT_COMPLEX128);
+REGISTER_COMPLEX_GPU_KERNEL(Complex, DT_DOUBLE, DT_COMPLEX128);
 
 }  // namespace tensorflow

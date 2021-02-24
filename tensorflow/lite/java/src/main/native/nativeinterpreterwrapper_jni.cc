@@ -19,6 +19,7 @@ limitations under the License.
 #include <time.h>
 
 #include <atomic>
+#include <map>
 #include <vector>
 
 #include "tensorflow/lite/core/shims/c/common.h"
@@ -69,13 +70,13 @@ BufferErrorReporter* convertLongToErrorReporter(JNIEnv* env, jlong handle) {
   return reinterpret_cast<BufferErrorReporter*>(handle);
 }
 
-TfLiteDelegate* convertLongToDelegate(JNIEnv* env, jlong handle) {
+TfLiteOpaqueDelegate* convertLongToDelegate(JNIEnv* env, jlong handle) {
   if (handle == 0) {
     ThrowException(env, tflite::jni::kIllegalArgumentException,
                    "Internal error: Invalid handle to delegate.");
     return nullptr;
   }
-  return reinterpret_cast<TfLiteDelegate*>(handle);
+  return reinterpret_cast<TfLiteOpaqueDelegate*>(handle);
 }
 
 std::vector<int> convertJIntArrayToVector(JNIEnv* env, jintArray inputs) {
@@ -162,8 +163,7 @@ bool VerifyModel(const void* buf, size_t len) {
 // from either inputs or outputs.
 // Returns -1 if invalid names are passed.
 int GetTensorIndexForSignature(JNIEnv* env, jstring signature_tensor_name,
-                               jstring method_name,
-                               tflite::Interpreter* interpreter,
+                               jstring method_name, Interpreter* interpreter,
                                bool is_input) {
   // Fetch name strings.
   const char* method_name_ptr = env->GetStringUTFChars(method_name, nullptr);
@@ -271,7 +271,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_hasUnresolvedFlexOp(
 JNIEXPORT jobjectArray JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_getSignatureDefNames(
     JNIEnv* env, jclass clazz, jlong handle) {
-  tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
+  Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return nullptr;
   jclass string_class = env->FindClass("java/lang/String");
   if (string_class == nullptr) {
@@ -293,7 +293,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getSignatureDefNames(
 JNIEXPORT jobjectArray JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_getSignatureInputs(
     JNIEnv* env, jclass clazz, jlong handle, jstring method_name) {
-  tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
+  Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return nullptr;
   const char* method_name_ptr = env->GetStringUTFChars(method_name, nullptr);
   const jobjectArray signature_inputs = GetSignatureInputsOutputsList(
@@ -306,7 +306,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getSignatureInputs(
 JNIEXPORT jobjectArray JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_getSignatureOutputs(
     JNIEnv* env, jclass clazz, jlong handle, jstring method_name) {
-  tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
+  Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return nullptr;
   const char* method_name_ptr = env->GetStringUTFChars(method_name, nullptr);
   const jobjectArray signature_outputs = GetSignatureInputsOutputsList(
@@ -320,7 +320,7 @@ JNIEXPORT jint JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputTensorIndexFromSignature(
     JNIEnv* env, jclass clazz, jlong handle, jstring signature_input_name,
     jstring method_name) {
-  tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
+  Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return -1;
   return GetTensorIndexForSignature(env, signature_input_name, method_name,
                                     interpreter, /*is_input=*/true);
@@ -330,7 +330,7 @@ JNIEXPORT jint JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputTensorIndexFromSignature(
     JNIEnv* env, jclass clazz, jlong handle, jstring signature_output_name,
     jstring method_name) {
-  tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
+  Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return -1;
   return GetTensorIndexForSignature(env, signature_output_name, method_name,
                                     interpreter, /*is_input=*/false);
@@ -646,7 +646,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
   if (is_changed) {
     TfLiteStatus status;
     if (strict) {
-      status = interpreter->ResizeInputTensorStrict(
+       status = interpreter->ResizeInputTensorStrict(
           tensor_idx, convertJIntArrayToVector(env, dims));
     } else {
       status = interpreter->ResizeInputTensor(
@@ -673,7 +673,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_applyDelegate(
       convertLongToErrorReporter(env, error_handle);
   if (error_reporter == nullptr) return;
 
-  TfLiteDelegate* delegate = convertLongToDelegate(env, delegate_handle);
+  TfLiteOpaqueDelegate* delegate = convertLongToDelegate(env, delegate_handle);
   if (delegate == nullptr) return;
 
   TfLiteStatus status = interpreter->ModifyGraphWithDelegate(delegate);
@@ -709,6 +709,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createCancellationFlag(
   if (interpreter == nullptr) {
     ThrowException(env, tflite::jni::kIllegalArgumentException,
                    "Internal error: Invalid handle to interpreter.");
+    return 0;
   }
   std::atomic_bool* cancellation_flag = new std::atomic_bool(false);
   interpreter->SetCancellationFunction(cancellation_flag, [](void* payload) {

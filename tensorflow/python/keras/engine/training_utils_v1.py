@@ -40,7 +40,6 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
@@ -48,6 +47,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import losses_utils
@@ -1029,7 +1029,7 @@ def standardize_weights(y,
       weight_vector[:] = np.nan
       weight_vector[keys] = values
 
-      y_classes = smart_cond.smart_cond(
+      y_classes = control_flow_util.smart_cond(
           len(y.shape.as_list()) == 2 and K.shape(y)[1] > 1,
           lambda: K.argmax(y, axis=1),
           lambda: math_ops.cast(K.reshape(y, (-1,)), dtypes.int64))

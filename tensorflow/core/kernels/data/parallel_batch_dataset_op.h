@@ -30,6 +30,7 @@ class ParallelBatchDatasetOp : public UnaryDatasetOpKernel {
   static constexpr const char* const kDropRemainder = "drop_remainder";
   static constexpr const char* const kOutputTypes = "output_types";
   static constexpr const char* const kOutputShapes = "output_shapes";
+  static constexpr const char* const kDeterministic = "deterministic";
 
   explicit ParallelBatchDatasetOp(OpKernelConstruction* ctx);
 
@@ -39,6 +40,7 @@ class ParallelBatchDatasetOp : public UnaryDatasetOpKernel {
 
  private:
   class Dataset;
+  DeterminismPolicy deterministic_;
 };
 
 }  // namespace data

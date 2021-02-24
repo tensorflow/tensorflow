@@ -74,7 +74,7 @@ class IntegerLookup(index_lookup.IndexLookup):
           of times the token at that index appeared in the batch item.
         "tf-idf": As "binary", but the TF-IDF algorithm is applied to find the
           value in each token slot.
-    pad_to_max_tokens: Only valid in  "binary", "count", and "tf-idf" modes. If
+    pad_to_max_values: Only valid in  "binary", "count", and "tf-idf" modes. If
       True, the output will have its feature axis padded to `max_tokens` even if
       the number of unique tokens in the vocabulary is less than max_tokens,
       resulting in a tensor of shape [batch_size, max_tokens] regardless of
@@ -214,15 +214,16 @@ class IntegerLookup(index_lookup.IndexLookup):
   vocab in this example.)
 
   >>> vocab = [12, 36, 1138, 42]
-  >>> data = tf.constant([[1, 3, 4], [4, 5, 2]])
+  >>> data = tf.constant([[2, 4, 5], [5, 1, 3]])
   >>> layer = IntegerLookup(vocabulary=vocab, invert=True)
   >>> layer(data)
   <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
   array([[  12, 1138,   42],
          [  42,   -1,   36]])>
 
-  Note that the integer 5, which is out of the vocabulary space, returns an OOV
-  token.
+  Note that the first two indices correspond to the mask and oov value by
+  default. This behavior can be disabled by setting `mask_value=None` and
+  `num_oov_indices=0`.
 
 
   **Forward and inverse lookup pairs**

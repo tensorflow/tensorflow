@@ -176,6 +176,8 @@ std::string ToString(enum OperationType op) {
       return "space_to_batch";
     case OperationType::SPACE_TO_DEPTH:
       return "space_to_depth";
+    case OperationType::SPLIT:
+      return "split";
     case OperationType::SQRT:
       return "sqrt";
     case OperationType::SQUARE:
@@ -246,6 +248,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"slice", OperationType::SLICE},
           {"softmax", OperationType::SOFTMAX},
           {"space_to_depth", OperationType::SPACE_TO_DEPTH},
+          {"split", OperationType::SPLIT},
           {"sqrt", OperationType::SQRT},
           {"square", OperationType::SQUARE},
           {"squared_diff", OperationType::SQUARED_DIFF},

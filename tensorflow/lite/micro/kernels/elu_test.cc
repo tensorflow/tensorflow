@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,149 +12,27 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <math.h>
-#include <stdint.h>
-#include <stdlib.h>
+#include <type_traits>
 
-#include <algorithm>
-#include <initializer_list>
-#include <limits>
-#include <map>
-#include <memory>
-#include <random>
-#include <string>
-#include <utility>
-#include <vector>
-
-#include "absl/memory/memory.h"
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/core/api/op_resolver.h"
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/string_type.h"
+#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/test_helpers.h"
+#include "tensorflow/lite/micro/testing/micro_test.h"
 
 namespace tflite {
-
+namespace testing {
 namespace {
 
-using ::testing::ElementsAreArray;
-
-class BaseActivationsOpModel : public SingleOpModel {
- public:
-  // Most activations don't take any options, so this constructor works for
-  // them.
-  BaseActivationsOpModel(BuiltinOperator type, TensorData input) {
-    input_ = AddInput(input);
-    if (input.type == TensorType_UINT8) {
-      output_ = AddOutput({input.type, {}, 0, 0, 1. / 256});
-    } else if (input.type == TensorType_INT8) {
-      output_ = AddOutput({input.type, {}, 0, 0, 1. / 256, -128});
-    } else {
-      output_ = AddOutput({input.type, {}});
-    }
-    SetBuiltinOp(type, BuiltinOptions_NONE, 0);
-    BuildInterpreter({GetShape(input_)});
-  }
-
-  BaseActivationsOpModel(TfLiteRegistration* registration, BuiltinOperator type,
-                         TensorData input) {
-    input_ = AddInput(input);
-    if (input.type == TensorType_UINT8) {
-      output_ = AddOutput({input.type, {}, 0, 0, 1. / 256});
-    } else if (input.type == TensorType_INT8) {
-      output_ = AddOutput({input.type, {}, 0, 0, 1. / 256, -128});
-    } else {
-      output_ = AddOutput({input.type, {}});
-    }
-    SetBuiltinOp(type, BuiltinOptions_NONE, 0);
-    resolver_ = absl::make_unique<SingleOpResolver>(type, registration);
-    BuildInterpreter({GetShape(input_)});
-  }
-
-  // A dedicated constructor for SOFTMAX, which does some options.
-  BaseActivationsOpModel(float softmax_beta, TensorData input,
-                         TensorType output_type) {
-    input_ = AddInput(input);
-    if (output_type == TensorType_UINT8) {
-      output_ = AddOutput({TensorType_UINT8, {}, 0, 0, 1. / 256});
-    } else if (output_type == TensorType_INT8) {
-      output_ = AddOutput({TensorType_INT8, {}, 0, 0, 1. / 256, -128});
-    } else if (input.type == TensorType_INT16 &&
-               output_type == TensorType_INT16) {
-      output_ = AddOutput({TensorType_INT16,
-                           {},
-                           0,
-                           0,
-                           1.0f / (std::numeric_limits<int16_t>::max() + 1),
-                           0});
-    } else if (input.type != TensorType_INT16 &&
-               output_type == TensorType_INT16) {
-      output_ = AddOutput({TensorType_INT16, {}, 0, 0, 1. / 32768, -16384});
-    } else {
-      output_ = AddOutput({output_type, {}});
-    }
-    SetBuiltinOp(BuiltinOperator_SOFTMAX, BuiltinOptions_SoftmaxOptions,
-                 CreateSoftmaxOptions(builder_, softmax_beta).Union());
-    BuildInterpreter({GetShape(input_)});
-  }
-
-  // A dedicated constructor for LeakyRelu, which does some options.
-  BaseActivationsOpModel(TensorData input, float alpha) {
-    input_ = AddInput(input);
-    // The output scale and input scale might be different.
-    if (input.type == TensorType_UINT8 || input.type == TensorType_INT8 ||
-        input.type == TensorType_INT16) {
-      auto output_min = (input.min >= 0) ? input.min : input.min * alpha;
-      auto output_max = (input.max >= 0) ? input.max : input.max * alpha;
-      if (input.type == TensorType_INT16) {
-        output_ = AddOutput({TensorType_INT16,
-                             {},
-                             0,
-                             0,
-                             output_max / (std::numeric_limits<int16_t>::max()),
-                             0});
-      } else {
-        output_ = AddOutput({input.type, {}, output_min, output_max});
-      }
-    } else {
-      output_ = AddOutput({input.type, {}});
-    }
-    SetBuiltinOp(BuiltinOperator_LEAKY_RELU, BuiltinOptions_LeakyReluOptions,
-                 CreateLeakyReluOptions(builder_, alpha).Union());
-    BuildInterpreter({GetShape(input_)});
-  }
-
-  BaseActivationsOpModel(BuiltinOperator type, const TensorData& input,
-                         const TensorData& output) {
-    input_ = AddInput(input);
-    output_ = AddOutput(output);
-    SetBuiltinOp(type, BuiltinOptions_NONE, 0);
-    BuildInterpreter({GetShape(input_)});
-  }
-
-  BaseActivationsOpModel(TfLiteRegistration* registration, BuiltinOperator type,
-                         const TensorData& input, const TensorData& output) {
-    input_ = AddInput(input);
-    output_ = AddOutput(output);
-    SetBuiltinOp(type, BuiltinOptions_NONE, 0);
-    resolver_ = absl::make_unique<SingleOpResolver>(type, registration);
-    BuildInterpreter({GetShape(input_)});
-  }
-
- protected:
-  int input_;
-  int output_;
-};
-
-class FloatActivationsOpModel : public BaseActivationsOpModel {
- public:
-  using BaseActivationsOpModel::BaseActivationsOpModel;
-
-  void SetInput(const std::vector<float>& data) {
-    PopulateTensor(input_, data);
-  }
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+// min/max are used to compute scale, zero-point
+template <typename T>
+struct TestEluParams {
+  // quantization parameters
+  float data_min;   // input and output data minimum value
+  float data_max;   // input and output data maximum value
+  T* input_data;    // quantized input storage
+  T* output_data;   // quantized output storage
+  float tolerance;  // output vs expected value tolerance
 };
 
 // Our fixed-point math function implementations have roughly 12 bits of
@@ -173,65 +51,120 @@ class FloatActivationsOpModel : public BaseActivationsOpModel {
 // has signed fixed-point arithmetic (SQRDMULH)).  As the width of [-1, 1]
 // is 2, our representable values are often diluted by a factor of 2, whence
 // the factor of 2 below.
-const float kQuantizedTolerance = 2 * (1. / 256);
-const float kQuantizedToleranceInt16 = 2 * (1. / 4096);
+constexpr float kQuantizedTolerance = 2 * (1. / 256);
 
-class QuantizedActivationsOpModel : public BaseActivationsOpModel {
- public:
-  using BaseActivationsOpModel::BaseActivationsOpModel;
+void ExecuteEluTest(TfLiteTensor* tensors, int tensors_count) {
+  constexpr int kInputArrayData[] = {1, 0};
+  TfLiteIntArray* inputs_array = IntArrayFromInts(kInputArrayData);
+  constexpr int kOutputArrayData[] = {1, 1};
+  TfLiteIntArray* outputs_array = IntArrayFromInts(kOutputArrayData);
 
-  template <typename T>
-  void SetInput(const std::vector<float>& data) {
-    QuantizeAndPopulate<T>(input_, data);
-  }
-  template <typename T>
-  std::vector<T> GetOutput() {
-    return ExtractVector<T>(output_);
-  }
+  const TfLiteRegistration registration = tflite::Register_ELU();
+  micro::KernelRunner runner(registration, tensors, tensors_count, inputs_array,
+                             outputs_array, nullptr);
 
-  template <typename T>
-  std::vector<float> GetDequantizedOutput() {
-    return Dequantize<T>(ExtractVector<T>(output_), GetScale(output_),
-                         GetZeroPoint(output_));
-  }
-};
-
-TEST(FloatActivationsOpTest, Elu) {
-  FloatActivationsOpModel m(BuiltinOperator_ELU,
-                            /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}});
-  m.SetInput({
-      0, -6, 2, -4,     //
-      3, -2, 10, -0.1,  //
-  });
-  m.Invoke();
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
-                                 0.0, -0.997521, 2.0, -0.981684,    //
-                                 3.0, -0.864665, 10.0, -0.0951626,  //
-                             })));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 }
 
-TEST(QuantizedActivationsOpTest, EluInt8) {
-  const float kMin = -1;
-  const float kMax = 127.f / 128.f;
-  QuantizedActivationsOpModel model(
-      BuiltinOperator_ELU,
-      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
-      /*output=*/{TensorType_INT8, {1, 2, 4, 1}, 8 * kMin, 8 * kMax});
+template <typename T>
+void TestElu(const int* input_dims_data, const T* input_data,
+             const int* expected_dims, const T* expected_data, T* output_data) {
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(expected_dims);
+  const int output_count = ElementCount(*output_dims);
 
-  model.SetInput<int8_t>({
-      0, -6, 2, -4,    //
-      3, -2, 6, -0.1,  //
-  });
+  TfLiteTensor tensors[] = {
+      CreateTensor(input_data, input_dims),
+      CreateTensor(output_data, output_dims),
+  };
+  constexpr int tensors_count = std::extent<decltype(tensors)>::value;
+  ExecuteEluTest(tensors, tensors_count);
 
-  model.Invoke();
-  EXPECT_THAT(model.GetDequantizedOutput<int8_t>(),
-              ElementsAreArray(ArrayFloatNear(
-                  {
-                      0, -1.0, 2.0, -1,          //
-                      3.0, -0.875, 6.0, -0.125,  //
-                  },
-                  kQuantizedTolerance)));
+  constexpr float kTolerance = 1e-5;
+  for (int i = 0; i < output_count; i++) {
+    TF_LITE_MICRO_EXPECT_NEAR(expected_data[i], output_data[i], kTolerance);
+  }
+}
+
+template <typename T>
+void TestEluQuantized(const TestEluParams<T>& params,
+                      const int* input_dims_data, const float* input_data,
+                      const int* expected_dims, const float* expected_data,
+                      float* output_data) {
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(expected_dims);
+  const int output_count = ElementCount(*output_dims);
+
+  const float scale = ScaleFromMinMax<T>(params.data_min, params.data_max);
+  const int zero_point =
+      ZeroPointFromMinMax<T>(params.data_min, params.data_max);
+
+  TfLiteTensor tensors[] = {
+      CreateQuantizedTensor(input_data, params.input_data, input_dims, scale,
+                            zero_point),
+      CreateQuantizedTensor(params.output_data, output_dims, scale, zero_point),
+  };
+  constexpr int kTensorsCount = std::extent<decltype(tensors)>::value;
+
+  ExecuteEluTest(tensors, kTensorsCount);
+
+  Dequantize(params.output_data, output_count, scale, zero_point, output_data);
+  const float kTolerance = params.tolerance;
+  for (int i = 0; i < output_count; i++) {
+    TF_LITE_MICRO_EXPECT_NEAR(expected_data[i], output_data[i], kTolerance);
+  }
 }
 
 }  // namespace
+}  // namespace testing
 }  // namespace tflite
+
+TF_LITE_MICRO_TESTS_BEGIN
+
+TF_LITE_MICRO_TEST(FloatActivationsOpTestElu) {
+  constexpr int kDims[] = {4, 1, 2, 4, 1};
+  constexpr float kInput[] = {
+      0, -6, 2,  -4,    //
+      3, -2, 10, -0.1,  //
+  };
+  constexpr float kExpect[] = {
+      0.0, -0.997521, 2.0,  -0.981684,   //
+      3.0, -0.864665, 10.0, -0.0951626,  //
+  };
+  constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
+  float output_data[kOutputCount];
+
+  tflite::testing::TestElu(kDims, kInput, kDims, kExpect, output_data);
+}
+
+TF_LITE_MICRO_TEST(QuantizedActivationsOpTestEluInt8) {
+  constexpr int kDims[] = {4, 1, 2, 4, 1};
+  constexpr float kInput[] = {
+      0, -6, 2, -4,    //
+      3, -2, 6, -0.1,  //
+  };
+  constexpr float kExpect[] = {
+      0,   -1.0,   2.0, -1,      //
+      3.0, -0.875, 6.0, -0.125,  //
+  };
+  constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
+  float output_data[kOutputCount];
+
+  // setup quantization storage and parameters
+  int8_t q_output_data[kOutputCount];
+  int8_t q_input_data[kOutputCount];
+  constexpr float kMin = -1;
+  constexpr float kMax = 127.f / 128.f;
+  tflite::testing::TestEluParams<int8_t> params = {};
+  params.data_min = 8 * kMin;
+  params.data_max = 8 * kMax;
+  params.input_data = q_input_data;
+  params.output_data = q_output_data;
+  params.tolerance = tflite::testing::kQuantizedTolerance;
+
+  tflite::testing::TestEluQuantized(params, kDims, kInput, kDims, kExpect,
+                                    output_data);
+}
+
+TF_LITE_MICRO_TESTS_END

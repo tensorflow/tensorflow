@@ -198,10 +198,6 @@ void InferenceContext::ReserveGraphTensors(
 absl::Status InferenceContext::Compile(const GraphFloat32& graph,
                                        const GpuInfo& gpu_info,
                                        ModelHints hints) {
-  if (!IsBatchMatchesForAllValues(graph)) {
-    return absl::InvalidArgumentError(
-        "Only identical batch dimension is supported");
-  }
   std::map<ValueId, TensorDescriptor> tensor_descriptors;
   const auto values = graph.values();
   for (auto value : values) {

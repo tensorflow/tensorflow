@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/softmax.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/softmax1x1.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/space_to_depth.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/split.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/strided_slice.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/transpose.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/winograd.h"
@@ -132,6 +133,17 @@ void SelectSpaceToDepth(const SpaceToDepthAttributes& attr,
                         std::unique_ptr<GPUOperation>* ptr) {
   GPUOperation operation = CreateSpaceToDepth(op_def, attr);
   *ptr = absl::make_unique<GPUOperation>(std::move(operation));
+}
+
+absl::Status SelectSplit(const SplitAttributes& attr,
+                         const OperationDef& op_def,
+                         std::unique_ptr<GPUOperation>* ptr) {
+  if (attr.axis != Axis::CHANNELS) {
+    return absl::UnimplementedError("No split for this axis.");
+  }
+  Split operation = CreateSplit(op_def, attr);
+  *ptr = absl::make_unique<Split>(std::move(operation));
+  return absl::OkStatus();
 }
 
 void SelectPadding(const PadAttributes& attr, const OperationDef& op_def,

@@ -39,7 +39,7 @@ public final class GpuDelegateTest {
   private static final ByteBuffer MODEL_BUFFER = TestUtils.getTestFileAsBuffer(MODEL_PATH);
   private static final ByteBuffer MOBILENET_QUANTIZED_MODEL_BUFFER =
       TestUtils.getTestFileAsBuffer(
-          "third_party/tensorflow/lite/java/demo/app/src/main/assets/mobilenet_v1_1.0_224_quant.tflite");
+          "tensorflow/lite/java/demo/app/src/main/assets/mobilenet_v1_1.0_224_quant.tflite");
 
   @Test
   public void testBasic() throws Exception {

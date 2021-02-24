@@ -293,7 +293,6 @@ py_test(
         "no_windows",
     ],
     deps = [
-        ":lite_constants",
         ":util",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:array_ops",
@@ -360,6 +359,9 @@ py_library(
         "//tensorflow/lite/toco/python:toco_from_protos",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:platform",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
 )

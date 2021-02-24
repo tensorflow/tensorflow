@@ -29,7 +29,7 @@ namespace {
 
 TEST_F(OpenCLOperationTest, ConvolutionTransposed4x4SimpleWeights) {
   auto status = ConvolutionTransposed4x4SimpleWeightsTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 }  // namespace

@@ -176,7 +176,7 @@ class ClipTest(test.TestCase):
 
   def _testClipIndexedSlicesByValue(self, values, indices, shape,
                                     clip_value_min, clip_value_max, expected):
-    with self.session() as sess:
+    with self.session():
       values = constant_op.constant(values)
       indices = constant_op.constant(indices)
       shape = constant_op.constant(shape)

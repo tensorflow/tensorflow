@@ -15,6 +15,9 @@ cc_library(
     hdrs = [
         "micro_benchmark.h",
     ],
+    visibility = [
+        "//visibility:public",
+    ],
     deps = [
         "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",

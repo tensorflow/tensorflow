@@ -230,7 +230,7 @@ struct VulkanInfo {
   uint32_t api_version_minor = -1;
   uint32_t api_version_patch = -1;
 
-  uint32_t max_per_stage_descriptor_sampled_images = 0;
+  int max_per_stage_descriptor_sampled_images = 0;
   uint32_t max_compute_work_group_invocations;
   uint32_t max_image_dimension_2d;
   uint32_t max_image_array_layers;

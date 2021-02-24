@@ -366,7 +366,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           std::make_pair("deterministic", deterministic_ ? "true" : "false"));
       result.push_back(std::make_pair(
           "parallelism",
-          strings::Printf("%lld", static_cast<long long>(parallelism))));
+          parallelism == -1
+              ? kTraceInfoUnavailable
+              : strings::Printf("%lld", static_cast<long long>(parallelism))));
       return result;
     }
 
@@ -547,7 +549,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         return false;
       }
       if (!deterministic_) {
-        // Iterate through in-flight results and returns the first one that is
+        // Iterate through in-flight results and return the first one that is
         // found to be available and not end-of-input. If the first result (in
         // order) is end-of-input, we know that all earlier iterations have
         // already been completed, so it is safe to return that result for the

@@ -910,7 +910,7 @@ class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
         outputs_2norm = linalg_ops.norm(outputs)
         ratio = outputs_2norm / inputs_2norm
         my_ops = variables.global_variables_initializer()
-        with self.session() as sess:
+        with self.session():
           self.evaluate(my_ops)
           # Check the shape of the outputs
           t = self.evaluate(outputs)
@@ -1063,7 +1063,7 @@ class ConvolutionOrthogonal1dInitializerTest(test.TestCase):
       outputs_2norm = linalg_ops.norm(outputs)
       ratio = outputs_2norm / inputs_2norm
       my_ops = variables.global_variables_initializer()
-      with self.session() as sess:
+      with self.session():
         self.evaluate(my_ops)
         # Check the shape of the outputs
         t = self.evaluate(outputs)
@@ -1167,7 +1167,7 @@ class ConvolutionOrthogonal2dInitializerTest(test.TestCase):
       outputs_2norm = linalg_ops.norm(outputs)
       ratio = outputs_2norm / inputs_2norm
       my_ops = variables.global_variables_initializer()
-      with self.session() as sess:
+      with self.session():
         self.evaluate(my_ops)
         # Check the shape of the outputs
         t = self.evaluate(outputs)
@@ -1302,7 +1302,7 @@ class ConvolutionOrthogonal3dInitializerTest(test.TestCase):
       outputs_2norm = linalg_ops.norm(outputs)
       ratio = outputs_2norm / inputs_2norm
       my_ops = variables.global_variables_initializer()
-      with self.cached_session() as sess:
+      with self.cached_session():
         self.evaluate(my_ops)
         # Check the shape of the outputs
         t = self.evaluate(outputs)

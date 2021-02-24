@@ -17,9 +17,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(SquaredDifference, f16, Eigen::half);
-GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(SquaredDifference, f32, float);
-GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(SquaredDifference, f64, double);
-GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(SquaredDifference, i64, int64);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(SquaredDifference, DT_HALF);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(SquaredDifference, DT_FLOAT);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(SquaredDifference, DT_DOUBLE);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(SquaredDifference, DT_INT64);
 
 }  // namespace tensorflow

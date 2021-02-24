@@ -7,6 +7,8 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+# TODO(b/173059387): Hash table custom ops will be kept for legacy reasons until
+#                    every user will be migrated to builtin ops.
 cc_library(
     name = "hashtable_op_kernels",
     srcs = [
