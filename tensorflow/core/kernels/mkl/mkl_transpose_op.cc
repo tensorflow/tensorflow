@@ -133,27 +133,6 @@ Status MklConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
                                                const Tensor& in,
                                                gtl::ArraySlice<int32> perm,
                                                Tensor* out) {
-#if !defined(INTEL_MKL)
-  if (in.dims() == 2 && perm[0] == 1 && perm[1] == 0) {
-    // TODO(rmlarsen): By setting lda and ldb, we could use the MKL kernels
-    // for any transpose that can be reduced to swapping the last two
-    // dimensions in a rank-3 tensor. We can even run each outer dimension in
-    // a separate thread.
-    switch (in.dtype()) {
-      case DT_FLOAT:
-        return MKLTranspose2D<float>(kMKLTranspose, in, out);
-      case DT_DOUBLE:
-        return MKLTranspose2D<double>(kMKLTranspose, in, out);
-      case DT_COMPLEX64:
-        return MKLTranspose2D<complex64>(kMKLConjugateTranspose, in, out);
-      case DT_COMPLEX128:
-        return MKLTranspose2D<complex128>(kMKLConjugateTranspose, in, out);
-      default:
-        break;
-    }
-  }
-#endif
-
   // MKL-DNN has limit on the maximum number of dimensions in a tensor.
   // Fallback to Eigen for not supported cases.
   if (in.dims() <= MKLDNN_MAX_NDIMS) {
