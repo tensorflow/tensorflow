@@ -252,7 +252,8 @@ TF_LITE_MICRO_TEST(InputOutputDifferentTypeIsError) {
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteError, tflite::testing::InvokeTransposeConv(
                         tensors, tensors_size, output_dims_count,
-                        &tflite::testing::common_conv_params, output_data));
+                        &tflite::testing::common_conv_params,
+                        output_data));
 }
 
 TF_LITE_MICRO_TEST(HybridModeIsError) {
