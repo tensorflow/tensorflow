@@ -262,31 +262,25 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   const RuntimeShape& input_shape = GetTensorShape(input);
   const RuntimeShape& filter_shape = GetTensorShape(filter);
+  const RuntimeShape& output_shape = GetTensorShape(output);
+  const int input_height = input_shape.Dims(1);
   const int input_depth = MatchingDim(input_shape, 3, filter_shape, 3);
-  const int filter_height = filter->dims->data[1];
-  const int filter_width = filter->dims->data[2];
-  const int input_height = input->dims->data[1];
-  const int output_height = output->dims->data[1];
+  const int filter_height = filter_shape.Dims(1);
+  const int filter_width = filter_shape.Dims(2);
+  const int output_height = output_shape.Dims(1);
+  const int output_channels = output_shape.Dims(3);
   const int stride_height = params->stride_height;
   const int pad_height = data->reference_op_data.padding.height;
 
-  int input_precision;
-  if (input->type == kTfLiteInt8) {
-    input_precision = PREC_ASYM8S;
-  } else if (input->type == kTfLiteUInt8) {
-    input_precision = PREC_ASYM8;
-  } else {
-    input_precision = PREC_F32;
-  }
+  TF_LITE_ENSURE_EQ(context, input->type, kTfLiteInt8);
 
-  int output_channels = output->dims->data[3];
   int required_scratch = 0;
   // Dilation is currently not supported on HiFi 4 NN Library
   if ((params->dilation_width_factor == 1) &&
       (params->dilation_height_factor == 1)) {
     required_scratch = xa_nn_conv2d_std_getsize(
         input_height, input_depth, filter_height, filter_width, stride_height,
-        pad_height, output_height, output_channels, input_precision);
+        pad_height, output_height, output_channels, PREC_ASYM8S);
     TF_LITE_ENSURE(context, required_scratch > 0);
   }
   TF_LITE_ENSURE_OK(
@@ -319,18 +313,6 @@ TfLiteStatus EvalQuantizedPerChannel(
       (params.dilation_height_factor == 1)) {
     const int32_t input_offset = -data.reference_op_data.input_zero_point;
     const int32_t output_offset = data.reference_op_data.output_zero_point;
-    const int8_t *input_data, *filter_data;
-    const int32_t* bias_data;
-    int8_t* output_data;
-    const RuntimeShape& input_shape = tflite::micro::GetTensorShape(input);
-    const RuntimeShape& filter_shape = tflite::micro::GetTensorShape(filter);
-    const RuntimeShape& output_shape = tflite::micro::GetTensorShape(output);
-
-    input_data = tflite::micro::GetTensorData<int8_t>(input);
-    filter_data = tflite::micro::GetTensorData<int8_t>(filter);
-    bias_data = tflite::micro::GetTensorData<int32_t>(bias);
-    output_data = tflite::micro::GetTensorData<int8_t>(output);
-
     const int stride_width = params.stride_width;
     const int stride_height = params.stride_height;
     const int pad_width = data.reference_op_data.padding.width;
@@ -340,10 +322,12 @@ TfLiteStatus EvalQuantizedPerChannel(
     const int32_t output_activation_max =
         data.reference_op_data.output_activation_max;
 
+    const RuntimeShape& input_shape = tflite::micro::GetTensorShape(input);
+    const RuntimeShape& filter_shape = tflite::micro::GetTensorShape(filter);
+    const RuntimeShape& output_shape = tflite::micro::GetTensorShape(output);
     const int batches = MatchingDim(input_shape, 0, output_shape, 0);
     const int input_depth = MatchingDim(input_shape, 3, filter_shape, 3);
     const int output_depth = MatchingDim(filter_shape, 0, output_shape, 3);
-
     const int input_height = input_shape.Dims(1);
     const int input_width = input_shape.Dims(2);
     const int filter_height = filter_shape.Dims(1);
@@ -351,9 +335,12 @@ TfLiteStatus EvalQuantizedPerChannel(
     const int output_height = output_shape.Dims(1);
     const int output_width = output_shape.Dims(2);
 
+    const int8_t* input_data = tflite::micro::GetTensorData<int8_t>(input);
+    const int8_t* filter_data = tflite::micro::GetTensorData<int8_t>(filter);
+    const int32_t* bias_data = tflite::micro::GetTensorData<int32_t>(bias);
+    int8_t* output_data = tflite::micro::GetTensorData<int8_t>(output);
+
     int output_data_format = 0;
-    void* p_scratch;
-    int8_t* p_filter;
     int out_length = output_height * output_width * output_depth;
 
     if (filter_height == 1 && filter_width == 1) {
@@ -382,10 +369,8 @@ TfLiteStatus EvalQuantizedPerChannel(
                           0);
       }
     } else {
-      p_scratch = static_cast<void*>(
+      void* p_scratch = static_cast<void*>(
           context->GetScratchBuffer(context, data.scratch_tensor_index));
-
-      p_filter = const_cast<int8_t*>(filter_data);
 
       for (int batch = 0; batch < batches; ++batch) {
         int8_t* p_out_temp;
@@ -397,7 +382,7 @@ TfLiteStatus EvalQuantizedPerChannel(
               xa_nn_conv2d_std_per_chan_sym8sxasym8s(
                   p_out_temp,
                   &input_data[batch * input_height * input_width * input_depth],
-                  p_filter,  // filter_data,
+                  const_cast<int8_t*>(filter_data),  // filter_data,
                   bias_data, input_height, input_width, input_depth,
                   filter_height, filter_width, output_depth, stride_width,
                   stride_height, pad_width, pad_height, output_height,
