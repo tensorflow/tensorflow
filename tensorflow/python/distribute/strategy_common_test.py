@@ -295,9 +295,6 @@ class ReplicaCtxAllReduceTest(test.TestCase, parameterized.TestCase):
         ops.convert_to_tensor(got), ops.convert_to_tensor(expect))
 
   def testNestedInput(self, strategy, tf_function):
-    # TODO(b/122840926): enable this test once cl/356664949 is submitted.
-    self.skipTest('Enable after cl/353109164 is submitted.')
-
     if tf_function is combinations.no_tf_function:
       self.skipTest('Skip IndexedSlices + eager combination.')
 
@@ -334,7 +331,8 @@ class ReplicaCtxAllReduceTest(test.TestCase, parameterized.TestCase):
                       [[2.0 * strategy.num_replicas_in_sync]]),
                   indices=array_ops.identity([1]),
                   dense_shape=array_ops.identity([5, 1])))
-    self.assertAllEqual(
+
+    self.assertAllClose(
         nest.map_structure(ops.convert_to_tensor, got),
         nest.map_structure(ops.convert_to_tensor, expect))
 
