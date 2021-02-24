@@ -69,7 +69,7 @@ def _tf_http_archive_impl(ctx):
         ctx.delete(path)
         ctx.symlink(label, path)
 
-tf_http_archive = repository_rule(
+_tf_http_archive = repository_rule(
     implementation = _tf_http_archive_impl,
     attrs = {
         "sha256": attr.string(mandatory = True),
@@ -83,17 +83,31 @@ tf_http_archive = repository_rule(
         "system_link_files": attr.string_dict(),
     },
     environ = ["TF_SYSTEM_LIBS"],
-    doc = """Downloads and creates Bazel repos for dependencies.
-
-This is a swappable replacement for both http_archive() and
-new_http_archive() that offers some additional features. It also helps
-ensure best practices are followed.
-
-File arguments are relative to the TensorFlow repository by default. Dependent
-repositories that use this rule should refer to files either with absolute
-labels (e.g. '@foo//:bar') or from a label created in their repository (e.g.
-'str(Label("//:bar"))').""",
 )
+
+def tf_http_archive(name, sha256, urls, **kwargs):
+    """Downloads and creates Bazel repos for dependencies.
+
+    This is a swappable replacement for both http_archive() and
+    new_http_archive() that offers some additional features. It also helps
+    ensure best practices are followed.
+
+    File arguments are relative to the TensorFlow repository by default. Dependent
+    repositories that use this rule should refer to files either with absolute
+    labels (e.g. '@foo//:bar') or from a label created in their repository (e.g.
+    'str(Label("//:bar"))').
+    """
+    if native.existing_rule(name):
+        print("\n\033[1;33mWarning:\033[0m skipping import of repository '" +
+              name + "' because it already exists.\n")
+        return
+
+    _tf_http_archive(
+        name = name,
+        sha256 = sha256,
+        urls = urls,
+        **kwargs
+    )
 
 # Introduced for go/tfbr-thirdparty, now alias of tf_http_archive.
 # TODO(csigg): Update call sites and remove.
