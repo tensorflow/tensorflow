@@ -311,8 +311,8 @@ Status ConvertMLIRToTFLiteFlatBuffer(
                        mlir::OpPassManager::Nesting::Implicit);
   ::tensorflow::SetCrashReproducer(pm);
 
-  tensorflow::AddTFToTFLConversionPasses(model_flags, pass_config, &pm,
-                                         session);
+  tensorflow::AddTFToTFLConversionPasses(model_flags, toco_flags, pass_config,
+                                         &pm, session);
   // Convert back to outlined while format for export back to flatbuffer.
   if (pass_config.legalize_tf_while) {
     pm.addPass(mlir::TFL::CreateWhileOutlinePass());
