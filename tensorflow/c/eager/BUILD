@@ -3,7 +3,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_libtpu",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_cc_test",
