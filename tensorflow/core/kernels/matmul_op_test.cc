@@ -533,17 +533,21 @@ static Graph* BatchMatmulWithBroadcast(int b0, int b1, int m, int k, int n,
   return g;
 }
 
+// NOLINTBEGIN
+// Function names are already longer than 80 chars.
 #define BM_BatchMatmulDev(B, M, K, N, TA, TB, T, TFTYPE, DEVICE)                  \
   static void                                                                     \
       BM_BatchMatmul##_##B##_##M##_##K##_##N##_##TA##_##TB##_##TFTYPE##_##DEVICE( \
-          int iters) {                                                            \
-    testing::UseRealTime();                                                       \
-    testing::ItemsProcessed(static_cast<int64>(iters) * B * M * K * N * 2);       \
-    test::Benchmark(#DEVICE, BatchMatmul<T>(B, M, K, N, TA, TB, TFTYPE))          \
-        .Run(iters);                                                              \
+          ::testing::benchmark::State& state) {                                   \
+    test::Benchmark(#DEVICE, BatchMatmul<T>(B, M, K, N, TA, TB, TFTYPE),          \
+                    /*old_benchmark_api*/ false)                                  \
+        .Run(state);                                                              \
+    state.SetItemsProcessed(state.iterations() * B * M * K * N * 2);              \
   }                                                                               \
   BENCHMARK(                                                                      \
-      BM_BatchMatmul##_##B##_##M##_##K##_##N##_##TA##_##TB##_##TFTYPE##_##DEVICE);
+      BM_BatchMatmul##_##B##_##M##_##K##_##N##_##TA##_##TB##_##TFTYPE##_##DEVICE) \
+      ->UseRealTime();
+// NOLINTEND
 
 #define BM_BatchMatmul(B, M, K, N, TA, TB) \
   BM_BatchMatmulDev(B, M, K, N, TA, TB, float, DT_FLOAT, cpu);
@@ -572,15 +576,16 @@ static Graph* BatchMatmulWithBroadcast(int b0, int b1, int m, int k, int n,
 #define BM_BatchMatmulBCastDev(B1, B2, M, K, N, MB, T, TT, D)                  \
   static void                                                                  \
       BM_BatchMatmulBCast##_##B1##_##B2##_##M##_##K##_##N##_##MB##_##TT##_##D( \
-          int iters) {                                                         \
-    testing::UseRealTime();                                                    \
-    testing::ItemsProcessed(static_cast<int64>(iters) * std::max(B1, B2) * M * \
-                            K * N * 2);                                        \
-    test::Benchmark(#D, BatchMatmulWithBroadcast<T>(B1, B2, M, K, N, MB, TT))  \
-        .Run(iters);                                                           \
+          ::testing::benchmark::State& state) {                                \
+    test::Benchmark(#D, BatchMatmulWithBroadcast<T>(B1, B2, M, K, N, MB, TT),  \
+                    /*old_benchmark_api*/ false)                               \
+        .Run(state);                                                           \
+    state.SetItemsProcessed(state.iterations() * std::max(B1, B2) * M * K *    \
+                            N * 2);                                            \
   }                                                                            \
   BENCHMARK(                                                                   \
-      BM_BatchMatmulBCast##_##B1##_##B2##_##M##_##K##_##N##_##MB##_##TT##_##D);
+      BM_BatchMatmulBCast##_##B1##_##B2##_##M##_##K##_##N##_##MB##_##TT##_##D) \
+      ->UseRealTime();
 
 #define BM_BatchMatmulBCast(B1, B2, M, K, N, MB) \
   BM_BatchMatmulBCastDev(B1, B2, M, K, N, MB, float, DT_FLOAT, cpu);
