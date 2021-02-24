@@ -6546,10 +6546,16 @@ def configure_and_create_distributed_session(distribution_strategy):
     _create_session(distribution_strategy)
 
 
+def _is_tpu_strategy_class(clz):
+  is_tpu_strat = lambda k: k.__name__.startswith('TPUStrategy')
+  if is_tpu_strat(clz):
+    return True
+  return py_any(map(_is_tpu_strategy_class, clz.__bases__))
+
+
 def is_tpu_strategy(strategy):
-  """We're executing TPU Strategy."""
-  return (strategy is not None and
-          strategy.__class__.__name__.startswith('TPUStrategy'))
+  """Returns whether input is a TPUStrategy instance or subclass instance."""
+  return _is_tpu_strategy_class(strategy.__class__)
 
 
 def cast_variables_to_tensor(tensors):

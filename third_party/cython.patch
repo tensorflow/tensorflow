@@ -1,0 +1,4 @@
+diff --git a/BUILD.bazel b/BUILD.bazel.orig
+similarity index 100%
+rename from BUILD.bazel
+rename to BUILD.bazel.orig

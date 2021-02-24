@@ -262,11 +262,58 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     }
     case OperationType::CONCAT: {
       auto attr = absl::any_cast<ConcatAttributes>(node.operation.attributes);
-      std::vector<int> channels(inputs.size());
-      for (int i = 0; i < inputs.size(); ++i) {
-        channels[i] = inputs[i]->tensor.shape.c;
+      const int max_inputs = gpu_info.GetMaxImageArguments() - 8;
+      if (inputs.size() >= max_inputs) {
+        int groups = DivideRoundUp(inputs.size(), max_inputs);
+        gpu_subgraph->operations.clear();
+        gpu_subgraph->operations.resize(groups);
+        BHWC concatenated_shape = inputs[0]->tensor.shape;
+        concatenated_shape.set(attr.axis, 0);
+        for (int g = 0; g < groups; ++g) {
+          std::vector<int> channels;
+          auto& concat_op = gpu_subgraph->operations[g];
+          OperationDef new_def;
+          new_def.precision = op_def.precision;
+          if (g != 0) {
+            // concatenated tensor from previos concats
+            new_def.src_tensors.push_back(op_def.dst_tensors[0]);
+            concat_op.input_ids = {-g};
+            channels.push_back(concatenated_shape.c);
+          }
+          for (int i = 0; i < max_inputs; ++i) {
+            int src_index = g * max_inputs + i;
+            if (src_index >= op_def.src_tensors.size()) {
+              break;
+            }
+            new_def.src_tensors.push_back(op_def.src_tensors[src_index]);
+            concat_op.input_ids.push_back(inputs[src_index]->id);
+            channels.push_back(inputs[src_index]->tensor.shape.c);
+            int current_size = concatenated_shape.get(attr.axis);
+            concatenated_shape.set(
+                attr.axis,
+                current_size + inputs[src_index]->tensor.shape.get(attr.axis));
+          }
+          new_def.dst_tensors.push_back(op_def.dst_tensors[0]);
+          if (g == groups - 1) {
+            // last concat
+            concat_op.output_ids = {static_cast<int>(outputs[0]->id)};
+          } else {
+            // intermediate concat, create new tensor for it
+            concat_op.output_ids = {-(g + 1)};
+            gpu_subgraph->new_tensors.push_back(
+                {concatenated_shape, op_def.dst_tensors[0]});
+          }
+          RETURN_IF_ERROR(SelectConcat(attr, channels, new_def, gpu_info,
+                                       &concat_op.operation));
+        }
+        return absl::OkStatus();
+      } else {
+        std::vector<int> channels(inputs.size());
+        for (int i = 0; i < inputs.size(); ++i) {
+          channels[i] = inputs[i]->tensor.shape.c;
+        }
+        return SelectConcat(attr, channels, op_def, gpu_info, gpu_op);
       }
-      return SelectConcat(attr, channels, op_def, gpu_info, gpu_op);
     }
     case OperationType::CONVOLUTION_2D: {
       auto attr =

@@ -318,10 +318,13 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       }
       result.push_back(std::make_pair(
           "buffer_limit",
-          strings::Printf("%lld", static_cast<long long>(limit))));
+          limit == -1
+              ? kTraceInfoUnavailable
+              : strings::Printf("%lld", static_cast<long long>(limit))));
       result.push_back(std::make_pair(
           "buffer_size",
-          strings::Printf("%lld", static_cast<long long>(size))));
+          size == -1 ? kTraceInfoUnavailable
+                     : strings::Printf("%lld", static_cast<long long>(size))));
       result.push_back(std::make_pair(
           "autotune",
           dataset()->buffer_size_ == model::kAutotune ? "true" : "false"));

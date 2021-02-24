@@ -105,7 +105,7 @@ def TestInferShapedTypeMethodsPass : Pass<"mhlo-test-infer-shaped-type-methods",
 }
 
 
-def TransformUnrankedHloPass : Pass<"transform-unranked-hlo", "FuncOp"> {
+def TransformUnrankedHloPass : Pass<"mhlo-transform-unranked-hlo", "FuncOp"> {
   let summary = "Realize element-wise operations on ranked tensors where possible.";
   let constructor = "createTransformUnrankedHloPass()";
 }
