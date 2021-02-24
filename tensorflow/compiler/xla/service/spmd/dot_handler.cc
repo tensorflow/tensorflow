@@ -324,18 +324,6 @@ ConvolutionDimensionNumbers GenNewConvDNums(
   return new_dnums;
 }
 
-int64 FirstShardingDimWithPartitionOfSize(int64 num_partitions,
-                                          const HloSharding& sharding) {
-  int64 sharding_dim = -1;
-  for (int64 i = 0; i < sharding.tile_assignment().num_dimensions(); ++i) {
-    if (sharding.tile_assignment().dim(i) == num_partitions) {
-      sharding_dim = i;
-      break;
-    }
-  }
-  return sharding_dim;
-}
-
 DotDimensionIndexMapping ComputeDimensionIndexMapping(
     const DotConvDimsMapping& dims_mapping, int64 lhs_rank, int64 rhs_rank,
     int64 output_rank) {
@@ -386,8 +374,8 @@ absl::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
     int64 rhs_contracting_partitions, int64 rhs_non_contracting_partitions,
     int64 rhs_batch_partitions, int64 lhs_contracting_partitions,
     int64 lhs_non_contracting_partitions, int64 lhs_batch_partitions,
-    int64 output_sharding_dim, int64 rhs_shape_size, int64 lhs_shape_size,
-    int64 output_shape_size, int64 einsum_threshold_mib,
+    int64 rhs_shape_size, int64 lhs_shape_size, int64 output_shape_size,
+    int64 einsum_threshold_mib,
     const absl::optional<HloSharding>& output_sharding_transposed_to_match_lhs,
     const absl::optional<HloSharding>& output_sharding_transposed_to_match_rhs,
     const HloSharding& lhs_sharding, const HloSharding& rhs_sharding) {
@@ -443,7 +431,8 @@ absl::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
   }
   if (lhs_contracting_partitions == rhs_contracting_partitions &&
       lhs_contracting_partitions == num_partitions &&
-      output_sharding_dim > -1 &&
+      (output_lhs_non_contracting_partitions == num_partitions ||
+       output_rhs_non_contracting_partitions == num_partitions) &&
       output_shape_size >= einsum_threshold_mib * 1024 * 1024) {
     if (output_lhs_non_contracting_partitions == num_partitions) {
       return WindowedEinsumConfig{
@@ -582,8 +571,6 @@ StatusOr<HloInstruction*> PartitionBaseCase(
     }
   }
 
-  const int64 output_sharding_dim =
-      FirstShardingDimWithPartitionOfSize(num_partitions, output_sharding);
   // Try to emit windowed DotGeneral when one operand is partitioned in the same
   // way as the output along non-contracting dimensions, but the other operand
   // is tiled in other dimensions. Or both operands are partitioned in the same
@@ -1470,8 +1457,7 @@ StatusOr<HloInstruction*> PartitionBaseCase(
           output_rhs_non_contracting_partitions, rhs_contracting_partitions,
           rhs_non_contracting_partitions, rhs_batch_partitions,
           lhs_contracting_partitions, lhs_non_contracting_partitions,
-          lhs_batch_partitions, output_sharding_dim,
-          ShapeSizeInBytes(rhs.base_shape()),
+          lhs_batch_partitions, ShapeSizeInBytes(rhs.base_shape()),
           ShapeSizeInBytes(lhs.base_shape()),
           ShapeSizeInBytes(output_base_shape),
           options.threshold_for_windowed_einsum_mib,
@@ -2392,15 +2378,12 @@ bool LhsIsBestMatchForNonContractingPartitioning(
               other_to_output_indices);
       const int64 new_num_partitions =
           num_partitions / matching_non_contracting_partitions;
-      const int64 output_sharding_dim = FirstShardingDimWithPartitionOfSize(
-          new_num_partitions, output_grouped.sharding);
       absl::optional<WindowedEinsumConfig> e_config =
           GetWindowedEinsumConfiguration(
               new_num_partitions, output_matching_non_contracting_partitions,
               output_other_non_contracting_partitions, 1,
               other_non_contracting_partitions, other_batch_partitions,
               matching_contracting_partitions, 1, matching_batch_partitions,
-              output_sharding_dim,
               ShapeSizeInBytes(other_partitioned.base_shape()),
               ShapeSizeInBytes(matching_partitioned.base_shape()) /
                   matching_non_contracting_partitions,
