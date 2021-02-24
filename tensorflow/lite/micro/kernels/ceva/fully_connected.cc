@@ -102,7 +102,8 @@ TfLiteStatus EvalQuantizedInt8CEVA(TfLiteContext* context, TfLiteNode* node,
 
 #ifdef MCPS_MEASUREMENT
   int batches = output_shape_dims_data[0];
-  int output_depth = weights_shape_dims_data[weights_shape_dimensions_count - 2];
+  int output_depth =
+      weights_shape_dims_data[weights_shape_dimensions_count - 2];
   int accum_depth = weights_shape_dims_data[weights_shape_dimensions_count - 1];
   MCPS_START_ONE;
 #endif
@@ -111,19 +112,15 @@ TfLiteStatus EvalQuantizedInt8CEVA(TfLiteContext* context, TfLiteNode* node,
 
   if (sizeof_scratch_required > CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL) {
     TF_LITE_KERNEL_LOG(context, "Scratch size (%d) less that required (%d)",
-                       CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL, sizeof_scratch_required);
+                       CEVA_TFLM_KERNELS_SCRATCH_SIZE_VAL,
+                       sizeof_scratch_required);
     return kTfLiteError;
   }
 
   CEVA_TFLM_FullyConnected_int8(
-      params,
-      input_shape_dimensions_count,  
-      inputp,
-      weights_shape_dimensions_count,  
-      weights_shape_dims_data, filterp,
-      bias_shape_dimensions_count,  
-      biasp,
-      output_shape_dimensions_count,  
+      params, input_shape_dimensions_count, inputp,
+      weights_shape_dimensions_count, weights_shape_dims_data, filterp,
+      bias_shape_dimensions_count, biasp, output_shape_dimensions_count,
       output_shape_dims_data, outputp, CEVA_TFLM_KERNELS_SCRATCH);
 #ifdef MCPS_MEASUREMENT
   MCPS_STOP_ONE(
@@ -140,13 +137,13 @@ TfLiteStatus EvalFloatCEVA(TfLiteContext* context, TfLiteNode* node,
                            const TfLiteEvalTensor* filter,
                            const TfLiteEvalTensor* bias,
                            TfLiteEvalTensor* output) {
-  //float output_activation_min, output_activation_max;
+  // float output_activation_min, output_activation_max;
   tflite::FullyConnectedParams op_params;
   CalculateActivationRange(activation, &op_params.float_activation_min,
                            &op_params.float_activation_max);
-  
-  //op_params.float_activation_min = output_activation_min;
-  //op_params.float_activation_max = output_activation_max;
+
+  // op_params.float_activation_min = output_activation_min;
+  // op_params.float_activation_max = output_activation_max;
 
   int input_shape_dimensions_count =
       tflite::micro::GetTensorShape(input).DimensionsCount();
@@ -176,7 +173,8 @@ TfLiteStatus EvalFloatCEVA(TfLiteContext* context, TfLiteNode* node,
   for (i = 0; i < (output_shape_dimensions_count - 1); i++)
     batches *= output_shape_dims_data[i];
 
-  int output_depth = weights_shape_dims_data[weights_shape_dimensions_count - 2];
+  int output_depth =
+      weights_shape_dims_data[weights_shape_dimensions_count - 2];
   int accum_depth = weights_shape_dims_data[weights_shape_dimensions_count - 1];
   MCPS_START_ONE;
 #endif
