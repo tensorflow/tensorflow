@@ -477,13 +477,13 @@ class TF_DerivedOperandTypeListAttr<int idx> : DerivedAttr<
   "return {mlir::OperandElementTypeIterator(values.begin()), "
           "mlir::OperandElementTypeIterator(values.end())};",
   [{
-    ArrayAttr::get(
+    ArrayAttr::get($_ctx, 
     [&]() {
       llvm::SmallVector<Attribute, 4> ret;
       for (auto t : $_self)
         ret.push_back(TypeAttr::get(t));
       return ret;
-    }(), $_ctx)
+    }())
   }]
 >;
 
@@ -497,13 +497,13 @@ class TF_DerivedOperandShapeListAttr<int idx> : DerivedAttr<
   "return {mlir::TF::OperandShapeIterator(values.begin()), "
           "mlir::TF::OperandShapeIterator(values.end())};",
   [{
-    ArrayAttr::get(
+    ArrayAttr::get($_ctx,
       [&](){
         llvm::SmallVector<Attribute, 4> ret;
         for (auto shape : $_self)
           ret.push_back(mlir::TF::ShapeAttr::get($_ctx, shape));
         return ret;
-      }(), $_ctx)
+      }())
   }]
 >;
 
@@ -533,13 +533,13 @@ class TF_DerivedResultTypeListAttr<int idx> : DerivedAttr<
   "return {mlir::ResultElementTypeIterator(values.begin()), "
           "mlir::ResultElementTypeIterator(values.end())};",
   [{
-    ArrayAttr::get(
+    ArrayAttr::get($_ctx, 
     [&]() {
       llvm::SmallVector<Attribute, 4> ret;
       for (auto t : $_self)
         ret.push_back(TypeAttr::get(t));
       return ret;
-    }(), $_ctx)
+    }())
   }]
 >;
 
@@ -553,13 +553,13 @@ class TF_DerivedResultShapeListAttr<int idx> : DerivedAttr<
   "return {mlir::TF::ResultShapeIterator(values.begin()), "
           "mlir::TF::ResultShapeIterator(values.end())};",
   [{
-    ArrayAttr::get(
+    ArrayAttr::get($_ctx,
       [&](){
         llvm::SmallVector<Attribute, 4> ret;
         for (auto shape : $_self)
           ret.push_back(mlir::TF::ShapeAttr::get($_ctx, shape));
         return ret;
-      }(), $_ctx)
+      }())
   }]
 >;
 

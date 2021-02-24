@@ -754,12 +754,12 @@ TfLiteStatus PrepareParseExample(TfLiteContext* context, TfLiteNode* node) {
   const auto* serialized = GetInput(context, node, 0);
   const int batch_size =
       serialized->dims->size > 0 ? serialized->dims->data[0] : 1;
-
+  const bool missing_shape_info = data->dense_shapes.empty();
   for (int i = 0; i < data->dense_size; i++) {
     TfLiteTensor* dense_key_tensor =
         GetOutput(context, node, data->sparse_size * 3 + i);
     TfLiteIntArray* output_size = TfLiteIntArrayCopy(dense_key_tensor->dims);
-    if (data->dense_size > 0 && data->dense_shapes.empty()) {
+    if (missing_shape_info) {
       RuntimeShape runtime_shape = GetTensorShape(dense_key_tensor);
       data->dense_shapes.push_back(TfLiteToTfShape(output_size));
     }

@@ -386,7 +386,7 @@ void DenseToSparse::runOnFunction() {
       } else if (auto cst = dyn_cast<QConstOp>(inst)) {
         auto attr = cst.value();
         auto type = cst.getType().cast<ShapedType>();
-        std::vector<int8_t> dense_data(type.getNumElements());
+        std::vector<int8_t> dense_data;
         dense_data.reserve(type.getNumElements());
         for (const auto& val : attr.getValues<int8_t>())
           dense_data.push_back(val);

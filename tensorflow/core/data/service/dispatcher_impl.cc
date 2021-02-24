@@ -202,33 +202,44 @@ Status DataServiceDispatcherImpl::RestoreSplitProvider(
   return Status::OK();
 }
 
-Status DataServiceDispatcherImpl::WorkerHeartbeat(
-    const WorkerHeartbeatRequest* request, WorkerHeartbeatResponse* response) {
-  TF_RETURN_IF_ERROR(CheckStarted());
-  VLOG(3) << "Received worker heartbeat request from worker "
-          << request->worker_address();
-  mutex_lock l(mu_);
-  const std::string& worker_address = request->worker_address();
-  std::vector<std::shared_ptr<const Task>> correct_tasks;
-  Status s = state_.TasksForWorker(worker_address, correct_tasks);
-  if (!s.ok()) {
-    if (!errors::IsNotFound(s)) {
-      return s;
-    }
-    Update update;
-    update.mutable_register_worker()->set_worker_address(worker_address);
-    TF_RETURN_IF_ERROR(Apply(update));
-    TF_RETURN_IF_ERROR(CreateTasksForWorker(worker_address));
-    TF_RETURN_IF_ERROR(state_.TasksForWorker(worker_address, correct_tasks));
+Status DataServiceDispatcherImpl::FindTasksToDelete(
+    const absl::flat_hash_set<int64>& current_tasks,
+    const std::vector<std::shared_ptr<const Task>> assigned_tasks,
+    WorkerHeartbeatResponse* response) {
+  absl::flat_hash_set<int64> assigned_ids;
+  for (const auto& assigned : assigned_tasks) {
+    assigned_ids.insert(assigned->task_id);
   }
+  for (int64 current_task : current_tasks) {
+    if (!assigned_ids.contains(current_task)) {
+      response->add_tasks_to_delete(current_task);
+    }
+  }
+  return Status::OK();
+}
 
-  absl::flat_hash_set<int64> current_tasks;
-  current_tasks.insert(request->current_tasks().cbegin(),
-                       request->current_tasks().cend());
-  absl::flat_hash_set<int64> correct_tasks_set;
-
-  for (const auto& task : correct_tasks) {
-    correct_tasks_set.insert(task->task_id);
+Status DataServiceDispatcherImpl::FindNewTasks(
+    const std::string& worker_address,
+    const absl::flat_hash_set<int64>& current_tasks,
+    std::vector<std::shared_ptr<const Task>>& assigned_tasks,
+    WorkerHeartbeatResponse* response) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  // Check for round-robin jobs that had tasks on the worker removed. Now that
+  // the worker is back, we create a new pending task for the worker.
+  absl::flat_hash_set<int64> assigned_job_ids;
+  for (const auto& task : assigned_tasks) {
+    assigned_job_ids.insert(task->job->job_id);
+  }
+  for (const auto& job : state_.ListJobs()) {
+    if (!assigned_job_ids.contains(job->job_id) && job->IsRoundRobin() &&
+        !job->finished) {
+      VLOG(1) << "Creating pending task for reconnected worker "
+              << worker_address;
+      TF_RETURN_IF_ERROR(CreatePendingTask(job, worker_address));
+    }
+  }
+  // Refresh assigned_tasks to include newly added pending tasks.
+  TF_RETURN_IF_ERROR(state_.TasksForWorker(worker_address, assigned_tasks));
+  for (const auto& task : assigned_tasks) {
     if (current_tasks.contains(task->task_id)) {
       continue;
     }
@@ -249,19 +260,48 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
     task_def->set_dataset_id(task->job->dataset_id);
     task_def->set_job_id(task->job->job_id);
     task_def->set_task_id(task->task_id);
+    task_def->set_worker_address(task->worker_address);
     task_def->set_processing_mode(
         ProcessingModeDef(task->job->processing_mode));
     if (task->job->num_consumers.has_value()) {
       task_def->set_num_consumers(task->job->num_consumers.value());
     }
   }
-  for (int64 current_task : current_tasks) {
-    if (!correct_tasks_set.contains(current_task)) {
-      response->add_tasks_to_delete(current_task);
-    }
-  }
+  return Status::OK();
+}
 
-  VLOG(1) << "Finished worker heartbeat for worker at address "
+Status DataServiceDispatcherImpl::WorkerHeartbeat(
+    const WorkerHeartbeatRequest* request, WorkerHeartbeatResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
+  VLOG(4) << "Received worker heartbeat request from worker "
+          << request->worker_address();
+  mutex_lock l(mu_);
+  const std::string& worker_address = request->worker_address();
+  // Assigned tasks from the perspective of the dispatcher.
+  std::vector<std::shared_ptr<const Task>> assigned_tasks;
+  Status s = state_.TasksForWorker(worker_address, assigned_tasks);
+  if (!s.ok()) {
+    if (!errors::IsNotFound(s)) {
+      return s;
+    }
+    VLOG(1) << "Registering new worker at address " << worker_address;
+    Update update;
+    update.mutable_register_worker()->set_worker_address(worker_address);
+    update.mutable_register_worker()->set_transfer_address(
+        request->transfer_address());
+    TF_RETURN_IF_ERROR(Apply(update));
+    TF_RETURN_IF_ERROR(CreateTasksForWorker(worker_address));
+    TF_RETURN_IF_ERROR(state_.TasksForWorker(worker_address, assigned_tasks));
+  }
+  absl::flat_hash_set<int64> current_tasks;
+  current_tasks.insert(request->current_tasks().cbegin(),
+                       request->current_tasks().cend());
+  TF_RETURN_IF_ERROR(
+      FindTasksToDelete(current_tasks, assigned_tasks, response));
+  TF_RETURN_IF_ERROR(
+      FindNewTasks(worker_address, current_tasks, assigned_tasks, response));
+
+  VLOG(4) << "Finished worker heartbeat for worker at address "
           << request->worker_address();
   return Status::OK();
 }
@@ -355,6 +395,12 @@ Status DataServiceDispatcherImpl::MakeSplitProvider(
   TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
       params, dataset_def->graph(), &standalone_dataset));
   TF_RETURN_IF_ERROR(standalone_dataset->MakeSplitProvider(&split_provider));
+  return Status::OK();
+}
+
+Status DataServiceDispatcherImpl::GetVersion(const GetVersionRequest* request,
+                                             GetVersionResponse* response) {
+  response->set_version(kDataServiceVersion);
   return Status::OK();
 }
 
@@ -458,6 +504,49 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
   return Status::OK();
 }
 
+Status DataServiceDispatcherImpl::MaybeRemoveTask(
+    const MaybeRemoveTaskRequest* request, MaybeRemoveTaskResponse* response) {
+  VLOG(1) << "Attempting to remove task. Request: " << request->DebugString();
+  std::shared_ptr<TaskRemover> remover;
+  std::shared_ptr<const Task> task;
+  {
+    mutex_lock l(mu_);
+    Status s = state_.TaskFromId(request->task_id(), task);
+    if (errors::IsNotFound(s)) {
+      // Task is already removed.
+      response->set_removed(true);
+      return Status::OK();
+    }
+    TF_RETURN_IF_ERROR(s);
+    auto& remover_ref = remove_task_requests_[task->task_id];
+    if (remover_ref == nullptr) {
+      if (!task->job->IsRoundRobin()) {
+        return errors::FailedPrecondition(
+            "MaybeRemoveTask called on a non-round-robin task.");
+      }
+      remover_ref =
+          std::make_shared<TaskRemover>(task->job->num_consumers.value());
+    }
+    remover = remover_ref;
+  }
+  bool removed =
+      remover->RequestRemoval(request->consumer_index(), request->round());
+  response->set_removed(removed);
+  if (!removed) {
+    VLOG(1) << "Failed to remove task " << task->task_id;
+    return Status::OK();
+  }
+  mutex_lock l(mu_);
+  if (!task->removed) {
+    Update update;
+    RemoveTaskUpdate* remove_task = update.mutable_remove_task();
+    remove_task->set_task_id(request->task_id());
+    TF_RETURN_IF_ERROR(Apply(update));
+  }
+  VLOG(1) << "Task " << task->task_id << " successfully removed";
+  return Status::OK();
+}
+
 Status DataServiceDispatcherImpl::ReleaseJobClient(
     const ReleaseJobClientRequest* request,
     ReleaseJobClientResponse* response) {
@@ -536,6 +625,10 @@ Status DataServiceDispatcherImpl::CreateTasksForWorker(
     if (job->finished) {
       continue;
     }
+    if (job->num_consumers.has_value()) {
+      TF_RETURN_IF_ERROR(CreatePendingTask(job, worker_address));
+      continue;
+    }
     std::shared_ptr<const Task> task;
     TF_RETURN_IF_ERROR(CreateTask(job, worker_address, task));
   }
@@ -570,6 +663,23 @@ Status DataServiceDispatcherImpl::CreateTasksForJob(
   return Status::OK();
 }
 
+Status DataServiceDispatcherImpl::CreatePendingTask(
+    std::shared_ptr<const Job> job, const std::string& worker_address)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  int64 task_id = state_.NextAvailableTaskId();
+  Update update;
+  CreatePendingTaskUpdate* create_task = update.mutable_create_pending_task();
+  create_task->set_task_id(task_id);
+  create_task->set_job_id(job->job_id);
+  create_task->set_worker_address(worker_address);
+  create_task->set_starting_round(round_robin_rounds_[job->job_id] + 1);
+  std::shared_ptr<const Worker> worker;
+  TF_RETURN_IF_ERROR(state_.WorkerFromAddress(worker_address, worker));
+  create_task->set_transfer_address(worker->transfer_address);
+  TF_RETURN_IF_ERROR(Apply(update));
+  return Status::OK();
+}
+
 Status DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
                                              const std::string& worker_address,
                                              std::shared_ptr<const Task>& task)
@@ -580,6 +690,9 @@ Status DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
   create_task->set_task_id(task_id);
   create_task->set_job_id(job->job_id);
   create_task->set_worker_address(worker_address);
+  std::shared_ptr<const Worker> worker;
+  TF_RETURN_IF_ERROR(state_.WorkerFromAddress(worker_address, worker));
+  create_task->set_transfer_address(worker->transfer_address);
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
   return Status::OK();
@@ -628,6 +741,7 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
   TaskDef* task_def = req.mutable_task();
   task_def->set_dataset_id(task->job->dataset_id);
   task_def->set_job_id(task->job->job_id);
+  task_def->set_worker_address(task->worker_address);
   {
     mutex_lock l(mu_);
     std::shared_ptr<const Dataset> dataset;
@@ -646,6 +760,9 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
   }
   task_def->set_task_id(task->task_id);
   task_def->set_processing_mode(ProcessingModeDef(task->job->processing_mode));
+  if (task->job->num_consumers.has_value()) {
+    task_def->set_num_consumers(task->job->num_consumers.value());
+  }
   ProcessTaskResponse resp;
   WorkerService::Stub* stub;
   TF_RETURN_IF_ERROR(GetOrCreateWorkerStub(task->worker_address, stub));
@@ -660,11 +777,11 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
   return Status::OK();
 }
 
-Status DataServiceDispatcherImpl::GetTasks(const GetTasksRequest* request,
-                                           GetTasksResponse* response) {
+Status DataServiceDispatcherImpl::ClientHeartbeat(
+    const ClientHeartbeatRequest* request, ClientHeartbeatResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
-  VLOG(3) << "Looking up tasks for job client id " << request->job_client_id();
+  VLOG(4) << "Received heartbeat from client id " << request->job_client_id();
   std::shared_ptr<const Job> job;
   Status s = state_.JobForJobClientId(request->job_client_id(), job);
   if (errors::IsNotFound(s) && !config_.fault_tolerant_mode()) {
@@ -674,16 +791,65 @@ Status DataServiceDispatcherImpl::GetTasks(const GetTasksRequest* request,
         "could be caused by a dispatcher restart.");
   }
   TF_RETURN_IF_ERROR(s);
+  if (request->optional_current_round_case() ==
+      ClientHeartbeatRequest::kCurrentRound) {
+    round_robin_rounds_[request->job_client_id()] =
+        std::max(round_robin_rounds_[request->job_client_id()],
+                 request->current_round());
+  }
+  if (!job->pending_tasks.empty()) {
+    const auto& task = job->pending_tasks.front();
+    Update update;
+    ClientHeartbeatUpdate* client_heartbeat = update.mutable_client_heartbeat();
+    bool apply_update = false;
+    client_heartbeat->set_job_client_id(request->job_client_id());
+    absl::optional<int64> blocked_round;
+    if (request->optional_blocked_round_case() ==
+        ClientHeartbeatRequest::kBlockedRound) {
+      blocked_round = request->blocked_round();
+    }
+    VLOG(1) << "Handling pending task in job client heartbeat. job_client_id: "
+            << request->job_client_id()
+            << ". current_round: " << request->current_round()
+            << ". blocked_round: " << blocked_round.value_or(-1)
+            << ". target_round: " << task.target_round;
+    if (request->current_round() >= task.target_round) {
+      TaskRejected* rejected = client_heartbeat->mutable_task_rejected();
+      // Exponentially try later and later rounds until consumers all agree.
+      int64 round_offset = 2;
+      for (int i = 0; i < task.failures; ++i) {
+        round_offset *= 2;
+      }
+      rejected->set_new_target_round(
+          round_robin_rounds_[request->job_client_id()] + round_offset);
+      apply_update = true;
+    }
+    if (blocked_round.has_value() &&
+        blocked_round.value() <= task.target_round &&
+        !task.ready_consumers.contains(request->job_client_id())) {
+      client_heartbeat->set_task_accepted(true);
+      apply_update = true;
+    }
+    if (apply_update) {
+      TF_RETURN_IF_ERROR(Apply(update));
+    }
+  }
+  if (!job->pending_tasks.empty()) {
+    response->set_block_round(job->pending_tasks.front().target_round);
+  }
+
   std::vector<std::shared_ptr<const Task>> tasks;
   TF_RETURN_IF_ERROR(state_.TasksForJob(job->job_id, tasks));
   for (const auto& task : tasks) {
     TaskInfo* task_info = response->mutable_task_info()->Add();
     task_info->set_worker_address(task->worker_address);
+    task_info->set_transfer_address(task->transfer_address);
     task_info->set_task_id(task->task_id);
     task_info->set_job_id(job->job_id);
+    task_info->set_starting_round(task->starting_round);
   }
   response->set_job_finished(job->finished);
-  VLOG(3) << "Found " << response->task_info_size()
+  VLOG(4) << "Found " << response->task_info_size()
           << " tasks for job client id " << request->job_client_id();
   return Status::OK();
 }

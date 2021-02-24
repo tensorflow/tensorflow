@@ -126,9 +126,10 @@ std::unique_ptr<VerifiedHloModule> HloTestBase::CreateNewVerifiedModule(
 
 StatusOr<std::unique_ptr<VerifiedHloModule>>
 HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text,
-                                          int64 replica_count) {
-  return ParseAndReturnVerifiedModule(hlo_text,
-                                      GetModuleConfigForTest(replica_count));
+                                          int64 replica_count,
+                                          int64_t num_partitions) {
+  return ParseAndReturnVerifiedModule(
+      hlo_text, GetModuleConfigForTest(replica_count, num_partitions));
 }
 
 StatusOr<std::unique_ptr<VerifiedHloModule>>

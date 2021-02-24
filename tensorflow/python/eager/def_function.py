@@ -13,7 +13,52 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=unidiomatic-typecheck
-"""Prototype decorator for defining graph functions with eager semantics."""
+"""API for defining graph functions with some additional eager semantics.
+
+def_function.function wraps the function concept in function.py ("defun") to
+allow initializing `tf.Variable`s with subgraphs of the function. For example:
+
+```python
+class M(tf.Module):
+  def __init__(self):
+    self.v_opinit = None
+    self.v_arginit = None
+
+  @tf.function
+  def __call__(self, x):
+    # Variables are only created on the first call to the function. This is a
+    # common pattern in layer libraries.
+    if self.v_opinit is None:
+      # self.v_opinit will outlive the function call, but `tf.ones` is traced as
+      # part of the function body before the `tf.Variable` object is
+      # created. This subgraph is easy to lift out of the function.
+      self.v_opinit = tf.Variable(tf.ones([]))
+
+      # If arguments feed into variable initialization, it can be very tricky to
+      # disentangle from the rest of the function. We don't attempt it.
+      self.v_arginit = tf.Variable(tf.ones(tf.shape(x)) * tf.constant(2.))
+    return self.v_opinit + self.v_arginit + x
+```
+
+These patterns with "defun" throw an error asking the user to put the variable's
+initializer in a lambda. With tf.function they work with eager semantics either
+by lifting the subgraph out of the function and using it to initialize the
+variable, or by initializing variables on the first call to the function (if
+they weren't already initialized by something else, e.g. a checkpoint API). The
+latter requires tf.conds, and is not well supported by TF-XLA, so we only do it
+when necessary.
+
+Since these patterns are relatively common in layer libraries, we expose the
+wrapper in this file as `tf.function`. The function concept in function.py is an
+internal implementation detail.
+
+In order to support these variable initialization patterns, tf.function defines
+a variable subtype (UnliftedInitializerVariable) which collects the input
+subgraph. This type of variable replaces the regular variable type on the first
+tf.function trace. To exclude initializers from the function body (the `tf.ones`
+ops above and associated assignment operations), tf.function traces a second
+time if it sees variables on the first call.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -31,6 +76,7 @@ from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
 from tensorflow.python.eager import lift_to_graph
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
@@ -52,6 +98,14 @@ from tensorflow.python.util.tf_export import tf_export
 FREQUENT_TRACING_WARNING_MAX_CALL_HISTORY = 10
 FREQUENT_TRACING_WARNING_THRESHOLD = 5
 FREQUENT_TRACING_WARNING_MAX_WARNING_PER_DETECTOR = 2
+
+
+_tf_function_counter = monitoring.Counter(
+    "/tensorflow/core/tf_function_counter",
+    "Counter for the number of tf.functions created when Eager execution is "
+    "enabled.",
+    # jit_compile is "0" or "1".
+    "jit_compile")
 
 
 class _FrequentTracingDetector(object):
@@ -694,6 +748,18 @@ class Function(object):
         self._stateful_fn._get_concrete_function_internal_garbage_collected(  # pylint: disable=protected-access
             *args, **kwds))
 
+    compiled = bool(self._jit_compile and
+                    not control_flow_util.GraphOrParentsInXlaContext(
+                        ops.get_default_graph()))
+    # For nested functions, increment the counter only when a function with
+    # jit_compile=True is called within a function with jit_compile=False. We
+    # count this special case to correctly record that both jit_compile=True and
+    # jit_compile=False is being used for parts of the outer function.
+    if ops.executing_eagerly_outside_functions() and (
+        context.executing_eagerly() or compiled):
+      # Labels must be strings in Python, so we convert 'compiled' to a string
+      _tf_function_counter.get_cell(str(int(compiled))).increase_by(1)
+
     def invalid_creator_scope(*unused_args, **unused_kwds):
       """Disables variable creation."""
       raise ValueError(
@@ -786,9 +852,13 @@ class Function(object):
     result += self._stateful_fn.tracing_count if self._stateful_fn else 0
     return result
 
+  @property
+  def _run_functions_eagerly(self):
+    return RUN_FUNCTIONS_EAGERLY
+
   def __call__(self, *args, **kwds):
     """Calls the graph function and warn too frequent tracings."""
-    if RUN_FUNCTIONS_EAGERLY:
+    if self._run_functions_eagerly:
       with trace.Trace(self._name, tf_function_call="eager"):
         return self._python_function(*args, **kwds)
 
@@ -937,13 +1007,21 @@ class Function(object):
       **kwargs: Keyword arguments used for compilation.
 
     Returns:
-      Function callable with the stage at which the compiler IR should be
-      serialized. Allowed values for the `stage` are:
-       - `hlo`: HLO output after conversion from TF
-         (https://www.tensorflow.org/xla/operation_semantics).
-       - `optimized_hlo`: HLO after compiler optimizations.
-       - `optimized_hlo_dot`: optimized HLO in DOT format suitable for
-         Graphviz.
+      Function callable with the following kwargs:
+        - `stage` at which the compiler IR should be serialized. Allowed values
+          are:
+           - `hlo`: HLO output after conversion from TF
+            (https://www.tensorflow.org/xla/operation_semantics).
+           - `hlo_serialized`: Like stage=`hlo`, but the output is a serialized
+             HLO module proto (a bytes object).
+           - `optimized_hlo`: HLO after compiler optimizations.
+           - `optimized_hlo_serialized`: Like stage=`optimized_hlo`, but the
+             output is a serialized HLO module proto (a bytes object).
+           - `optimized_hlo_dot`: optimized HLO in DOT format suitable for
+             Graphviz.
+        - `device_name` can be either None, in which case the preferred device
+          is used for compilation, or a device name. It can be a full device
+          name, or a partial one, e.g., `/device:CPU:0`.
 
       For example, for
 
@@ -992,21 +1070,20 @@ class Function(object):
         concrete_fn._function_spec.canonicalize_function_inputs(
             *args, **kwargs)
 
-    def compiler_ir_generator(stage='hlo'):
-      """Returns compiler IR for the given `stage`.
-
-      Args:
-        stage: Stage at which to return the IR. Allowed values are 'hlo' and
-        'optimized_hlo'.
-      """
+    def compiler_ir_generator(stage="hlo", device_name=None):
       # TODO(cheshire): This is a hack to get the current "preferred" device,
       # there is no current API to get it otherwise.
-      device = random_ops.random_normal([]).device
-      return context.context().get_compiler_ir(
-          device_name=device,
+      if device_name is None:
+        device_name = random_ops.random_normal([]).device
+      res_bytes = context.context().get_compiler_ir(
+          device_name=device_name,
           stage=stage,
           function_name=fn_name,
           args=list(filtered_flat_args) + concrete_fn.captured_inputs)
+      if stage in ("hlo_serialized", "optimized_hlo_serialized"):
+        return res_bytes
+      else:
+        return res_bytes.decode("utf-8")
 
     return compiler_ir_generator
 

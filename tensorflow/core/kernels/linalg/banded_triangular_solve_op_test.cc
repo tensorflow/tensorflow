@@ -98,14 +98,16 @@ static Graph* BandedTriangularSolve(int64 num_bands, int64 n, int64 m,
 //   BS: boolean indicating whether to use the banded solver
 //    T: C++ type of scalars (e.g. float, std::complex)
 //   TT: TensorFlow type of scalars (e.g. DT_FLOAT, DT_COMPLEX128
-#define BM_BandedTriangularSolveDev(K, N, M, BS, T, TT, D)                     \
-  static void BM_BandedTriangularSolve##_##K##_##N##_##M##_##BS##_##TT(        \
-      int iters) {                                                             \
-    testing::UseRealTime();                                                    \
-    testing::ItemsProcessed(static_cast<int64>(iters) * K * N + N * M);        \
-    test::Benchmark(#D, BandedTriangularSolve<T>(K, N, M, BS, TT)).Run(iters); \
-  }                                                                            \
-  BENCHMARK(BM_BandedTriangularSolve##_##K##_##N##_##M##_##BS##_##TT);
+#define BM_BandedTriangularSolveDev(K, N, M, BS, T, TT, D)              \
+  static void BM_BandedTriangularSolve##_##K##_##N##_##M##_##BS##_##TT( \
+      ::testing::benchmark::State& state) {                             \
+    test::Benchmark(#D, BandedTriangularSolve<T>(K, N, M, BS, TT),      \
+                    /*old_benchmark_api*/ false)                        \
+        .Run(state);                                                    \
+    state.SetItemsProcessed(state.iterations() * K * N + N * M);        \
+  }                                                                     \
+  BENCHMARK(BM_BandedTriangularSolve##_##K##_##N##_##M##_##BS##_##TT)   \
+      ->UseRealTime();
 
 #define BM_BandedTriangularSolve(K, N, M, BS, D)                \
   BM_BandedTriangularSolveDev(K, N, M, BS, float, DT_FLOAT, D); \

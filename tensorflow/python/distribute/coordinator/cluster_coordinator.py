@@ -27,7 +27,6 @@ import enum
 import functools
 import os
 import re
-import sys
 import threading
 import time
 import weakref
@@ -435,6 +434,7 @@ class _CoordinatedClosureQueue(object):
 
     # Condition indicating that an item becomes available in queue (not empty).
     self._closures_queued_condition = threading.Condition(self._queue_lock)
+    self._should_process_closures = True
 
     # Condition indicating that a queue slot becomes available (not full).
     # Note that even with "infinite" queue size, there is still a "practical"
@@ -467,6 +467,11 @@ class _CoordinatedClosureQueue(object):
     # We don't use a reader/writer's lock on purpose to reduce the complexity
     # of the code.
     self._put_wait_lock = threading.Lock()
+
+  def stop(self):
+    with self._queue_lock:
+      self._should_process_closures = False
+      self._closures_queued_condition.notifyAll()
 
   def _cancel_all_closures(self):
     """Clears the queue and sets remaining closures cancelled error.
@@ -527,9 +532,11 @@ class _CoordinatedClosureQueue(object):
   def get(self, timeout=None):
     """Return a closure from the queue to be executed."""
     with self._queue_lock:
-      while self._queue.empty():
+      while self._queue.empty() and self._should_process_closures:
         if not self._closures_queued_condition.wait(timeout=timeout):
           return None
+      if not self._should_process_closures:
+        return None
       closure = self._queue.get(block=False)
       self._queue_free_slot_condition.notify()
       self._inflight_closure_count += 1
@@ -615,16 +622,22 @@ class WorkerPreemptionHandler(object):
     self._cluster_update_lock = threading.Lock()
     self._cluster_due_for_update_or_finish = threading.Event()
     self._worker_up_cond = threading.Condition(self._cluster_update_lock)
+    self._error_from_recovery = None
     self._should_preemption_thread_run = True
-    threading.Thread(target=self._preemption_handler,
-                     name="WorkerPreemptionHandler",
-                     daemon=True).start()
+    self._preemption_handler_thread = threading.Thread(
+        target=self._preemption_handler,
+        name="WorkerPreemptionHandler",
+        daemon=True)
+    self._preemption_handler_thread.start()
 
-  def _mark_finished(self):
+  def stop(self):
     """Ensure the worker preemption thread is closed."""
     self._should_preemption_thread_run = False
     with self._cluster_update_lock:
       self._cluster_due_for_update_or_finish.set()
+    # TODO(yuefengz): The preemption handler thread shouldn't be terminated
+    # asynchronously since it touches eager context which is a process-wide
+    # singleton. The problem is in OSS unit tests will time out.
 
   def _validate_preemption_failure(self, e):
     """Validates that the given exception represents worker preemption."""
@@ -649,6 +662,7 @@ class WorkerPreemptionHandler(object):
     Yields:
       None.
     """
+    assert self._should_preemption_thread_run
     try:
       yield
     except errors.OpError as e:
@@ -667,6 +681,14 @@ class WorkerPreemptionHandler(object):
       with self._cluster_update_lock:
         self._cluster_due_for_update_or_finish.set()
         self._worker_up_cond.wait(_WORKER_MAXIMUM_RECOVERY_SEC)
+        if self._error_from_recovery:
+          # TODO(yuefengz): there is only one worker that will get this error.
+          # Ideally we shuold let all workers notified by `_worker_up_cond` get
+          # this error.
+          try:
+            raise self._error_from_recovery
+          finally:
+            self._error_from_recovery = None
         logging.info("Worker %s has been recovered.", worker_device_name)
 
       if on_recovery_fn:
@@ -682,9 +704,11 @@ class WorkerPreemptionHandler(object):
     it waits until all workers are back and updates the cluster about the
     restarted workers.
     """
+    assert self._should_preemption_thread_run
     while True:
       self._cluster_due_for_update_or_finish.wait()
       if not self._should_preemption_thread_run:
+        logging.info("Stopping the failure handing thread.")
         break
 
       with self._cluster_update_lock:
@@ -697,9 +721,20 @@ class WorkerPreemptionHandler(object):
           # all workers that they are recovered from failure.
           logging.info("Cluster successfully recovered.")
           self._worker_up_cond.notify_all()
-          self._cluster_due_for_update_or_finish.clear()
+          # The check for _should_preemption_thread_run is necessary since the
+          # `stop` may have already set _cluster_due_for_update_or_finish.
+          if self._should_preemption_thread_run:
+            self._cluster_due_for_update_or_finish.clear()
         except Exception as e:  # pylint: disable=broad-except
-          self._validate_preemption_failure(e)
+          try:
+            self._validate_preemption_failure(e)
+          except Exception as e:  # pylint: disable=broad-except
+            # In this case, a parameter server fails. So we raise this error to
+            # the caller of `wait_on_failure`.
+            self._error_from_recovery = e
+            self._worker_up_cond.notify_all()
+            if self._should_preemption_thread_run:
+              self._cluster_due_for_update_or_finish.clear()
           # NOTE: Since the first RPC (GetStatus) of update_server_def is
           # currently blocking by default, error should only happen if:
           # (1) More workers failed while waiting for the previous workers to
@@ -729,11 +764,16 @@ class Worker(object):
     self.failure_handler = cluster.failure_handler
     self._cluster = cluster
     self._resource_remote_value_refs = []
+    self._should_worker_thread_run = True
 
     # Worker threads need to start after `Worker`'s initialization.
     threading.Thread(target=self._process_queue,
                      name="WorkerClosureProcessingLoop-%d" % self.worker_index,
                      daemon=True).start()
+
+  def stop(self):
+    """Ensure the worker thread is closed."""
+    self._should_worker_thread_run = False
 
   def _set_resources_aborted(self):
     # TODO(yuefengz): maybe we can query whether a tensor is valid or not
@@ -748,6 +788,7 @@ class Worker(object):
 
   def _process_closure(self, closure):
     """Runs a closure with preemption handling."""
+    assert closure is not None
     try:
       with self._cluster.failure_handler.wait_on_failure(
           on_failure_fn=lambda: self._cluster._closure_queue.put_back(closure),  # pylint: disable=protected-access
@@ -786,8 +827,10 @@ class Worker(object):
   def _process_queue(self):
     """Function running in a thread to process closure queues."""
     self._maybe_delay()
-    while True:
+    while self._should_worker_thread_run:
       closure = self._cluster._closure_queue.get()  # pylint: disable=protected-access
+      if not self._should_worker_thread_run or closure is None:
+        return
       self._process_closure(closure)
 
   def _create_resource(self, function, args=None, kwargs=None):
@@ -880,7 +923,14 @@ class Cluster(object):
     self.workers = [
         Worker(i, w, self) for i, w in enumerate(worker_device_strings)
     ]
-    self._strategy = strategy
+
+  def stop(self):
+    """Stop worker, worker preemption threads, and the closure queue."""
+    self.failure_handler.stop()
+
+    for worker in self.workers:
+      worker.stop()
+    self._closure_queue.stop()
 
   def _record_and_ignore_transient_ps_failure(self, e):
     """Records potential PS failures and return if failure should be ignored."""
@@ -910,13 +960,11 @@ class Cluster(object):
     Returns:
       A `RemoteValue` object.
     """
-    self._strategy.extended._being_scheduled = True  # pylint: disable=protected-access
     closure = Closure(
         function,
         self._closure_queue._cancellation_mgr,  # pylint: disable=protected-access
         args=args,
         kwargs=kwargs)
-    self._strategy.extended._being_scheduled = False  # pylint: disable=protected-access
     self._closure_queue.put(closure)
     return closure.output_remote_value
 
@@ -985,6 +1033,14 @@ class ClusterCoordinator(object):
   are subject to changes.
   """
 
+  def __new__(cls, strategy):
+    # `ClusterCoordinator` is kept as a single instance to a given `Strategy`.
+    # TODO(rchao): Needs a lock for thread-safety
+    if strategy._cluster_coordinator is None:
+      strategy._cluster_coordinator = super(
+          ClusterCoordinator, cls).__new__(cls)
+    return strategy._cluster_coordinator
+
   def __init__(self, strategy):
     """Initialization of a `ClusterCoordinator` instance.
 
@@ -1003,12 +1059,11 @@ class ClusterCoordinator(object):
           "`tf.distribute.experimental.coordinator.ClusterCoordinator` "
           "currently.")
     self._strategy = strategy
-    self._strategy.extended._used_with_coordinator = True
+    self.strategy.extended._used_with_coordinator = True
     self._cluster = Cluster(strategy)
 
   def __del__(self):
-    # TODO(xingliu): Stop the worker threads.
-    self._cluster.failure_handler._mark_finished()
+    self._cluster.stop()
 
   @property
   def strategy(self):
@@ -1081,7 +1136,10 @@ class ClusterCoordinator(object):
     # Slot variables are usually created during function tracing time; thus
     # `schedule` needs to be called within the `strategy.scope()`.
     with self.strategy.scope():
-      return self._cluster.schedule(fn, args=args, kwargs=kwargs)
+      self.strategy.extended._being_scheduled = True  # pylint: disable=protected-access
+      remote_value = self._cluster.schedule(fn, args=args, kwargs=kwargs)
+      self.strategy.extended._being_scheduled = False  # pylint: disable=protected-access
+      return remote_value
 
   def join(self):
     """Blocks until all the scheduled functions have finished execution.
@@ -1170,6 +1228,9 @@ class ClusterCoordinator(object):
     remote_value = coordinator.schedule(worker_fn, args=(per_worker_iter,))
     assert remote_value.fetch() == 3
     ```
+
+    NOTE: A known limitation is `tf.data.Options` is ignored in dataset created
+    by `create_per_worker_dataset`.
 
     Args:
       dataset_fn: The dataset function that returns a dataset. This is to be
@@ -1266,20 +1327,6 @@ class ClusterCoordinator(object):
 
     # TODO(yuefengz): we should fetch values in a batch.
     return nest.map_structure(_maybe_fetch, val)
-
-
-# pylint: disable=missing-function-docstring
-@contextlib.contextmanager
-def handle_parameter_server_failure():
-  try:
-    yield
-  except errors.UnavailableError as e:  # pylint: disable=broad-except
-    restart_exit_code = os.environ.get("TF_CLIENT_NON_FATAL_RESTART_EXIT_CODE",
-                                       None)
-    if restart_exit_code is not None:
-      sys.exit(int(restart_exit_code))
-    else:
-      raise
 
 
 class _PerWorkerDistributedDataset(object):

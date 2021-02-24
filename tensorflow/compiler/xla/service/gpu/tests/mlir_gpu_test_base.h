@@ -29,6 +29,9 @@ class MlirGpuTestBase : public HloTestBase {
   StatusOr<std::vector<std::vector<uint8>>> RunMlirTextWithHostBuffers(
       absl::string_view module_text, std::vector<absl::Span<uint8>> arguments);
 
+  StatusOr<std::unique_ptr<Executable>> CompileMlirText(
+      absl::string_view module_text);
+
   template <typename T>
   static absl::Span<uint8> ToUint8Span(std::vector<T>* v) {
     return absl::Span<uint8>(reinterpret_cast<uint8*>(v->data()),
@@ -46,9 +49,15 @@ class MlirGpuTestBase : public HloTestBase {
   StatusOr<std::vector<std::vector<uint8>>> RunMlirModuleWithHostBuffers(
       mlir::ModuleOp module, std::vector<absl::Span<uint8>> arguments);
 
+  StatusOr<std::unique_ptr<Executable>> CompileMlirModule(mlir::ModuleOp module,
+                                                          se::Stream* stream);
+
   StatusOr<ExecutionOutput> RunMlirModule(
       mlir::ModuleOp module, se::Stream* stream,
       absl::Span<const se::DeviceMemoryBase> arguments);
+
+  mlir::OwningModuleRef ParseMlirModule(absl::string_view module_text,
+                                        mlir::MLIRContext& context);
 
   std::unique_ptr<xla::Backend> backend_;
 };

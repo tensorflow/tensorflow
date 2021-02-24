@@ -184,7 +184,7 @@ class XlaBuilder {
 
   // Similar to SetOpMetadata, but only set the metadata for the next op.
   void SetOneShotOpMetadata(OpMetadata metadata) {
-    metadata_ = std::move(metadata);
+    one_shot_metadata_ = std::move(metadata);
   }
 
   // Clears the HloMetadata state.
@@ -432,7 +432,12 @@ class XlaBuilder {
   StatusOr<std::vector<Shape>> GetOperandShapes(
       absl::Span<const XlaOp> operands) const;
 
+  // Converts the op to string for the ease of debugging.
+  std::string OpToString(XlaOp op) const;
+
  private:
+  void ToStringHelper(std::string* out, int ident, int64 op_handle) const;
+
   // Build helper which takes the id of the root operation..
   StatusOr<XlaComputation> Build(int64 root_id, bool remove_dynamic_dimensions);
 
@@ -655,7 +660,8 @@ class XlaBuilder {
       absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
       bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-          output_operand_aliasing);
+          output_operand_aliasing,
+      const Literal* literal);
 
   // Internal version of CustomCall without computation that doesn't do op
   // specific error handling and expects arguments to be legal. CustomCall
@@ -666,7 +672,8 @@ class XlaBuilder {
       absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
       bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-          output_operand_aliasing);
+          output_operand_aliasing,
+      const Literal* literal);
 
   XlaOp CustomCall(
       const string& call_target_name, absl::Span<const XlaOp> operands,
@@ -675,7 +682,8 @@ class XlaBuilder {
       absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
       bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-          output_operand_aliasing);
+          output_operand_aliasing,
+      const Literal* literal);
 
   XlaOp Reduce(XlaOp operand, XlaOp init_value,
                const XlaComputation& computation,
@@ -744,6 +752,11 @@ class XlaBuilder {
                  int64 split_count,
                  const std::vector<ReplicaGroup>& replica_groups,
                  const absl::optional<Layout>& layout = absl::nullopt);
+
+  XlaOp AllToAllTuple(XlaOp operand, int64 split_dimension,
+                      int64 concat_dimension, int64 split_count,
+                      const std::vector<ReplicaGroup>& replica_groups,
+                      const absl::optional<Layout>& layout);
 
   XlaOp CollectivePermute(
       XlaOp operand,
@@ -1209,20 +1222,23 @@ class XlaBuilder {
       absl::Span<const XlaOp> operands, const Shape& shape,
       const string& opaque, bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-          output_operand_aliasing);
+          output_operand_aliasing,
+      const Literal* literal);
   friend XlaOp CustomCallWithComputation(
       XlaBuilder* builder, const string& call_target_name,
       absl::Span<const XlaOp> operands, const XlaComputation& computation,
       const Shape& shape, const string& opaque, bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-          output_operand_aliasing);
+          output_operand_aliasing,
+      const Literal* literal);
   friend XlaOp CustomCallWithLayout(
       XlaBuilder* builder, const string& call_target_name,
       absl::Span<const XlaOp> operands, const Shape& shape_with_layout,
       absl::Span<const Shape> operand_shapes_with_layout, const string& opaque,
       bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-          output_operand_aliasing);
+          output_operand_aliasing,
+      const Literal* literal);
   friend XlaOp Complex(XlaOp real, XlaOp imag,
                        absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Conj(XlaOp operand);
@@ -1297,6 +1313,10 @@ class XlaBuilder {
                         int64 concat_dimension, int64 split_count,
                         const std::vector<ReplicaGroup>& replica_groups,
                         const absl::optional<Layout>& layout);
+  friend XlaOp AllToAllTuple(XlaOp operand, int64 split_dimension,
+                             int64 concat_dimension, int64 split_count,
+                             const std::vector<ReplicaGroup>& replica_groups,
+                             const absl::optional<Layout>& layout);
   friend XlaOp CollectivePermute(
       XlaOp operand,
       const std::vector<std::pair<int64, int64>>& source_target_pairs);
@@ -1424,6 +1444,10 @@ class XlaBuilder {
       XlaOp branch_index,
       absl::Span<const XlaComputation* const> branch_computations,
       absl::Span<const XlaOp> branch_operands);
+
+  XlaOp AllToAllArray(XlaOp operand, int64 split_dimension,
+                      int64 concat_dimension, int64 split_count,
+                      const std::vector<ReplicaGroup>& replica_groups);
 
   // Creates an op with the given opcode and the output shape.
   virtual StatusOr<XlaOp> AddOpWithShape(HloOpcode opcode, const Shape& shape,
@@ -2012,7 +2036,8 @@ XlaOp CustomCall(
     absl::Span<const XlaOp> operands, const Shape& shape,
     const string& opaque = "", bool has_side_effect = false,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing = {});
+        output_operand_aliasing = {},
+    const Literal* literal = nullptr);
 
 // Overload which constructs a custom call that applies an Xla computation.
 XlaOp CustomCallWithComputation(
@@ -2020,7 +2045,8 @@ XlaOp CustomCallWithComputation(
     absl::Span<const XlaOp> operands, const XlaComputation& computation,
     const Shape& shape, const string& opaque = "", bool has_side_effect = false,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing = {});
+        output_operand_aliasing = {},
+    const Literal* literal = nullptr);
 
 // Overload which constructs a custom call with fixed layouts. The operands will
 // have the layouts specified by |operand_shapes_with_layout| when provided to
@@ -2033,7 +2059,8 @@ XlaOp CustomCallWithLayout(
     absl::Span<const Shape> operand_shapes_with_layout,
     const string& opaque = "", bool has_side_effect = false,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing = {});
+        output_operand_aliasing = {},
+    const Literal* literal = nullptr);
 
 // The following methods enqueue element-wise binary arithmetic operations
 // onto the computation. The shapes of the operands have to match unless one
@@ -2202,6 +2229,11 @@ XlaOp AllToAll(XlaOp operand, int64 split_dimension, int64 concat_dimension,
                int64 split_count,
                const std::vector<ReplicaGroup>& replica_groups = {},
                const absl::optional<Layout>& layout = absl::nullopt);
+
+XlaOp AllToAllTuple(XlaOp operand, int64 split_dimension,
+                    int64 concat_dimension, int64 split_count,
+                    const std::vector<ReplicaGroup>& replica_groups = {},
+                    const absl::optional<Layout>& layout = absl::nullopt);
 
 // Enqueues an collective operation that sends and receives data cross replicas.
 //

@@ -49,17 +49,14 @@ static inline void ApplyTimeWeightsBiasAndActivation(
         scratch_ptr_batch);
   }
 
-  // Initialize output with bias if provided.
-  if (bias_ptr) {
-    tensor_utils::VectorBatchVectorAssign(bias_ptr, num_units, batch_size,
-                                          output_ptr);
-  } else {
-    std::fill_n(output_ptr, batch_size * num_units, 0.0f);
-  }
-
   // Reduction sum.
   tensor_utils::ReductionSumVector(scratch_ptr, output_ptr,
                                    batch_size * num_units, rank);
+  // Add bias if provided.
+  if (bias_ptr) {
+    tensor_utils::VectorBatchVectorAdd(bias_ptr, num_units, batch_size,
+                                       output_ptr);
+  }
 
   // Apply activation.
   tensor_utils::ApplyActivationToVector(output_ptr, batch_size * num_units,
@@ -131,16 +128,14 @@ inline void EvalIntegerSVDF(
 
   // Reduce, add bias, rescale, activation.
   {
-    // Add bias.
-    if (bias_data) {
-      tensor_utils::VectorBatchVectorAssign(bias_data, n_unit, n_batch,
-                                            output_temp_data);
-    } else {
-      std::fill_n(output_temp_data, n_batch * n_unit, 0);
-    }
     // Reduce.
     tensor_utils::ReductionSumVector(scratch_data, output_temp_data,
                                      n_batch * n_unit, n_rank);
+    // Add bias.
+    if (bias_data) {
+      tensor_utils::VectorBatchVectorAdd(bias_data, n_unit, n_batch,
+                                         output_temp_data);
+    }
     // Rescale.
     const int32_t output_max = std::numeric_limits<int8_t>::max();
     const int32_t output_min = std::numeric_limits<int8_t>::min();

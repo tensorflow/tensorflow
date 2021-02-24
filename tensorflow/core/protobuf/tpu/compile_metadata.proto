@@ -115,4 +115,8 @@ message TPUCompileMetadataProto {
   // Whether to use XLA's SPMD or MPMD partitioner when compiler partitioning is
   // requested.
   bool use_spmd_for_xla_partitioning = 15;
+
+  // Enables use of XLA collectives for broadcast of replicated parameters to
+  // all replicas, instead of using TensorFlow Send/Recv.
+  bool broadcast_replicated_parameters_via_collectives = 16;
 }

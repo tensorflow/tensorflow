@@ -33,12 +33,10 @@ class KernelRunner {
  public:
   KernelRunner(const TfLiteRegistration& registration, TfLiteTensor* tensors,
                int tensors_size, TfLiteIntArray* inputs,
-               TfLiteIntArray* outputs, void* builtin_data,
-               ErrorReporter* error_reporter);
+               TfLiteIntArray* outputs, void* builtin_data);
 
   // Calls init and prepare on the kernel (i.e. TfLiteRegistration) struct. Any
-  // exceptions will be reported through the error_reporter and returned as a
-  // status code here.
+  // exceptions will be DebugLog'd and returned as a status code.
   TfLiteStatus InitAndPrepare(const char* init_data = nullptr,
                               size_t length = 0);
 
@@ -69,7 +67,6 @@ class KernelRunner {
   SimpleMemoryAllocator* allocator_ = nullptr;
   const TfLiteRegistration& registration_;
   TfLiteTensor* tensors_ = nullptr;
-  ErrorReporter* error_reporter_ = nullptr;
 
   TfLiteContext context_ = {};
   TfLiteNode node_ = {};

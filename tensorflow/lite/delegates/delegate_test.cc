@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/delegate_test_util.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/interpreter_builder.h"
@@ -41,6 +42,11 @@ using test_utils::TestDelegate;
 using test_utils::TestFP16Delegation;
 
 namespace {
+
+TEST_F(TestDelegate, NullDelegate) {
+  EXPECT_EQ(interpreter_->ModifyGraphWithDelegate(nullptr),
+            kTfLiteDelegateError);
+}
 
 TEST_F(TestDelegate, BasicDelegate) {
   delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate({0, 1, 2}));
@@ -764,6 +770,40 @@ TEST_F(TestDelegate, DelegateCustomOpResolution) {
   ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteOk);
 }
 
+TEST_F(TestDelegate, AllSubgraphsAreDelegatedByDefault) {
+  interpreter_->AddSubgraphs(1);
+  SetUpSubgraph(interpreter_->subgraph(1));
+  delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate({0, 1, 2}));
+  ASSERT_EQ(
+      interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
+      kTfLiteOk);
+  for (int subgraph_index = 0; subgraph_index < 2; subgraph_index++) {
+    ASSERT_EQ(interpreter_->subgraph(subgraph_index)->execution_plan().size(),
+              1);
+    int node = interpreter_->subgraph(subgraph_index)->execution_plan()[0];
+    const auto* node_and_reg =
+        interpreter_->subgraph(subgraph_index)->node_and_registration(node);
+    EXPECT_EQ(node_and_reg->second.custom_name,
+              delegate_->FakeFusedRegistration().custom_name);
+  }
+}
+
+TEST_F(TestDelegate, ValidationSubgraphsAreNotDelegated) {
+  interpreter_->AddSubgraphs(1);
+  SetUpSubgraph(interpreter_->subgraph(1));
+  interpreter_->subgraph(1)->SetName("VALIDATION:foo");
+  delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate({0, 1, 2}));
+  ASSERT_EQ(
+      interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
+      kTfLiteOk);
+  ASSERT_EQ(interpreter_->subgraph(1)->execution_plan().size(), 3);
+  int node = interpreter_->subgraph(1)->execution_plan()[0];
+  const auto* node_and_reg =
+      interpreter_->subgraph(1)->node_and_registration(node);
+  EXPECT_NE(node_and_reg->second.custom_name,
+            delegate_->FakeFusedRegistration().custom_name);
+}
+
 class TestDelegateWithDynamicTensors : public ::testing::Test {
  protected:
   void SetUp() override {
@@ -912,6 +952,14 @@ TEST_F(TestDelegateWithDynamicTensors, ShapePropagation_FlagNotSet) {
 // =====================
 
 TEST_P(TestFP16Delegation, NonDelegatedInterpreterWorks) {
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  VerifyInvoke();
+}
+
+TEST_F(TestFP16Delegation, NullDelegate) {
+  EXPECT_EQ(interpreter_->ModifyGraphWithDelegate(nullptr),
+            kTfLiteDelegateError);
+  // Verify that resulting interpreter still works, despite null delegate.
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
   VerifyInvoke();
 }

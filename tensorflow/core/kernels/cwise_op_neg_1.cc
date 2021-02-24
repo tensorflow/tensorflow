@@ -20,8 +20,7 @@ REGISTER4(UnaryOp, CPU, "Neg", functor::neg, int8, int16, int32, int64);
 
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_GPU_KERNELS_ENABLED)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER3(UnaryOp, GPU, "Neg", functor::neg, int8, int16, int64);
 #endif
 

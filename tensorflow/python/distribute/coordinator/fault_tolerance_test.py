@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import gc
 import os
+import sys
 import threading
 import time
 
@@ -29,6 +30,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
+from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.coordinator import cluster_coordinator
 from tensorflow.python.eager import context
@@ -49,6 +51,7 @@ from tensorflow.python.training import server_lib
 _RPC_ERROR_FROM_WORKER = "GRPC error information from remote target /job:worker"
 _RPC_ERROR_FROM_PS = "GRPC error information from remote target /job:ps"
 _WORKER_PREEMPTION_THREAD_NAME = "WorkerPreemptionHandler"
+_WORKER_THREAD_PREFIX = "WorkerClosureProcessingLoop"
 
 
 class Model(object):
@@ -125,10 +128,12 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
     self.thread_coord = thread_coordinator.Coordinator(
         clean_stop_exception_types=[])
     self.num_workers = num_workers
+    self.num_ps = num_ps
 
   def tearDown(self):
     super(BaseFaultToleranceTest, self).tearDown()
     self._cluster.stop()
+    self._cluster = None
 
   def _restart(self, downtime_secs, job):
     """Kills `job` (index: 0) and restarts it after `downtime_secs`.
@@ -155,20 +160,45 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
     return restart_thread
 
   def _ensure_threads_closed(self):
-    """Ensure worker and preemption threads are closed."""
+    """Ensures worker and preemption threads are closed."""
+    # Worker and preemption threads should exist before releasing
+    # ClusterCoordinator.
+    running_threads = test_util.get_running_threads()
+    self.assertTrue(
+        test_util.has_thread(_WORKER_THREAD_PREFIX, running_threads))
+    self.assertIn(_WORKER_PREEMPTION_THREAD_NAME, running_threads)
+
+    # Print object graph if ClusterCoordinator may leak.
+    if sys.getrefcount(self.cluster_coord) > 2:
+      try:
+        test_util.show_backref(self.cluster_coord)
+      except:  # pylint: disable=bare-except
+        pass
+
     # Wait for threads to close.
     self.cluster_coord = None
+    self.strategy = None
     gc.collect()
     time.sleep(1)
 
     # Verify thread names.
-    running_threads = set()
-    for thread in threading.enumerate():
-      logging.info("Running thread name:%s", thread.name)
-      if thread.name is not None:
-        running_threads.add(thread.name)
-    # TODO(xingliu): Verify worker threads are closed.
+    running_threads = test_util.get_running_threads()
     self.assertNotIn(_WORKER_PREEMPTION_THREAD_NAME, running_threads)
+    self.assertFalse(
+        test_util.has_thread(_WORKER_THREAD_PREFIX, running_threads),
+        "Worker thread is not stopped properly.")
+
+  def _create_model_and_run_indefinitely(self):
+    model = Model(self.cluster_coord)
+    model.do_infinite_step.assign(True)
+    model.schedule_training_functions(10)
+    # Model does infinite training step, so at this moment, we expect to have
+    # `self.num_workers` infinite closures inflight, and `10-self.num_workers`
+    # closures in the queue.
+    while (self.cluster_coord._cluster._closure_queue._inflight_closure_count <
+           self.num_workers):
+      time.sleep(0.1)
+    return model
 
   def testClusterCoordinatorDestroyed(self):
     self._ensure_threads_closed()
@@ -243,6 +273,12 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
     for _ in range(3):
       self.cluster_coord.schedule(normal_function)
     self.cluster_coord.join()
+
+    # The cluster is likely still being recovered since `join` returned early
+    # due to the error_function.
+    failure_handler = self.cluster_coord._cluster.failure_handler
+    failure_handler.stop()
+    failure_handler._preemption_handler_thread.join()
 
   def testHandleDatasetCreationFailure(self):
     model = Model(self.cluster_coord)
@@ -372,15 +408,8 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
   def testTwoWorkersPreempted(self):
     if self.num_workers < 2:
       self.skipTest("Worker number is less than 2.")
-    model = Model(self.cluster_coord)
-    model.do_infinite_step.assign(True)
-    model.schedule_training_functions(10)
+    model = self._create_model_and_run_indefinitely()
 
-    # Model does infinite training step, so at this moment, we expect to have 2
-    # infinite closures inflight, and 8 closures in the queue.
-    while (self.cluster_coord._cluster._closure_queue._inflight_closure_count
-           < 2):
-      time.sleep(0.1)
     self.assertFalse(self.cluster_coord.done())
     self._cluster.kill_task("worker", 0)
     self._cluster.kill_task("worker", 1)
@@ -397,16 +426,8 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
     self.assertGreaterEqual(model.iterations.numpy(), 10)
 
   def testWorkerContinuousFailure(self):
-    model = Model(self.cluster_coord)
-    model.do_infinite_step.assign(True)
-    model.schedule_training_functions(10)
+    model = self._create_model_and_run_indefinitely()
 
-    # Model does infinite training step, so at this moment, we expect to have
-    # `self.num_workers` infinite closures inflight, and `10-self.num_workers`
-    # closures in the queue.
-    while (self.cluster_coord._cluster._closure_queue._inflight_closure_count
-           < self.num_workers):
-      time.sleep(0.1)
     self.assertFalse(self.cluster_coord.done())
     self._cluster.kill_task("worker", 0)
     time.sleep(2)
@@ -423,6 +444,28 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
 
     model.join_training_functions()
     self.assertGreaterEqual(model.iterations.numpy(), 10)
+
+  def testPSFailureWhileRecoveryFromWokerFailure(self):
+    model = self._create_model_and_run_indefinitely()
+
+    time.sleep(1)
+    self.assertFalse(self.cluster_coord.done())
+
+    def kill(task):
+      self._cluster.kill_task(task, 0)
+      self.sleep(1)
+      self._cluster.start_task(task, 0)
+
+    kill_thread_1 = threading.Thread(target=kill, args=("worker",))
+    kill_thread_2 = threading.Thread(target=kill, args=("ps",))
+    kill_thread_1.start()
+    kill_thread_2.start()
+    kill_thread_1.join()
+    kill_thread_2.join()
+
+    with self.assertRaises(
+        (errors.UnavailableError, errors.InvalidArgumentError)):
+      model.join_training_functions()
 
   def testNumpyFetchedAfterWorkerFailure(self):
 
@@ -460,6 +503,47 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
     # TODO(b/153888707): enable the following two tests.
     # self.testTwoWorkersPreempted()
     # self.testWorkerContinuousFailure()
+
+  def testJoinRaisesUnavailableErrorAtPsFailure(self):
+    self._create_model_and_run_indefinitely()
+    self._cluster.kill_task("ps", 0)
+    while self.cluster_coord._cluster._closure_queue._error is None:
+      time.sleep(1)
+    with self.assertRaises((errors.UnavailableError, errors.NotFoundError,
+                            errors.FailedPreconditionError)):
+      self.cluster_coord.join()
+
+  def testScheduleRaisesUnavailableErrorAtPsFailure(self):
+    self._create_model_and_run_indefinitely()
+    self._cluster.kill_task("ps", 0)
+    while self.cluster_coord._cluster._closure_queue._error is None:
+      time.sleep(1)
+    with self.assertRaises((errors.UnavailableError, errors.NotFoundError,
+                            errors.FailedPreconditionError)):
+      self.cluster_coord.schedule(def_function.function(lambda: None))
+
+  def testWorkerExecutionAfterPsFailureRaisesExpectedError(self):
+    model = self._create_model_and_run_indefinitely()
+    for i in range(self.num_ps):
+      self._cluster.kill_task("ps", i)
+    while self.cluster_coord._cluster._closure_queue._error is None:
+      time.sleep(1)
+
+    @def_function.function
+    def trivial_function():
+      return model.iterations + 1
+
+    for i in range(self.num_workers):
+      try:
+        with ops.device("/job:worker/replica:0/task:{}".format(i)):
+          trivial_function()
+      except Exception as e:  # pylint: disable=broad-except
+        if cluster_coordinator._is_ps_failure(e):
+          if i < self.num_workers - 1:
+            continue
+          return
+      raise AssertionError("Executing a function after PS fails, should "
+                           "result in a PS failure.")
 
 
 class MultiWorkerFaultToleranceTest(BaseFaultToleranceTest, test.TestCase):

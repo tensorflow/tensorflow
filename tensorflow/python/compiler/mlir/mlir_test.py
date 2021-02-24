@@ -23,6 +23,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.platform import test
 
@@ -43,6 +44,7 @@ class MLIRGraphDefImportTest(test.TestCase):
 
 class MLIRConcreteFunctionImportTest(test.TestCase):
 
+  @test_util.run_v2_only
   def testImport(self):
 
     @def_function.function
@@ -53,8 +55,9 @@ class MLIRConcreteFunctionImportTest(test.TestCase):
         tensor_spec.TensorSpec(None, dtypes.float32))
     mlir_module = mlir.convert_function(concrete_function, show_debug_info=True)
     self.assertRegex(mlir_module, r'func @.*sqr.*\(')
-    self.assertRegex(mlir_module, r'loc\(')
+    self.assertRegex(mlir_module, r'callsite\(".*mlir_test.py":')
 
+  @test_util.run_v2_only
   def testImportWithCall(self):
 
     @def_function.function
@@ -71,6 +74,7 @@ class MLIRConcreteFunctionImportTest(test.TestCase):
     self.assertRegex(mlir_module, r'func @.*caller.*\(')
     self.assertRegex(mlir_module, r'func private @.*callee.*\(')
 
+  @test_util.run_v2_only
   def testImportWithControlRet(self):
 
     @def_function.function

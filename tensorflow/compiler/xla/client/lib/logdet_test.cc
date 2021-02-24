@@ -61,7 +61,7 @@ XLA_TEST_F(LogDetTest, SimpleTriangle) {
       {4, 6, 8, 320},
   });
 
-  float expected = -15.9131355f;
+  float expected = 15.9131355f;
 
   xla::XlaOp a;
   auto a_data = CreateR2Parameter<float>(a_vals, 0, "a", &builder, &a);

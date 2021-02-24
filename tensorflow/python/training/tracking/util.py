@@ -2132,7 +2132,8 @@ class Checkpoint(tracking.AutoTrackable):
 
     # You can also pass options to read(). For example this
     # runs the IO ops on the localhost:
-    options = tf.CheckpointOptions(experimental_io_device="/job:localhost")
+    options = tf.train.CheckpointOptions(
+        experimental_io_device="/job:localhost")
     checkpoint.read(path, options=options)
     ```
 

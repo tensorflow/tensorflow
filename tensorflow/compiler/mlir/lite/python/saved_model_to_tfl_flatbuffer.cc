@@ -174,6 +174,8 @@ Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   bool emit_builtin_tflite_ops = !toco_flags.force_select_tf_ops();
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.lower_tensor_list_ops = true;
+  pass_config.enable_tflite_variables =
+      toco_flags.enable_tflite_resource_variables();
   // Disable the unfolding of the 16x16 TF::BatchMatMulOp to avoid the
   // conversion to an unsupported 16x16 TFL::FullyConnectedOp.
   if (toco_flags.inference_type() == toco::IODataType::QUANTIZED_INT16) {
@@ -182,7 +184,7 @@ Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
 
   // TODO(b/153507667): Pass the session object when importing logic is removed.
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(
-      toco_flags, std::move(module), pass_config, tags, result,
+      model_flags, toco_flags, std::move(module), pass_config, tags, result,
       /*session=*/llvm::None);
   return status;
 }

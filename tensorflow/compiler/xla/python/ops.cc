@@ -50,6 +50,11 @@ void BuildOpsSubmodule(py::module* m) {
       .value("TRANSPOSE", TriangularSolveOptions::TRANSPOSE)
       .value("ADJOINT", TriangularSolveOptions::ADJOINT);
 
+  py::enum_<RandomAlgorithm>(ops, "RandomAlgorithm")
+      .value("RNG_DEFAULT", RandomAlgorithm::RNG_DEFAULT)
+      .value("RNG_THREE_FRY", RandomAlgorithm::RNG_THREE_FRY)
+      .value("RNG_PHILOX", RandomAlgorithm::RNG_PHILOX);
+
   ops.def("AfterAll", &AfterAll, py::arg("builder"), py::arg("tokens"));
   ops.def("AllGather", &AllGather, py::arg("operand"),
           py::arg("all_gather_dimension"), py::arg("shard_count"),
@@ -187,8 +192,9 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def(
       "QR",
       [](XlaOp a, bool full_matrices) -> StatusOr<std::pair<XlaOp, XlaOp>> {
-        TF_ASSIGN_OR_RETURN(auto qr, QRDecomposition(a, full_matrices));
-        return std::make_pair(qr.q, qr.r);
+        XlaOp q, r;
+        QrExplicit(a, full_matrices, q, r);
+        return std::make_pair(q, r);
       },
       py::arg("operand"), py::arg("full_matrices"));
   ops.def(
@@ -237,6 +243,8 @@ void BuildOpsSubmodule(py::module* m) {
           static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>)>(&Reshape),
           py::arg("operand"), py::arg("new_sizes"));
   ops.def("Rev", &Rev, py::arg("operand"), py::arg("dimensions"));
+  ops.def("RngBitGenerator", &RngBitGenerator, py::arg("algorithm"),
+          py::arg("initial_state"), py::arg("shape"));
   ops.def("RngNormal", &RngNormal, py::arg("mu"), py::arg("sigma"),
           py::arg("shape"));
   ops.def("RngUniform", &RngUniform, py::arg("a"), py::arg("b"),

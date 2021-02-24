@@ -58,12 +58,14 @@ class SidecarEvaluatorTest(test.TestCase):
 
     # Asserts the content of the summary file.
     event_pb_written = False
+    event_tags = []
     for event_pb in summary_iterator.summary_iterator(
         os.path.join(log_dir, summary_files[0])):
       if event_pb.step > 0:
         self.assertEqual(event_pb.step, 32)
-        self.assertEqual(event_pb.summary.value[0].tag, 'categorical_accuracy')
+        event_tags.append(event_pb.summary.value[0].tag)
         event_pb_written = True
+    self.assertCountEqual(event_tags, ['categorical_accuracy', 'loss'])
 
     # Verifying at least one non-zeroth step is written to summary.
     self.assertTrue(event_pb_written)

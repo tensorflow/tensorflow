@@ -34,6 +34,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
+#include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
@@ -236,6 +238,44 @@ StatusOr<std::vector<Shape>> XlaBuilder::GetOperandShapes(
     operand_shapes.push_back(*shape);
   }
   return operand_shapes;
+}
+
+std::string XlaBuilder::OpToString(XlaOp op) const {
+  std::string s;
+  ToStringHelper(&s, /*ident=*/0, op.handle());
+  return s;
+}
+
+static std::string ShapeToString(const xla::ShapeProto& shape) {
+  if (shape.tuple_shapes_size() > 1) {
+    return absl::StrCat(
+        "(",
+        absl::StrJoin(shape.tuple_shapes(), ", ",
+                      [&](std::string* s, const xla::ShapeProto& subshape) {
+                        absl::StrAppend(s, ShapeToString(subshape));
+                      }),
+        ")");
+  }
+  return absl::StrCat("[", absl::StrJoin(shape.dimensions(), ", "), "]");
+}
+
+void XlaBuilder::ToStringHelper(std::string* out, int ident,
+                                int64 op_handle) const {
+  const HloInstructionProto& instr =
+      *(LookUpInstructionByHandle(op_handle).ValueOrDie());
+  absl::StrAppend(out, std::string(ident, ' '), instr.opcode(),
+                  ", shape=", ShapeToString(instr.shape()));
+  if (instr.has_metadata()) {
+    absl::StrAppend(out, ", metadata={", instr.metadata().source_file(), ":",
+                    instr.metadata().source_line(), "}");
+  }
+  if (instr.operand_ids_size()) {
+    absl::StrAppend(out, "\n");
+  }
+  absl::StrAppend(out, absl::StrJoin(instr.operand_ids(), "\n",
+                                     [&](std::string* s, int64 subop) {
+                                       ToStringHelper(s, ident + 2, subop);
+                                     }));
 }
 
 XlaBuilder::XlaBuilder(const string& computation_name)
@@ -1880,7 +1920,8 @@ XlaOp XlaBuilder::CustomCall(
     absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing) {
+        output_operand_aliasing,
+    const Literal* literal) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     if (absl::StartsWith(call_target_name, "$")) {
       return InvalidArgument(
@@ -1913,7 +1954,7 @@ XlaOp XlaBuilder::CustomCall(
     }
     return CustomCallInternal(call_target_name, operands, shape, opaque,
                               operand_shapes_with_layout, has_side_effect,
-                              output_operand_aliasing);
+                              output_operand_aliasing, literal);
   });
 }
 
@@ -1923,7 +1964,8 @@ StatusOr<XlaOp> XlaBuilder::CustomCallInternal(
     absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing) {
+        output_operand_aliasing,
+    const Literal* literal) {
   HloInstructionProto instr;
   *instr.mutable_shape() = shape.ToProto();
   instr.set_custom_call_target(call_target_name);
@@ -1933,6 +1975,9 @@ StatusOr<XlaOp> XlaBuilder::CustomCallInternal(
     for (const Shape& operand_shape : *operand_shapes_with_layout) {
       *instr.add_operand_shapes_with_layout() = operand_shape.ToProto();
     }
+  }
+  if (literal != nullptr) {
+    *instr.mutable_literal() = literal->ToProto();
   }
   instr.set_custom_call_has_side_effect(has_side_effect);
   for (const auto& pair : output_operand_aliasing) {
@@ -1954,7 +1999,8 @@ XlaOp XlaBuilder::CustomCall(
     absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing) {
+        output_operand_aliasing,
+    const Literal* literal) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     if (absl::StartsWith(call_target_name, "$")) {
@@ -1966,6 +2012,9 @@ XlaOp XlaBuilder::CustomCall(
     *instr.mutable_shape() = shape.ToProto();
     instr.set_custom_call_target(call_target_name);
     instr.set_backend_config(opaque);
+    if (literal != nullptr) {
+      *instr.mutable_literal() = literal->ToProto();
+    }
     if (operand_shapes_with_layout.has_value()) {
       if (!LayoutUtil::HasLayout(shape)) {
         return InvalidArgument(
@@ -2847,6 +2896,72 @@ XlaOp XlaBuilder::AllToAll(XlaOp operand, int64 split_dimension,
                            int64 concat_dimension, int64 split_count,
                            const std::vector<ReplicaGroup>& replica_groups,
                            const absl::optional<Layout>& layout) {
+  // Array all_to_all may need to violate layout constraint to be legal so use
+  // the tuple version.
+  if (layout.has_value()) {
+    return AllToAllTuple(operand, split_dimension, concat_dimension,
+                         split_count, replica_groups, layout);
+  }
+  return AllToAllArray(operand, split_dimension, concat_dimension, split_count,
+                       replica_groups);
+}
+
+XlaOp XlaBuilder::AllToAllArray(
+    XlaOp operand, int64 split_dimension, int64 concat_dimension,
+    int64 split_count, const std::vector<ReplicaGroup>& replica_groups) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    TF_ASSIGN_OR_RETURN(
+        const Shape all_to_all_shape,
+        ShapeInference::InferAllToAllShape(*operand_shape, split_dimension,
+                                           concat_dimension, split_count));
+    HloInstructionProto instr;
+    *instr.mutable_shape() = operand_shape->ToProto();
+    if (replica_groups.empty()) {
+      auto* group = instr.add_replica_groups();
+      for (int64 i = 0; i < split_count; ++i) {
+        group->add_replica_ids(i);
+      }
+    } else {
+      for (const ReplicaGroup& group : replica_groups) {
+        *instr.add_replica_groups() = group;
+      }
+    }
+    instr.add_dimensions(split_dimension);
+    TF_ASSIGN_OR_RETURN(
+        XlaOp all_to_all,
+        AddInstruction(std::move(instr), HloOpcode::kAllToAll, {operand}));
+    if (split_dimension == concat_dimension) {
+      return all_to_all;
+    }
+    DimensionVector sizes;
+    for (int64 i = 0; i < operand_shape->rank(); ++i) {
+      if (i != split_dimension) {
+        sizes.push_back(operand_shape->dimensions(i));
+        continue;
+      }
+      sizes.push_back(split_count);
+      sizes.push_back(operand_shape->dimensions(i) / split_count);
+    }
+    all_to_all = Reshape(all_to_all, sizes);
+
+    std::vector<int64> permutation;
+    for (int64 i = 0; i < operand_shape->rank(); ++i) {
+      int64 dim_after_reshape = i >= split_dimension ? i + 1 : i;
+      if (i == concat_dimension) {
+        permutation.push_back(split_dimension);
+      }
+      permutation.push_back(dim_after_reshape);
+    }
+    all_to_all = Transpose(all_to_all, permutation);
+    return Reshape(all_to_all_shape, all_to_all);
+  });
+}
+
+XlaOp XlaBuilder::AllToAllTuple(XlaOp operand, int64 split_dimension,
+                                int64 concat_dimension, int64 split_count,
+                                const std::vector<ReplicaGroup>& replica_groups,
+                                const absl::optional<Layout>& layout) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
 
@@ -3478,13 +3593,25 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
       }
       case HloOpcode::kTuple:
       case HloOpcode::kTranspose:
-      case HloOpcode::kGetTupleElement:
       case HloOpcode::kSlice:
       case HloOpcode::kBroadcast:
       case HloOpcode::kConcatenate:
       case HloOpcode::kReshape:
       case HloOpcode::kPad:
         break;
+      case HloOpcode::kGetTupleElement: {
+        // Rewrite parameter followed by gte into constants to avoid
+        // rematerializing the tuple parameter (could be very large).
+        int64 operand_handle = instr_proto->operand_ids(0);
+        TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
+                            LookUpInstructionByHandle(operand_handle));
+        TF_ASSIGN_OR_RETURN(HloOpcode operand_opcode,
+                            StringToHloOpcode(operand_proto->opcode()));
+        if (operand_opcode == HloOpcode::kParameter) {
+          SetInstructionAsConstant(new_instr, id, new_shape, true);
+        }
+        break;
+      }
       case HloOpcode::kGetDimensionSize: {
         int64 dimension = instr_proto->dimensions(0);
         int64 operand_handle = instr_proto->operand_ids(0);
@@ -3576,6 +3703,18 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
       // We rewrite gte instructions into constants based on its operand shape
       // so no need to visit their operands.
       should_visit_operand = false;
+    }
+
+    if (opcode == HloOpcode::kGetTupleElement) {
+      int64 operand_handle = instr_proto->operand_ids(0);
+      TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
+                          LookUpInstructionByHandle(operand_handle));
+      TF_ASSIGN_OR_RETURN(HloOpcode operand_opcode,
+                          StringToHloOpcode(operand_proto->opcode()));
+      if (operand_opcode == HloOpcode::kParameter) {
+        // Don't rematerialize the whole parameter if it's followed by a GTE.
+        should_visit_operand = false;
+      }
     }
 
     if (opcode == HloOpcode::kSelect) {
@@ -3694,6 +3833,8 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
             HloOpcodeString(HloOpcode::kGetDimensionSize) ||
         InstrIsSetBound(instr_proto)) {
       int32 constant_value = -1;
+      HloInstructionProto const_instr;
+
       if (instr_proto->opcode() ==
           HloOpcodeString(HloOpcode::kGetDimensionSize)) {
         // At this point, BuildConstantSubGraph should never encounter a
@@ -3712,18 +3853,14 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
           constant_value =
               static_cast<int32>(operand_proto->shape().dimensions(dimension));
         }
+        Literal literal = LiteralUtil::CreateR0(constant_value);
+        *const_instr.mutable_literal() = literal.ToProto();
+        *const_instr.mutable_shape() = literal.shape().ToProto();
       } else {
-        TF_RET_CHECK(
-            absl::SimpleAtoi(instr_proto->backend_config(), &constant_value));
+        *const_instr.mutable_literal() = instr_proto->literal();
+        *const_instr.mutable_shape() = instr_proto->shape();
       }
-
-      Literal literal = LiteralUtil::CreateR0(constant_value);
-
-      HloInstructionProto const_instr;
-      *const_instr.mutable_shape() = literal.shape().ToProto();
-      *const_instr.mutable_literal() = literal.ToProto();
       *const_instr.mutable_opcode() = HloOpcodeString(HloOpcode::kConstant);
-
       const_instr.set_id(handle);
       *const_instr.mutable_name() =
           GetFullName(const_instr.opcode(), kNameSeparator, const_instr.id());
@@ -3774,7 +3911,6 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
     }
   }
   *module->add_computations() = std::move(entry);
-
   return std::move(computation);
 }
 
@@ -4367,10 +4503,11 @@ XlaOp CustomCall(
     absl::Span<const XlaOp> operands, const Shape& shape, const string& opaque,
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing) {
+        output_operand_aliasing,
+    const Literal* literal) {
   return builder->CustomCall(call_target_name, operands, shape, opaque,
                              /*operand_shapes_with_layout=*/absl::nullopt,
-                             has_side_effect, output_operand_aliasing);
+                             has_side_effect, output_operand_aliasing, literal);
 }
 
 XlaOp CustomCallWithComputation(
@@ -4378,11 +4515,12 @@ XlaOp CustomCallWithComputation(
     absl::Span<const XlaOp> operands, const XlaComputation& computation,
     const Shape& shape, const string& opaque, bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing) {
+        output_operand_aliasing,
+    const Literal* literal) {
   return builder->CustomCall(call_target_name, operands, computation, shape,
                              opaque,
                              /*operand_shapes_with_layout=*/absl::nullopt,
-                             has_side_effect, output_operand_aliasing);
+                             has_side_effect, output_operand_aliasing, literal);
 }
 
 XlaOp CustomCallWithLayout(
@@ -4391,10 +4529,11 @@ XlaOp CustomCallWithLayout(
     absl::Span<const Shape> operand_shapes_with_layout, const string& opaque,
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing) {
+        output_operand_aliasing,
+    const Literal* literal) {
   return builder->CustomCall(call_target_name, operands, shape, opaque,
                              operand_shapes_with_layout, has_side_effect,
-                             output_operand_aliasing);
+                             output_operand_aliasing, literal);
 }
 
 XlaOp Complex(const XlaOp lhs, const XlaOp rhs,
@@ -4579,6 +4718,15 @@ XlaOp AllToAll(const XlaOp operand, int64 split_dimension,
                const absl::optional<Layout>& layout) {
   return operand.builder()->AllToAll(operand, split_dimension, concat_dimension,
                                      split_count, replica_groups, layout);
+}
+
+XlaOp AllToAllTuple(const XlaOp operand, int64 split_dimension,
+                    int64 concat_dimension, int64 split_count,
+                    const std::vector<ReplicaGroup>& replica_groups,
+                    const absl::optional<Layout>& layout) {
+  return operand.builder()->AllToAllTuple(operand, split_dimension,
+                                          concat_dimension, split_count,
+                                          replica_groups, layout);
 }
 
 XlaOp CollectivePermute(

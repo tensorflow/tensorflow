@@ -22,7 +22,7 @@ ifneq ($(DOWNLOAD_RESULT), SUCCESS)
   $(error Something went wrong with the CMSIS download: $(DOWNLOAD_RESULT))
 endif
 
-# TODO(b/161478030) : change - Wno - vla to - Wvla and remove - Wno-shadow once
+# TODO(b/161478030): change -Wno-vla to -Wvla and remove -Wno-shadow once
 # we have a solution for fixing / avoiding being tripped up by these warnings.
 PLATFORM_FLAGS = \
   -DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK \
@@ -52,6 +52,10 @@ PLATFORM_FLAGS = \
   -fomit-frame-pointer \
   -g \
   -Os
+
+# TODO(#46937): Remove once initialization of global variables is sorted out.
+PLATFORM_FLAGS += -DRENODE
+
 CXXFLAGS += $(PLATFORM_FLAGS) -std=gnu++11 -fno-rtti -fno-use-cxa-atexit
 CCFLAGS += $(PLATFORM_FLAGS)
 LDFLAGS += \

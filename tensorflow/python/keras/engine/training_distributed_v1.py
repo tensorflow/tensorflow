@@ -31,7 +31,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
-from tensorflow.python.keras.distribute import distributed_training_utils as dist_utils_v2
 from tensorflow.python.keras.distribute import distributed_training_utils_v1 as dist_utils
 from tensorflow.python.keras.engine import partial_batch_padding_handler as padding_util
 from tensorflow.python.keras.engine import training_arrays_v1
@@ -651,7 +650,7 @@ class DistributionSingleWorkerTrainingLoop(training_utils_v1.TrainingLoop):
       raise ValueError('validation_split argument is not supported with '
                        'distribution strategies.')
 
-    if dist_utils_v2.is_tpu_strategy(model._distribution_strategy):
+    if K.is_tpu_strategy(model._distribution_strategy):
       steps_per_epoch = training_utils_v1.infer_steps_for_dataset(
           model, dataset, steps_per_epoch, epochs, steps_name='steps_per_epoch')
       if steps_per_epoch is None:
@@ -708,7 +707,7 @@ class DistributionSingleWorkerTrainingLoop(training_utils_v1.TrainingLoop):
         batch_size=batch_size,
         allow_partial_batch=True)
 
-    if dist_utils_v2.is_tpu_strategy(model._distribution_strategy):
+    if K.is_tpu_strategy(model._distribution_strategy):
       steps = training_utils_v1.infer_steps_for_dataset(
           model, dataset, steps, steps_name='steps')
       if steps is None:
@@ -745,7 +744,7 @@ class DistributionSingleWorkerTrainingLoop(training_utils_v1.TrainingLoop):
         x,
         batch_size=batch_size,
         allow_partial_batch=True)
-    if dist_utils_v2.is_tpu_strategy(model._distribution_strategy):
+    if K.is_tpu_strategy(model._distribution_strategy):
       steps = training_utils_v1.infer_steps_for_dataset(
           model, dataset, steps, steps_name='steps')
       if steps is None:

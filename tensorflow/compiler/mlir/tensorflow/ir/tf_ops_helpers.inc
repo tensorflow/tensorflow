@@ -322,7 +322,7 @@ ArrayAttr ShuffleArrayAttr(ArrayAttr attr, ArrayRef<int64_t> permutation,
     }
   }
 
-  return ArrayAttr::get(shuffled, attr.getContext());
+  return ArrayAttr::get(attr.getContext(), shuffled);
 }
 
 // Shuffle ranked tensor dimensions according to the permutation.
@@ -370,7 +370,7 @@ LogicalResult UpdateDataFormat(StringRef data_format, Op *op) {
   if (perm.empty()) return failure();
 
   // Update data format attribute.
-  (*op)->setAttr("data_format", StringAttr::get(data_format, op->getContext()));
+  (*op)->setAttr("data_format", StringAttr::get(op->getContext(), data_format));
 
   // Update types for all layout sensitive results.
   auto layout_sensitive = cast<LayoutSensitiveInterface>(op->getOperation());
@@ -421,7 +421,7 @@ LogicalResult FoldOperandsPermutation(
       GetDataFormatPermutation(op->data_format(), target_data_format);
   if (reverse_permutation.empty()) return failure();
 
-  (*op)->setAttr("data_format", StringAttr::get(target_data_format, context));
+  (*op)->setAttr("data_format", StringAttr::get(context, target_data_format));
 
   for (auto pair : shuffle_attrs) {
     StringRef attr_name = pair.first;

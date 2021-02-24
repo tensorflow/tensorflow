@@ -20,8 +20,7 @@ REGISTER6(UnaryOp, CPU, "Cos", functor::cos, float, Eigen::half, bfloat16,
           double, complex64, complex128);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_GPU_KERNELS_ENABLED)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER3(UnaryOp, GPU, "Cos", functor::cos, float, Eigen::half, double);
 #endif
 #endif

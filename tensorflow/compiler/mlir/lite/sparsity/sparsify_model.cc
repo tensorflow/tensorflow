@@ -68,9 +68,12 @@ TfLiteStatus SparsifyModel(const tflite::ModelT& input_model,
 
   // Export the results to the builder
   std::string result;
-  if (tflite::MlirToFlatBufferTranslateFunction(
-          module.get(), &result, /*emit_builtin_tflite_ops=*/true,
-          /*emit_select_tf_ops=*/true, /*emit_custom_ops=*/true)) {
+  tflite::FlatbufferExportOptions options;
+  options.emit_builtin_tflite_ops = true;
+  options.emit_select_tf_ops = true;
+  options.emit_custom_ops = true;
+  if (!tflite::MlirToFlatBufferTranslateFunction(module.get(), options,
+                                                 &result)) {
     error_reporter->Report("Failed to export MLIR to flatbuffer.");
     return kTfLiteError;
   }

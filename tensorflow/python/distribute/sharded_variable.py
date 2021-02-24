@@ -18,8 +18,12 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import math
+import numpy as np
 
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import type_spec
@@ -282,8 +286,8 @@ class ShardedVariableMixin(trackable.Trackable):
       raise ValueError(
           'Expected a list of `Variable`s, found: {}'.format(variables))
 
-    dtypes = {v.dtype for v in variables}
-    if len(dtypes) > 1:
+    var_dtypes = {v.dtype for v in variables}
+    if len(var_dtypes) > 1:
       raise ValueError(
           'All `Variable`s must have the same dtype, found: {}'.format(
               [v.dtype for v in variables]))
@@ -321,6 +325,171 @@ class ShardedVariableMixin(trackable.Trackable):
   def __iter__(self):
     """Return an iterable for accessing the underlying sharded variables."""
     return iter(self._variables)
+
+  def __getitem__(self, slice_spec):
+    """Extracts the specified region as a Tensor from the sharded variable.
+
+    The API contract is identical to `Tensor.__getitem__`. Assignment to the
+    sliced range is not yet supported.
+
+    Args:
+      slice_spec: The arguments to __getitem__, specifying the global slicing of
+        the sharded variable.
+
+    Returns:
+      The appropriate slice of tensor based on `slice_spec`.
+
+    Raises:
+      IndexError: If a slice index is out of bound.
+      TypeError: If `spec_spec` contains Tensor.
+    """
+
+    # TODO(b/177482728): Support tensor input.
+    # TODO(b/177482728): Support slice assign, similar to variable slice assign.
+
+    if (isinstance(slice_spec, bool) or (isinstance(slice_spec, ops.Tensor) and
+                                         slice_spec.dtype == dtypes.bool) or
+        (isinstance(slice_spec, np.ndarray) and slice_spec.dtype == bool)):
+      tensor = _var_to_tensor(self)
+      return array_ops.boolean_mask(tensor=tensor, mask=slice_spec)
+
+    if not isinstance(slice_spec, (list, tuple)):
+      slice_spec = (slice_spec,)
+
+    s = slice_spec[0]
+    if isinstance(s, slice):
+      first_dim_slice_specs = self._decompose_slice_spec(s)
+      values = []
+      for i, var in enumerate(self._variables):
+        if first_dim_slice_specs[i] is not None:
+          all_dim_slice_spec = (first_dim_slice_specs[i],) + slice_spec[1:]
+          values.append(var[all_dim_slice_spec])
+      if s.step is not None and s.step < 0:
+        values.reverse()
+      if not values:
+        return constant_op.constant([],
+                                    dtype=self._dtype,
+                                    shape=((0,) + self._shape[1:]))
+      return array_ops.concat(values, axis=0)
+    elif s is Ellipsis:
+      return array_ops.concat([var[slice_spec] for var in self._variables],
+                              axis=0)
+    elif s is array_ops.newaxis:
+      return array_ops.concat([var[slice_spec[1:]] for var in self._variables],
+                              axis=0)[array_ops.newaxis]
+    else:
+      if isinstance(s, ops.Tensor):
+        raise TypeError(
+            'ShardedVariable: using Tensor for indexing is not allowed.')
+      if s < 0:
+        s += self._shape[0]
+      if s < 0 or s >= self._shape[0]:
+        raise IndexError('slice index %d of dimension 0 out of bounds.' % s)
+      for i in range(len(self._variables)):
+        if i == len(self._variables) - 1 or (s > self._var_offsets[i][0] and
+                                             s < self._var_offsets[i + 1][0]):
+          return self._variables[i][(s - self._var_offsets[i][0],) +
+                                    slice_spec[1:]]
+
+  def _decompose_slice_spec(self, slice_spec):
+    """Decompose a global slice_spec into a list of per-variable slice_spec.
+
+    `ShardedVariable` only supports first dimension partitioning, thus
+    `slice_spec` must be for first dimension.
+
+    Args:
+      slice_spec: A python `slice` object that specifies the global slicing.
+
+    Returns:
+      A list of python `slice` objects or None specifying the local slicing for
+      each component variable. None means no slicing.
+
+    For example, given component variables:
+      v0 = [0, 1, 2]
+      v1 = [3, 4, 5]
+      v2 = [6, 7, 8, 9]
+
+    If `slice_spec` is slice(start=None, stop=None, step=None), we will have:
+      v0[returned[0]] = [0, 1, 2]
+      v1[returned[1]] = [3, 4, 5]
+      v2[returned[2]] = [6, 7, 8, 9]
+    If `slice_spec` is slice(start=2, stop=8, step=3), we will have:
+      v0[returned[0]] = [2]
+      v1[returned[1]] = [5]
+      returned[2] == None
+    If `slice_spec` is slice(start=9, stop=3, step=-2), we will have:
+      returned[0] == None
+      v1[returned[1]] = [5]
+      v2[returned[2]] = [9, 7]
+    """
+    if isinstance(slice_spec.start, ops.Tensor) or isinstance(
+        slice_spec.stop, ops.Tensor) or isinstance(slice_spec.step, ops.Tensor):
+      raise TypeError(
+          'ShardedVariable: using Tensor in slice_spec is not allowed. Please '
+          'file a feature request with the TensorFlow team.')
+
+    result = []
+    # Normalize start, end and stop.
+    slice_step = slice_spec.step if slice_spec.step is not None else 1
+    if slice_step == 0:
+      raise ValueError('slice step cannot be zero')
+    slice_start = slice_spec.start
+    if slice_start is None:
+      slice_start = 0 if slice_step > 0 else self._shape[0] - 1
+    elif slice_start < 0:
+      slice_start += self._shape[0]
+    slice_end = slice_spec.stop
+    if slice_end is None:
+      # After the normalization, we no longer interpret negative index, thus
+      # "-1" conceptually refers to the element before the first one, which
+      # doesn't exist. This is to ease the decomposition code.
+      slice_end = self._shape[0] if slice_step > 0 else -1
+    elif slice_end < 0:
+      slice_end += self._shape[0]
+
+    # To find the local slice_spec of each component variable, we start from
+    # the start of the global slice, and iterate through each variable.
+    # When iterating on a variable, we move the cursor (`cur`) to the first
+    # index that falls into the variable's range, which becomes the start of
+    # the variable's local slice_spec. The end of the local_spec is determined
+    # by using whatever is smaller between global slice end and variable range
+    # end.
+    cur = slice_start
+    if slice_step > 0:
+      for i in range(len(self._var_offsets)):
+        var_start = self._var_offsets[i][0]
+        var_end = (
+            self._var_offsets[i + 1][0]
+            if i < len(self._var_offsets) - 1 else self._shape[0])
+        if cur < var_start:
+          cur += slice_step * int(math.ceil((var_start - cur) / slice_step))
+        if cur >= var_end or cur >= slice_end:
+          result.append(None)
+        else:
+          start = cur - var_start
+          end = min(slice_end, var_end) - var_start
+          result.append(slice(start, end, slice_step))
+    else:  # slice_step < 0
+      for i in range(len(self._var_offsets) - 1, -1, -1):
+        var_start = self._var_offsets[i][0]
+        var_end = (
+            self._var_offsets[i + 1][0]
+            if i < len(self._var_offsets) - 1 else self._shape[0])
+        if cur >= var_end:
+          cur += slice_step * int(math.ceil((var_end - cur - 1) / slice_step))
+        if cur < var_start or cur <= slice_end:
+          result.append(None)
+        else:
+          start = cur - var_start
+          if slice_end >= var_start:
+            end = slice_end - var_start
+          else:
+            end = None  # no explicit end: slice until hitting the boundary.
+          result.append(slice(start, end, slice_step))
+
+      result.reverse()
+
+    return result
 
   @property
   def _type_spec(self):

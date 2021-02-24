@@ -323,8 +323,10 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -332,8 +334,7 @@ cc_test(
     name = "mean_test",
     srcs = ["mean_test.cc"],
     linkstatic = True,
-    tags = [
-        "no_mac",  # TODO(b/171882090)
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],

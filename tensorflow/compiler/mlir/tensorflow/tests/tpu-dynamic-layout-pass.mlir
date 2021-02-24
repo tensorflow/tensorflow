@@ -277,6 +277,88 @@ func @replicated(%arg0: tensor<*x!tf.resource> {tf.device = "/device:CPU:0"}) ->
 
 // -----
 
+// Tests that the pass can transform replicated execution with packed inputs.
+
+// CHECK: func @replicated_packed(%[[ARG0:.*]]: tensor<*x!tf.resource> {tf.device = "/device:CPU:0"}) -> tensor<i32>
+func @replicated_packed(%arg0: tensor<*x!tf.resource> {tf.device = "/device:CPU:0"}) -> tensor<i32> {
+  // CHECK: %[[ITER0:.*]]:2 = "tf.IteratorGetNext"
+  %2:2 = "tf.IteratorGetNext"(%arg0) {device = "/device:CPU:0"}
+    : (tensor<*x!tf.resource>) -> (tensor<3x3x1x32xf32>, tensor<3x3x1x32xf32>)
+  // CHECK: %[[COMPILE:.*]]:2 = "tf_device.launch"
+  // CHECK-NEXT: "tf._TPUCompileMlir"()
+  %compile:2 = "tf_device.launch"() ( {
+    %1:2 = "tf._TPUCompileMlir"() {
+      NumDynamicShapes = 0 : i64,
+      // The metadata encodes 2 parameter and two return values.
+      metadata = "\0A\0E\08\01\18\01\22\08\08\01\1A\01\01\22\01\00\0A \08\01\12\10\12\02\08\03\12\02\08\03\12\02\08\01\12\02\08 \18\01\22\08\08\01\1A\01\01\22\01\00\12\0A\0A\08\08\01\1A\01\01\22\01\00\12\0A\0A\08\08\01\1A\01\01\22\01\00\18\02 \01",
+      mlir_module = "..."} : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
+    tf_device.return %1#0, %1#1 : tensor<!tf.string>, tensor<2x!tf.string>
+  }) {device = "/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
+  // CHECK-DAG: %[[LAYOUT0:.*]] = "tf.TPUGetLayoutOp"(%[[COMPILE]]#1) {index = 0 : i64, is_output = false}
+  // CHECK-DAG: %[[LAYOUT1:.*]] = "tf.TPUGetLayoutOp"(%[[COMPILE]]#1) {index = 1 : i64, is_output = false}
+
+  // CHECK-DAG: %[[COPY0:.*]] = "tf.TPUCopyWithLayout"(%[[ITER0]]#0, %[[LAYOUT0]]) {device = "/device:TPU:0"}
+  // CHECK-DAG: %[[COPY1:.*]] = "tf.TPUCopyWithLayout"(%[[ITER0]]#1, %[[LAYOUT1]]) {device = "/device:TPU:0"}
+  // CHECK: tf_device.replicate(%[[COPY0]] as %[[R0:.*]]: tensor<3x3x1x32xf32>, %[[COPY1]] as %[[R1:.*]]: tensor<3x3x1x32xf32>)
+  %5:2 = tf_device.replicate(%2#0 as %r0: tensor<3x3x1x32xf32>, %2#1 as %r1: tensor<3x3x1x32xf32>)
+      {n = 2 : i32, devices = {TPU_REPLICATED_CORE_0 = ["/device:TPU:0", "/device:TPU:1"]}} {
+    // CHECK: "tf.TPUExecute"(%[[R0]], %[[R1]], %[[COMPILE]]#1)
+    %execute = "tf_device.launch"() ( {
+      %4 = "tf.TPUExecute"(%r0, %r1, %compile#1) : (tensor<3x3x1x32xf32>, tensor<3x3x1x32xf32>, tensor<2x!tf.string>) -> tensor<i32>
+      tf_device.return %4 : tensor<i32>
+    }) {device = "TPU_REPLICATED_CORE_0"} : () -> tensor<i32>
+    tf_device.return %execute : tensor<i32>
+  }
+  return %5#0 : tensor<i32>
+}
+
+// -----
+
+// Tests that the pass can transform replicated execution with both replicated
+// and packed operands.
+
+// CHECK: func @replicated(%[[ARG0:.*]]: tensor<*x!tf.resource> {tf.device = "/device:CPU:0"}) -> tensor<i32>
+func @replicated(%arg0: tensor<*x!tf.resource> {tf.device = "/device:CPU:0"}, %arg1: tensor<*x!tf.resource> {tf.device = "/device:CPU:0"}) -> tensor<i32> {
+  // CHECK: %[[ITER0:.*]]:2 = "tf.IteratorGetNext"
+  %2:2 = "tf.IteratorGetNext"(%arg0) {device = "/device:CPU:0"}
+    : (tensor<*x!tf.resource>) -> (tensor<3x3x1x32xf32>, tensor<3x3x1x32xf32>)
+  // CHECK: %[[COMPILE:.*]]:2 = "tf_device.launch"
+  // CHECK-NEXT: "tf._TPUCompileMlir"()
+  %compile:2 = "tf_device.launch"() ( {
+    %1:2 = "tf._TPUCompileMlir"() {
+      NumDynamicShapes = 0 : i64,
+      // The metadata encodes 2 parameter and two return values.
+      metadata = "\0A\0E\08\01\18\01\22\08\08\01\1A\01\01\22\01\00\0A \08\01\12\10\12\02\08\03\12\02\08\03\12\02\08\01\12\02\08 \18\01\22\08\08\01\1A\01\01\22\01\00\12\0A\0A\08\08\01\1A\01\01\22\01\00\12\0A\0A\08\08\01\1A\01\01\22\01\00\18\02 \01",
+      mlir_module = "..."} : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
+    tf_device.return %1#0, %1#1 : tensor<!tf.string>, tensor<2x!tf.string>
+  }) {device = "/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
+  // CHECK-DAG: %[[LAYOUT0:.*]] = "tf.TPUGetLayoutOp"(%[[COMPILE]]#1) {index = 0 : i64, is_output = false}
+  // CHECK-DAG: %[[LAYOUT1:.*]] = "tf.TPUGetLayoutOp"(%[[COMPILE]]#1) {index = 1 : i64, is_output = false}
+  // CHECK: %[[ITER1:.*]] = "tf.IteratorGetNext"
+  %3 = "tf.IteratorGetNext"(%arg1) {device = "/device:CPU:0"}
+    : (tensor<*x!tf.resource>) -> tensor<3x3x1x32xf32>
+  "tf_device.launch"() ( {
+    "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf.string>) -> ()
+    tf_device.return
+  }) {device = "/device:CPU:0"} : () -> ()
+  // CHECK-DAG: %[[COPY0:.*]] = "tf.TPUCopyWithLayout"(%[[ITER0]]#0, %[[LAYOUT0]]) {device = "/device:TPU:0"}
+  // CHECK-DAG: %[[COPY1:.*]] = "tf.TPUCopyWithLayout"(%[[ITER0]]#1, %[[LAYOUT1]]) {device = "/device:TPU:0"}
+  // CHECK-DAG: %[[COPY2:.*]] = "tf.TPUCopyWithLayout"(%[[ITER1]], %[[LAYOUT0]]) {device = "/device:TPU:1"}
+  // CHECK: tf_device.replicate([%[[COPY0]], %[[COPY2]]] as %[[R0:.*]]: tensor<3x3x1x32xf32>, %[[COPY1]] as %[[R1:.*]]: tensor<3x3x1x32xf32>)
+  %5:2 = tf_device.replicate([%2#0, %3] as %r0: tensor<3x3x1x32xf32>, %2#1 as %r1: tensor<3x3x1x32xf32>)
+      {n = 2 : i32, devices = {TPU_REPLICATED_CORE_0 = ["/device:TPU:0", "/device:TPU:1"]}} {
+    // CHECK: "tf.TPUExecute"(%[[R0]], %[[R1]], %[[COMPILE]]#1)
+    %execute = "tf_device.launch"() ( {
+      %4 = "tf.TPUExecute"(%r0, %r1, %compile#1) : (tensor<3x3x1x32xf32>, tensor<3x3x1x32xf32>, tensor<2x!tf.string>) -> tensor<i32>
+      tf_device.return %4 : tensor<i32>
+    }) {device = "TPU_REPLICATED_CORE_0"} : () -> tensor<i32>
+    tf_device.return %execute : tensor<i32>
+  }
+  return %5#0 : tensor<i32>
+}
+
+// -----
+
 // Tests that the pass does not change inputs inside replicate.
 
 // CHECK-LABEL: func @inside_replicated

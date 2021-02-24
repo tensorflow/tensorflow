@@ -25,6 +25,19 @@
     gathered at runtime to be used in embedding layer partitioning decisions.
 * `tf.keras.metrics.AUC` now support logit predictions.
 * Creating `tf.random.Generator` under `tf.distribute.Strategy` scopes is now allowed (except for `tf.distribute.experimental.CentralStorageStrategy` and `tf.distribute.experimental.ParameterServerStrategy`). Different replicas will get different random-number streams.
+* `tf.data`:
+    *   tf.data service now supports strict round-robin reads, which is useful
+        for synchronous training workloads where example sizes vary. With strict
+        round robin reads, users can guarantee that consumers get similar-sized
+        examples in the same step.
+    *   tf.data service now supports optional compression. Previously data would
+        always be compressed, but now you can disable compression by passing
+        `compression=None` to `tf.data.experimental.service.distribute(...)`.
+    *   `tf.data.Dataset.batch()` now supports `num_parallel_calls` and
+        `deterministic` arguments. `num_parallel_calls` is used to indicate that
+        multiple input batches should be computed in parallel. With
+        `num_parallel_calls` set, `deterministic` is used to indicate that
+        outputs can be obtained in the non-deterministic order.
 
 ## Bug Fixes and Other Changes
 
@@ -45,6 +58,13 @@
     *   Exposing `tf.data.experimental.ExternalStatePolicy`, which can be used
         to control how external state should be handled during dataset
         serialization or iterator checkpointing.
+    *   Changing `tf.data.experimental.save` to store the type specification of
+        the dataset elements. This avoids the need for explicitly specifying the
+        `element_spec` argument of `tf.data.experimental.load` when loading the
+        previously saved dataset.
+    *   Add `.element_spec` property to `tf.data.DatasetSpec` to access the
+        inner spec. This can be used to extract the structure of nested
+        datasets.
 *   XLA compilation:
     *   `tf.function(experimental_compile=True)` has become a stable API,
         renamed `tf.function(jit_compile=True)`.
@@ -64,6 +84,8 @@
         *   Removed deprecated `Interpreter::UseNNAPI(bool)` C++ API.
             *   Use `NnApiDelegate()` and related delegate configuration methods
                 directly.
+        *  Replaced the model cache key for models computation algorithm with
+           one guaranteed to be stable across runs.
     *  16 bits quantization
         *   Added int16x8 support for ABS, REDUCE_MAX and REDUCE_MIN operators.
         *   Additional tests and fixes for ADD and SUB operators.
@@ -81,11 +103,22 @@
           function for a given signaturedef.
     *  Add int8 support for `ReshapeV2`.
     *  Add experimental support for optimization with sparsity.
+    *  Add nominal support for unsigned 32-bit integer tensor types. Note that
+       very few TFLite kernels support this type natively, so its use in mobile
+       ML authoring is generally discouraged.
+    *  Add support for static hash tables through
+         `TFLiteConverter.from_saved_model`.
+
 *   TF Core:
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,
         `tf.while_loop`, and compositions like `tf.foldl`) computed with
         `tf.GradientTape` inside a `tf.function`.
     *   Changed the default step size in `gradient_checker_v2.compute_gradients` to be exactly representable as a binary floating point numbers. This avoids poluting gradient approximations needlessly, which is some cases leads to false negatives in op gradient tests.
+    * Added `tf.config.experimental.get_memory_info`, returning a dict with the
+      current and peak memory usage. Deprecated 
+      `tf.config.experimental.get_memory_usage` in favor of this new function.
+    *   Extended `tf.config.experimental.enable_tensor_float_32_execution` to
+        control Tensor-Float-32 evaluation in RNNs.
 
 *   `tf.summary`:
   *   New `tf.summary.graph` allows manual write of TensorFlow graph
@@ -125,6 +158,10 @@
 This release contains contributions from many people at Google, as well as:
 
 <INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
+# Release 2.4.1
+
+* This release removes the AVX2 requirement from TF 2.4.0.
 
 # Release 2.3.2
 

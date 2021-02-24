@@ -52,11 +52,12 @@ command:
 
 ```
 make -f tensorflow/lite/micro/tools/make/Makefile \
-TARGET=arc_emsdp TAGS=reduce_codesize \
+TARGET=arc_emsdp ARC_TAGS=reduce_codesize \
+OPTIMIZED_KERNEL_DIR=arc_mli \
 generate_person_detection_int8_make_project
 ```
 
-Note that `TAGS=reduce_codesize` applies example specific changes of code to
+Note that `ARC_TAGS=reduce_codesize` applies example specific changes of code to
 reduce total size of application. It can be omitted.
 
 ### Build and Run Example

@@ -27,14 +27,14 @@ GPUOperation CreateReLU(const OperationDef& definition,
 
   std::string min_func;
   if (attr.alpha != 0.0f) {
-    min_func = "min(in_out_value * args.alpha, (FLT)(0.0f))";
+    min_func = "min(in_out_value * args.alpha, INIT_FLT(0.0f))";
     if (definition.precision == CalculationsPrecision::F32) {
       op.args_.AddFloat("alpha", attr.alpha);
     } else {
       op.args_.AddHalf("alpha", half(attr.alpha));
     }
   } else {
-    min_func = "(FLT)(0.0f)";
+    min_func = "INIT_FLT(0.0f)";
   }
   if (attr.clip != 0.0f) {
     if (definition.precision == CalculationsPrecision::F32) {

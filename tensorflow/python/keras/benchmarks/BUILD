@@ -30,6 +30,7 @@ filegroup(
 # Add all benchmarks related utils here for pip testing dependencis.
 py_library(
     name = "keras_benchmark_lib_pip",
+    srcs_version = "PY3",
     deps = [
         ":benchmark_util",
         ":distribution_util",
@@ -40,6 +41,7 @@ py_library(
 # This lib is mainly for running benchmarks on mlcompass infra.
 py_library(
     name = "profiler_lib",
+    srcs_version = "PY3",
     visibility = [
         "//learning/brain/contrib/keras_benchmark:__subpackages__",
         "//tensorflow/python/keras:__subpackages__",
@@ -60,7 +62,7 @@ py_test(
     deps = [
         ":benchmark_util",
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//third_party/py/numpy",
     ],
 )
@@ -75,7 +77,7 @@ cuda_py_test(
     ],
     deps = [
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/keras/utils:tf_inspect",
     ],
 )
@@ -86,16 +88,17 @@ cuda_py_test(
     python_version = "PY3",
     deps = [
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
 py_library(
     name = "benchmark_util",
     srcs = ["benchmark_util.py"],
+    srcs_version = "PY3",
     deps = [
         ":distribution_util",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//third_party/py/numpy",
     ],
 )
@@ -107,7 +110,7 @@ py_test(
     tags = COMMON_TAGS,
     deps = [
         ":benchmark_util",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
@@ -119,7 +122,7 @@ cuda_py_test(
     deps = [
         ":benchmark_util",
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
@@ -131,7 +134,7 @@ cuda_py_test(
     deps = [
         ":benchmark_util",
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
@@ -143,7 +146,7 @@ cuda_py_test(
     deps = [
         ":benchmark_util",
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
@@ -155,7 +158,7 @@ cuda_py_test(
     deps = [
         ":benchmark_util",
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//third_party/py/numpy",
     ],
 )
@@ -168,7 +171,7 @@ cuda_py_test(
     deps = [
         ":benchmark_util",
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
@@ -180,7 +183,7 @@ cuda_py_test(
     deps = [
         ":benchmark_util",
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
@@ -192,7 +195,7 @@ cuda_py_test(
     deps = [
         ":benchmark_util",
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//third_party/py/numpy",
     ],
 )
@@ -205,7 +208,7 @@ cuda_py_test(
     deps = [
         ":benchmark_util",
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
@@ -218,15 +221,16 @@ cuda_py_test(
         ":benchmark_util",
         ":distribution_util",
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
 py_library(
     name = "distribution_util",
     srcs = ["distribution_util.py"],
+    srcs_version = "PY3",
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
@@ -240,7 +244,7 @@ py_test(
     deps = [
         ":benchmark_util",
         ":profiler_lib",
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/keras/optimizer_v2",
     ],
 )
@@ -257,5 +261,5 @@ py_binary(
     srcs = ["model_memory_profile.py"],
     python_version = "PY3",
     tags = ["no_oss"],
-    deps = ["//tensorflow:tensorflow_py"],
+    deps = ["//tensorflow:tensorflow_py_no_contrib"],
 )

@@ -421,7 +421,7 @@ You can specify this in your `build.gradle` dependencies as follows:
 
 ```build
 dependencies {
-    implementation 'org.tensorflow:tensorflow-lite-metadata:0.0.0-nightly'
+    implementation 'org.tensorflow:tensorflow-lite-metadata:0.1.0'
 }
 ```
 

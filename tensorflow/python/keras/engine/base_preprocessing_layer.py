@@ -23,20 +23,21 @@ import collections
 import numpy as np
 import six
 
-from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.engine import training_generator_v1
+from tensorflow.python.keras.engine import data_adapter
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -48,25 +49,227 @@ keras_kpl_gauge = monitoring.BoolGauge(
 @keras_export('keras.layers.experimental.preprocessing.PreprocessingLayer')
 @six.add_metaclass(abc.ABCMeta)
 class PreprocessingLayer(Layer):
-  """Base class for PreprocessingLayers."""
+  """Base class for PreprocessingLayers.
+
+  Attributes:
+    stateful: Whether the layer contains state that needs to be adapted via
+      `PreprocessingLayer.adapt`.
+    streaming: Whether a layer can be adapted multiple times without resetting
+      the state of the layer.
+  """
   _must_restore_from_config = True
 
-  def adapt(self, data, reset_state=True):
-    # TODO(momernick): Add examples.
+  def __init__(self, stateful=False, streaming=True, **kwargs):
+    super(PreprocessingLayer, self).__init__(**kwargs)
+    self._stateful = stateful
+    self._streaming = streaming
+    self._is_compiled = False
+    self._is_adapted = False
+
+    # Sets `is_adapted=False` when `reset_state` is called.
+    self._reset_state_impl = self.reset_state
+    self.reset_state = self._reset_state_wrapper
+
+    self._adapt_function = None
+
+  @property
+  def streaming(self):
+    """Whether `adapt` can be called twice without resetting the state."""
+    return self._streaming
+
+  @property
+  def is_adapted(self):
+    """Whether the layer has been fit to data already."""
+    return self._is_adapted
+
+  def update_state(self, data):
+    """Accumulates statistics for the preprocessing layer.
+
+    Arguments:
+      data: A mini-batch of inputs to the layer.
+    """
+    if self.stateful:
+      raise NotImplementedError
+
+  def reset_state(self):
+    """Resets the statistics of the preprocessing layer."""
+    if self.stateful:
+      raise NotImplementedError
+
+  def merge_state(self, layers):
+    """Merge the statistics of multiple preprocessing layers.
+
+    This layer will contain the merged state.
+
+    Arguments:
+      layers: Layers whose statistics should be merge with the statistics of
+        this layer.
+    """
+    if self.stateful:
+      raise NotImplementedError
+
+  def finalize_state(self):
+    """Finalize the statistics for the preprocessing layer.
+
+    This method is called at the end of `adapt`. This method
+    handles any one-time operations that should occur after all
+    data has been seen.
+    """
+    pass
+
+  def make_adapt_function(self):
+    """Creates a function to execute one step of `adapt`.
+
+    This method can be overridden to support custom adapt logic.
+    This method is called by `PreprocessingLayer.adapt`.
+
+    Typically, this method directly controls `tf.function` settings,
+    and delegates the actual state update logic to
+    `PreprocessingLayer.update_state`.
+
+    This function is cached the first time `PreprocessingLayer.adapt`
+    is called. The cache is cleared whenever `PreprocessingLayer.compile`
+    is called.
+
+    Returns:
+      Function. The function created by this method should accept a
+      `tf.data.Iterator`, retrieve a batch, and update the state of the
+      layer.
+    """
+    if self._adapt_function is not None:
+      return self._adapt_function
+
+    def adapt_step(iterator):
+      data = next(iterator)
+      self._adapt_maybe_build(data)
+      self.update_state(data)
+
+    if self._steps_per_execution.numpy().item() == 1:
+      adapt_fn = adapt_step
+    else:
+
+      def adapt_fn(iterator):
+        for _ in math_ops.range(self._steps_per_execution):
+          adapt_step(iterator)
+
+    if not self._run_eagerly:
+      adapt_fn = def_function.function(adapt_fn)
+
+    self._adapt_function = adapt_fn
+    return self._adapt_function
+
+  def compile(self, run_eagerly=None, steps_per_execution=None):
+    """Configures the layer for `adapt`.
+
+    Arguments:
+      run_eagerly: Bool. Defaults to `False`. If `True`, this `Model`'s logic
+        will not be wrapped in a `tf.function`. Recommended to leave this as
+        `None` unless your `Model` cannot be run inside a `tf.function`.
+        steps_per_execution: Int. Defaults to 1. The number of batches to run
+          during each `tf.function` call. Running multiple batches inside a
+          single `tf.function` call can greatly improve performance on TPUs or
+          small models with a large Python overhead.
+    """
+    if steps_per_execution is None:
+      steps_per_execution = 1
+    self._configure_steps_per_execution(steps_per_execution)
+
+    if run_eagerly is None:
+      run_eagerly = self.dynamic
+    self._run_eagerly = run_eagerly
+
+    self._is_compiled = True
+
+  def adapt(self, data, batch_size=None, steps=None, reset_state=True):
     """Fits the state of the preprocessing layer to the data being passed.
 
-    Args:
+    Arguments:
         data: The data to train on. It can be passed either as a tf.data
           Dataset, or as a numpy array.
+        batch_size: Integer or `None`.
+            Number of samples per state update.
+            If unspecified, `batch_size` will default to 32.
+            Do not specify the `batch_size` if your data is in the
+            form of datasets, generators, or `keras.utils.Sequence` instances
+            (since they generate batches).
+        steps: Integer or `None`.
+            Total number of steps (batches of samples)
+            When training with input tensors such as
+            TensorFlow data tensors, the default `None` is equal to
+            the number of samples in your dataset divided by
+            the batch size, or 1 if that cannot be determined. If x is a
+            `tf.data` dataset, and 'steps' is None, the epoch will run until
+            the input dataset is exhausted. When passing an infinitely
+            repeating dataset, you must specify the `steps` argument. This
+            argument is not supported with array inputs.
         reset_state: Optional argument specifying whether to clear the state of
           the layer at the start of the call to `adapt`, or whether to start
           from the existing state. This argument may not be relevant to all
           preprocessing layers: a subclass of PreprocessingLayer may choose to
-            throw if 'reset_state' is set to False.
+          throw if 'reset_state' is set to False.
     """
-    pass
+    _disallow_inside_tf_function('adapt')
+    if not self.stateful:
+      return
+    if not self.streaming and self._is_adapted and not reset_state:
+      raise ValueError('{} does not supporting calling `adapt` twice without '
+                       'resetting the state.'.format(self.__class__.__name__))
+    if not self._is_compiled:
+      self.compile()  # Compile with defaults.
+    if self.built and reset_state:
+      self.reset_state()
+    data_handler = data_adapter.DataHandler(
+        data,
+        batch_size=batch_size,
+        steps_per_epoch=steps,
+        epochs=1,
+        steps_per_execution=self._steps_per_execution,
+        distribute=False)
+    self._adapt_function = self.make_adapt_function()
+    for _, iterator in data_handler.enumerate_epochs():
+      with data_handler.catch_stop_iteration():
+        for _ in data_handler.steps():
+          self._adapt_function(iterator)
+          if data_handler.should_sync:
+            context.async_wait()
+    self.finalize_state()
+    self._is_adapted = True
+
+  def _reset_state_wrapper(self):
+    """Calls `reset_state` and sets `adapted` to `False`."""
+    self._reset_state_impl()
+    self._is_adapted = False
+
+  @trackable.no_automatic_dependency_tracking
+  def _configure_steps_per_execution(self, steps_per_execution):
+    self._steps_per_execution = variables.Variable(
+        steps_per_execution,
+        dtype='int64',
+        aggregation=variables.VariableAggregationV2.ONLY_FIRST_REPLICA)
+
+  # TODO(omalleyt): Unify this logic with `Layer._maybe_build`.
+  def _adapt_maybe_build(self, data):
+    if not self.built:
+      try:
+        # If this is a Numpy array or tensor, we can get shape from .shape.
+        # If not, an attribute error will be thrown.
+        data_shape = data.shape
+        data_shape_nones = tuple([None] * len(data.shape))
+      except AttributeError:
+        # The input has an unknown number of dimensions.
+        data_shape = None
+        data_shape_nones = None
+
+      # TODO (b/159261555): move this to base layer build.
+      batch_input_shape = getattr(self, '_batch_input_shape', None)
+      if batch_input_shape is None:
+        # Set the number of dimensions.
+        self._batch_input_shape = data_shape_nones
+      self.build(data_shape)
+      self.built = True
 
 
+# TODO(omalleyt): This class will be gradually replaced.
 class CombinerPreprocessingLayer(PreprocessingLayer):
   """Base class for PreprocessingLayers that do computation using a Combiner.
 
@@ -80,10 +283,41 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
   """
 
   def __init__(self, combiner, **kwargs):
-    super(CombinerPreprocessingLayer, self).__init__(**kwargs)
-    self._combiner = combiner
-    self._previously_updated = False
+    super(CombinerPreprocessingLayer, self).__init__(stateful=True, **kwargs)
     self.state_variables = collections.OrderedDict()
+    self._combiner = combiner
+    self._adapt_accumulator = None
+
+  def reset_state(self):
+    self._adapt_accumulator = None
+
+  def update_state(self, data):
+    if self._adapt_accumulator is None:
+      self._adapt_accumulator = self._get_accumulator()
+    self._adapt_accumulator = self._combiner.compute(data,
+                                                     self._adapt_accumulator)
+
+  def merge_state(self, layers):
+    accumulators = ([self._get_accumulator()] +
+                    [l._get_accumulator() for l in layers])  # pylint: disable=protected-access
+    merged_accumulator = self._combiner.merge(accumulators)
+    self._set_accumulator(merged_accumulator)
+
+  def finalize_state(self):
+    self._set_accumulator(self._adapt_accumulator)
+
+  def compile(self, run_eagerly=None, steps_per_execution=None):
+    # TODO(omalleyt): Remove this once sublayers are switched to new APIs.
+    if run_eagerly is None:
+      run_eagerly = True
+    super(CombinerPreprocessingLayer, self).compile(
+        run_eagerly=run_eagerly, steps_per_execution=steps_per_execution)
+
+  def adapt(self, data, batch_size=None, steps=None, reset_state=True):
+    if not reset_state:
+      self._adapt_accumulator = self._combiner.restore(self._restore_updates())
+    super(CombinerPreprocessingLayer, self).adapt(
+        data, batch_size=batch_size, steps=steps, reset_state=reset_state)
 
   def _add_state_variable(self,
                           name,
@@ -130,103 +364,16 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
       data_dict[name] = var.numpy()
     return data_dict
 
-  def _get_dataset_iterator(self, dataset):
-    """Gets an iterator from a tf.data.Dataset."""
-    return dataset_ops.make_one_shot_iterator(dataset).get_next
-
-  def adapt(self, data, reset_state=True):
-    """Fits the state of the preprocessing layer to the data being passed.
-
-    Args:
-      data: The data to train on. It can be passed either as a tf.data Dataset,
-        or as a numpy array.
-      reset_state: Optional argument specifying whether to clear the state of
-        the layer at the start of the call to `adapt`, or whether to start from
-        the existing state. Subclasses may choose to throw if reset_state is set
-        to 'False'.
-    """
-    if reset_state:
-      accumulator = None
+  def _get_accumulator(self):
+    if self._is_adapted:
+      return self._combiner.restore(self._restore_updates())
     else:
-      accumulator = self._combiner.restore(self._restore_updates())
-    if isinstance(data, (list, tuple)):
-      data = ops.convert_to_tensor_v2_with_dispatch(data)
-    if not isinstance(data,
-                      (dataset_ops.DatasetV2,
-                       np.ndarray,
-                       ops.Tensor,
-                       ragged_tensor.RaggedTensor)):
-      raise ValueError(
-          '`adapt()` requires a batched Dataset, a Tensor, '
-          'or a Numpy array as input, '
-          'got {}'.format(type(data)))
+      return None
 
-    if isinstance(data, dataset_ops.DatasetV2):
-      # Validate that the dataset only contains single-tensor elements.
-      if not isinstance(data.element_spec, type_spec.TypeSpec):
-        raise TypeError(
-            'The dataset should yield single-Tensor elements. Use `dataset.map`'
-            'to select the element of interest.\n'
-            'Got dataset.element_spec=' + str(data.element_spec))
-      # Validate the datasets to try and ensure we haven't been passed one with
-      # infinite size. That would cause an infinite loop here.
-      if tf_utils.dataset_is_infinite(data):
-        raise ValueError(
-            'The dataset passed to `adapt()` has an infinite number of '
-            'elements. Please use `dataset.take(...)` to make the number '
-            'of elements finite.')
-      next_data = self._get_dataset_iterator(data)
-      # TODO(fchollet): consider checking if the dataset is already batched
-      # and otherwise batching it.
-    elif isinstance(data, (ops.Tensor, ragged_tensor.RaggedTensor)):
-      next_data = self._get_dataset_iterator(
-          dataset_ops.Dataset.from_tensor_slices(data).batch(512))
-    else:
-      generator, _ = training_generator_v1.convert_to_generator_like(
-          data, batch_size=512)
-      # If the data is not a dataset, we can iterate over it using next(foo);
-      # here, we wrap that into a callable.
-      next_data = lambda: next(generator)
-
-    # TODO(momernick): Some sort of status bar?
-    # TODO(momernick): Implement parallel processing here?
-    try:
-      data_element = next_data()
-
-      # First, see if the layer is built or not. If it is not, then we must
-      # build it.
-      if not self.built:
-        try:
-          # If this is a Numpy array or tensor, we can get shape from .shape.
-          # If not, an attribute error will be thrown.
-          data_shape = data_element.shape
-          data_shape_nones = tuple([None]*len(data_element.shape))
-        except AttributeError:
-          # The input has an unknown number of dimensions.
-          data_shape = None
-          data_shape_nones = None
-
-        # TODO (b/159261555): move this to base layer build.
-        batch_input_shape = getattr(self, '_batch_input_shape', None)
-        if batch_input_shape is None:
-          # Set the number of dimensions.
-          self._batch_input_shape = data_shape_nones
-
-        self.build(data_shape)
-
-      # Once we have built the Layer, we can process the input data. We do so
-      # until we've gotten an exception indicating that we have no more data.
-      while True:
-        accumulator = self._combiner.compute(data_element, accumulator)
-        data_element = next_data()
-    # Note that this belongs to the outer indentation of 'try' - we need to
-    # catch exceptions resulting from the first 'next_data()' invocation as
-    # well.
-    except (StopIteration, errors.OutOfRangeError):
-      pass
-
+  def _set_accumulator(self, accumulator):
     updates = self._combiner.extract(accumulator)
     self._set_state_variables(updates)
+    self._adapt_accumulator = None  # Reset accumulator from adapt.
 
   def _set_state_variables(self, updates):
     """Directly update the internal state of this Layer.
@@ -287,6 +434,7 @@ def convert_to_list(values, sparse_default_value=None):
   return values
 
 
+# TODO(omalleyt): This class will be gradually replaced.
 class Combiner(object):
   """Functional object that defines a shardable computation.
 
@@ -410,3 +558,18 @@ class Combiner(object):
       The accumulator represented by the passed byte_string.
     """
     pass
+
+
+def _disallow_inside_tf_function(method_name):
+  """Disallow calling a method inside a `tf.function`."""
+  if ops.inside_function():
+    error_msg = (
+        'Detected a call to `PreprocessingLayer.{method_name}` inside a '
+        '`tf.function`. `PreprocessingLayer.{method_name} is a high-level '
+        'endpoint that manages its own `tf.function`. Please move the call '
+        'to `PreprocessingLayer.{method_name}` outside of all enclosing '
+        '`tf.function`s. Note that you can call a `PreprocessingLayer` '
+        'directly on `Tensor`s inside a `tf.function` like: `layer(x)`, '
+        'or update its state like: `layer.update_state(x)`.').format(
+            method_name=method_name)
+    raise RuntimeError(error_msg)

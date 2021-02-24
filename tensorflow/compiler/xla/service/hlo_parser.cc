@@ -253,6 +253,7 @@ class HloParserImpl : public HloParser {
   bool ParseInstructionRhs(HloComputation::Builder* builder,
                            const std::string& name, LocTy name_loc);
   bool ParseControlPredecessors(HloInstruction* instruction);
+  bool ParseLiteral(Literal* literal);
   bool ParseLiteral(Literal* literal, const Shape& shape);
   bool ParseTupleLiteral(Literal* literal, const Shape& shape);
   bool ParseNonTupleLiteral(Literal* literal, const Shape& shape);
@@ -307,6 +308,7 @@ class HloParserImpl : public HloParser {
     kInt32,
     kFloat,
     kString,
+    kLiteral,
     kBracedInt64List,
     kBracedInt64ListList,
     kHloComputation,
@@ -406,6 +408,8 @@ class HloParserImpl : public HloParser {
   bool ParseConvolutionDimensionNumbers(ConvolutionDimensionNumbers* dnums);
   bool ParsePaddingConfig(PaddingConfig* padding);
   bool ParseMetadata(OpMetadata* metadata);
+  bool ParseSingleOrListMetadata(
+      tensorflow::protobuf::RepeatedPtrField<OpMetadata>* metadata);
   bool ParseSharding(OpSharding* sharding);
   bool ParseFrontendAttributes(FrontendAttributes* frontend_attributes);
   bool ParseSingleSharding(OpSharding* sharding, bool lbrace_pre_lexed);
@@ -2266,6 +2270,9 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
 
       attrs["padding_type"] = {/*required=*/false, AttrTy::kPaddingType,
                                &padding_type};
+
+      optional<Literal> literal;
+      attrs["literal"] = {/*required=*/false, AttrTy::kLiteral, &literal};
       optional<std::vector<PrecisionConfig::Precision>> operand_precision;
       attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
                                     &operand_precision};
@@ -2354,6 +2361,9 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       if (output_to_operand_aliasing.has_value()) {
         custom_call_instr->set_output_to_operand_aliasing(
             std::move(*output_to_operand_aliasing));
+      }
+      if (literal.has_value()) {
+        custom_call_instr->set_literal(std::move(*literal));
       }
       PrecisionConfig precision_config;
       if (operand_precision) {
@@ -2703,9 +2713,13 @@ bool HloParserImpl::ParseFrontendAttributes(
                     "expects '}' at the end of frontend attributes");
 }
 
-//  ::= '{' 'replicated'? 'manual'? 'maximal'? ('device=' int)? shape?
-//          ('devices=' ('[' dims ']')* device_list)? '}'
+// ::= '{' 'replicated'? 'manual'? 'maximal'? ('device=' int)? shape?
+//         ('devices=' ('[' dims ']')* device_list)?
+//         ('metadata=' metadata)* '}'
+//
 // dims ::= int_list device_list ::= int_list
+// metadata ::= single_metadata |
+//              ('{' [single_metadata (',' single_metadata)*] '}')
 bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
                                         bool lbrace_pre_lexed) {
   if (!lbrace_pre_lexed &&
@@ -2768,9 +2782,15 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
             }
             devices.push_back(device);
           } while (EatIfPresent(TokKind::kComma));
+        } else if (lexer_.GetStrVal() == "metadata") {
+          lexer_.Lex();
+          if (!ParseSingleOrListMetadata(sharding->mutable_metadata())) {
+            return false;
+          }
         } else {
           return TokenError(
-              "unknown attribute in sharding: expected device= or devices=");
+              "unknown attribute in sharding: expected device=, devices= or "
+              "metadata=");
         }
         break;
       }
@@ -3034,6 +3054,14 @@ bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
   literal->data<LiteralNativeT>().at(index) =
       static_cast<LiteralNativeT>(value);
   return true;
+}
+
+bool HloParserImpl::ParseLiteral(Literal* literal) {
+  Shape literal_shape;
+  if (!ParseShape(&literal_shape)) {
+    return false;
+  }
+  return ParseLiteral(literal, literal_shape);
 }
 
 // literal
@@ -3816,6 +3844,21 @@ bool HloParserImpl::ParseAttributeHelper(
             std::vector<std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>>*>(
             attr_out_ptr)
             ->emplace(std::move(aliasing_output_operand_pairs));
+        return true;
+      }
+      case AttrTy::kLiteral: {
+        if (!ParseToken(TokKind::kLparen, "expects '(' before literal")) {
+          return false;
+        }
+        Literal result;
+        if (!ParseLiteral(&result)) {
+          return false;
+        }
+        if (!ParseToken(TokKind::kRparen, "expects ')' after literal")) {
+          return false;
+        }
+        static_cast<optional<Literal>*>(attr_out_ptr)
+            ->emplace(std::move(result));
         return true;
       }
     }
@@ -4739,6 +4782,29 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
     }
   }
   return true;
+}
+
+// ::= single_metadata | ('{' [single_metadata (',' single_metadata)*] '}')
+bool HloParserImpl::ParseSingleOrListMetadata(
+    tensorflow::protobuf::RepeatedPtrField<OpMetadata>* metadata) {
+  if (lexer_.GetKind() == TokKind::kLbrace &&
+      lexer_.LookAhead() == TokKind::kLbrace) {
+    if (!ParseToken(TokKind::kLbrace, "expected '{' to start metadata list")) {
+      return false;
+    }
+
+    if (lexer_.GetKind() != TokKind::kRbrace) {
+      do {
+        if (!ParseMetadata(metadata->Add())) {
+          return false;
+        }
+      } while (EatIfPresent(TokKind::kComma));
+    }
+
+    return ParseToken(TokKind::kRbrace, "expected '}' to end metadata list");
+  }
+
+  return ParseMetadata(metadata->Add());
 }
 
 bool HloParserImpl::ParseOpcode(HloOpcode* result) {

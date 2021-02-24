@@ -81,10 +81,12 @@ class MklDequantizeOp : public OpKernel {
       // construct input TF layout. For TF layout, although input shape
       // (src_dims) required is in MKL-DNN order, the layout is Tensorflow's
       // layout
-      auto src_md = src_mkl_shape.IsMklTensor()
-                        ? src_mkl_shape.GetMklLayout()
-                        : memory::desc(src_dims, MklDnnType<T>(),
-                                       memory::format_tag::nhwc);
+      auto src_md =
+          src_mkl_shape.IsMklTensor()
+              ? src_mkl_shape.GetMklLayout()
+              : memory::desc(src_dims, MklDnnType<T>(),
+                             src_dims.size() == 4 ? MEMORY_FORMAT::nhwc
+                                                  : MEMORY_FORMAT::nc);
 
       src.SetUsrMem(src_md, &src_tensor);
       src.SetUsrMemDataHandle(&src_tensor, reorder_stream);
@@ -99,8 +101,9 @@ class MklDequantizeOp : public OpKernel {
         // same .data field but different type.
         dst_md.data.data_type = memory::convert_to_c(MklDnnType<float>());
       } else {
-        dst_md = memory::desc(src_dims, MklDnnType<float>(),
-                              memory::format_tag::nhwc);
+        dst_md = memory::desc(
+            src_dims, MklDnnType<float>(),
+            src_dims.size() == 4 ? MEMORY_FORMAT::nhwc : MEMORY_FORMAT::nc);
       }
 
       // If input is MKL shape, output is also MKL shape.

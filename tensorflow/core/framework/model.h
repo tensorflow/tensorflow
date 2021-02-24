@@ -24,7 +24,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/metrics.h"
+#include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -32,6 +34,8 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/path.h"
 
 namespace tensorflow {
 namespace data {
@@ -44,11 +48,6 @@ constexpr char kBufferSize[] = "buffer_size";
 
 // A key used to identify the input time of the model.
 constexpr char kModelInputTimeKey[] = "model_input_time";
-
-enum class AutotuneAlgorithm {
-  HILL_CLIMB = 0,
-  GRADIENT_DESCENT = 1,
-};
 
 enum class TraversalOrder {
   BFS = 0,
@@ -377,6 +376,14 @@ class Node {
       absl::flat_hash_map<string, double>* processing_times)
       TF_LOCKS_EXCLUDED(mu_);
 
+  // Recursively produces a proto for this node and its subtree.
+  virtual Status ToProto(ModelProto::Node* node_proto) const;
+
+  // Recursively restores a node and its subtree from the proto.
+  static Status FromProto(ModelProto::Node node_proto,
+                          std::shared_ptr<Node> output,
+                          std::shared_ptr<Node>* node);
+
  protected:
   // Used for (incrementally) recording metrics. The class is thread-safe.
   class Metrics {
@@ -533,6 +540,11 @@ class Node {
   // that the optimization algorithm respects the memory budget.
   virtual double MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_);
 
+  // Restores node from the proto. Note that this is not done recursively, i.e.
+  // input nodes are not restored.
+  static Status FromProtoHelper(ModelProto::Node node_proto,
+                                std::shared_ptr<Node> node);
+
   // Stores the time passed to the last call to `Node::record_start()` on the
   // current thread.
   //
@@ -592,6 +604,10 @@ std::shared_ptr<Node> MakeKnownRatioNode(Node::Args args, double ratio);
 
 // AsyncKnownRatio nodes are the asynchronous version of KnownRate nodes.
 std::shared_ptr<Node> MakeAsyncKnownRatioNode(
+    Node::Args args, double ratio, double memory_ratio,
+    std::vector<std::shared_ptr<Parameter>> parameters);
+
+std::shared_ptr<Node> MakeAsyncKnownRatioNode(
     Node::Args args, double ratio,
     std::vector<std::shared_ptr<Parameter>> parameters);
 
@@ -621,32 +637,112 @@ std::shared_ptr<Node> MakeUnknownNode(Node::Args args);
 // implementation of `DatasetBase` and `DatasetBaseIterator` respectively.
 class Model {
  public:
+  using OptimizationParams = ModelProto::OptimizationParams;
+
   // Creates a new model.
-  Model() : collect_resource_usage_(false) {}
+  Model()
+      : collect_resource_usage_(false),
+        optimization_period_ms_(kOptimizationPeriodMinMs) {
+    const char* save_dir = std::getenv("TF_DATA_AUTOTUNE_DEBUG_DIR");
+    if (save_dir) {
+      save_dir_ = string(save_dir);
+    }
+  }
+
+  ~Model() {
+    if (!save_dir_.empty()) {
+      save_thread_cancelled_ = true;
+      save_cond_var_.notify_all();
+    }
+  }
 
   // Indicates whether to collect resource usage.
   bool collect_resource_usage() const { return collect_resource_usage_; }
+
+  // Returns a pointer to the model's output node.
+  const std::shared_ptr<Node> output() {
+    mutex_lock l(mu_);
+    return output_;
+  }
 
   // Adds a node with the given name and given parent.
   void AddNode(Node::Factory factory, const string& name,
                std::shared_ptr<Node> parent, std::shared_ptr<Node>* out_node)
       TF_LOCKS_EXCLUDED(mu_);
 
-  // Flushes metrics record by the model.
-  void FlushMetrics() TF_LOCKS_EXCLUDED(mu_);
+  // Uses the given algorithm and resource budgets to periodically perform the
+  // autotuning optimization.
+  //
+  // To terminate the execution of the optimization loop, the caller needs to
+  // invoke `cancellation_mgr->StartCancel()`.
+  Status OptimizeLoop(AutotuneAlgorithm algorithm, int64 cpu_budget,
+                      int64 ram_budget, CancellationManager* cancellation_mgr);
 
-  // Uses the given algorithm to perform the autotuning optimization.
+  // Uses the given algorithm and resource budgets to perform the autotuning
+  // optimization.
   void Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget, int64 ram_budget,
-                double model_input_time) TF_LOCKS_EXCLUDED(mu_);
+                double model_input_time);
 
   // Removes the given node.
   void RemoveNode(std::shared_ptr<Node> node) TF_LOCKS_EXCLUDED(mu_);
 
+  // Produces a proto for this model.
+  Status ToProto(ModelProto* model_proto);
+
+  // Restores a model from the proto.
+  static Status FromProto(ModelProto model_proto,
+                          std::unique_ptr<Model>* model);
+
+  // Saves this model with a given snapshot and its optimization parameters to a
+  // file. Note that the file directory must already exist.
+  Status Save(const string& fname, std::shared_ptr<Node> snapshot,
+              const OptimizationParams& optimization_params);
+
+  // Loads a model and its optimization parameters from a file with the given
+  // name.
+  static Status Load(const string& fname, std::unique_ptr<Model>* model,
+                     OptimizationParams* optimization_params);
+
  private:
+  static constexpr int64 kOptimizationPeriodMinMs = 10;
+  static constexpr int64 kOptimizationPeriodMaxMs =
+      60 * EnvTime::kSecondsToMillis;
+
+  // Maximum number of optimization snapshots kept in a buffer for saving.
+  static constexpr int64 kMaxNumBufferedOptimizeArgs = 100;
+
   // Collects tunable parameters in the tree rooted in the given node, returning
   // a mapping from a (unique) node name to a tunable parameter.
   absl::flat_hash_map<string, std::shared_ptr<Parameter>>
   CollectTunableParameters(std::shared_ptr<Node> node);
+
+  // Flushes metrics recorded by the model.
+  void FlushMetrics() TF_LOCKS_EXCLUDED(mu_);
+
+  // This optimization algorithm starts by setting all tunable parallelism
+  // parameters to the minimum value. It then repeatedly identifies the
+  // parameter whose increase in parallelism decreases the output time the most.
+  // This process is repeated until all parameters reach their maximum values or
+  // the projected output time is less than or equal to the processing time
+  // needed to produce an element divided by CPU budget.
+  void OptimizeHillClimb(std::shared_ptr<Node> snapshot,
+                         const OptimizationParams& optimization_params);
+
+  // This optimization algorithm starts by setting all tunable parallelism
+  // parameters to the minimum value. It then improves current parameters by
+  // making a step in the direction opposite to the gradient of `OutputTime` and
+  // projecting resulting values on the feasible intervals. Improvement step is
+  // repeated until either the output time improvement is smaller than threshold
+  // value or the output time is less than the processing time needed to produce
+  // an element divided by CPU budget.
+  void OptimizeGradientDescent(std::shared_ptr<Node> snapshot,
+                               const OptimizationParams& optimization_params);
+
+  // Collects the output time and if `gradients` is not `nullptr`, the output
+  // time gradient w.r.t. tunable parameters of the subtree rooted in the given
+  // node.
+  double OutputTime(std::shared_ptr<Node> node, double model_input_time,
+                    absl::flat_hash_map<string, double>* gradients);
 
   // Determines if we should stop the gradient descent optimization iterations
   // based on number of increasable parameters, CPU budget, RAM budget and
@@ -659,31 +755,6 @@ class Model {
       const absl::flat_hash_map<string, std::shared_ptr<Parameter>>&
           buffer_size_parameters,
       std::shared_ptr<Node> snapshot, bool* cpu_budget_reached);
-
-  // This optimization algorithm starts by setting all tunable parallelism
-  // parameters to the minimum value. It then repeatedly identifies the
-  // parameter whose increase in parallelism decreases the output time the most.
-  // This process is repeated until all parameters reach their maximum values or
-  // the projected output time is less than or equal to the processing time
-  // needed to produce an element divided by CPU budget.
-  void OptimizeHillClimb(int64 cpu_budget, int64 ram_budget,
-                         double model_input_time);
-
-  // This optimization algorithm starts by setting all tunable parallelism
-  // parameters to the minimum value. It then improves current parameters by
-  // making a step in the direction opposite to the gradient of `OutputTime` and
-  // projecting resulting values on the feasible intervals. Improvement step is
-  // repeated until either the output time improvement is smaller than threshold
-  // value or the output time is less than the processing time needed to produce
-  // an element divided by CPU budget.
-  void OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget,
-                               double model_input_time);
-
-  // Collects the output time and if `gradients` is not `nullptr`, the output
-  // time gradient w.r.t. tunable parameters of the subtree rooted in the given
-  // node.
-  double OutputTime(std::shared_ptr<Node> node, double model_input_time,
-                    absl::flat_hash_map<string, double>* gradients);
 
   // Collects the processing time for the given node.
   double TotalProcessingTime(std::shared_ptr<Node> node);
@@ -698,10 +769,21 @@ class Model {
   // buffers were full.
   double TotalMaximumBufferedBytes(std::shared_ptr<Node> node);
 
+  // Starts a model saving thread if it hasn't started yet.
+  Status EnsureSaveLoopThreadStarted();
+
+  // Periodically saves the state of optimization that is kept in
+  // `save_buffer_`.
+  //
+  // The saving loop is terminated when the model is destroyed.
+  Status SaveLoop();
+
   // Used for coordination between different input pipeline threads. Exclusive
   // access is required only when adding or removing nodes. Concurrent access to
   // existing nodes is protected by a node mutex.
   mutex mu_;
+  // Used for coordinating the optimization loop and model modifications.
+  condition_variable optimize_cond_var_;
   int64 id_counter_ TF_GUARDED_BY(mu_) = 1;
   std::shared_ptr<Node> output_ TF_GUARDED_BY(mu_);
 
@@ -712,6 +794,29 @@ class Model {
   // tunable parameter (because the information is used for tuning the value of
   // the parameter) and never stops.
   std::atomic<bool> collect_resource_usage_;
+
+  // Determines the time the optimization loop should wait between
+  // running optimizations.
+  int64 optimization_period_ms_ TF_GUARDED_BY(mu_);
+
+  // Thread that runs the model saving loop.
+  std::unique_ptr<Thread> save_thread_ TF_GUARDED_BY(mu_);
+
+  // Used for coordinating the saving loop and model optimization.
+  condition_variable save_cond_var_;
+
+  // Indicates whether the save thread is cancelled.
+  bool save_thread_cancelled_ = false;
+
+  // Contains path to the model saving directory if saving is enabled, empty
+  // otherwise.
+  string save_dir_;
+
+  // Contains pairs of model snapshots and optimization parameters to be saved
+  // if model saving is enabled, empty otherwise. Buffer elements are pushed by
+  // `OptimizeLoop` and popped by `SaveLoop`.
+  std::deque<std::pair<std::shared_ptr<Node>, OptimizationParams>> save_buffer_
+      TF_GUARDED_BY(mu_);
 };
 
 }  // namespace model

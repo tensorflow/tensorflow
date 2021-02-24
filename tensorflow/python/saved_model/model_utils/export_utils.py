@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# LINT.IfChange
 """Utilities for creating SavedModels."""
 
 from __future__ import absolute_import
@@ -353,3 +354,4 @@ def _maybe_add_default_serving_output(export_outputs):
           'signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY.')
 
   return export_outputs
+# LINT.ThenChange(//tensorflow/python/keras/saving/utils_v1/export_utils.py)

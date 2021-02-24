@@ -56,13 +56,23 @@ LogisticOpTest/LogisticOpTest/Sigmoid(.+nt8)?/\d+
 LogisticOpTest/LogisticOpTest/Sigmoid/\d+
 TanhOpTest/TanhOpTest/Tanh(.+nt8)?/\d+,29
 FloatActivationsOpTest/Elu,30
+FloatActivationsOpTest/Relu
+FloatActivationsOpTest/Relu1
+FloatActivationsOpTest/Relu6
 FloatActivationsOpTest/HardSwish
+FloatActivationsOpTest/LeakyRelu,29
 QuantizedActivationsOpTest/HardSwish
 QuantizedActivationsOpTest/HardSwishBias
+-QuantizedActivationsOpTest/Relu.?Int16
+QuantizedActivationsOpTest/Relu.*
+-QuantizedActivationsOpTest/LeakyReluInt16,30
+QuantizedActivationsOpTest/LeakyRelu.*,30
 QuantizedActivationsOpTest/Relu.+nt8
 QuantizedActivationsOpTest/PRelu,29
 QuantizedActivationsOpTest/PReluSameShapes,29
 QuantizedActivationsOpTest/PReluInt8.+,30
+PReluOpTest/.*,29
+
 
 # add_test
 FloatAddOpModel/.+

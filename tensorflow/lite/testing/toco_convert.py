@@ -115,7 +115,7 @@ def toco_convert(options, graph_def, input_tensors, output_tensors, **kwargs):
           graphdef_file.name, input_arrays, output_tensors, input_shapes)
 
       converter.experimental_new_converter = options.use_experimental_converter
-      converter._experimental_new_quantizer = options.mlir_quantizer  # pylint: disable=protected-access
+      converter.experimental_new_quantizer = options.mlir_quantizer
       converter.optimizations = [tf.lite.Optimize.DEFAULT]
 
       if fully_quantize:

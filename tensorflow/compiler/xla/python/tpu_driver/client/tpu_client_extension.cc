@@ -32,7 +32,8 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def("local_device_count", &PyTpuClient::local_device_count)
       .def("devices", &PyTpuClient::devices)
       .def("local_devices", &PyTpuClient::local_devices)
-      .def("host_id", &PyTpuClient::host_id)
+      .def("host_id", &PyTpuClient::task_id)
+      .def("task_id", &PyTpuClient::task_id)
       .def("get_default_device_assignment",
            [](PyTpuClient* client, int num_replicas, int num_partitions)
                -> StatusOr<
@@ -196,6 +197,9 @@ PYBIND11_MODULE(tpu_client_extension, m) {
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       .def("execute_on_local_devices", &PyTpuExecutable::ExecuteOnLocalDevices,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
+      .def("execute_sharded_on_local_devices",
+           &PyTpuExecutable::ExecuteShardedOnLocalDevices,
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       // TODO(phawkins): implement traceback support.
       .def_property_readonly("traceback",
                              [](PyTpuExecutable*) { return py::none(); });
@@ -213,7 +217,7 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def("__repr__", [](const TpuDevice& device) {
         return absl::StrFormat(
             "TpuDevice(id=%i, host_id=%i, coords=(%i,%i,%i), core_on_chip=%i)",
-            device.id(), device.host_id(), device.coords()[0],
+            device.id(), device.task_id(), device.coords()[0],
             device.coords()[1], device.coords()[2], device.core_on_chip());
       });
 }  // NOLINT(readability/fn_size)

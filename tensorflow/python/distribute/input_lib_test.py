@@ -1573,6 +1573,39 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
                   experimental_prefetch_to_device=False,
+                  experimental_per_replica_buffer_size=2),
+              distribute_lib.InputOptions(
+                  experimental_place_dataset_on_device=False,
+                  experimental_prefetch_to_device=True,
+                  experimental_per_replica_buffer_size=2),
+          ],
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_two_gpus,
+              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ]))
+  def testPrefetchBufferSizeInputOptions(self, distribution, input_options):
+
+    def dataset_fn(input_context):
+      return dataset_ops.Dataset.from_tensor_slices(
+          np.arange(1, 11).reshape(
+              (2, 5)) * (input_context.input_pipeline_id + 1))
+
+    ds = distribution.experimental_distribute_datasets_from_function(
+        dataset_fn, input_options)
+
+    # validating the values
+    x = next(iter(ds))
+    assert np.array_equal(x.values[0].numpy(), np.array([1, 2, 3, 4, 5]))
+    assert np.array_equal(x.values[1].numpy(), np.array([6, 7, 8, 9, 10]))
+
+  @combinations.generate(
+      combinations.combine(
+          input_options=[
+              distribute_lib.InputOptions(
+                  experimental_place_dataset_on_device=False,
+                  experimental_prefetch_to_device=False,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_WORKER),
               distribute_lib.InputOptions(
@@ -1681,7 +1714,7 @@ class DistributedIteratorTfDataServiceTest(DistributedIteratorTestBase,
     worker_device_pairs = [("/device:CPU:0", ["/device:CPU:0"])]
     input_workers = input_lib.InputWorkers(worker_device_pairs)
 
-    dataset = dataset_ops.Dataset.range(50)
+    dataset = dataset_ops.Dataset.range(1, 50)
     dataset = dataset.apply(
         data_service_ops._distribute(
             processing_mode="parallel_epochs",
@@ -1696,10 +1729,13 @@ class DistributedIteratorTfDataServiceTest(DistributedIteratorTestBase,
     for element in iterator:
       local_results = distribution.experimental_local_results(element)
       for result in local_results:
-        results.append(result.numpy())
+        # input_lib.distributed_dataset may add extra '0' elements to pad
+        # per-replica results.
+        if result.numpy() != 0:
+          results.append(result.numpy())
     self.assertNotEmpty(results)
     gathered = distribution.gather(constant_op.constant(results), axis=0)
-    self.assertCountEqual(self.num_workers * list(range(50)), gathered)
+    self.assertCountEqual(self.num_workers * list(range(1, 50)), gathered)
 
 
 if __name__ == "__main__":

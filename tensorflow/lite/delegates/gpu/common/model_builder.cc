@@ -16,15 +16,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
 
 #include <algorithm>
-#include <any>
 #include <cstdint>
 #include <map>
 #include <memory>
-#include <optional>
 #include <set>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/base/attributes.h"
@@ -59,30 +56,6 @@ namespace tflite {
 namespace gpu {
 namespace {
 
-absl::Status CheckTensorIsAvailable(const TfLiteContext* context,
-                                    const TfLiteNode* tflite_node, int idx) {
-  // If tensor id is in range, it's guaranteed that it'll be available.
-  if (idx >= tflite_node->inputs->size) {
-    return absl::OutOfRangeError(
-        absl::StrCat("Requested index goes beyond array size: ", idx, " vs ",
-                     idx, tflite_node->inputs->size));
-  }
-  return absl::OkStatus();
-}
-
-HW ToHW(int32_t h, int32_t w) { return HW(h > 0 ? h : 1, w > 0 ? w : 1); }
-
-template <typename AttrT>
-void UpdatePadding(const TfLitePadding& padding, const BHWC& input_shape,
-                   AttrT* attr) {
-  if (padding == kTfLitePaddingSame) {
-    attr->padding = CalculateSamePadding(input_shape, *attr);
-  } else {
-    attr->padding.prepended = HW(0, 0);
-    attr->padding.appended = HW(0, 0);
-  }
-}
-
 absl::Status GetFullyConnectedAttributes(int weights_tensor_id,
                                          int bias_tensor_id,
                                          ObjectReader* reader,
@@ -109,45 +82,6 @@ absl::Status RetrieveBuiltinData(const TfLiteNode* tflite_node,
   return absl::OkStatus();
 }
 
-template <typename ParamsT>
-absl::Status RetrieveCustomInitialData(const TfLiteNode* tflite_node,
-                                       const ParamsT** tf_options) {
-  *tf_options = static_cast<const ParamsT*>(tflite_node->custom_initial_data);
-  if (!*tf_options) {
-    return absl::InternalError("Unable to retrieve custom_initial_data.");
-  }
-  return absl::OkStatus();
-}
-
-absl::Status CheckMaxSupportedOpVersion(const TfLiteRegistration* registration,
-                                        int max_version) {
-  const int op_version = registration->version;
-  if (op_version > max_version) {
-    return absl::UnimplementedError(
-        absl::StrCat("Max version supported: ", max_version,
-                     ". Requested version ", op_version, "."));
-  }
-  return absl::OkStatus();
-}
-
-absl::Status CheckKernels(int kernel_h, int kernel_w) {
-  if (kernel_h <= 0 || kernel_w <= 0) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Incorrect kernel values: kernel_height = ", kernel_h,
-                     ", kernel_width = ", kernel_w));
-  }
-  return absl::OkStatus();
-}
-
-absl::Status CheckStrides(int strides_h, int strides_w) {
-  if (strides_h <= 0 || strides_w <= 0) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Incorrect stride values: stride_height = ", strides_h,
-                     ", stride_width = ", strides_w));
-  }
-  return absl::OkStatus();
-}
-
 absl::Status CheckDilation(int dilation_h, int dilation_w) {
   if (dilation_h <= 0 || dilation_w <= 0) {
     return absl::InvalidArgumentError(absl::StrCat(
@@ -164,13 +98,6 @@ absl::Status CheckStridesAndDilation(int strides_h, int strides_w,
   return absl::OkStatus();
 }
 
-absl::Status CheckKernelsAndStrides(int kernel_h, int kernel_w, int strides_h,
-                                    int strides_w) {
-  RETURN_IF_ERROR(CheckKernels(kernel_h, kernel_w));
-  RETURN_IF_ERROR(CheckStrides(strides_h, strides_w));
-  return absl::OkStatus();
-}
-
 // Creates a simple node that holds tensor value.
 absl::Status NewConstNode(TensorFloat32 t, GraphFloat32* graph, Value** value) {
   ConstTensorAttributes attr;
@@ -184,15 +111,6 @@ absl::Status NewConstNode(TensorFloat32 t, GraphFloat32* graph, Value** value) {
   (*value)->tensor.ref = attr.tensor.id;
   (*value)->tensor.type = attr.tensor.kType;
   (*value)->tensor.shape = attr.tensor.shape;
-  return absl::OkStatus();
-}
-
-absl::Status ParsePoolingAttributes(const TfLitePoolParams* tf_options,
-                                    const BHWC& input_shape,
-                                    Pooling2DAttributes* attr) {
-  attr->kernel = ToHW(tf_options->filter_height, tf_options->filter_width);
-  attr->strides = ToHW(tf_options->stride_height, tf_options->stride_width);
-  UpdatePadding(tf_options->padding, input_shape, attr);
   return absl::OkStatus();
 }
 
@@ -1486,12 +1404,11 @@ class ReduceOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
 
     ReduceAttributes attr;
-    Tensor<Linear, DataType::INT32> axes;
-    RETURN_IF_ERROR(reader->ReadTensor(1, &axes));
     const TfLiteTensor* input = reader->GetInputTensor(0);
-    for (int i = 0; i < axes.data.size(); i++) {
+    const TfLiteTensor* axes = reader->GetInputTensor(1);
+    for (int i = 0; i < NumElements(axes->dims); i++) {
       Axis axis;
-      RETURN_IF_ERROR(ExtractAxisFromIndex(*input, axes.data[i], &axis));
+      RETURN_IF_ERROR(ExtractAxisFromIndex(*input, axes->data.i32[i], &axis));
       attr.dims.insert(axis);
     }
     node->operation.attributes = attr;
@@ -1902,6 +1819,40 @@ class SpaceToDepthOperationParser : public TFLiteOperationParser {
   }
 };
 
+class SplitVOperationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    const TfLiteSplitVParams* split_params;
+    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &split_params));
+    if (split_params->num_splits == 1) {
+      return absl::InvalidArgumentError(
+          "SplitV with num_splits = 1 is a no-op.");
+    }
+    return absl::OkStatus();
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    const TfLiteTensor* input = reader->GetInputTensor(0);
+    const TfLiteTensor* axis_tensor = reader->GetInputTensor(2);
+    SplitAttributes attr;
+    RETURN_IF_ERROR(
+        ExtractAxisFromIndex(*input, axis_tensor->data.i32[0], &attr.axis));
+
+    Node* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::SPLIT);
+    node->operation.attributes = attr;
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    for (int i = 0; i < tflite_node->outputs->size; ++i) {
+      RETURN_IF_ERROR(reader->AddOutput(node, i));
+    }
+    return absl::OkStatus();
+  }
+};
+
 class StridedSliceOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
@@ -2034,6 +1985,20 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
     if (attr->ends.b < 0) {
       attr->ends.b = input_shape.b + attr->ends.b;
     }
+
+    if (attr->starts.h < 0) {
+      attr->starts.h = input_shape.h + attr->starts.h;
+    }
+    if (attr->starts.w < 0) {
+      attr->starts.w = input_shape.w + attr->starts.w;
+    }
+    if (attr->starts.c < 0) {
+      attr->starts.c = input_shape.c + attr->starts.c;
+    }
+    if (attr->starts.b < 0) {
+      attr->starts.b = input_shape.b + attr->starts.b;
+    }
+
     return absl::OkStatus();
   }
 
@@ -2322,12 +2287,11 @@ class MeanOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->AddOutputs(node));
 
     MeanAttributes attr;
-    Tensor<Linear, DataType::INT32> axes;
-    RETURN_IF_ERROR(reader->ReadTensor(1, &axes));
     const TfLiteTensor* input = reader->GetInputTensor(0);
-    for (int i = 0; i < axes.data.size(); i++) {
+    const TfLiteTensor* axes = reader->GetInputTensor(1);
+    for (int i = 0; i < NumElements(axes->dims); i++) {
       Axis axis;
-      RETURN_IF_ERROR(ExtractAxisFromIndex(*input, axes.data[i], &axis));
+      RETURN_IF_ERROR(ExtractAxisFromIndex(*input, axes->data.i32[i], &axis));
       attr.dims.insert(axis);
     }
     node->operation.attributes = attr;
@@ -2452,6 +2416,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<SoftmaxOperationParser>();
     case kTfLiteBuiltinSpaceToDepth:
       return std::make_unique<SpaceToDepthOperationParser>();
+    case kTfLiteBuiltinSplitV:
+      return std::make_unique<SplitVOperationParser>();
     case kTfLiteBuiltinSqrt:
       return std::make_unique<ElementwiseOperationParser>(OperationType::SQRT);
     case kTfLiteBuiltinSquare:

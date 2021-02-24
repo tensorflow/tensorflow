@@ -109,7 +109,7 @@ void DefaultQuantParamsPass::runOnFunction() {
   }
 
   func.walk([&](Operation *op) {
-    if (op->isKnownTerminator() ||
+    if (op->hasTrait<OpTrait::IsTerminator>() ||
         op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
         llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp>(op))
       return;
@@ -209,7 +209,7 @@ quant::QuantParams DefaultQuantParamsPass::GetQuantParamsForBias(
   // The non-bias hasn't been quantized, let's skip this bias.
   if (non_bias_types.size() != non_biases.size()) return {};
 
-  return func(non_bias_types);
+  return func(non_bias_types, false);
 }
 
 quant::QuantParams DefaultQuantParamsPass::GetDefaultQuantParams(

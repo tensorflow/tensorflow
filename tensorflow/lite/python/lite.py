@@ -411,12 +411,17 @@ class QuantizationMode(object):
     """Checks if the graph contains any training-time quantization ops."""
     training_quant_ops = frozenset({
         "FakeQuantWithMinMaxVars", "FakeQuantWithMinMaxVarsPerChannel",
+        "FakeQuantWithMinMaxArgs", "FakeQuantWithMinMaxArgsPerChannel",
         "QuantizeAndDequantizeV2", "QuantizeAndDequantizeV3"
     })
 
     for node_def in self._graph_def.node:
       if node_def.op in training_quant_ops:
         return True
+    for function in self._graph_def.library.function:
+      for node_def in function.node_def:
+        if node_def.op in training_quant_ops:
+          return True
     return False
 
 
@@ -429,7 +434,8 @@ class TFLiteConverterBase(object):
     self.target_spec = TargetSpec()
     self.allow_custom_ops = False
     self.experimental_new_converter = True
-    self._experimental_new_quantizer = False
+    self.experimental_new_quantizer = False
+    self._experimental_new_quantizer = None
     self._experimental_calibrate_only = False
     self._experimental_sparsify_model = False
     self._debug_info = None  # contains the stack traces of all the original
@@ -474,13 +480,13 @@ class TFLiteConverterBase(object):
     # Add intermediate tensors to the model if needed.
     result = _calibrator.add_intermediate_tensors(result)
     calibrate_quantize = _calibrator.Calibrator(result)
-    if self._experimental_calibrate_only or self._experimental_new_quantizer:
+    if self._experimental_calibrate_only or self.experimental_new_quantizer:
       calibrated = calibrate_quantize.calibrate(
           self.representative_dataset.input_gen)
 
     if self._experimental_calibrate_only:
       return calibrated
-    elif self._experimental_new_quantizer and (
+    elif self.experimental_new_quantizer and (
         activations_type != _dtypes.int16):
       # TODO(b/175659372): remove the activations_type restriction and enable
       # it for all the activation types.
@@ -565,6 +571,10 @@ class TFLiteConverterBase(object):
   def _sparsify_model(self):
     return Optimize.EXPERIMENTAL_SPARSITY in self.optimizations
 
+  def _validate_experimental_new_quantizer_flag(self):
+    if self._experimental_new_quantizer is not None:
+      raise ValueError("Please use 'experimental_new_quantizer' instead.")
+
 
 class TFLiteConverterBaseV2(TFLiteConverterBase):
   """Converter subclass to share functionality between V2 converters."""
@@ -617,6 +627,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
                                   self.representative_dataset, graph_def)
 
     self._validate_inference_input_output_types(quant_mode)
+    self._validate_experimental_new_quantizer_flag()
 
     if not self._is_unknown_shapes_allowed():
       # Checks dimensions in input tensor.
@@ -709,6 +720,7 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
     self._saved_model_exported_names = saved_model_exported_names
     self._trackable_obj = trackable_obj
     self._parse_saved_model_args(always_enable_saved_model_import=True)
+    self._enable_tflite_resource_variables = False
 
   def convert(self):
     """Converts a TensorFlow GraphDef based on instance variables.
@@ -768,6 +780,10 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
 
     converter_kwargs = self._get_base_converter_args()
     converter_kwargs.update(quant_mode.converter_flags())
+    converter_kwargs.update({
+        "enable_tflite_resource_variables":
+            self._enable_tflite_resource_variables
+    })
 
     result = _convert_saved_model(**converter_kwargs)
     calibrate_and_quantize, flags = quant_mode.quantizer_flags()
@@ -1011,6 +1027,9 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       to the TensorFlow Lite runtime with a custom resolver. (default False)
     experimental_new_converter: Experimental flag, subject to change. Enables
       MLIR-based conversion instead of TOCO conversion. (default True)
+    experimental_new_quantizer: Experimental flag, subject to change. Enables
+      MLIR-based quantization conversion instead of Flatbuffer-based conversion.
+      (default False)
 
   Example usage:
 
@@ -1183,7 +1202,6 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     self.dump_graphviz_video = False
     self.conversion_summary_dir = None
     self._debug_info_func = experimental_debug_info_func
-    self._custom_opdefs = None
 
   def __setattr__(self, name, value):
     if name == "post_training_quantize":
@@ -1320,7 +1338,6 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
         "dump_graphviz_dir": self.dump_graphviz_dir,
         "dump_graphviz_video": self.dump_graphviz_video,
         "conversion_summary_dir": self.conversion_summary_dir,
-        "custom_opdefs": self._custom_opdefs,
     })
 
     if not self.experimental_new_converter:
@@ -1340,6 +1357,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
       calibrate_quantize, flags = quant_mode.quantizer_flags()
 
     self._validate_quantized_input_stats(converter_kwargs, calibrate_quantize)
+    self._validate_experimental_new_quantizer_flag()
 
     # Converts model.
     if self._has_valid_tensors():
@@ -1358,7 +1376,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     if calibrate_quantize:
       result = self._calibrate_quantize_model(result, **flags)
 
-    if self.experimental_new_converter or self._experimental_new_quantizer:
+    if self.experimental_new_converter or self.experimental_new_quantizer:
       flags_modify_model_io_type = quant_mode.flags_modify_model_io_type(
           self.inference_input_type, self.inference_output_type)
       if flags_modify_model_io_type:
@@ -1731,6 +1749,9 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
       set it to `{tf.lite.Optimize.DEFAULT}`. (default False)
     experimental_new_converter: Experimental flag, subject to change. Enables
       MLIR-based conversion instead of TOCO conversion. (default True)
+    experimental_new_quantizer: Experimental flag, subject to change. Enables
+      MLIR-based quantization conversion instead of Flatbuffer-based conversion.
+      (default False)
 
   Example usage:
 

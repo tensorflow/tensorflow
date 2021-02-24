@@ -520,8 +520,10 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         result.push_back(
             std::make_pair("deterministic", deterministic_ ? "true" : "false"));
         result.push_back(std::make_pair(
-            "parallelism",
-            strings::Printf("%lld", static_cast<long long>(parallelism))));
+            "parallelism", parallelism == -1
+                               ? kTraceInfoUnavailable
+                               : strings::Printf("%lld", static_cast<long long>(
+                                                             parallelism))));
         return result;
       }
 

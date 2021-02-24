@@ -364,11 +364,11 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kRngBitGenerator;
   } else if (isa<mlir::mhlo::FusionOp, mlir::lmhlo::FusionOp>(op)) {
     return xla::HloOpcode::kFusion;
-  } else if (isa<mlir::mhlo::BitcastOp, mlir::lmhlo::BitcastOp>(op)) {
+  } else if (isa<mlir::mhlo::BitcastOp>(op)) {
     return xla::HloOpcode::kBitcast;
   } else if (isa<mlir::mhlo::AbsOp, mlir::lmhlo::AbsOp>(op)) {
     return xla::HloOpcode::kAbs;
-  } else if (isa<mlir::mhlo::CbrtOp>(op)) {
+  } else if (isa<mlir::mhlo::CbrtOp, mlir::lmhlo::CbrtOp>(op)) {
     return xla::HloOpcode::kCbrt;
   } else if (isa<mlir::mhlo::CeilOp, mlir::lmhlo::CeilOp>(op)) {
     return xla::HloOpcode::kCeil;
@@ -429,7 +429,7 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kCompare;
   } else if (isa<mlir::mhlo::SliceOp, mlir::lmhlo::SliceOp>(op)) {
     return xla::HloOpcode::kSlice;
-  } else if (isa<mlir::mhlo::DynamicSliceOp>(op)) {
+  } else if (isa<mlir::mhlo::DynamicSliceOp, mlir::lmhlo::DynamicSliceOp>(op)) {
     return xla::HloOpcode::kDynamicSlice;
   } else if (isa<mlir::mhlo::DynamicUpdateSliceOp,
                  mlir::lmhlo::DynamicUpdateSliceOp>(op)) {

@@ -69,6 +69,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
         "//tensorflow/compiler/xla/service/gpu:target_constants",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core/common_runtime/gpu:gpu_init",
         "@llvm-project//llvm:Core",
         "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
         "@llvm-project//mlir:IR",
@@ -79,6 +80,17 @@ cc_library(
 tf_cc_test(
     name = "mlir_sorting_test",
     srcs = ["mlir_sorting_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":mlir_gpu_test_base",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "mlir_gpu_compile_test",
+    srcs = ["mlir_gpu_compile_test.cc"],
     tags = tf_cuda_tests_tags(),
     deps = [
         ":mlir_gpu_test_base",
@@ -114,6 +126,21 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_test(
+    name = "gpu_too_many_blocks_test",
+    srcs = [
+        "gpu_too_many_blocks_test.cc",
+    ],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -176,7 +203,7 @@ tf_cc_test(
     srcs = [
         "tree_reduction_rewriter_test.cc",
     ],
-    tags = tf_cuda_tests_tags() + ["no_rocm"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -257,7 +284,7 @@ tf_cc_test(
     srcs = [
         "parallel_reduction_test.cc",
     ],
-    tags = tf_cuda_tests_tags() + ["no_rocm"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla/service:gpu_plugin",
@@ -296,7 +323,7 @@ tf_cc_test(
     srcs = [
         "gpu_copy_alone_test.cc",
     ],
-    tags = tf_cuda_tests_tags() + ["no_rocm"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla/service:hlo",
@@ -520,9 +547,7 @@ tf_cc_test(
     srcs = [
         "sorting_test.cc",
     ],
-    tags = tf_cuda_tests_tags() + [
-        "no_rocm",
-    ],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla:debug_options_flags",

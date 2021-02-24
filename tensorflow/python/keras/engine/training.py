@@ -32,6 +32,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values as ds_values
+from tensorflow.python.distribute.coordinator import cluster_coordinator
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -45,7 +46,6 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks as callbacks_module
 from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import optimizers
-from tensorflow.python.keras.distribute import distributed_training_utils as dist_utils
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import compile_utils
@@ -306,6 +306,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       self._distribution_strategy = ds_context.get_strategy()
     else:
       self._distribution_strategy = None
+
+    self._cluster_coordinator = None
+
     # Defaults to value of `tf.config.experimental_functions_run_eagerly`.
     self._run_eagerly = None
     # Initialize cache attrs.
@@ -566,6 +569,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         if not steps_per_execution:
           steps_per_execution = kwargs.pop('experimental_steps_per_execution')
 
+      # When compiling from an already-serialized model, we do not want to
+      # reapply some processing steps (e.g. metric renaming for multi-output
+      # models, which have prefixes added for each corresponding output name).
+      from_serialized = kwargs.pop('from_serialized', False)
+
       self._validate_compile(optimizer, metrics, **kwargs)
       self._run_eagerly = run_eagerly
 
@@ -573,7 +581,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       self.compiled_loss = compile_utils.LossesContainer(
           loss, loss_weights, output_names=self.output_names)
       self.compiled_metrics = compile_utils.MetricsContainer(
-          metrics, weighted_metrics, output_names=self.output_names)
+          metrics, weighted_metrics, output_names=self.output_names,
+          from_serialized=from_serialized)
 
       self._configure_steps_per_execution(steps_per_execution or 1)
 
@@ -744,6 +753,10 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
                        'constructed with `dynamic=True`). '
                        'You cannot set `run_eagerly=False`.')
 
+    if self._cluster_coordinator and self._run_eagerly:
+      raise ValueError('When using `Model` with `ParameterServerStrategy`, '
+                       '`run_eagerly` is not supported.')
+
     # Run eagerly logic, by priority:
     # (1) Dynamic models must be run eagerly.
     # (2) Explicitly setting run_eagerly causes a Model to be run eagerly.
@@ -852,6 +865,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
           train_function, experimental_relax_shapes=True)
 
     self.train_function = train_function
+
+    if self._cluster_coordinator:
+      self.train_function = lambda iterator: self._cluster_coordinator.schedule(  # pylint: disable=g-long-lambda
+          train_function, args=(iterator,))
+
     return self.train_function
 
   def fit(self,
@@ -950,7 +968,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             are supported in `x`, eg, dict, generator or `keras.utils.Sequence`.
         shuffle: Boolean (whether to shuffle the training data
             before each epoch) or str (for 'batch'). This argument is ignored
-            when `x` is a generator. 'batch' is a special option for dealing
+            when `x` is a generator or an object of tf.data.Dataset.
+            'batch' is a special option for dealing
             with the limitations of HDF5 data; it shuffles in batch-sized
             chunks. Has no effect when `steps_per_epoch` is not `None`.
         class_weight: Optional dictionary mapping class indices (integers)
@@ -1079,10 +1098,14 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       val_x, val_y, val_sample_weight = (
           data_adapter.unpack_x_y_sample_weight(validation_data))
 
+    if self.distribute_strategy._should_use_with_coordinator:  # pylint: disable=protected-access
+      self._cluster_coordinator = cluster_coordinator.ClusterCoordinator(
+          self.distribute_strategy)
+
     with self.distribute_strategy.scope(), \
          training_utils.RespectCompiledTrainableState(self):
       # Creates a `tf.data.Dataset` and handles batch and epoch iteration.
-      data_handler = data_adapter.DataHandler(
+      data_handler = data_adapter.get_data_handler(
           x=x,
           y=y,
           sample_weight=sample_weight,
@@ -1141,6 +1164,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
               if self.stop_training:
                 break
 
+        logs = data_handler.resolve_logs(logs)
         if logs is None:
           raise ValueError('Expect x to be a non-empty array or dataset.')
         epoch_logs = copy.copy(logs)
@@ -1150,7 +1174,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
           # Create data_handler for evaluation and cache it.
           if getattr(self, '_eval_data_handler', None) is None:
             self._fit_frame = tf_inspect.currentframe()
-            self._eval_data_handler = data_adapter.DataHandler(
+            self._eval_data_handler = data_adapter.get_data_handler(
                 x=val_x,
                 y=val_y,
                 sample_weight=val_sample_weight,
@@ -1378,6 +1402,10 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     self._check_call_args('evaluate')
     _disallow_inside_tf_function('evaluate')
 
+    if self.distribute_strategy._should_use_with_coordinator:  # pylint: disable=protected-access
+      raise NotImplementedError('`model.evaluate` is not yet supported with '
+                                '`ParameterServerStrategy`.')
+
     with self.distribute_strategy.scope():
       # Use cached evaluation data only when it's called in `Model.fit`
       if (getattr(self, '_fit_frame', None) is not None
@@ -1386,7 +1414,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         data_handler = self._eval_data_handler
       else:
         # Creates a `tf.data.Dataset` and handles batch and epoch iteration.
-        data_handler = data_adapter.DataHandler(
+        data_handler = data_adapter.get_data_handler(
             x=x,
             y=y,
             sample_weight=sample_weight,
@@ -1613,6 +1641,10 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     self._check_call_args('predict')
     _disallow_inside_tf_function('predict')
 
+    if self.distribute_strategy._should_use_with_coordinator:  # pylint: disable=protected-access
+      raise NotImplementedError('`model.predict` is not yet supported with '
+                                '`ParameterServerStrategy`.')
+
     outputs = None
     with self.distribute_strategy.scope():
       # Creates a `tf.data.Dataset` and handles batch and epoch iteration.
@@ -1630,7 +1662,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
                         'AutoShardPolicy.FILE might lead to out-of-order result'
                         '. Consider setting it to AutoShardPolicy.DATA.')
 
-      data_handler = data_adapter.DataHandler(
+      data_handler = data_adapter.get_data_handler(
           x=x,
           batch_size=batch_size,
           steps_per_epoch=steps,
@@ -2221,7 +2253,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         ValueError: If `skip_mismatch` is set to `True` when `by_name` is
           `False`.
     """
-    if dist_utils.is_tpu_strategy(self._distribution_strategy):
+    if backend.is_tpu_strategy(self._distribution_strategy):
       if (self._distribution_strategy.extended.steps_per_run > 1 and
           (not saving_utils.is_hdf5_filepath(filepath))):
         raise ValueError('Load weights is not yet supported with TPUStrategy '
@@ -2648,6 +2680,10 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     return functions
 
   def _should_eval(self, epoch, validation_freq):
+    if self._cluster_coordinator:
+      raise NotImplementedError(
+          'Evaluation in `model.fit` with '
+          '`ParameterServerStrategy` is not yet supported.')
     epoch = epoch + 1  # one-index the user-facing epoch.
     if isinstance(validation_freq, int):
       return epoch % validation_freq == 0
@@ -2743,7 +2779,7 @@ def concat(tensors, axis=0):
 
 
 def _is_tpu_multi_host(strategy):
-  return (dist_utils.is_tpu_strategy(strategy) and
+  return (backend.is_tpu_strategy(strategy) and
           strategy.extended.num_hosts > 1)
 
 
@@ -2772,24 +2808,19 @@ def _collective_all_reduce_multi_worker(strategy):
 # for all strategies
 def _multi_worker_concat(v, strategy):
   """Order PerReplica objects for CollectiveAllReduceStrategy and concat."""
-  replicas = strategy.gather(v, axis=0)  # pylint: disable=protected-access
-  # TODO(b/170435030): We now need to make sure these run after the iterator
-  # GetNext, so that we don't trigger aborting collective ops in the case of
-  # EOF. Remove after the issue is fixed.
-  with ops.control_dependencies([replicas]):
-    # v might not have the same shape on different replicas
-    if isinstance(v, ds_values.PerReplica):
-      shapes = array_ops.concat([
-          array_ops.expand_dims_v2(array_ops.shape(single_value)[0], axis=0)
-          for single_value in v.values
-      ],
-                                axis=0)
-      all_shapes = strategy.gather(shapes, axis=0)
-    else:
-      # v is a tensor. This may happen when, say, we have 2x1 multi-worker.
-      all_shapes = strategy.gather(
-          array_ops.expand_dims_v2(array_ops.shape(v)[0], axis=0),
-          axis=0)
+  replicas = strategy.gather(v, axis=0)
+  # v might not have the same shape on different replicas
+  if isinstance(v, ds_values.PerReplica):
+    shapes = array_ops.concat([
+        array_ops.expand_dims_v2(array_ops.shape(single_value)[0], axis=0)
+        for single_value in v.values
+    ],
+                              axis=0)
+    all_shapes = strategy.gather(shapes, axis=0)
+  else:
+    # v is a tensor. This may happen when, say, we have 2x1 multi-worker.
+    all_shapes = strategy.gather(
+        array_ops.expand_dims_v2(array_ops.shape(v)[0], axis=0), axis=0)
 
   replicas = array_ops.split(
       replicas,

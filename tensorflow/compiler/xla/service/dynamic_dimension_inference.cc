@@ -366,25 +366,45 @@ Status DynamicDimensionInferenceVisitor::HandlePad(HloInstruction* hlo) {
         }
         const PaddingConfig_PaddingConfigDimension& padding_config =
             hlo->padding_config().dimensions(dimension);
-        if (padding_config.interior_padding() == 0) {
-          HloInstruction* dynamic_size_adjusted = dynamic_size;
-          HloInstruction* adjustment = hlo->parent()->AddInstruction(
+
+        HloInstruction* dynamic_size_adjusted = dynamic_size;
+        if (padding_config.interior_padding() != 0) {
+          // Adjust for interior padding :
+          // Size' = max((Size - 1), 0) * interior_padding + Size
+          HloInstruction* one = hlo->parent()->AddInstruction(
+              HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+          HloInstruction* zero = hlo->parent()->AddInstruction(
+              HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+          HloInstruction* interior_padding = hlo->parent()->AddInstruction(
               HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(
-                  padding_config.edge_padding_low() +
-                  padding_config.edge_padding_high())));
+                  padding_config.interior_padding())));
+          dynamic_size_adjusted =
+              hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
+                  dynamic_size_adjusted->shape(), HloOpcode::kSubtract,
+                  dynamic_size_adjusted, one));
+          dynamic_size_adjusted =
+              hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
+                  dynamic_size_adjusted->shape(), HloOpcode::kMaximum,
+                  dynamic_size_adjusted, zero));
+          dynamic_size_adjusted =
+              hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
+                  dynamic_size_adjusted->shape(), HloOpcode::kMultiply,
+                  dynamic_size_adjusted, interior_padding));
           dynamic_size_adjusted =
               hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
                   dynamic_size_adjusted->shape(), HloOpcode::kAdd,
-                  dynamic_size_adjusted, adjustment));
-          parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size_adjusted);
-          return Status::OK();
-        } else {
-          return Unimplemented(
-              "Dynamic dimension propagation on interio padding dimension is "
-              "not "
-              "supported: %s",
-              hlo->ToString());
+                  dynamic_size_adjusted, dynamic_size));
         }
+        HloInstruction* adjustment = hlo->parent()->AddInstruction(
+            HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(
+                padding_config.edge_padding_low() +
+                padding_config.edge_padding_high())));
+        dynamic_size_adjusted =
+            hlo->parent()->AddInstruction(HloInstruction::CreateBinary(
+                dynamic_size_adjusted->shape(), HloOpcode::kAdd,
+                dynamic_size_adjusted, adjustment));
+        parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size_adjusted);
+        return Status::OK();
       });
 }
 
@@ -1121,13 +1141,25 @@ Status DynamicDimensionInferenceVisitor::HandleDynamicUpdateSlice(
   return ForEachOperandDynamicDimension(
       hlo,
       [&](HloInstruction* /*operand*/, ShapeIndex /*index*/, int64 dimension,
-          int64 /*operand_index*/, HloInstruction* dynamic_size) {
+          int64 operand_index, HloInstruction* dynamic_size) {
         if (hlo->shape().dimensions(dimension) !=
             hlo->operand(0)->shape().dimensions(dimension)) {
           return Unimplemented(
-              "Dynamic dimension propagation on DynamicSlice where a partial "
-              "dimension is selected %s",
+              "Dynamic dimension propagation on DynamicUpdateSlice where a "
+              "partial dimension is selected %s",
               hlo->ToString());
+        }
+
+        if (operand_index == 1 &&
+            hlo->operand(1)->shape().dimensions(dimension) <
+                hlo->operand(0)->shape().dimensions(dimension)) {
+          // DUS(input=[A], update=[<=B])
+          //
+          // If update dim is smaller than input dim (B < A) , then we are doing
+          // a partial update, no need to set the output dynamic dimension.
+          //
+          // The dynamic shape in `update` doesn't change output dynamic shape.
+          return Status::OK();
         }
 
         parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size);
@@ -1385,8 +1417,7 @@ Status DynamicDimensionInferenceVisitor::HandleScatter(HloInstruction* hlo) {
             absl::c_linear_search(scatter_dims.update_window_dims(),
                                   dimension)) {
           return Unimplemented(
-              "Dynamic dimension of update window dims is not supported "
-              "is not supported: %s",
+              "Dynamic dimension of update window dims is not supported: %s",
               hlo->ToString());
         }
         // The dynamic dimension is collapsed and won't show up in the output.
@@ -1640,8 +1671,10 @@ Status DynamicDimensionInference::AnalyzeDynamicDimensions() {
 
 void DynamicDimensionInference::ReplaceAllDynamicDimensionUsesWith(
     HloInstruction* replace, HloInstruction* with) {
-  CHECK(Shape::Equal()(replace->shape(), ShapeUtil::MakeScalarShape(S32)));
-  CHECK(Shape::Equal()(with->shape(), ShapeUtil::MakeScalarShape(S32)));
+  CHECK(Shape::Equal().IgnoreLayout()(replace->shape(),
+                                      ShapeUtil::MakeScalarShape(S32)));
+  CHECK(Shape::Equal().IgnoreLayout()(with->shape(),
+                                      ShapeUtil::MakeScalarShape(S32)));
   for (auto& kv : dynamic_mapping_) {
     if (kv.second == replace) {
       kv.second = with;

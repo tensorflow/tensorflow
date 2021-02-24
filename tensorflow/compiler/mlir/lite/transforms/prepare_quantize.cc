@@ -67,6 +67,12 @@ static llvm::cl::opt<bool> post_training_quantize(
     llvm::cl::init(false));
 
 // NOLINTNEXTLINE
+static llvm::cl::opt<bool> legacy_float_scale(
+    "tfl-test-legacy-float-scale", llvm::cl::value_desc("bool"),
+    llvm::cl::desc("calculate quantization scales in float instead of double"),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
 static llvm::cl::opt<bool> disable_per_channel(
     "tfl-disable-per-channel", llvm::cl::value_desc("bool"),
     llvm::cl::desc("Whether disable per-channel quantized weights."),
@@ -103,6 +109,7 @@ class PrepareQuantizePass
     quant_specs_.inference_type =
         quantize_signed ? tensorflow::DT_QINT8 : tensorflow::DT_QUINT8;
     quant_specs_.post_training_quantization = post_training_quantize;
+    quant_specs_.legacy_float_scale = legacy_float_scale;
   }
 
   // Constructor used by manually creating the pass.
@@ -367,7 +374,7 @@ void PrepareQuantizePass::runOnFunction() {
     patterns_1.insert<PrepareLstmOutputScale<UnidirectionalSequenceLSTMOp>>(
         ctx);
   }
-  applyPatternsAndFoldGreedily(func, std::move(patterns_1));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns_1));
 
   // During the legalization, unsigned quantized type is used, so we have to
   // convert all of them to signed.
@@ -377,20 +384,22 @@ void PrepareQuantizePass::runOnFunction() {
         ctx);
     // Convert quant stats to int8 quantization parameters.
     // Currently, only activation stats are imported, so narrow_range = false.
-    patterns_2.insert<PrepareQuantStats>(bit_width, false, true, ctx);
+    patterns_2.insert<PrepareQuantStats>(bit_width, false, true,
+                                         quant_specs_.legacy_float_scale, ctx);
   } else {
     // Convert quant stats to uint8 quantization parameters.
     // Currently, only activation stats are imported, so narrow_range = false.
-    patterns_2.insert<PrepareQuantStats>(bit_width, false, false, ctx);
+    patterns_2.insert<PrepareQuantStats>(bit_width, false, false,
+                                         quant_specs_.legacy_float_scale, ctx);
   }
 
   if (quant_specs_.post_training_quantization) {
     patterns_2.insert<ConvertLstmStatsToQDQs<LSTMOp>>(ctx, quant_specs_);
     patterns_2.insert<ConvertLstmStatsToQDQs<UnidirectionalSequenceLSTMOp>>(
         ctx, quant_specs_);
-    patterns_2.insert<ConvertSvdfStatsToQDQs>(ctx);
+    patterns_2.insert<ConvertSvdfStatsToQDQs>(ctx, quant_specs_);
   }
-  applyPatternsAndFoldGreedily(func, std::move(patterns_2));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns_2));
 
   SanityCheckAndAdjustment(func);
 
@@ -398,7 +407,7 @@ void PrepareQuantizePass::runOnFunction() {
   // values (tensors).
   ApplyQuantizationParamsPropagation(
       func, is_signed, disable_per_channel || quant_specs_.disable_per_channel,
-      GetOpQuantSpec, infer_tensor_range);
+      GetOpQuantSpec, infer_tensor_range, quant_specs_.legacy_float_scale);
 
   ConvertMlirQuantOpsToTFLQuantOps(func);
 }

@@ -2307,6 +2307,8 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
       return ArrayDataType::kInt16;
     case INT32:
       return ArrayDataType::kInt32;
+    case UINT32:
+      return ArrayDataType::kUint32;
     case INT64:
       return ArrayDataType::kInt64;
     case UINT64:
@@ -2323,6 +2325,8 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
       return ArrayDataType::kFloat16;
     case FLOAT64:
       return ArrayDataType::kFloat64;
+    case RESOURCE:
+    case VARIANT:
     default:
       return ArrayDataType::kNone;
   }
