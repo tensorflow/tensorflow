@@ -178,6 +178,9 @@ tf_py_test(
     name = "data_service_ops_ft_test",
     srcs = ["data_service_ops_ft_test.py"],
     srcs_version = "PY3",
+    tags = [
+        "notsan",  # b/181074067.
+    ],
     deps = [
         ":data_service_test_base",
         "//tensorflow:tensorflow_py",
