@@ -48,7 +48,7 @@ TfLiteStatus ValidateGoldens(TfLiteTensor* tensors, int tensors_size,
 
   const TfLiteRegistration registration = Register_RESIZE_BILINEAR();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
-                             outputs_array, params, micro_test::reporter);
+                             outputs_array, params);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
