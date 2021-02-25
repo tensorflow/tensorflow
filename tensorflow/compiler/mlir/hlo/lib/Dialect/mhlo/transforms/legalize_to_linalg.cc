@@ -141,6 +141,72 @@ AffineMap GetTransposeMapForReduction(MLIRContext* context, int rank,
   return inversePermutation(map);
 }
 
+/// Returns true if the given `dimensionNumbers` from a mhlo.convolution op
+/// follows a canonical form:
+///
+/// * Input dimensions have order: (batch_count, spatial_dims,
+///   input_channel_count).
+/// * Filter dimensions have order: (spatial_dims, input_channel_count,
+///   output_channel_count).
+/// * Output dimensions have order: (batch_count, spatial_dims,
+///   output_channel_count).
+template <typename DimensionNumbersTy>
+static bool HasCanonicalDimensionNumbers(
+    const DimensionNumbersTy& dimension_numbers) {
+  const int input_spatial_rank =
+      llvm::size(dimension_numbers.input_spatial_dimensions());
+  // The dimensions for input should follow the order of
+  // batch_count, spatial_dims..., input_feature_count.
+  if (dimension_numbers.input_batch_dimension().getInt() != 0 ||
+      dimension_numbers.input_feature_dimension().getInt() !=
+          (input_spatial_rank + 1)) {
+    return false;
+  }
+
+  const int kernel_spatial_rank =
+      llvm::size(dimension_numbers.kernel_spatial_dimensions());
+  // The dimensions for filter should follow the order of
+  // spatial_dims..., input_feature_count, num_output_feature_count.
+  if (dimension_numbers.kernel_input_feature_dimension().getInt() !=
+          kernel_spatial_rank ||
+      dimension_numbers.kernel_output_feature_dimension().getInt() !=
+          (kernel_spatial_rank + 1)) {
+    return false;
+  }
+
+  const int output_spatial_rank =
+      llvm::size(dimension_numbers.output_spatial_dimensions());
+  // The dimensions for output should follow the order of
+  // batch_count, spatial_dims.., output_feature_count.
+  if (dimension_numbers.output_batch_dimension().getInt() != 0 ||
+      dimension_numbers.output_feature_dimension().getInt() !=
+          (output_spatial_rank + 1)) {
+    return false;
+  }
+
+  if (input_spatial_rank != output_spatial_rank ||
+      input_spatial_rank != kernel_spatial_rank) {
+    return false;
+  }
+
+  auto input_spatial_dim = dimension_numbers.input_spatial_dimensions().begin();
+  auto kernel_spatial_dim =
+      dimension_numbers.kernel_spatial_dimensions().begin();
+  auto output_spatial_dim =
+      dimension_numbers.output_spatial_dimensions().begin();
+  // Check spatial dims are ordered correctly.
+  for (int i = 0; i < input_spatial_rank; ++i) {
+    const int dim = i + 1;
+    if ((*input_spatial_dim++).getZExtValue() != dim ||
+        (*output_spatial_dim++).getZExtValue() != dim ||
+        (*kernel_spatial_dim++).getZExtValue() != i) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 template <typename OpTy, bool isLHLO = true>
 class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
  public:
@@ -264,61 +330,10 @@ struct ConvToLinalgConverter : public OpConversionPattern<lmhlo::ConvOp> {
  public:
   using OpConversionPattern<lmhlo::ConvOp>::OpConversionPattern;
 
-  //  This code has been adapted from IREE's
-  //  (https://github.com/google/iree/) mhlo -> linalg conversion.
   LogicalResult matchAndRewrite(
       lmhlo::ConvOp op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
-    // Check validity of dimension information.
-    if (const mhlo::ConvDimensionNumbers& dimension_numbers =
-            op.dimension_numbers()) {
-      const int input_spatial_rank =
-          llvm::size(dimension_numbers.input_spatial_dimensions());
-      // The dimensions for input should follow the order of
-      // batch_count, spatial_dims..., input_feature_count.
-      if (dimension_numbers.input_batch_dimension().getInt() != 0 ||
-          dimension_numbers.input_feature_dimension().getInt() !=
-              (input_spatial_rank + 1))
-        return failure();
-
-      const int kernel_spatial_rank =
-          llvm::size(dimension_numbers.kernel_spatial_dimensions());
-      // The dimensions for filter should follow the order of
-      // spatial_dims..., input_feature_count, num_output_feature_count.
-      if (dimension_numbers.kernel_input_feature_dimension().getInt() !=
-              kernel_spatial_rank ||
-          dimension_numbers.kernel_output_feature_dimension().getInt() !=
-              (kernel_spatial_rank + 1))
-        return failure();
-
-      const int output_spatial_rank =
-          llvm::size(dimension_numbers.output_spatial_dimensions());
-      // The dimensions for output should follow the order of
-      // batch_count, spatial_dims.., output_feature_count.
-      if (dimension_numbers.output_batch_dimension().getInt() != 0 ||
-          dimension_numbers.output_feature_dimension().getInt() !=
-              (output_spatial_rank + 1))
-        return failure();
-
-      if (input_spatial_rank != output_spatial_rank ||
-          input_spatial_rank != kernel_spatial_rank)
-        return failure();
-
-      auto input_spatial_dim =
-          dimension_numbers.input_spatial_dimensions().begin();
-      auto kernel_spatial_dim =
-          dimension_numbers.kernel_spatial_dimensions().begin();
-      auto output_spatial_dim =
-          dimension_numbers.output_spatial_dimensions().begin();
-      // Check if spatial dims are ordered correctly.
-      for (int i = 0; i < input_spatial_rank; ++i) {
-        const int dim = i + 1;
-        if ((*input_spatial_dim++).getZExtValue() != dim ||
-            (*output_spatial_dim++).getZExtValue() != dim ||
-            (*kernel_spatial_dim++).getZExtValue() != i)
-          return failure();
-      }
-    }
+    if (!HasCanonicalDimensionNumbers(op.dimension_numbers())) return failure();
 
     // TODO: LHS dilation for deconvolution not supported yet.
     // TODO(jurahul): Window reversal is not supported yet.
@@ -1432,6 +1447,80 @@ struct PadOpOnTensorsConversion : public OpConversionPattern<mhlo::PadOp> {
   }
 };
 
+/// Converts mhlo.conv operation to linalg named op. This only covers normal
+/// convolution cases. The op must have canonical dimension numbers. Depthwise
+/// convolution and pointwise convolution are not handled in the conversion.
+struct NormalConvOpOnTensorsConversion
+    : public OpConversionPattern<mhlo::ConvOp> {
+  using OpConversionPattern<mhlo::ConvOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::ConvOp op, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const override {
+    if (!HasCanonicalDimensionNumbers(op.dimension_numbers())) return failure();
+    if (op.feature_group_count() != 1u) return failure();
+
+    mhlo::ConvOp::Adaptor adaptor(args);
+    Location loc = op.getLoc();
+    Value input = adaptor.lhs();
+    Value filter = adaptor.rhs();
+    auto result_type = op.getResult().getType().cast<ShapedType>();
+    int64_t rank = result_type.getRank();
+
+    // Check if padding is zero.
+    DenseIntElementsAttr padding = op.paddingAttr();
+    if (padding &&
+        (!padding.isSplat() || padding.getSplatValue<int64_t>() != 0)) {
+      return rewriter.notifyMatchFailure(op, "expected no padding");
+    }
+
+    // The output shape is N spatial_dims F.
+    SmallVector<Value, 8> dyn_sizes;
+    for (int64_t i = 0, e = rank - 1; i < e; ++i) {
+      if (!result_type.isDynamicDim(i)) continue;
+      dyn_sizes.push_back(rewriter.create<DimOp>(loc, input, i));
+    }
+    if (result_type.isDynamicDim(rank - 1)) {
+      dyn_sizes.push_back(rewriter.create<DimOp>(loc, filter, rank - 1));
+    }
+    Value init_tensor = rewriter.create<linalg::InitTensorOp>(
+        loc, dyn_sizes, result_type.getShape(), result_type.getElementType());
+    auto zero_attr = rewriter.getZeroAttr(result_type.getElementType());
+    Value zero = rewriter.create<ConstantOp>(loc, zero_attr);
+    Value zero_tensor =
+        rewriter.create<linalg::FillOp>(loc, init_tensor, zero).getResult(0);
+    linalg::LinalgOp res;
+    Attribute strides = op.window_stridesAttr();
+    // TODO(ataei): Only support dilated kernel right now. We need to consider
+    // input dilation for deconvolution cases.
+    Attribute dilations = op.rhs_dilationAttr();
+    switch (rank) {
+      case 3: {
+        res = rewriter.create<linalg::ConvInputNWCFilterWCFOp>(
+            loc, result_type, ValueRange{input, filter},
+            ValueRange{zero_tensor}, dilations, strides);
+        break;
+      }
+      case 4: {
+        res = rewriter.create<linalg::ConvInputNHWCFilterHWCFOp>(
+            loc, result_type, ValueRange{input, filter},
+            ValueRange{zero_tensor}, dilations, strides);
+        break;
+      }
+      case 5: {
+        res = rewriter.create<linalg::ConvInputNDHWCFilterDHWCFOp>(
+            loc, result_type, ValueRange{input, filter},
+            ValueRange{zero_tensor}, dilations, strides);
+        break;
+      }
+      default:
+        return rewriter.notifyMatchFailure(op, "expected 1/2/3D conv op");
+    }
+    rewriter.replaceOp(op, res.getOperation()->getResults());
+    return success();
+  }
+};
+
 void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                                            OwningRewritePatternList* patterns) {
   // clang-format off
@@ -1656,6 +1745,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                                       linalg::BatchMatmulI32I32I32Op>,
       DotGeneralOpOnTensorsConversion<FloatType, 32, FloatType, 32,
                                       linalg::BatchMatmulOp>,
+      NormalConvOpOnTensorsConversion,
       ReduceOnTensorsConversion,
       PadOpOnTensorsConversion>(context);
   // clang-format on
