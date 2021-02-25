@@ -522,8 +522,9 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
     std::vector<ValueId> all_ids = node.inputs;
     all_ids.insert(all_ids.end(), node.outputs.begin(), node.outputs.end());
     for (auto& tensor_id : all_ids) {
-      if (preallocated_tensors_.find(tensor_id) != preallocated_tensors_.end())
+      if (GetTensorMemoryType(tensor_id) != TensorMemoryType::kBuffer) {
         continue;
+      }
       const int tensor_index = graph_ids_to_shared_buffer_tensors_[tensor_id];
       if (created_tensors[tensor_index]) continue;
       const auto& tensor_dummy = tensor_reserver_.Get(tensor_id);
