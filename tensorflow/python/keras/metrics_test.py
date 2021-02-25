@@ -1360,6 +1360,28 @@ class MeanIoUTest(test.TestCase):
     expected_result = (0.2 / (0.6 + 0.5 - 0.2) + 0.1 / (0.4 + 0.5 - 0.1)) / 2
     self.assertAllClose(self.evaluate(result), expected_result, atol=1e-3)
 
+  # TODO(tyleradavis): Write a testcase for 3 classes, using 0,1,2 labels
+
+  def test_multilabel_threshold(self):
+    y_pred = constant_op.constant([[.4, .6], [.8, .9]], dtype=dtypes.float32)
+    y_true = constant_op.constant([[0, 0], [1, 1]])
+
+    m_obj = metrics.MeanIoU(num_classes=2, threshold=.5)
+    self.evaluate(variables.variables_initializer(m_obj.variables))
+
+    result = m_obj(y_true, y_pred)
+
+    # y_pred gets thresholded to [[0, 1], [1, 1]]
+    # cm = [[1, 1],
+    #       [0, 2]]
+    # sum_row = [2, 2], sum_col = [1, 3], true_positives = [1, 2]
+    # iou = true_positives / (sum_row + sum_col - true_positives))
+
+    # 2 / 3
+    # 1 / 2
+    expected_result = ((1 / (2 + 1 - 1))+ (2 / (2 + 3 - 2))) / 2
+    self.assertAllClose(self.evaluate(result), expected_result, atol=1e-3)
+
   def test_zero_valid_entries(self):
     m_obj = metrics.MeanIoU(num_classes=2)
     self.evaluate(variables.variables_initializer(m_obj.variables))
@@ -1380,7 +1402,43 @@ class MeanIoUTest(test.TestCase):
     expected_result = (0 + 1 / (1 + 1 - 1)) / 1
     self.assertAllClose(self.evaluate(result), expected_result, atol=1e-3)
 
+  def test_with_probability(self):
+    y_pred = [0, .51, 0, .99]
+    y_true = [0, 0, 1, 1]
 
+    m_obj = metrics.MeanIoU(num_classes=2, threshold=.5)
+    self.evaluate(variables.variables_initializer(m_obj.variables))
+
+    result = m_obj(y_true, y_pred)
+
+    # cm = [[1, 1],
+    #       [1, 1]]
+    # sum_row = [2, 2], sum_col = [2, 2], true_positives = [1, 1]
+    # iou = true_positives / (sum_row + sum_col - true_positives))
+    expected_result = (1 / (2 + 2 - 1) + 1 / (2 + 2 - 1)) / 2
+    self.assertAllClose(self.evaluate(result), expected_result, atol=1e-3)
+
+  def test_custom_threshold(self):
+    y_pred = [0, .51, 0, .99]
+    y_true = [0, 0, 1, 1]
+
+    m_obj = metrics.MeanIoU(num_classes=2, threshold=.98)
+    self.evaluate(variables.variables_initializer(m_obj.variables))
+
+    result = m_obj(y_true, y_pred)
+
+    # intersection = 1
+    # union = 2
+
+    # intersection = 2
+    # union = 3
+
+    # cm = [[2, 0],
+    #       [1, 1]]
+    # sum_row = [2, 2], sum_col = [3, 1], true_positives = [2, 1]
+    # iou = true_positives / (sum_row + sum_col - true_positives))
+    expected_result = (2 / (2 + 3 - 2) + 1 / (2 + 1 - 1)) / 2
+    self.assertAllClose(self.evaluate(result), expected_result, atol=1e-3)
 class MeanTensorTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -2312,10 +2370,10 @@ class ResetStatesTest(keras_parameterized.TestCase):
     y = np.asarray([[0], [1], [1], [1]], dtype=np.float32)
     model.evaluate(x, y)
     self.assertArrayNear(self.evaluate(m_obj.total_cm)[0], [1, 0], 1e-1)
-    self.assertArrayNear(self.evaluate(m_obj.total_cm)[1], [3, 0], 1e-1)
+    self.assertArrayNear(self.evaluate(m_obj.total_cm)[1], [0, 3], 1e-1)
     model.evaluate(x, y)
     self.assertArrayNear(self.evaluate(m_obj.total_cm)[0], [1, 0], 1e-1)
-    self.assertArrayNear(self.evaluate(m_obj.total_cm)[1], [3, 0], 1e-1)
+    self.assertArrayNear(self.evaluate(m_obj.total_cm)[1], [0, 3], 1e-1)
 
   def test_reset_states_recall_float64(self):
     # Test case for GitHub issue 36790.

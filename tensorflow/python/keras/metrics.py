@@ -2799,6 +2799,8 @@ class MeanIoU(Metric):
     num_classes: The possible number of labels the prediction task can have.
       This value must be provided, since a confusion matrix of dimension =
       [num_classes, num_classes] will be allocated.
+    threshold: (Optional) Float representing the threshold for deciding whether
+      prediction values are 1 or 0. Defaults to `.5`.
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
 
@@ -2830,9 +2832,10 @@ class MeanIoU(Metric):
   ```
   """
 
-  def __init__(self, num_classes, name=None, dtype=None):
+  def __init__(self, num_classes, threshold=.5, name=None, dtype=None):
     super(MeanIoU, self).__init__(name=name, dtype=dtype)
     self.num_classes = num_classes
+    self.threshold = math_ops.cast(threshold, self._dtype)
 
     # Variable to accumulate the predictions in the confusion matrix.
     self.total_cm = self.add_weight(
@@ -2856,6 +2859,14 @@ class MeanIoU(Metric):
 
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
+
+    # TODO(tyleradavis): This is incompatible with 0,1,2...n_classes style labels.
+    # TODO(tyleradavis): Ensure this gives correct results in 3+ class situations
+    # with labels.
+    # Cast all values over threshold to 1, all below threshold to 0
+    y_pred = math_ops.cast(
+      math_ops.greater(y_pred, self.threshold),
+      self._dtype)
 
     # Flatten the input if its rank > 1.
     if y_pred.shape.ndims > 1:
