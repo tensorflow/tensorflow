@@ -308,7 +308,7 @@ class Model(training_lib.Model):
 
     # Prepare Session arguments (legacy).
     kwargs.pop('cloning', None)  # Legacy DistStrat argument, never used.
-    kwargs.pop('from_serialized', None)  # Not used in v1.
+    self._from_serialized = kwargs.pop('from_serialized', False)
     allowed_kwargs = {'feed_dict', 'fetches', 'options', 'run_metadata'}
     unknown_kwargs = set(kwargs.keys()) - allowed_kwargs
     if unknown_kwargs:
@@ -1800,17 +1800,19 @@ class Model(training_lib.Model):
       else:
         output_shapes.append(output.shape.as_list())
     self._per_output_metrics = training_utils_v1.collect_per_output_metric_info(
-        metrics, self.output_names, output_shapes, self.loss_functions)
+        metrics, self.output_names, output_shapes, self.loss_functions,
+        from_serialized=self._from_serialized)
     self._per_output_weighted_metrics = (
         training_utils_v1.collect_per_output_metric_info(
             weighted_metrics,
             self.output_names,
             output_shapes,
             self.loss_functions,
+            from_serialized=self._from_serialized,
             is_weighted=True))
 
-  def _add_unique_metric_name(self, metric_name, output_index):
-    """Makes the metric name unique and adds it to the model's metric name list.
+  def _add_unique_metric_name(self, metric_name, metric_fn, output_index):
+    """Makes the metric name unique.
 
       If there are multiple outputs for which the metrics are calculated, the
       metric names have to be made unique by appending an integer.
@@ -1818,14 +1820,24 @@ class Model(training_lib.Model):
     Args:
       metric_name: Metric name that corresponds to the metric specified by the
           user. For example: 'acc'.
+      metric_fn: The Metric object.
       output_index: The index of the model output for which the metric name is
         being added.
 
     Returns:
       string, name of the model's unique metric name
     """
+    # For multi-output models, prepend the output names to the metric name.
     if len(self.output_names) > 1:
-      metric_name = '%s_%s' % (self.output_names[output_index], metric_name)
+      # If we're loading from an already-serialized model, we've already
+      # prepended the output name, and we don't want to do it again.
+      #
+      # Alternatively, we may be receiving a stateless metric (e.g. the string
+      # "accuracy") rather than a `Metric` object, in which case we want to
+      # prepend the output name even if we are loading a serialized model.
+      if not getattr(metric_fn, '_from_serialized', False):
+        metric_name = '%s_%s' % (self.output_names[output_index], metric_name)
+
     j = 1
     base_metric_name = metric_name
     while metric_name in self.metrics_names:
@@ -1853,7 +1865,8 @@ class Model(training_lib.Model):
     """
     updated_metrics_dict = collections.OrderedDict()
     for metric_name, metric_fn in metrics_dict.items():
-      metric_name = self._add_unique_metric_name(metric_name, output_index)
+      metric_name = self._add_unique_metric_name(
+          metric_name, metric_fn, output_index)
 
       # Update the name on the metric class to be the unique generated name.
       metric_fn._name = metric_name  # pylint: disable=protected-access

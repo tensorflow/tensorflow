@@ -1004,7 +1004,7 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
     loaded = keras.models.load_model(saved_model_dir)
     self.assertIs(loaded.layers[1], loaded.layers[2].layer)
 
-  @combinations.generate(combinations.combine(mode=['eager']))
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_multi_output_metrics_name_stay_same(self):
     """Tests that metric names don't change with each save/load cycle.
 
