@@ -27,7 +27,7 @@ constexpr int kAxisTensor = 1;
 constexpr int kOutputTensor = 0;
 
 TfLiteStatus ExpandTensorDim(TfLiteContext* context,
-                             const TfLiteEvalTensor* input, int axis,
+                             const TfLiteEvalTensor* input, int32_t axis,
                              TfLiteEvalTensor* output) {
   const TfLiteIntArray* input_dims = input->dims;
   TfLiteIntArray* output_dims = output->dims;
@@ -36,7 +36,7 @@ TfLiteStatus ExpandTensorDim(TfLiteContext* context,
   }
   TF_LITE_ENSURE(context, axis <= input_dims->size);
 
-  for (int i = 0; i < output_dims->size; ++i) {
+  for (int32_t i = 0; i < output_dims->size; ++i) {
     if (i < axis) {
       output_dims->data[i] = input_dims->data[i];
     } else if (i == axis) {
@@ -50,7 +50,7 @@ TfLiteStatus ExpandTensorDim(TfLiteContext* context,
 
 TfLiteStatus GetAxisValueFromTensor(TfLiteContext* context,
                                     const TfLiteEvalTensor* axis,
-                                    int* axis_value) {
+                                    int32_t* axis_value) {
   const int axis_dims = (tflite::micro::GetTensorShape(axis)).DimensionsCount();
   if (axis_dims > 1) {
     TF_LITE_KERNEL_LOG(context, "Axis has only one element for Expand_Dims.",
@@ -59,7 +59,7 @@ TfLiteStatus GetAxisValueFromTensor(TfLiteContext* context,
   }
 
   if (kTfLiteInt32 == (axis->type)) {
-    const int* axis_ptr = tflite::micro::GetTensorData<int>(axis);
+    const int32_t* axis_ptr = tflite::micro::GetTensorData<int32_t>(axis);
     *axis_value = axis_ptr[0];
     return kTfLiteOk;
   } else {
@@ -106,11 +106,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const int flat_size = ElementCount(*input->dims);
   const int input_dims = input->dims->size;
 
-  int axis_value;
+  int32_t axis_value;
   TF_LITE_ENSURE_OK(context,
                     GetAxisValueFromTensor(context, axis, &axis_value));
-  if ((axis_value > static_cast<int>(input_dims)) ||
-      (axis_value < static_cast<int>(-(input_dims + 1)))) {
+  if ((axis_value > static_cast<int32_t>(input_dims)) ||
+      (axis_value < static_cast<int32_t>(-(input_dims + 1)))) {
     TF_LITE_KERNEL_LOG(context, "Invalid Expand_Dims axis value (%d).",
                        axis_value);
     return kTfLiteError;
