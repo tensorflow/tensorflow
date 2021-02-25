@@ -24,7 +24,7 @@ namespace tflite {
 namespace testing {
 namespace {
 
-//Hard coded dimension limit. Is there a predefined constant?
+// Hard coded dimension limit. Is there a predefined constant?
 constexpr int MaxDims = 254;
 
 template <typename T>
@@ -93,9 +93,9 @@ TF_LITE_MICRO_TEST(ExpandDimsPositiveAxisTest0) {
   const int axis_dims[] = {1, 1};
   const int axis_data[] = {0};
   const int golden_dims[] = {3, 1, 2, 2};
-  tflite::testing::TestExpandDims<int8_t>(
-             input_dims, input_data, axis_dims, axis_data,
-             golden_dims, golden_data, output_data);
+  tflite::testing::TestExpandDims<int8_t>(input_dims, input_data, axis_dims,
+                                          axis_data, golden_dims, golden_data,
+                                          output_data);
 }
 
 TF_LITE_MICRO_TEST(ExpandDimsPositiveAxisTest1) {
@@ -106,9 +106,9 @@ TF_LITE_MICRO_TEST(ExpandDimsPositiveAxisTest1) {
   const int axis_dims[] = {1, 1};
   const int axis_data[] = {1};
   const int golden_dims[] = {3, 2, 1, 2};
-  tflite::testing::TestExpandDims<float>(
-             input_dims, input_data, axis_dims, axis_data,
-             golden_dims, golden_data, output_data);
+  tflite::testing::TestExpandDims<float>(input_dims, input_data, axis_dims,
+                                         axis_data, golden_dims, golden_data,
+                                         output_data);
 }
 
 TF_LITE_MICRO_TEST(ExpandDimsPositiveAxisTest2) {
@@ -119,9 +119,9 @@ TF_LITE_MICRO_TEST(ExpandDimsPositiveAxisTest2) {
   const int axis_dims[] = {1, 1};
   const int axis_data[] = {2};
   const int golden_dims[] = {3, 2, 2, 1};
-  tflite::testing::TestExpandDims<int8_t>(
-             input_dims, input_data, axis_dims, axis_data,
-             golden_dims, golden_data, output_data);
+  tflite::testing::TestExpandDims<int8_t>(input_dims, input_data, axis_dims,
+                                          axis_data, golden_dims, golden_data,
+                                          output_data);
 }
 
 TF_LITE_MICRO_TEST(ExpandDimsNegativeAxisTest4) {
@@ -132,9 +132,9 @@ TF_LITE_MICRO_TEST(ExpandDimsNegativeAxisTest4) {
   const int axis_dims[] = {1, 1};
   const int axis_data[] = {-4};
   const int golden_dims[] = {4, 1, 3, 1, 2};
-  tflite::testing::TestExpandDims<int8_t>(
-             input_dims, input_data, axis_dims, axis_data,
-             golden_dims, golden_data, output_data);
+  tflite::testing::TestExpandDims<int8_t>(input_dims, input_data, axis_dims,
+                                          axis_data, golden_dims, golden_data,
+                                          output_data);
 }
 
 TF_LITE_MICRO_TEST(ExpandDimsNegativeAxisTest3) {
@@ -145,9 +145,9 @@ TF_LITE_MICRO_TEST(ExpandDimsNegativeAxisTest3) {
   const int axis_dims[] = {1, 1};
   const int axis_data[] = {-3};
   const int golden_dims[] = {4, 3, 1, 1, 2};
-  tflite::testing::TestExpandDims<float>(
-             input_dims, input_data, axis_dims, axis_data,
-             golden_dims, golden_data, output_data);
+  tflite::testing::TestExpandDims<float>(input_dims, input_data, axis_dims,
+                                         axis_data, golden_dims, golden_data,
+                                         output_data);
 }
 
 TF_LITE_MICRO_TEST(ExpandDimsNegativeAxisTest2) {
@@ -158,9 +158,9 @@ TF_LITE_MICRO_TEST(ExpandDimsNegativeAxisTest2) {
   const int axis_dims[] = {1, 1};
   const int axis_data[] = {-2};
   const int golden_dims[] = {4, 1, 2, 1, 3};
-  tflite::testing::TestExpandDims<int8_t>(
-             input_dims, input_data, axis_dims, axis_data,
-             golden_dims, golden_data, output_data);
+  tflite::testing::TestExpandDims<int8_t>(input_dims, input_data, axis_dims,
+                                          axis_data, golden_dims, golden_data,
+                                          output_data);
 }
 
 TF_LITE_MICRO_TEST(ExpandDimsNegativeAxisTest1) {
@@ -171,9 +171,9 @@ TF_LITE_MICRO_TEST(ExpandDimsNegativeAxisTest1) {
   const int axis_dims[] = {1, 1};
   const int axis_data[] = {-1};
   const int golden_dims[] = {4, 1, 3, 2, 1};
-  tflite::testing::TestExpandDims<float>(
-             input_dims, input_data, axis_dims, axis_data,
-             golden_dims, golden_data, output_data);
+  tflite::testing::TestExpandDims<float>(input_dims, input_data, axis_dims,
+                                         axis_data, golden_dims, golden_data,
+                                         output_data);
 }
 
 TF_LITE_MICRO_TESTS_END
