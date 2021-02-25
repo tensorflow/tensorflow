@@ -40,6 +40,7 @@ tensorflow/security/fuzzing/tf_fuzzing.bzl
 tensorflow/stream_executor/build_defs.bzl
 tensorflow/third_party/BUILD
 tensorflow/third_party/__init__.py
+tensorflow/third_party/absl/com_google_absl.BUILD
 tensorflow/third_party/android/BUILD
 tensorflow/third_party/android/android.bzl.tpl
 tensorflow/third_party/android/android_configure.BUILD.tpl
