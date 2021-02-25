@@ -556,6 +556,15 @@ class MeanAbsolutePercentageErrorTest(test.TestCase):
     loss = mape_obj(y_true, y_pred, sample_weight=sample_weight)
     self.assertAlmostEqual(self.evaluate(loss), 422.8888, 3)
 
+  def test_ragged_tensors(self):
+    mape_obj = losses.MeanAbsolutePercentageError()
+    y_true = ragged_factory_ops.constant([[1, 9, 2], [-5, -2]])
+    y_pred = ragged_factory_ops.constant([[4, 8, 12], [8, 1]],
+                                         dtype=dtypes.float32)
+    sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
+    loss = mape_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), 510.7222, 3)
+
   def test_timestep_weighted(self):
     mape_obj = losses.MeanAbsolutePercentageError()
     y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3, 1))
