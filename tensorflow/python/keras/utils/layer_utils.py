@@ -179,14 +179,25 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
       relevant_nodes += v
 
   def print_row(fields, positions):
-    line = ''
-    for i in range(len(fields)):
-      if i > 0:
-        line = line[:-1] + ' '
-      line += str(fields[i])
-      line = line[:positions[i]]
-      line += ' ' * (positions[i] - len(line))
-    print_fn(line)
+    left_to_print = [str(x) for x in fields]
+    while any(left_to_print):
+      line = ''
+      for i in range(len(left_to_print)):
+        if i > 0:
+          start_pos = positions[i-1]
+        else:
+          start_pos = 0
+        end_pos = positions[i]
+        # Leave room for a space
+        delta = end_pos - start_pos - 1
+        fit_into_line = left_to_print[i][:delta]
+        line += fit_into_line
+        line += ' '
+        left_to_print[i] = left_to_print[i][delta:]
+
+        # Pad out to the next position
+        line += ' ' * (positions[i] - len(line))
+      print_fn(line)
 
   print_fn('Model: "{}"'.format(model.name))
   print_fn('_' * line_length)
