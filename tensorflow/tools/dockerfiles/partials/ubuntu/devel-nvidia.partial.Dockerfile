@@ -26,8 +26,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libcurand-dev-${CUDA/./-} \
         libcusolver-dev-${CUDA/./-} \
         libcusparse-dev-${CUDA/./-} \
-        libcudnn8=${CUDNN}+cuda${CUDA} \
-        libcudnn8-dev=${CUDNN}+cuda${CUDA} \
+        libcudnn${CUDNN_MAJOR_VERSION}=${CUDNN}+cuda${CUDA} \
+        libcudnn${CUDNN_MAJOR_VERSION}-dev=${CUDNN}+cuda${CUDA} \
         libcurl3-dev \
         libfreetype6-dev \
         libhdf5-serial-dev \
