@@ -344,6 +344,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
+#if defined(Fusion_F1)
 TfLiteStatus EvalHifi4(TfLiteContext* context, TfLiteNode* node,
                        const TfLiteDepthwiseConvParams& params,
                        const OpData& data, const TfLiteEvalTensor* input,
@@ -438,6 +439,7 @@ TfLiteStatus EvalHifi4(TfLiteContext* context, TfLiteNode* node,
 
   return kTfLiteOk;
 }
+#endif  // defined(FUSION_F1)
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
@@ -485,17 +487,18 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   switch (input->type) {  // Already know in/out types are same.
     case kTfLiteInt8: {
 #if defined(HIFIMINI)
-      EvalHifiMini(DepthwiseConvParamsQuantized(params, data.reference_op_data),
-                   data.reference_op_data.per_channel_output_multiplier,
-                   data.reference_op_data.per_channel_output_shift,
-                   tflite::micro::GetTensorShape(input),
-                   tflite::micro::GetTensorData<int8_t>(input),
-                   tflite::micro::GetTensorShape(filter),
-                   tflite::micro::GetTensorData<int8_t>(filter),
-                   tflite::micro::GetTensorShape(bias),
-                   tflite::micro::GetTensorData<int32_t>(bias),
-                   tflite::micro::GetTensorShape(output),
-                   tflite::micro::GetTensorData<int8_t>(output));
+      EvalHifiMini(
+          DepthwiseConvParamsQuantized(params, op_data.reference_op_data),
+          op_data.reference_op_data.per_channel_output_multiplier,
+          op_data.reference_op_data.per_channel_output_shift,
+          tflite::micro::GetTensorShape(input),
+          tflite::micro::GetTensorData<int8_t>(input),
+          tflite::micro::GetTensorShape(filter),
+          tflite::micro::GetTensorData<int8_t>(filter),
+          tflite::micro::GetTensorShape(bias),
+          tflite::micro::GetTensorData<int32_t>(bias),
+          tflite::micro::GetTensorShape(output),
+          tflite::micro::GetTensorData<int8_t>(output));
 #elif defined(FUSION_F1)
       EvalHifi4(context, node, params, op_data, input, filter, bias, output);
 #else
