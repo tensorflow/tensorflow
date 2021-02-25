@@ -36,13 +36,13 @@ __global__ void ReshapeSparseTensorKernel(
   GPU_1D_KERNEL_LOOP(sparse_index, nnz) {
     const Tindex* input_index = &input_indices[sparse_index * input_rank];
     Tindex* output_index = &output_indices[sparse_index * output_rank];
-    Tindex dense_index = 0;
+    int64 dense_index = 0;  // int64 to avoid overflow if Tindex is int32
     // Flatten input index from slowest- to fastest-changing dimension.
     for (int i = 0; i < input_rank; ++i) {
       dense_index = dense_index * input_shape[i] + input_index[i];
     }
     // Compute output index from fastest- to slowest-changing dimension.
-    for (int i = output_rank; i-- > 0;) {
+    for (int i = output_rank - 1; i >= 0; --i) {
       Tindex output_size = output_shape[i];
       output_index[i] = dense_index % output_size;
       dense_index /= output_size;
@@ -95,12 +95,12 @@ Status ReshapeSparseTensorFunctor<GPUDevice>::operator()(
   auto config = GetGpuLaunchConfig(nnz, device);
   return GpuLaunchKernel(ReshapeSparseTensorKernel<int64>, config.block_count,
                          config.thread_per_block, 0, device.stream(), nnz,
-                         /* input_rank = */ input_rank,
-                         /* output_rank = */ output_rank,
-                         /* input_shape = */ input_shape_gpu.data(),
-                         /* output_shape = */ output_shape_gpu.data(),
-                         /* input_indices = */ input_indices.data(),
-                         /* output_indices = */ output_indices.data());
+                         /*input_rank=*/input_rank,
+                         /*output_rank=*/output_rank,
+                         /*input_shape=*/input_shape_gpu.data(),
+                         /*output_shape=*/output_shape_gpu.data(),
+                         /*input_indices=*/input_indices.data(),
+                         /*output_indices=*/output_indices.data());
 }
 
 }  // namespace functor
