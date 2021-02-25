@@ -292,7 +292,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-#if defined(Fusion_F1)
+#if defined(FUSION_F1)
 TfLiteStatus EvalHifi4(TfLiteContext* context, TfLiteNode* node,
                        const TfLiteConvParams& params, const OpData& data,
                        const TfLiteEvalTensor* input,
@@ -409,7 +409,7 @@ TfLiteStatus EvalHifi4(TfLiteContext* context, TfLiteNode* node,
       tflite::micro::GetTensorData<int8_t>(output));
   return kTfLiteOk;
 }
-#endif  // defined(Fusion_F1)
+#endif  // defined(FUSION_F1)
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);

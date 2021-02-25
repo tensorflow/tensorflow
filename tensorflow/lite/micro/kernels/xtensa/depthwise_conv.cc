@@ -344,7 +344,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-#if defined(Fusion_F1)
+#if defined(FUSION_F1)
 TfLiteStatus EvalHifi4(TfLiteContext* context, TfLiteNode* node,
                        const TfLiteDepthwiseConvParams& params,
                        const OpData& data, const TfLiteEvalTensor* input,
