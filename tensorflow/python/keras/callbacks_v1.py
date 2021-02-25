@@ -25,6 +25,7 @@ import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
 from tensorflow.python.ops import array_ops
@@ -157,8 +158,10 @@ class TensorBoard(callbacks.TensorBoard):
     self._samples_seen_at_last_write = 0
     # TODO(fishx): Add a link to the full profiler tutorial.
     self._profile_batch = profile_batch
-    # One profiler session is running if it is True.
-    self._is_profiling = False
+    # True when the profiler was successfully started by this callback.
+    # We track the status here to make sure callbacks do not interfere with
+    # each other. The callback will only stop the profiler it started.
+    self._profiler_started = False
 
     # TensorBoard should only write summaries on the chief when in a
     # Multi-Worker setting.
@@ -345,10 +348,8 @@ class TensorBoard(callbacks.TensorBoard):
     self.writer.flush()
 
   def on_train_batch_begin(self, batch, logs=None):
-    if (not self._is_profiling and
-        self._total_batches_seen == self._profile_batch - 1):
-      profiler.start(self.log_dir)
-      self._is_profiling = True
+    if self._total_batches_seen == self._profile_batch - 1:
+      self._start_profiler()
 
   def on_train_batch_end(self, batch, logs=None):
     return self.on_batch_end(batch, logs)
@@ -375,10 +376,7 @@ class TensorBoard(callbacks.TensorBoard):
       self._write_custom_summaries(self._total_batches_seen, batch_logs)
       self._samples_seen_at_last_write = self._samples_seen
     self._total_batches_seen += 1
-
-    if self._is_profiling:
-      profiler.stop()
-      self._is_profiling = False
+    self._stop_profiler()
 
   def on_train_begin(self, logs=None):
     pass
@@ -463,7 +461,28 @@ class TensorBoard(callbacks.TensorBoard):
           i += self.batch_size
 
   def on_train_end(self, logs=None):
-    if self._is_profiling:
-      profiler.stop()
-      self._is_profiling = False
+    self._stop_profiler()
     self.writer.close()
+
+  def _start_profiler(self):
+    """Starts the profiler if currently inactive."""
+    if self._profiler_started:
+      return
+    try:
+      profiler.start(logdir=self.log_dir)
+      self._profiler_started = True
+    except errors.AlreadyExistsError as e:
+      # Profiler errors should not be fatal.
+      logging.error('Failed to start profiler: %s', e.message)
+
+  def _stop_profiler(self):
+    """Stops the profiler if currently active."""
+    if not self._profiler_started:
+      return
+    try:
+      profiler.stop()
+    except errors.UnavailableError as e:
+      # Profiler errors should not be fatal.
+      logging.error('Failed to stop profiler: %s', e.message)
+    finally:
+      self._profiler_started = False

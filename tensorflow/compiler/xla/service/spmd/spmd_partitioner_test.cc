@@ -3996,6 +3996,75 @@ ENTRY entry {
               op::Parameter(0));
 }
 
+TEST_F(SpmdPartitioningTest,
+       EinsumLHSWindowedInContractingOutNonContractingPartitioned2) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[16,1024,16384] parameter(0)
+  %lhs.copy = f32[16,1024,16384] copy(%lhs),
+    sharding={devices=[2,1,4]0,1,2,3,4,5,6,7}
+  %rhs = f32[16384,2,33,128] parameter(1)
+  %rhs.copy = f32[16384,2,33,128] copy(%rhs),
+    sharding={devices=[4,1,1,1,2]0,4,1,5,2,6,3,7 last_tile_dim_replicate}
+  ROOT %dot = f32[16,1024,2,33,128] dot(%lhs.copy, %rhs.copy),
+    lhs_batch_dims={}, rhs_batch_dims={},
+    lhs_contracting_dims={2}, rhs_contracting_dims={0},
+    sharding={devices=[2,1,2,2,1]0,1,2,3,4,5,6,7}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  auto lhs = AllOf(op::Copy(op::DynamicSlice(op::Parameter(0), op::Reshape(),
+                                             op::Constant(), op::Reshape())),
+                   op::Shape("f32[8,1024,4096]"));
+  auto rhs = AllOf(
+      op::Copy(op::DynamicSlice(op::Parameter(1), op::Reshape(), op::Constant(),
+                                op::Constant(), op::Constant())),
+      op::Shape("f32[4096,2,33,128]"));
+  EXPECT_THAT(
+      root,
+      AllOf(op::GetTupleElement(op::While(op::Tuple(
+                lhs, rhs, op::Broadcast(), op::Broadcast(), op::Constant()))),
+            op::Shape("f32[8,1024,1,17,128]")));
+
+  auto while_loop = root->operand(0);
+  // Check loop condition.
+  EXPECT_THAT(
+      while_loop->while_condition()->root_instruction(),
+      op::Compare(op::GetTupleElement(op::Parameter(0)), op::Constant()));
+
+  // Check loop body.
+  auto next_i = op::Add(op::GetTupleElement(op::Parameter(0)), op::Constant());
+  auto ds =
+      AllOf(op::DynamicSlice(
+                op::Pad(op::GetTupleElement(op::Parameter(0)), op::Constant()),
+                op::Constant(), op::Reshape(), op::Reshape(), op::Constant()),
+            op::Shape("f32[4096,1,17,128]"));
+  auto partial_output =
+      AllOf(op::Add(op::GetTupleElement(op::Parameter(0)),
+                    op::Dot(op::GetTupleElement(op::Parameter(0)), ds)),
+            op::Shape("f32[8,1024,1,17,128]"));
+  auto window = op::Conditional(op::Compare(next_i, op::Constant()),
+                                partial_output, partial_output);
+  EXPECT_THAT(while_loop->while_body()->root_instruction(),
+              op::Tuple(op::GetTupleElement(op::Parameter(0)),
+                        op::GetTupleElement(op::Parameter(0)), window,
+                        op::GetTupleElement(op::Parameter(0)), next_i));
+
+  // Check the conditional that contains the collective permute.
+  auto cp_conditional =
+      while_loop->while_body()->root_instruction()->operand(2);
+  EXPECT_THAT(cp_conditional->true_computation()->root_instruction(),
+              op::CollectivePermute(op::Parameter(0)));
+  EXPECT_THAT(cp_conditional->false_computation()->root_instruction(),
+              op::Parameter(0));
+}
+
 TEST_F(SpmdPartitioningTest, EinsumRHSWindowedNonContracting) {
   absl::string_view hlo_string = R"(
 HloModule module

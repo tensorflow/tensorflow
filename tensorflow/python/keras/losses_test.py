@@ -643,6 +643,18 @@ class MeanSquaredLogarithmicErrorTest(test.TestCase):
     loss = msle_obj(y_true, y_pred, sample_weight=0)
     self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
 
+  def test_ragged_tensors(self):
+    msle_obj = losses.MeanSquaredLogarithmicError()
+    y_true = ragged_factory_ops.constant([[1, 9, 2], [-5, -2]])
+    # log(max(y_true, 0) + 1): [[0.69314, 2.3025, 1.0986], [0., 0.]]
+    y_pred = ragged_factory_ops.constant([[4, 8, 12], [8, 1]],
+                                         dtype=dtypes.float32)
+    # log(max(y_pred, 0) + 1): [[1.6094, 2.1972, 2.5649], [2.1972, 0.6932]]
+    # per batch loss: [1.0002, 2.6541]
+    sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
+    loss = msle_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), 5.1121, 3)
+
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class CosineSimilarityTest(test.TestCase):

@@ -734,8 +734,8 @@ cc_test(
     ],
     tags = [
         "noasan",
-        "nomsan",
-    ],  # TODO(b/175133159): currently failing with asan and msan
+        "nomsan",  # TODO(b/175133159): currently failing with asan and msan
+    ],
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",

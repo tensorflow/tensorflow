@@ -1835,6 +1835,9 @@ tf_cuda_cc_test(
     name = "fused_batch_norm_op_test",
     size = "small",
     srcs = ["fused_batch_norm_op_test.cc"],
+    tags = [
+        "nomsan",  # TODO(b/181135145), use-of-uninitialized-value in initializedLoggingWithEnvVariables
+    ],
     deps = [
         ":fused_batch_norm_op",
         ":ops_testutil",

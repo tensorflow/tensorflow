@@ -44,7 +44,6 @@ cc_library(
         # code. We use it, but we do not rely on it, as evidenced above.
         "EIGEN_MPL2_ONLY",
         "EIGEN_MAX_ALIGN_BYTES=64",
-        "EIGEN_HAS_TYPE_TRAITS=0",
     ],
     includes = ["."],
     visibility = ["//visibility:public"],

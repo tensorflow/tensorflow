@@ -17,16 +17,17 @@
 #   Keras saving and loading libraries.
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "py_strict_library")
 
 package(
-    default_visibility = ["//tensorflow:__subpackages__"],
+    default_visibility = [
+        "//tensorflow/python/keras:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
 
-py_strict_library(
+py_library(
     name = "utils_v1",
     srcs = [
         "__init__.py",
@@ -36,7 +37,7 @@ py_strict_library(
         "signature_def_utils.py",
         "unexported_constants.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
