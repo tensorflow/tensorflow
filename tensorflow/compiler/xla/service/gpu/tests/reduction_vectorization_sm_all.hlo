@@ -1,5 +1,26 @@
 // RUN: hlo_to_llvm_ir --ptx %s | FileCheck %s
 
+// CHECK-NOT: ld.global.nc.v2.f32
+// CHECK-NOT: ld.global.nc.v4.f32
+// CHECK-NOT: ld.global.nc.u64
+// CHECK-NOT: ld.global.u64
+
+HloModule ReduceOddRowSize
+
+%max_ {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %maximum.7 = f32[] maximum(%x, %y)
+}
+
+ENTRY %main {
+  %param_0 = f32[5,131071] parameter(0)
+  %constant.3 = f32[] constant(0)
+  ROOT %reduce.8 = f32[5] reduce(f32[5,131071] %param_0, f32[] %constant.3), dimensions={1}, to_apply=%max_
+}
+
+// -----
+
 // CHECK-COUNT-32: ld.global.nc.v2.f32
 
 HloModule DisableSin
