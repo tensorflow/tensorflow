@@ -657,6 +657,15 @@ uint64_t GpuInfo::GetMaxBufferSize() const {
   return 128 * 1024 * 1024;
 }
 
+uint64_t GpuInfo::GetMaxMemoryAllocationSize() const {
+  if (IsApiOpenCl()) {
+    return opencl_info.max_allocation_size;
+  } else if (IsApiMetal()) {
+    return metal_info.buffer_max_size;
+  }
+  return 128 * 1024 * 1024;
+}
+
 uint64_t GpuInfo::GetMaxImageBufferWidth() const {
   if (IsApiOpenCl()) {
     return opencl_info.image_buffer_max_size;

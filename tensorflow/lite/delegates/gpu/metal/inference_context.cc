@@ -149,8 +149,8 @@ absl::Status InferenceContext::InitFromGraph(
   precision_ = create_info.precision;
 
   MetalDevice metal_device(device_id);
-  ReserveGraphTensors(create_info, metal_device.GetInfo(), graph,
-                      preallocated_ids);
+  RETURN_IF_ERROR(ReserveGraphTensors(create_info, metal_device.GetInfo(),
+                                      graph, preallocated_ids));
   RETURN_IF_ERROR(Compile(graph, metal_device.GetInfo(), create_info.hints));
   RETURN_IF_ERROR(Merge());
   RETURN_IF_ERROR(CompileOperations(&metal_device));
@@ -161,7 +161,7 @@ absl::Status InferenceContext::InitFromGraph(
   return absl::OkStatus();
 }
 
-void InferenceContext::ReserveGraphTensors(
+absl::Status InferenceContext::ReserveGraphTensors(
     const CreateInferenceInfo& create_info, const GpuInfo& gpu_info,
     const GraphFloat32& graph, const std::set<ValueId>& preallocated_ids) {
   ValueId max_id = 0;
@@ -175,24 +175,25 @@ void InferenceContext::ReserveGraphTensors(
     const auto shape = graph.GetValue(t->id)->tensor.shape;
     Layout layout = shape.b == 1 ? Layout::HWC : Layout::BHWC;
     // Temporary disabled because no support of SINGLE_TEXTURE_2D in Metal
-    // Metal supports only BUFFER storage type currently
     // if (graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id)) {
-    //   if (false && shape.c < 4 &&
+    //   if (shape.c < 4 &&
     //       CanCreateTensorWithShape(
     //           gpu_info, shape,
     //           TensorDescriptor{data_type,
     //           TensorStorageType::SINGLE_TEXTURE_2D,
-    //                            layout})) {
+    //                            layout})
+    //           .ok()) {
     //     storage_type = TensorStorageType::SINGLE_TEXTURE_2D;
     //   }
     // }
-    storage_type =
-        SelectBestStorageType(gpu_info, shape, storage_type, data_type, layout);
+    RETURN_IF_ERROR(SelectBestStorageType(gpu_info, shape, storage_type,
+                                          data_type, layout, &storage_type));
     tensor_reserver_.Add(
         t->id, {shape, TensorDescriptor{data_type, storage_type, layout}});
     max_id = std::max(max_id, t->id);
   }
   tensor_reserver_.SetNext(max_id + 1);
+  return absl::OkStatus();
 }
 
 absl::Status InferenceContext::Compile(const GraphFloat32& graph,

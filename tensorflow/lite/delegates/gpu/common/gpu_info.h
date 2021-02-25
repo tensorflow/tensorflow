@@ -268,6 +268,7 @@ struct OpenClInfo {
   bool supports_images;
   int compute_units_count;
   uint64_t buffer_max_size;
+  uint64_t max_allocation_size;
   uint64_t image2d_max_width;
   uint64_t image2d_max_height;
   uint64_t image_buffer_max_size;
@@ -362,6 +363,7 @@ struct GpuInfo {
   uint64_t GetMaxImage3DHeight() const;
   uint64_t GetMaxImage3DDepth() const;
   uint64_t GetMaxBufferSize() const;
+  uint64_t GetMaxMemoryAllocationSize() const;
   uint64_t GetMaxImageBufferWidth() const;
 
   GpuVendor vendor = GpuVendor::kUnknown;
