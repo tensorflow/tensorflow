@@ -42,6 +42,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.callbacks import BackupAndRestore
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.layers import Activation
 from tensorflow.python.keras.layers import Dense
@@ -281,6 +282,12 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     with self.captureWritesToStream(sys.stdout) as printed:
       model.fit(dataset, epochs=2, steps_per_epoch=10)
       self.assertRegex(printed.contents(), expected_log)
+
+  def test_trivial_backup_restore(self):
+    model = keras.Sequential([keras.layers.Dense(1)])
+    model.compile('sgd', 'mse')
+    cbk = BackupAndRestore(self.get_temp_dir())
+    model.fit(np.ones((10, 1)), np.ones((10, 1)), epochs=0, callbacks=[cbk])
 
   @keras_parameterized.run_all_keras_modes
   def test_callback_warning(self):
