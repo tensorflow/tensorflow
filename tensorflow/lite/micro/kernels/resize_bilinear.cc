@@ -69,23 +69,24 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       tflite::micro::GetEvalOutput(context, node, kOutputTensor);
 
   if (output->type == kTfLiteFloat32) {
-#define TF_LITE_RESIZE_BILINEAR(datatype)                    \
-  tflite::ResizeBilinearParams op_params;                    \
-  op_params.align_corners = params->align_corners;           \
-  op_params.half_pixel_centers = params->half_pixel_centers; \
-  reference_ops::ResizeBilinear(                             \
-      op_params, tflite::micro::GetTensorShape(input),       \
-      tflite::micro::GetTensorData<datatype>(input),         \
-      tflite::micro::GetTensorShape(size),                   \
-      tflite::micro::GetTensorData<int32_t>(size),           \
-      tflite::micro::GetTensorShape(output),                 \
-      tflite::micro::GetTensorData<datatype>(output))
+#define TF_LITE_RESIZE_BILINEAR(opname, datatype)                        \
+  tflite::ResizeBilinearParams op_params;                                \
+  op_params.align_corners = params->align_corners;                       \
+  op_params.half_pixel_centers = params->half_pixel_centers;             \
+  reference_ops::opname(op_params, tflite::micro::GetTensorShape(input), \
+                        tflite::micro::GetTensorData<datatype>(input),   \
+                        tflite::micro::GetTensorShape(size),             \
+                        tflite::micro::GetTensorData<int32_t>(size),     \
+                        tflite::micro::GetTensorShape(output),           \
+                        tflite::micro::GetTensorData<datatype>(output))
 
-    TF_LITE_RESIZE_BILINEAR(float);
+    TF_LITE_RESIZE_BILINEAR(ResizeBilinear, float);
   } else if (output->type == kTfLiteUInt8) {
-    TF_LITE_RESIZE_BILINEAR(uint8_t);
+    TF_LITE_RESIZE_BILINEAR(ResizeBilinear, uint8_t);
   } else if (output->type == kTfLiteInt8) {
-    TF_LITE_RESIZE_BILINEAR(int8_t);
+    TF_LITE_RESIZE_BILINEAR(ResizeBilinearInteger, int8_t);
+  } else if (output->type == kTfLiteInt16) {
+    TF_LITE_RESIZE_BILINEAR(ResizeBilinearInteger, int16_t);
 #undef TF_LITE_RESIZE_BILINEAR
   } else {
     context->ReportError(context,
