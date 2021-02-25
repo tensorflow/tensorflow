@@ -830,14 +830,13 @@ Status DoForward(OpKernelContext* context, const RnnDescriptor& rnn_desc,
   Tensor seq_lengths_tensor;
   DeviceMemory<int> seq_lengths_ptr;
   if (sequence_lengths != nullptr) {
-	  auto seq_lengths_vec = sequence_lengths->template flat<int>();
     TF_RETURN_IF_ERROR(context->allocate_temp(DT_INT32,
-                                              {seq_lengths_vec.size()},
+                                              {seq_lengths.size()},
                                               &seq_lengths_tensor));
     seq_lengths_ptr = AsDeviceMemory<int>(&seq_lengths_tensor);
     if (!stream->ThenMemcpy(&seq_lengths_ptr,
-                           seq_lengths_vec.data(),
-                           seq_lengths_vec.size() * sizeof(int)).ok()) {
+                           seq_lengths.data(),
+                           seq_lengths.size() * sizeof(int)).ok()) {
       return errors::InvalidArgument("Failed to copy memory from host to "
                                      "device for sequence_lengths in "
                                      "CudnnRNNV3");
@@ -928,14 +927,13 @@ Status DoBackward(
   Tensor seq_lengths_tensor;
   DeviceMemory<int> seq_lengths_ptr;
   if (sequence_lengths != nullptr) {
-	  auto seq_lengths_vec = sequence_lengths->template flat<int>();
     TF_RETURN_IF_ERROR(context->allocate_temp(DT_INT32,
-                                              {seq_lengths_vec.size()},
+                                              {seq_lengths.size()},
                                               &seq_lengths_tensor));
     seq_lengths_ptr = AsDeviceMemory<int>(&seq_lengths_tensor);
     if (!stream->ThenMemcpy(&seq_lengths_ptr,
-                           seq_lengths_vec.data(),
-                           seq_lengths_vec.size() * sizeof(int)).ok()) {
+                           seq_lengths.data(),
+                           seq_lengths.size() * sizeof(int)).ok()) {
       return errors::InvalidArgument("Failed to copy memory from host to "
                                      "device for sequence_lengths in "
                                      "CudnnRNNBackwardOpV3");
