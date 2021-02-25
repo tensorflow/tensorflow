@@ -1396,3 +1396,48 @@ func @slice_stride_part(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
 }
 // CHECK-LABEL: func @slice_stride_part
 //       CHECK:   subtensor %{{.*}}[1, 1] [1, 2] [1, 1]  : tensor<3x4xi32> to tensor<1x2xi32>
+
+// -----
+
+func @pad_cst(%arg0: tensor<12x4xf32>) -> tensor<18x12xf32> {
+  %0 = constant dense<0.0> : tensor<f32>
+  %1 = "mhlo.pad"(%arg0, %0) {
+    edge_padding_high = dense<[2, 3]> : tensor<2xi64>,
+    edge_padding_low = dense<[4, 5]> : tensor<2xi64>,
+    interior_padding = dense<0> : tensor<2xi64>
+  } : (tensor<12x4xf32>, tensor<f32>) -> tensor<18x12xf32>
+  return %1 : tensor<18x12xf32>
+}
+// CHECK-LABEL: func @pad_cst
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+//   CHECK-DAG: %[[CST:.+]] = constant dense<0.000000e+00> : tensor<f32>
+//   CHECK-DAG: %[[PAD:.+]] = tensor.extract %[[CST]][] : tensor<f32>
+//   CHECK-DAG: %[[C4:.+]] = constant 4 : index
+//   CHECK-DAG: %[[C2:.+]] = constant 2 : index
+//   CHECK-DAG: %[[C5:.+]] = constant 5 : index
+//   CHECK-DAG: %[[C3:.+]] = constant 3 : index
+//       CHECK: linalg.pad_tensor %[[ARG0]] low[%[[C4]], %[[C5]]] high[%[[C2]], %[[C3]]]
+//       CHECK:  linalg.yield %[[PAD]] : f32
+//       CHECK: } : tensor<12x4xf32> to tensor<18x12xf32>
+
+// -----
+
+func @pad_tensor(%arg0: tensor<12x4xf32>, %arg1: tensor<f32>) -> tensor<18x12xf32> {
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_high = dense<[2, 3]> : tensor<2xi64>,
+    edge_padding_low = dense<[4, 5]> : tensor<2xi64>,
+    interior_padding = dense<0> : tensor<2xi64>
+  } : (tensor<12x4xf32>, tensor<f32>) -> tensor<18x12xf32>
+  return %0 : tensor<18x12xf32>
+}
+// CHECK-LABEL: func @pad_tensor
+//  CHECK-SAME:   %[[ARG0:[a-zA-Z0-9_]*]]
+//  CHECK-SAME:   %[[ARG1:[a-zA-Z0-9_]*]]
+//   CHECK-DAG:   %[[C4:.+]] = constant 4 : index
+//   CHECK-DAG:   %[[C2:.+]] = constant 2 : index
+//   CHECK-DAG:   %[[C5:.+]] = constant 5 : index
+//   CHECK-DAG:   %[[C3:.+]] = constant 3 : index
+//   CHECK-DAG:   %[[PAD:.+]] = tensor.extract %[[ARG1]][] : tensor<f32>
+//       CHECK:   linalg.pad_tensor %[[ARG0]] low[%[[C4]], %[[C5]]] high[%[[C2]], %[[C3]]]
+//       CHECK:     linalg.yield %[[PAD]] : f32
+//       CHECK:   } : tensor<12x4xf32> to tensor<18x12xf32>
