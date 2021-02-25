@@ -12,10 +12,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-tflite_deps_intel = [
-    "@arm_neon_2_x86_sse",
-]
-
 HARD_FP_FLAGS_IF_APPLICABLE = select({
     "//tensorflow:android_arm": ["-mfloat-abi=softfp"],
     "//tensorflow:android_arm64": ["-mfloat-abi=softfp"],
@@ -217,6 +213,38 @@ config_setting(
     },
 )
 
+selects.config_setting_group(
+    name = "x86_any",
+    match_any = [
+        ":haswell",
+        ":ios_x86_64",
+        ":k8",
+        ":x86",
+        ":x86_64",
+        ":darwin",
+        ":darwin_x86_64",
+        ":freebsd",
+        ":windows",
+    ],
+)
+
+selects.config_setting_group(
+    name = "arm_any",
+    match_any = [
+        ":aarch64",
+        ":arm",
+        ":arm64-v8a",
+        ":armeabi-v7a",
+        ":armhf",
+        ":armv7a",
+        ":ios_armv7",
+        ":ios_arm64",
+        ":ios_arm64e",
+        ":darwin_arm64",
+        ":raspberry_pi_with_neon",
+    ],
+)
+
 cc_library(
     name = "common",
     srcs = [],
@@ -262,34 +290,23 @@ cc_library(
     deps = [
         ":common",
         ":compatibility",
+        ":cppmath",
         ":cpu_check",
         ":quantization_util",
-        ":strided_slice_logic",
-        ":types",
         ":reference_base",
-        ":cppmath",
+        ":strided_slice_logic",
         ":tensor",
         ":tensor_utils",
         ":transpose_utils",
+        ":types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:cpu_backend_context",
+        "//tensorflow/lite/kernels:cpu_backend_gemm",
+        "//tensorflow/lite/kernels:cpu_backend_threadpool",
         "//third_party/eigen3",
         "@gemmlowp//:fixedpoint",
         "@ruy//ruy/profiler:instrumentation",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:cpu_backend_context",
-        "//tensorflow/lite/kernels:cpu_backend_threadpool",
-        "//tensorflow/lite/kernels:cpu_backend_gemm",
-    ] + select({
-        ":haswell": tflite_deps_intel,
-        ":ios_x86_64": tflite_deps_intel,
-        ":k8": tflite_deps_intel,
-        ":x86": tflite_deps_intel,
-        ":x86_64": tflite_deps_intel,
-        ":darwin": tflite_deps_intel,
-        ":darwin_x86_64": tflite_deps_intel,
-        ":freebsd": tflite_deps_intel,
-        ":windows": tflite_deps_intel,
-        "//conditions:default": [],
-    }),
+    ],
 )
 
 cc_library(
@@ -308,7 +325,9 @@ cc_library(
     deps = [
         ":common",
         ":compatibility",
+        ":cppmath",
         ":cpu_check",
+        ":legacy_reference_base",
         ":optimized_base",
         ":quantization_util",
         ":strided_slice_logic",
@@ -316,27 +335,14 @@ cc_library(
         ":tensor_utils",
         ":transpose_utils",
         ":types",
-        ":legacy_reference_base",
-        ":cppmath",
-        "//third_party/eigen3",
-        "@gemmlowp",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
-        "//tensorflow/lite/kernels:cpu_backend_threadpool",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
+        "//tensorflow/lite/kernels:cpu_backend_threadpool",
+        "//third_party/eigen3",
+        "@gemmlowp",
         "@ruy//ruy/profiler:instrumentation",
-    ] + select({
-        ":haswell": tflite_deps_intel,
-        ":ios_x86_64": tflite_deps_intel,
-        ":k8": tflite_deps_intel,
-        ":x86": tflite_deps_intel,
-        ":x86_64": tflite_deps_intel,
-        ":darwin": tflite_deps_intel,
-        ":darwin_x86_64": tflite_deps_intel,
-        ":freebsd": tflite_deps_intel,
-        ":windows": tflite_deps_intel,
-        "//conditions:default": [],
-    }),
+    ],
 )
 
 cc_library(
@@ -542,26 +548,15 @@ cc_library(
         ":tensor",
         ":tensor_utils",
         ":types",
-        "//third_party/eigen3",
-        "@gemmlowp//:fixedpoint",
-        "@ruy//ruy/profiler:instrumentation",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
-    ] + select({
-        ":haswell": tflite_deps_intel,
-        ":ios_x86_64": tflite_deps_intel,
-        ":k8": tflite_deps_intel,
-        ":x86": tflite_deps_intel,
-        ":x86_64": tflite_deps_intel,
-        ":darwin": tflite_deps_intel,
-        ":darwin_x86_64": tflite_deps_intel,
-        ":freebsd": tflite_deps_intel,
-        ":windows": tflite_deps_intel,
-        "//conditions:default": [],
-    }),
+        "//third_party/eigen3",
+        "@gemmlowp//:fixedpoint",
+        "@ruy//ruy/profiler:instrumentation",
+    ],
 )
 
 cc_library(
@@ -634,31 +629,20 @@ cc_library(
     deps = [
         ":common",
         ":compatibility",
-        ":quantization_util",
         ":cppmath",
-        ":strided_slice_logic",
         ":legacy_types",
+        ":quantization_util",
+        ":strided_slice_logic",
         ":tensor",
         ":types",
-        "//third_party/eigen3",
-        "@gemmlowp",
+        "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:op_macros",
-        "@ruy//ruy/profiler:instrumentation",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
-        "//tensorflow/lite:string_util",
-    ] + select({
-        ":haswell": tflite_deps_intel,
-        ":ios_x86_64": tflite_deps_intel,
-        ":k8": tflite_deps_intel,
-        ":x86": tflite_deps_intel,
-        ":x86_64": tflite_deps_intel,
-        ":darwin": tflite_deps_intel,
-        ":darwin_x86_64": tflite_deps_intel,
-        ":freebsd": tflite_deps_intel,
-        ":windows": tflite_deps_intel,
-        "//conditions:default": [],
-    }),
+        "//third_party/eigen3",
+        "@gemmlowp",
+        "@ruy//ruy/profiler:instrumentation",
+    ],
 )
 
 cc_library(
@@ -819,31 +803,11 @@ cc_library(
         "//tensorflow/lite/c:common",
     ] + selects.with_or({
         (
-            ":aarch64",
-            ":arm",
-            ":arm64-v8a",
-            ":armeabi-v7a",
-            ":armhf",
-            ":armv7a",
-            ":ios_armv7",
-            ":ios_arm64",
-            ":ios_arm64e",
-            ":darwin_arm64",
-            ":raspberry_pi_with_neon",
+            ":arm_any",
         ): [":neon_tensor_utils"],
         (
-            ":darwin",
-            ":darwin_x86_64",
-            ":freebsd",
-            ":haswell",
-            ":ios_x86_64",
-            ":x86_64",
-            ":x86",
-            ":k8",
-            ":windows",
-        ): [
-            ":sse_tensor_utils",
-        ],
+            ":x86_any",
+        ): [":sse_tensor_utils"],
         (
             "//tensorflow/lite:tf_lite_static_memory",
             "//conditions:default",
@@ -1103,15 +1067,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = select({
-        ":haswell": tflite_deps_intel,
-        ":ios_x86_64": tflite_deps_intel,
-        ":k8": tflite_deps_intel,
-        ":x86": tflite_deps_intel,
-        ":x86_64": tflite_deps_intel,
-        ":darwin": tflite_deps_intel,
-        ":darwin_x86_64": tflite_deps_intel,
-        ":freebsd": tflite_deps_intel,
-        ":windows": tflite_deps_intel,
+        ":x86_any": ["@arm_neon_2_x86_sse"],
         "//conditions:default": [],
     }),
 )
