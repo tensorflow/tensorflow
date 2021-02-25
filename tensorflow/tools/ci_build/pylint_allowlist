@@ -76,6 +76,10 @@
 ^tensorflow/python/keras/optimizer_v2/nadam.py.*\[E1130.*invalid-unary-operand-type
 ^tensorflow/python/keras/preprocessing/image\.py.*\[E0240.*Inconsistent method resolution
 ^tensorflow/python/keras/saving/saved_model/json_utils.py.*\[E0202.*method-hidden
+^tensorflow/python/keras/tests/tracking_util_test.py.*\[E1120.*no-value-for-parameter
+^tensorflow/python/keras/tests/tracking_util_test.py.*\[E1123.*unexpected-keyword-arg
+^tensorflow/python/keras/tests/tracking_util_with_v1_optimizers_test.py.*\[E1120.*no-value-for-parameter
+^tensorflow/python/keras/tests/tracking_util_with_v1_optimizers_test.py.*\[E1123.*unexpected-keyword-arg
 ^tensorflow/python/keras/utils/composite_tensor_support_test.py.*\[E1123.*unexpected-keyword-arg
 ^tensorflow/python/keras/utils/conv_utils_test.py.*\[E1133.*not-an-iterable
 ^tensorflow/python/keras/utils/data_utils.py.*\[E1102.*not-callable
