@@ -24,7 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libcusolver-${CUDA/./-} \
         libcusparse-${CUDA/./-} \
         curl \
-        libcudnn8=${CUDNN}+cuda${CUDA} \
+        libcudnn${CUDNN_MAJOR_VERSION}=${CUDNN}+cuda${CUDA} \
         libfreetype6-dev \
         libhdf5-serial-dev \
         libzmq3-dev \
