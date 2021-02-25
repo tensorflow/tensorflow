@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/kernels/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
-
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
