@@ -4648,6 +4648,22 @@ py_test(
 )
 
 cuda_py_test(
+    name = "embedding_ops_test",
+    srcs = ["ops/embedding_ops_test.py"],
+    python_version = "PY3",
+    tags = ["no_windows_gpu"],
+    deps = [
+        ":embedding_ops",
+        ":framework_for_generated_wrappers",
+        ":framework_test_lib",
+        ":gradients",
+        ":resource_variable_ops",
+        "//tensorflow/python/eager:def_function",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
     name = "gradient_checker_v2_test",
     size = "medium",
     srcs = ["ops/gradient_checker_v2_test.py"],

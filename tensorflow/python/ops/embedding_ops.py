@@ -129,7 +129,8 @@ def _embedding_lookup_and_transform(params,
     np = len(params)  # Number of partitions
     # Preserve the resource variable status to avoid accidental dense reads.
     if not any(
-        isinstance(p, resource_variable_ops.ResourceVariable) for p in params):
+        isinstance(p, resource_variable_ops.BaseResourceVariable)
+        for p in params):
       params = ops.convert_n_to_tensor_or_indexed_slices(params, name="params")
     ids = ops.convert_to_tensor(ids, name="ids")
     if np == 1 and (not transform_fn or ids.get_shape().ndims == 1):
