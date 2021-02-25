@@ -1529,6 +1529,8 @@ cc_library(
         "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/stream_executor/cuda:cuda_diagnostics",
         "//tensorflow/stream_executor/gpu:asm_compiler",
+        "@llvm-project//llvm:IRReader",
+        "@llvm-project//llvm:Support",
     ]) + ["//tensorflow/stream_executor/gpu:gpu_driver_header"],
 )
 
