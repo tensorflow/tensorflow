@@ -2086,6 +2086,14 @@ bool ListContainsNone(PyObject* list) {
   return false;
 }
 
+// As an optimization, the tape generally keeps only the shape and dtype of
+// tensors, and uses this information to generate ones/zeros tensors. However,
+// some tensors require OnesLike/ZerosLike because their gradients do not match
+// their inference shape/dtype.
+bool DTypeNeedsHandleData(tensorflow::DataType dtype) {
+  return dtype == tensorflow::DT_VARIANT || dtype == tensorflow::DT_RESOURCE;
+}
+
 static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
   if (EagerTensor_CheckExact(tensor)) {
     tensorflow::ImmediateExecutionTensorHandle* handle =
@@ -2093,7 +2101,7 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
     tensorflow::int64 id = PyEagerTensor_ID(tensor);
     tensorflow::DataType dtype =
         static_cast<tensorflow::DataType>(handle->DataType());
-    if (dtype == tensorflow::DT_VARIANT) {
+    if (DTypeNeedsHandleData(dtype)) {
       return PyTapeTensor(id, dtype, tensor);
     }
 
@@ -2139,7 +2147,7 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
                         tensorflow::TensorShape({}));
   }
 
-  if (ListContainsNone(shape_tuple.get()) || dtype == tensorflow::DT_VARIANT) {
+  if (ListContainsNone(shape_tuple.get()) || DTypeNeedsHandleData(dtype)) {
     return PyTapeTensor(id, dtype, tensor);
   }
 
