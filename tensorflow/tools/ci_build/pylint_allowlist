@@ -53,6 +53,7 @@
 ^tensorflow/python/keras/datasets/imdb.py.*\[E1123.*unexpected-keyword-arg
 ^tensorflow/python/keras/datasets/mnist.py.*\[E1123.*unexpected-keyword-arg
 ^tensorflow/python/keras/datasets/reuters.py.*\[E1123.*unexpected-keyword-arg
+^tensorflow/python/keras/distribute/checkpointing_test.py.*\[E1123.*unexpected-keyword-arg
 ^tensorflow/python/keras/engine/base_layer.py.*\[E0202.*method-hidden
 ^tensorflow/python/keras/engine/base_layer.py.*\[E0203.*access-member-before-definition
 ^tensorflow/python/keras/engine/base_layer.py.*\[E1003.*bad-super-call
@@ -163,6 +164,8 @@
 ^tensorflow/python/training/tracking/data_structures_test.py.*\[E1138.*unsupported-delete-operation
 ^tensorflow/python/training/tracking/python_state_test.py.*\[E1123.*unexpected-keyword-arg
 ^tensorflow/python/training/tracking/tracking\.py.*\[E0202.*method-hidden
+^tensorflow/python/training/tracking/util_test.py.*\[E1120.*no-value-for-parameter
+^tensorflow/python/training/tracking/util_test.py.*\[E1123.*unexpected-keyword-arg
 ^tensorflow/python/util/function_utils_test.py.*\[E1120.*no-value-for-parameter
 ^tensorflow/python/util/tf_stack_test.py.*\[E1121.*too-many-function-args
 ^tensorflow/security/fuzzing/raggedCountSparseOutput_fuzz.py.*\[C0330.*bad-continuation
