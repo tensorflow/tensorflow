@@ -101,9 +101,9 @@ class MklDequantizeOp : public OpKernel {
         // same .data field but different type.
         dst_md.data.data_type = memory::convert_to_c(MklDnnType<float>());
       } else {
-        dst_md = memory::desc(
-            src_dims, MklDnnType<float>(),
-            src_dims.size() == 4 ? memory::format_tag::nhwc : memory::format_tag::nc);
+        dst_md = memory::desc(src_dims, MklDnnType<float>(),
+                              src_dims.size() == 4 ? memory::format_tag::nhwc
+                                                   : memory::format_tag::nc);
       }
 
       // If input is MKL shape, output is also MKL shape.

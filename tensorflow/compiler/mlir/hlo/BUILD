@@ -502,6 +502,7 @@ cc_library(
         ":hlo_ops_base_inc_gen",
         ":hlo_ops_base_structs",
         ":lhlo_ops_inc_gen",
+        ":lhlo_ops_structs_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:CopyOpInterface",

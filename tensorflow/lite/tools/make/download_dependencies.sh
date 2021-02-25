@@ -20,7 +20,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/../../../.."
 
 DOWNLOADS_DIR=tensorflow/lite/tools/make/downloads
-BZL_FILE_PATH=tensorflow/workspace.bzl
+BZL_FILE_PATH=tensorflow/tensorflow.bzl
 
 if [[ "${OSTYPE}" == "darwin"* ]]; then
   function sha256sum() { shasum -a 256 "$@" ; }

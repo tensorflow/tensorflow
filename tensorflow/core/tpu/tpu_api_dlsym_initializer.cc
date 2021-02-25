@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_api_dlsym_initializer.h"
 
 #include <dlfcn.h>
+#include <fcntl.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 

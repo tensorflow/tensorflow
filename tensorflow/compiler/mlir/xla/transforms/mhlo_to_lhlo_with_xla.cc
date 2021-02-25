@@ -968,8 +968,8 @@ StatusOr<mlir::GetGlobalMemrefOp> LhloDialectEmitter::EmitConstant(
     OpBuilder::InsertionGuard guard(builder_);
     builder_.clearInsertionPoint();
     auto global_var = builder_.create<GlobalMemrefOp>(
-        loc, constant_name, builder_.getStringAttr("private"),
-        TypeAttr::get(memref_type), initial_value, true);
+        loc, constant_name, builder_.getStringAttr("private"), memref_type,
+        initial_value, true);
     SymbolTable(module_).insert(global_var);
     global_var.getOperation()->moveBefore(&module_.front());
 

@@ -2061,6 +2061,7 @@ cc_library(
     hdrs = ["include/mlir/Conversion/GPUCommon/GPUCommonPass.h"],
     includes = ["include"],
     deps = [
+        ":Async",
         ":AsyncToLLVM",
         ":ConversionPassIncGen",
         ":GPUDialect",
@@ -4083,13 +4084,12 @@ cc_binary(
     srcs = ["tools/mlir-cuda-runner/mlir-cuda-runner.cpp"],
     deps = [
         ":Async",
-        ":AsyncToLLVM",
         ":AsyncTransforms",
+        ":ConversionPasses",
         ":ExecutionEngineUtils",
         ":GPUDialect",
         ":GPUToGPURuntimeTransforms",
         ":GPUToNVVMTransforms",
-        ":GPUToROCDLTransforms",
         ":GPUTransforms",
         ":IR",
         ":LLVMDialect",
@@ -4098,7 +4098,6 @@ cc_binary(
         ":NVVMToLLVMIRTranslation",
         ":Pass",
         ":StandardOps",
-        ":StandardToLLVM",
         ":TargetLLVMIR",
         ":TargetLLVMIRModuleTranslation",
         ":Transforms",
@@ -5313,6 +5312,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":IR",
+        ":LLVMDialect",
         ":MathDialect",
         ":Pass",
         ":SCFDialect",

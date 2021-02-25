@@ -52,7 +52,7 @@ class MaybeAdjoint<MATRIX, false> {
 
 template <typename T>
 EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T MaybeConj(T v) {
-  return v;
+  return Eigen::numext::conj(v);
 }
 
 template <typename MATRIX>

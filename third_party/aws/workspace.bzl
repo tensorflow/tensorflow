@@ -1,12 +1,12 @@
 """loads the aws library, used by TF."""
 
-load("//third_party:repo.bzl", "third_party_http_archive")
+load("//third_party:repo.bzl", "tf_http_archive")
 
 # NOTE: version updates here should also update the major, minor, and patch variables declared in
 # the  copts field of the //third_party/aws:aws target
 
 def repo():
-    third_party_http_archive(
+    tf_http_archive(
         name = "aws",
         urls = [
             "https://mirror.tensorflow.org/github.com/aws/aws-sdk-cpp/archive/1.7.336.tar.gz",
@@ -17,7 +17,7 @@ def repo():
         build_file = "//third_party/aws:BUILD.bazel",
     )
 
-    third_party_http_archive(
+    tf_http_archive(
         name = "aws-c-common",
         urls = [
             "https://mirror.tensorflow.org/github.com/awslabs/aws-c-common/archive/v0.4.29.tar.gz",
@@ -28,7 +28,7 @@ def repo():
         build_file = "//third_party/aws:aws-c-common.bazel",
     )
 
-    third_party_http_archive(
+    tf_http_archive(
         name = "aws-c-event-stream",
         urls = [
             "https://mirror.tensorflow.org/github.com/awslabs/aws-c-event-stream/archive/v0.1.4.tar.gz",
@@ -39,7 +39,7 @@ def repo():
         build_file = "//third_party/aws:aws-c-event-stream.bazel",
     )
 
-    third_party_http_archive(
+    tf_http_archive(
         name = "aws-checksums",
         urls = [
             "https://mirror.tensorflow.org/github.com/awslabs/aws-checksums/archive/v0.1.5.tar.gz",

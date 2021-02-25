@@ -1,6 +1,6 @@
 """Provides the repository macro to import absl."""
 
-load("//third_party:repo.bzl", "third_party_http_archive")
+load("//third_party:repo.bzl", "tf_http_archive")
 
 def repo(name):
     """Imports absl."""
@@ -9,7 +9,7 @@ def repo(name):
     ABSL_COMMIT = "df3ea785d8c30a9503321a3d35ee7d35808f190d"
     ABSL_SHA256 = "f368a8476f4e2e0eccf8a7318b98dafbe30b2600f4e3cf52636e5eb145aba06a"
 
-    third_party_http_archive(
+    tf_http_archive(
         name = name,
         sha256 = ABSL_SHA256,
         build_file = "//third_party/absl:com_google_absl.BUILD",

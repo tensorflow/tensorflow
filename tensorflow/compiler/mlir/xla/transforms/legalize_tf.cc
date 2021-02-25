@@ -1350,6 +1350,87 @@ class ConvertBroadcastToOp : public OpRewritePattern<TF::BroadcastToOp> {
   }
 };
 
+/// Converts a TF::LeakyReluOp to HLO.
+/// LeakyRelu(x) = alpha * x if x < 0 else x.
+class ConvertLeakyReluOp : public OpRewritePattern<TF::LeakyReluOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(TF::LeakyReluOp op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    float alpha = op.alpha().convertToFloat();
+    Value features = op.features();
+    auto featureType = features.getType().cast<RankedTensorType>();
+    ArrayRef<int64_t> featureShape = featureType.getShape();
+    Type eltType = featureType.getElementType();
+
+    auto alphaVal = rewriter.create<mhlo::ConstOp>(
+        loc, rewriter.getFloatAttr(eltType, alpha));
+
+    // Broadcast `alpha` to match the shape of feature.
+    auto featureShapeAttr = DenseIntElementsAttr::get(
+        RankedTensorType::get(featureShape.size(), rewriter.getIntegerType(64)),
+        featureShape);
+    auto broadcastAlphaVal = rewriter.create<mhlo::BroadcastOp>(
+        loc, featureType, alphaVal, featureShapeAttr);
+
+    Attribute zeroAttr = rewriter.getZeroAttr(featureType);
+    Value zeroVal = rewriter.create<ConstantOp>(loc, featureType, zeroAttr);
+
+    Value leakyActivationVal = rewriter.create<mhlo::MulOp>(
+        loc, features.getType(), features, broadcastAlphaVal);
+
+    StringAttr compare_direction = StringAttr::get(rewriter.getContext(), "GT");
+    Value compareGtZero = rewriter.create<mhlo::CompareOp>(
+        loc, features, zeroVal, compare_direction);
+
+    rewriter.replaceOpWithNewOp<SelectOp>(op, featureType, compareGtZero,
+                                          features, leakyActivationVal);
+    return success();
+  }
+};
+
+/// Converts a TF::LeakyReluGradOp to HLO.
+/// LeakyReluGrad(gradient, inputs) = gradient if input > 0
+/// else alpha * gradient.
+class ConvertLeakyReluGradOp : public OpRewritePattern<TF::LeakyReluGradOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(TF::LeakyReluGradOp op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    float alpha = op.alpha().convertToFloat();
+    Value gradients = op.gradients();
+    Value features = op.features();
+    auto featureType = features.getType().cast<RankedTensorType>();
+    ArrayRef<int64_t> featureShape = featureType.getShape();
+    Type eltType = featureType.getElementType();
+
+    auto alphaVal = rewriter.create<mhlo::ConstOp>(
+        loc, rewriter.getFloatAttr(eltType, alpha));
+    auto featureShapeAttr = DenseIntElementsAttr::get(
+        RankedTensorType::get(featureShape.size(), rewriter.getIntegerType(64)),
+        featureShape);
+    auto broadcastAlphaVal = rewriter.create<mhlo::BroadcastOp>(
+        loc, featureType, alphaVal, featureShapeAttr);
+
+    Attribute zeroAttr = rewriter.getZeroAttr(featureType);
+    Value zeroVal = rewriter.create<ConstantOp>(loc, featureType, zeroAttr);
+
+    Value leakyGradientVal = rewriter.create<mhlo::MulOp>(
+        loc, features.getType(), gradients, broadcastAlphaVal);
+
+    StringAttr compare_direction = StringAttr::get(rewriter.getContext(), "GT");
+
+    Value compareGtZero = rewriter.create<mhlo::CompareOp>(
+        loc, features, zeroVal, compare_direction);
+
+    rewriter.replaceOpWithNewOp<SelectOp>(op, featureType, compareGtZero,
+                                          gradients, leakyGradientVal);
+    return success();
+  }
+};
+
 // Converts TensorFlow DiagPartOp to HLO ops using reduction on masked matrix.
 // For a Rank-2 input, it creates the following ops:
 //   %1 = "mhlo.iota"() {iota_dimension = 0 : i64}
@@ -6159,7 +6240,8 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
       ConvertUnpackOp, ConvertUnsortedSegmentMaxOp, ConvertUnsortedSegmentMinOp,
       ConvertUnsortedSegmentProdOp, ConvertUnsortedSegmentSumOp,
       ConvertRandomShuffleOp, ConvertXlaShardingOp,
-      ConvertXlaDynamicUpdateSliceOp, ConvertXlaAllReduceOp>(context);
+      ConvertXlaDynamicUpdateSliceOp, ConvertXlaAllReduceOp, ConvertLeakyReluOp,
+      ConvertLeakyReluGradOp>(context);
 }
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(

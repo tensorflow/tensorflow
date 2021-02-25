@@ -212,7 +212,6 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           autotune_(params.dataset->num_parallel_calls_ == model::kAutotune) {}
 
     ~Iterator() override {
-      cancellation_manager_->StartCancel();
       CancelThreads(/*wait=*/true);
       input_impl_.reset();
       if (deregister_fn_) deregister_fn_();
@@ -223,8 +222,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       if (num_parallel_calls_->value == model::kAutotune) {
         num_parallel_calls_->value = ctx->runner_threadpool_size();
       }
-      cancellation_manager_ =
-          absl::make_unique<CancellationManager>(ctx->cancellation_manager());
+      cancellation_manager_ = absl::make_unique<CancellationManager>();
       IteratorContext::Params params(ctx);
       params.cancellation_manager = cancellation_manager_.get();
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
@@ -384,6 +382,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     };
 
     void CancelThreads(bool wait) TF_LOCKS_EXCLUDED(mu_) {
+      cancellation_manager_->StartCancel();
       mutex_lock l(*mu_);
       cancelled_ = true;
       cond_var_->notify_all();
