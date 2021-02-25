@@ -216,6 +216,9 @@ struct OpenGlInfo {
   int max_work_group_invocations = 0;
   int max_texture_size = 0;
   int max_array_texture_layers = 0;
+  int max_fragment_image_units = 0;
+  int max_fragment_uniform_vec4_count = 0;
+  int max_color_atttachments = 0;
 
   std::vector<std::string> extensions;
   int max_compute_work_group_size_x;
