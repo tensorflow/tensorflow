@@ -29,11 +29,11 @@ namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-template <typename T, typename Index, bool is_axis_zero,
+template <typename ValueOrVec, typename Index, bool is_axis_zero,
           bool is_batch_dims_zero>
-__global__ void GatherOpKernel(const T* __restrict__ params,
+__global__ void GatherOpKernel(const ValueOrVec* __restrict__ params,
                                const Index* __restrict__ indices,
-                               T* __restrict__ out, int64 outer_size,
+                               ValueOrVec* __restrict__ out, int64 outer_size,
                                int64 gather_dim_size, int64 indices_size,
                                int64 slice_size, int64 out_size) {
   // params is a tensor of shape
@@ -71,7 +71,7 @@ __global__ void GatherOpKernel(const T* __restrict__ params,
     if (!FastBoundsCheck(gather_i, gather_dim_size)) {
       // Set indices out of range to zero
       // TODO(fpmc): Log an error for transfer back to host.
-      out[i] = T(0);
+      out[i] = ValueOrVec(0);
     } else {
       // Read params[batch_i, outer_i, gather_i, slice_i] and write it to the
       // i'th position in out.
@@ -93,11 +93,12 @@ struct LaunchGatherKernelVectorized {
     Status operator()(const GPUDevice& d, const T* params, const Index* indices,
                       T* out, int64 outer_size, int64 gather_dim_size,
                       int64 indices_size, int64 slice_size, int64 out_size) {
-      CHECK(slice_size % vec_size == 0);  // Crash OK
-      CHECK(out_size % vec_size == 0);    // Crash OK
-      CHECK(reinterpret_cast<std::uintptr_t>(params) % vec_size ==
-            0);                                                      // Crash OK
-      CHECK(reinterpret_cast<std::uintptr_t>(out) % vec_size == 0);  // Crash OK
+      CHECK_EQ(slice_size % vec_size, 0);  // Crash OK
+      CHECK_EQ(out_size % vec_size, 0);    // Crash OK
+      CHECK_EQ(reinterpret_cast<std::uintptr_t>(params) % vec_size,
+               0);  // Crash OK
+      CHECK_EQ(reinterpret_cast<std::uintptr_t>(out) % vec_size,
+               0);  // Crash OK
       int64 out_size_vec = out_size / vec_size;
       int64 slice_size_vec = slice_size / vec_size;
       using Tvec = AlignedVector<T, vec_size>;

@@ -240,11 +240,12 @@ class alignas(alignof(T) * N) AlignedVector {
 inline int64 alignment_of(int64 element_stride) {
   return element_stride & -element_stride;
 }
+
 template <typename T>
 inline int64 alignment_of(T* ptr) {
   const intptr_t ptr_val = reinterpret_cast<std::uintptr_t>(ptr);
   // Pointers should always be aligned to sizeof(T) bytes.
-  CHECK(ptr_val % sizeof(T) == 0);  // CRASH OK
+  CHECK_EQ(ptr_val % sizeof(T), 0);  // CRASH OK
   // Note that we want the alignment in elements, not bytes.
   return alignment_of(ptr_val / sizeof(T));
 }
