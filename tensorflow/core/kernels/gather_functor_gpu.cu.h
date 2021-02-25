@@ -111,6 +111,11 @@ Status LaunchGatherKernel(const GPUDevice& d, const T* params,
                           const Index* indices, T* out, int64 gather_dim_size,
                           int64 indices_size, int64 slice_size,
                           int64 out_size) {
+  // Note that the GPU memory allocator always returns aligned buffers, so the
+  // alignment of data pointers is expected to be deterministic.
+  // There will be performance cliffs when slice_size is not aligned, but there
+  // is no easy way to handle the misalignment because each row will be aligned
+  // differently.
   return DispatchToVectorized<
       T, detail::LaunchGatherKernelVectorized<is_axis_zero>::template Impl>(
       MinAlignmentOf(params, out, slice_size), d, params, indices, out,
