@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,10 +27,11 @@ namespace tensorflow {
 namespace functor {
 template <typename T, typename Index>
 struct LaunchSparseToDense {
-  void operator()(OpKernelContext* c, bool validate_indices,
-                  const Index* indices, const T* values, const int num_elems,
-                  const int num_values, const Index* shape, const int num_dims,
-                  const T default_value, Index dense_size, T* dense);
+  void operator()(OpKernelContext* c, AsyncOpKernel::DoneCallback done,
+                  bool validate_indices, const Index* indices, const T* values,
+                  const int num_elems, const int num_values, const Index* shape,
+                  const int num_dims, const T default_value, Index dense_size,
+                  T* dense);
 };
 
 }  // namespace functor

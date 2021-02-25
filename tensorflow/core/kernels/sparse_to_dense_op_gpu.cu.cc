@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -109,15 +109,15 @@ namespace functor {
 
 template <typename T, typename Index>
 void LaunchSparseToDense<T, Index>::operator()(
-    OpKernelContext* c, bool validate_indices, const Index* indices,
-    const T* values, const int num_elems, const int num_values,
-    const Index* shape, const int num_dims, const T default_value,
-    Index dense_size, T* dense) {
+    OpKernelContext* c, AsyncOpKernel::DoneCallback done, bool validate_indices,
+    const Index* indices, const T* values, const int num_elems,
+    const int num_values, const Index* shape, const int num_dims,
+    const T default_value, Index dense_size, T* dense) {
   auto* stream = c->op_device_context()->stream();
   const Eigen::GpuDevice& d = c->eigen_gpu_device();
 
   if (validate_indices && num_elems != 0) {
-    LOG(WARNING) << "SparseToDense will be performed on GPUs. For performance "
+    VLOG(1) << "SparseToDense will be performed on GPUs. For performance "
         "reasons, it is suggested to pass False to validate_indices.";
 
     IndicesValidStatus valid_status;
@@ -125,52 +125,58 @@ void LaunchSparseToDense<T, Index>::operator()(
     int valid_status_bytes = sizeof(valid_status);
 
     Tensor valid_status_tensor;
-    OP_REQUIRES_OK(c, c->allocate_temp(
+    OP_REQUIRES_OK_ASYNC(c, c->allocate_temp(
         DT_INT32, TensorShape({valid_status_size}),
-        &valid_status_tensor));
+        &valid_status_tensor), done);
 
     auto status_ptr = valid_status_tensor.template flat<int>().data();
     se::DeviceMemoryBase valid_status_ptr(status_ptr, valid_status_bytes);
 
     GpuLaunchConfig config = GetGpuLaunchConfig(num_elems, d);
     stream->ThenMemset32(&valid_status_ptr, INT_MAX, valid_status_bytes);
-    OP_REQUIRES_OK(c, GpuLaunchKernel(
+    OP_REQUIRES_OK_ASYNC(c, GpuLaunchKernel(
         CheckIndicesValid<Index>, config.block_count, config.thread_per_block,
-        0, d.stream(), indices, num_elems, shape, num_dims, status_ptr));
+        0, d.stream(), indices, num_elems, shape, num_dims, status_ptr), done);
     stream->ThenMemcpy(reinterpret_cast<int*>(&valid_status), valid_status_ptr,
                        valid_status_bytes);
-    OP_REQUIRES_OK(c, stream->BlockHostUntilDone());
+    OP_REQUIRES_OK_ASYNC(c, stream->BlockHostUntilDone(), done);
 
-    OP_REQUIRES(c, valid_status.valid == INT_MAX,
-                errors::InvalidArgument(
-                    "indices[", valid_status.valid, "] is out of bounds."));
+    OP_REQUIRES_ASYNC(c, valid_status.valid == INT_MAX,
+                      errors::InvalidArgument(
+                          "indices[", valid_status.valid,
+                          "] is out of bounds."), done);
 
-    OP_REQUIRES(c, valid_status.increasing == INT_MAX,
-                errors::InvalidArgument(
-                    "indices[", valid_status.increasing, "] is out of order. "
-                    "Many sparse ops require sorted indices.\n"
-                    "  Use `tf.sparse.reorder` to create a correctly ordered "
-                    "copy.\n\n"));
+    OP_REQUIRES_ASYNC(c, valid_status.increasing == INT_MAX,
+                      errors::InvalidArgument(
+                          "indices[", valid_status.increasing, "] is out of "
+                          "order. Many sparse ops require sorted indices.\n"
+                          "  Use `tf.sparse.reorder` to create a correctly "
+                          "ordered copy.\n\n"), done);
 
-    OP_REQUIRES(c, valid_status.different == INT_MAX,
-                errors::InvalidArgument(
-                    "indices[", valid_status.different, "] is repeated."));
+    OP_REQUIRES_ASYNC(c, valid_status.different == INT_MAX,
+                      errors::InvalidArgument(
+                          "indices[", valid_status.different, "] is repeated."),
+                      done);
   }
 
   if (dense_size > 0) {
     GpuLaunchConfig config0 = GetGpuLaunchConfig(dense_size, d);
-    GpuLaunchKernel(
+    // The template type T might not necessarily be 32bit, and therefore, we use
+    // SetDefaultValue instead of memset32.
+    OP_REQUIRES_OK_ASYNC(c, GpuLaunchKernel(
         SetDefaultValue<T, Index>, config0.block_count, config0.thread_per_block,
-        0, d.stream(), default_value, dense_size, dense);
+        0, d.stream(), default_value, dense_size, dense), done);
   }
 
   if (num_elems > 0) {
     GpuLaunchConfig config1 = GetGpuLaunchConfig(num_elems, d);
-    OP_REQUIRES_OK(c, GpuLaunchKernel(
+    OP_REQUIRES_OK_ASYNC(c, GpuLaunchKernel(
         SparseToDenseKernel<T, Index>, config1.block_count,
         config1.thread_per_block, 0, d.stream(), indices, values, num_elems,
-        num_values, shape, num_dims, dense));
+        num_values, shape, num_dims, dense), done);
   }
+
+  done();
 }
 
 }  // namespace functor
