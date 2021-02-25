@@ -205,13 +205,14 @@ def _embedding_lookup_and_transform(params,
       partitioned_result = []
       for p in xrange(np):
         pids = gather_ids[p]
-        with ops.colocate_with(params[p]):
-          result = array_ops.gather(params[p], pids)
-          if transform_fn:
-            # If transform_fn is provided, the clip_by_norm precedes
-            # the transform and hence must be co-located. See below
-            # for the counterpart if transform_fn is not provided.
-            result = transform_fn(_clip(result, pids, max_norm))
+        with ops.device_v2(None):
+          with ops.colocate_with(params[p]):
+            result = array_ops.gather(params[p], pids)
+            if transform_fn:
+              # If transform_fn is provided, the clip_by_norm precedes
+              # the transform and hence must be co-located. See below
+              # for the counterpart if transform_fn is not provided.
+              result = transform_fn(_clip(result, pids, max_norm))
         partitioned_result.append(result)
       # Stitch these back together
       ret = data_flow_ops.parallel_dynamic_stitch(
