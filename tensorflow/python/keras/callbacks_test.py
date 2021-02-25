@@ -456,11 +456,15 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     if h5py is None:
       return  # Skip test if models cannot be saved.
 
+    model_type = testing_utils.get_model_type()
+    if model_type == 'subclass':
+      return  # Skip test since subclassed models cannot be saved in .h5 format.
+
     layers = [
         keras.layers.Dense(NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'),
         keras.layers.Dense(NUM_CLASSES, activation='softmax')
     ]
-    model = testing_utils.get_model_from_layers(layers, input_shape=(10,))
+    model = testing_utils.get_model_from_layers(layers, input_shape=(3,))
     model.compile(
         loss='categorical_crossentropy', optimizer='rmsprop', metrics=['acc'])
 
@@ -475,18 +479,11 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         num_classes=NUM_CLASSES)
     y_test = np_utils.to_categorical(y_test)
     y_train = np_utils.to_categorical(y_train)
-    # case 1
+
+    # Case 1
     monitor = 'val_loss'
     save_best_only = False
     mode = 'auto'
-
-    model = keras.models.Sequential()
-    model.add(
-        keras.layers.Dense(
-            NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'))
-    model.add(keras.layers.Dense(NUM_CLASSES, activation='softmax'))
-    model.compile(
-        loss='categorical_crossentropy', optimizer='rmsprop', metrics=['acc'])
 
     cbks = [
         keras.callbacks.ModelCheckpoint(
@@ -506,7 +503,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     assert os.path.exists(filepath)
     os.remove(filepath)
 
-    # case 2
+    # Case 2
     mode = 'min'
     cbks = [
         keras.callbacks.ModelCheckpoint(
@@ -526,7 +523,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     assert os.path.exists(filepath)
     os.remove(filepath)
 
-    # case 3
+    # Case 3
     mode = 'max'
     monitor = 'val_acc'
     cbks = [
@@ -547,7 +544,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     assert os.path.exists(filepath)
     os.remove(filepath)
 
-    # case 4
+    # Case 4
     save_best_only = True
     cbks = [
         keras.callbacks.ModelCheckpoint(
@@ -567,7 +564,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     assert os.path.exists(filepath)
     os.remove(filepath)
 
-    # Case: metric not available.
+    # Case 5: metric not available.
     cbks = [
         keras.callbacks.ModelCheckpoint(
             filepath,
@@ -585,7 +582,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     # File won't be written.
     assert not os.path.exists(filepath)
 
-    # case 5
+    # Case 6
     save_best_only = False
     period = 2
     mode = 'auto'
@@ -621,7 +618,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         save_best_only=save_best_only,
         mode='unknown')
 
-    # Case 6: `ModelCheckpoint` with a combination of `save_freq` and `period`.
+    # Case 7: `ModelCheckpoint` with a combination of `save_freq` and `period`.
     # Though `period` is deprecated, we're testing it for
     # backward-compatibility.
     filepath = os.path.join(temp_dir, 'checkpoint.epoch{epoch:02d}.h5')
@@ -649,7 +646,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     os.remove(filepath.format(epoch=5))
     os.remove(filepath.format(epoch=10))
 
-    # Case 7: `ModelCheckpoint` with an integer `save_freq`
+    # Case 8: `ModelCheckpoint` with an integer `save_freq`
     filepath = os.path.join(temp_dir, 'checkpoint.epoch{epoch:02d}.h5')
     cbks = [
         keras.callbacks.ModelCheckpoint(
@@ -682,7 +679,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     os.remove(filepath.format(epoch=6))
     os.remove(filepath.format(epoch=9))
 
-    # Case 8: `ModelCheckpoint` with valid and invalid save_freq argument.
+    # Case 9: `ModelCheckpoint` with valid and invalid save_freq argument.
     with self.assertRaisesRegex(ValueError, 'Unrecognized save_freq'):
       keras.callbacks.ModelCheckpoint(
           filepath,
@@ -704,7 +701,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         mode=mode,
         save_freq=3)
 
-    # Case 9: `ModelCheckpoint` with valid and invalid `options` argument.
+    # Case 10: `ModelCheckpoint` with valid and invalid `options` argument.
     with self.assertRaisesRegex(TypeError, 'tf.train.CheckpointOptions'):
       keras.callbacks.ModelCheckpoint(
           filepath,
@@ -735,6 +732,33 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         save_weights_only=False,
         mode=mode,
         options=save_options_lib.SaveOptions())
+
+  @testing_utils.run_v2_only
+  def test_ModelCheckpoint_subclass_save_weights_false(self):
+    model = testing_utils.get_small_subclass_mlp(NUM_HIDDEN, NUM_CLASSES)
+    model.compile(
+        loss='categorical_crossentropy', optimizer='rmsprop', metrics=['acc'])
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
+    filepath = os.path.join(temp_dir, 'checkpoint')
+    cbks = [keras.callbacks.ModelCheckpoint(
+        filepath, save_weights_only=False)]
+
+    (x_train, y_train), _ = testing_utils.get_test_data(
+        train_samples=TRAIN_SAMPLES,
+        test_samples=TEST_SAMPLES,
+        input_shape=(INPUT_DIM,),
+        num_classes=NUM_CLASSES)
+
+    model.fit(
+        x_train,
+        y_train,
+        callbacks=cbks,
+        epochs=1,
+        verbose=0)
+    # Check that the filepath is a SavedModel directory.
+    self.assertIn('saved_model.pb', os.listdir(filepath))
+    os.remove(filepath)
 
   def _get_dummy_resource_for_model_checkpoint_testing(self):
 

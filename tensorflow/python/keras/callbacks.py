@@ -1323,14 +1323,6 @@ class ModelCheckpoint(Callback):
     # restore checkpoint at on_train_begin().
     self._chief_worker_only = False
 
-  def set_model(self, model):
-    self.model = model
-    # Use name matching rather than `isinstance` to avoid circular dependencies.
-    if (not self.save_weights_only and
-        not model._is_graph_network and  # pylint: disable=protected-access
-        model.__class__.__name__ != 'Sequential'):
-      self.save_weights_only = True
-
   def on_train_begin(self, logs=None):
     if self.load_weights_on_restart:
       filepath_to_load = (
