@@ -41,6 +41,7 @@ from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.distribute import distributed_file_utils
@@ -2332,10 +2333,14 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     if self._start_batch < 0 or self._stop_batch < self._start_batch:
       raise ValueError(profile_batch_error_message)
 
+    # True when the profiler was successfully started by this callback.
+    # We track the status here to make sure callbacks do not interfere with
+    # each other. The callback will only stop the profiler it started.
+    self._profiler_started = False
     if self._start_batch > 0:
       # Warm up and improve the profiling accuracy.
-      profiler.start('')
-      profiler.stop(save=False)
+      self._start_profiler(logdir='')
+      self._stop_profiler(save=False)
     # True when a trace is running.
     self._is_tracing = False
 
@@ -2410,7 +2415,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
 
   def _start_trace(self):
     summary_ops_v2.trace_on(graph=True, profiler=False)
-    profiler.start(logdir=self._train_dir)
+    self._start_profiler(logdir=self._train_dir)
     self._is_tracing = True
 
   def _stop_trace(self, batch=None):
@@ -2421,7 +2426,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
       with summary_ops_v2.record_if(True):
         # TODO(b/126388999): Remove step info in the summary name.
         summary_ops_v2.trace_export(name='batch_%d' % batch, step=batch)
-    profiler.stop()
+    self._stop_profiler()
     self._is_tracing = False
 
   def _collect_learning_rate(self, logs):
@@ -2503,6 +2508,37 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     embeddings_ckpt = os.path.join(self._log_write_dir, 'train',
                                    'keras_embedding.ckpt-{}'.format(epoch))
     self.model.save_weights(embeddings_ckpt)
+
+  def _start_profiler(self, logdir):
+    """Starts the profiler if currently inactive.
+
+    Args:
+      logdir: Directory where profiler results will be saved.
+    """
+    if self._profiler_started:
+      return
+    try:
+      profiler.start(logdir=logdir)
+      self._profiler_started = True
+    except errors.AlreadyExistsError as e:
+      # Profiler errors should not be fatal.
+      logging.error('Failed to start profiler: %s', e.message)
+
+  def _stop_profiler(self, save=True):
+    """Stops the profiler if currently active.
+
+    Args:
+      save: Whether to save the profiler results to TensorBoard.
+    """
+    if not self._profiler_started:
+      return
+    try:
+      profiler.stop(save=save)
+    except errors.UnavailableError as e:
+      # Profiler errors should not be fatal.
+      logging.error('Failed to stop profiler: %s', e.message)
+    finally:
+      self._profiler_started = False
 
 
 @keras_export('keras.callbacks.ReduceLROnPlateau')
