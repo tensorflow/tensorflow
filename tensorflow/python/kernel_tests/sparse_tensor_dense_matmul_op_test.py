@@ -41,7 +41,7 @@ from tensorflow.python.platform import test
 
 def _maybe_complex(x):
   if x.dtype.kind == "c":  # complex
-    return (x + 1j * x) / 2
+    return x + 1j * x
   return x
 
 
@@ -200,7 +200,6 @@ class SparseTensorDenseMatMulTest(test.TestCase):
         sparse_ops.sparse_tensor_dense_matmul(
             sparse_t, dense_t, adjoint_a=True))
 
-  # Tests setting one dimension to be a high value.
   def _testLarge(self, np_dtype):
     r1 = np.random.randint(6000, 20000)
     r2 = np.random.randint(1, 10)
@@ -220,6 +219,8 @@ class SparseTensorDenseMatMulTest(test.TestCase):
       self._testMatmul(
           x.transpose(), y.transpose(), adjoint_a=True, adjoint_b=True)
 
+  # Tests setting one dimension to be a high value.
+  def testLarge(self):
     np.random.seed(127)  # Repeatable results
     self._testLarge(np.float32)
     self._testLarge(np.float64)
