@@ -100,11 +100,6 @@ TF_GetSavedModelSignatureDefFunction(TF_SavedModel* model,
                                      const char* signature_def_key,
                                      TF_Status* status);
 
-// Returns a list of all ConcreteFunctions stored in this SavedModel.
-// The lifetime of the returned list is bound to `model`.
-TF_CAPI_EXPORT extern TF_ConcreteFunctionList* TF_ListSavedModelFunctions(
-    TF_SavedModel* model);
-
 #ifdef __cplusplus
 }  // end extern "C"
 #endif  // __cplusplus

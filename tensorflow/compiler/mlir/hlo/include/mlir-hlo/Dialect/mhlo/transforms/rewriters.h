@@ -24,14 +24,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
-class LLVMTypeConverter;
-class LowerToLLVMOptions;
 class OwningRewritePatternList;
-
-// Populates a collection of rewrite patterns to realize element-wise operations
-// on ranked tensors where possible.
-void PopulateTransformUnrankedHloPatterns(MLIRContext *context,
-                                          OwningRewritePatternList *patterns);
 
 namespace mhlo {
 
@@ -53,6 +46,11 @@ void PopulateGatherToTorchIndexSelectPatterns(
 
 void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
                                MLIRContext *ctx);
+
+// Collection of rewrite patterns for lowering of dynamic HLOs to LHLO dialect.
+void populateDynamicHLOToLHLOConversionPattern(
+    MLIRContext *context, BufferizeTypeConverter *converter,
+    OwningRewritePatternList *patterns, bool insert_copy = true);
 
 // Collection of rewrite patterns for lowering of HLO to LHLO dialect.
 void populateHLOToLHLOConversionPattern(MLIRContext *context,
@@ -94,18 +92,16 @@ void PopulateTrigonometricToApproximationPatterns(
 
 }  // namespace mhlo
 
-namespace lmhlo {
-
-/// Collect a set of patterns to convert from the LHLO dialect to LLVM.
-void PopulateLhloToLLVMConversionPatterns(LLVMTypeConverter *converter,
-                                          OwningRewritePatternList *patterns);
-
-}  // namespace lmhlo
-
 namespace chlo {
 
+// Populates a collection of conversion patterns for legalizing broadcasting
+// client-HLO to their non-broadcasting counterparts.
+void PopulateChloBroadcastingPatterns(MLIRContext *context,
+                                      OwningRewritePatternList *patterns);
+
 // Populates a collection of conversion patterns for legalizing client-HLO to
-// HLO.
+// HLO. Includes decomposition of operations and inserting of explicit
+// broadcasts.
 void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
                                        OwningRewritePatternList *patterns);
 

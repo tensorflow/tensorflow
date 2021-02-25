@@ -187,7 +187,7 @@ class SGD(optimizer_v2.OptimizerV2):
     config = super(SGD, self).get_config()
     config.update({
         "learning_rate": self._serialize_hyperparameter("learning_rate"),
-        "decay": self._serialize_hyperparameter("decay"),
+        "decay": self._initial_decay,
         "momentum": self._serialize_hyperparameter("momentum"),
         "nesterov": self.nesterov,
     })

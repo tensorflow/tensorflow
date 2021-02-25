@@ -15,55 +15,22 @@ exports_files(["LICENSE"])
 
 py_library(
     name = "distribute_test_lib_pip",
+    srcs_version = "PY3",
     deps = [
-        ":all_reduce",
         ":combinations",
         ":multi_worker_test_base",
         ":single_loss_example",
         ":strategy_combinations",
         ":strategy_test_lib",
         ":test_util",
-    ],
-)
-
-py_library(
-    name = "all_reduce",
-    srcs = [
-        "all_reduce.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:nccl_ops",
-    ],
-)
-
-tf_py_test(
-    name = "all_reduce_test",
-    srcs = ["all_reduce_test.py"],
-    deps = [
-        ":all_reduce",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:state_ops",
-        "//third_party/py/numpy",
+        "//tensorflow/python/distribute/v1:all_reduce",
     ],
 )
 
 py_library(
     name = "cross_device_ops",
     srcs = ["cross_device_ops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":collective_util",
         ":cross_device_utils",
@@ -82,12 +49,11 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_util",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/eager:executor",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
-        "@enum34_archive//:enum",
         "@six_archive//:six",
     ],
 )
@@ -95,7 +61,7 @@ py_library(
 py_library(
     name = "cross_device_utils",
     srcs = ["cross_device_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":values",
         "//tensorflow/python:array_ops",
@@ -106,6 +72,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nccl_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
     ],
@@ -114,7 +81,7 @@ py_library(
 py_library(
     name = "device_util",
     srcs = ["device_util.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:device",
         "//tensorflow/python:framework_ops",
@@ -144,9 +111,8 @@ cuda_py_test(
 
 py_library(
     name = "distribute",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
-        ":all_reduce",
         ":cross_device_ops",
         ":distribute_lib",
         ":mirrored_strategy",
@@ -166,7 +132,7 @@ py_library(
         "distribute_lib.py",
         "distribution_strategy_context.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":collective_util",
         ":device_util",
@@ -183,9 +149,8 @@ py_library(
         "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python/data",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/ops/losses",
-        "//tensorflow/python/ops/losses:loss_reduction",
         "//tensorflow/tools/docs:doc_controls",
     ],
 )
@@ -195,8 +160,7 @@ py_test(
     size = "small",
     srcs = ["distribute_lib_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
-    tags = ["no_rocm"],
+    srcs_version = "PY3",
     deps = [
         ":combinations",
         ":distribute_lib",
@@ -220,6 +184,7 @@ py_library(
     srcs = [
         "distribute_config.py",
     ],
+    srcs_version = "PY3",
     deps = [],
 )
 
@@ -228,7 +193,7 @@ py_library(
     srcs = [
         "distribute_coordinator.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":distribute_coordinator_context",
         ":multi_worker_util",
@@ -244,10 +209,7 @@ py_test(
     size = "medium",
     srcs = ["distribute_coordinator_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_oss_py2",  # b/138443278
-    ],
+    srcs_version = "PY3",
     deps = [
         ":distribute_coordinator",
         "//tensorflow/core:protos_all_py",
@@ -269,13 +231,14 @@ py_library(
     srcs = [
         "distribute_coordinator_context.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [],
 )
 
 py_library(
     name = "mirrored_run",
     srcs = ["mirrored_run.py"],
+    srcs_version = "PY3",
     deps = [
         ":device_util",
         ":distribute_lib",
@@ -292,7 +255,6 @@ py_library(
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:tensor_util",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
@@ -300,16 +262,19 @@ py_library(
         "//tensorflow/python/autograph/impl",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
 py_library(
     name = "distribute_utils",
     srcs = ["distribute_utils.py"],
+    srcs_version = "PY3",
     deps = [
         ":device_util",
         ":distribute_lib",
         ":reduce_util",
+        ":sharded_variable",
         ":shared_variable_creator",
         ":tpu_values",
         ":values",
@@ -323,20 +288,29 @@ py_library(
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:tensor_util",
-        "//tensorflow/python:tf_export",
-        "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/autograph/core",
         "//tensorflow/python/autograph/impl",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_library(
+    name = "tpu_util",
+    srcs = ["tpu_util.py"],
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/tpu:tpu_py",
     ],
 )
 
 py_library(
     name = "mirrored_strategy",
     srcs = ["mirrored_strategy.py"],
+    srcs_version = "PY3",
     deps = [
         ":collective_util",
         ":cross_device_ops",
@@ -365,6 +339,7 @@ py_library(
 py_library(
     name = "parameter_server_strategy",
     srcs = ["parameter_server_strategy.py"],
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":cross_device_ops",
@@ -382,18 +357,19 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
 py_library(
     name = "central_storage_strategy",
     srcs = ["central_storage_strategy.py"],
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":device_util",
@@ -406,6 +382,7 @@ py_library(
 py_library(
     name = "one_device_strategy",
     srcs = ["one_device_strategy.py"],
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":distribute_lib",
@@ -425,6 +402,7 @@ py_library(
 py_library(
     name = "collective_all_reduce_strategy",
     srcs = ["collective_all_reduce_strategy.py"],
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":collective_util",
@@ -445,11 +423,11 @@ py_library(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -458,7 +436,7 @@ py_library(
     srcs = [
         "multi_worker_util.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:training_server_lib",
@@ -472,7 +450,8 @@ cuda_py_test(
     ],
     python_version = "PY3",
     tags = [
-        "notap",  # TODO(b/171355671)
+        "noasan",  # TODO(b/180630068)
+        "nomsan",  # TODO(b/180630068)
         "notsan",  # TODO(b/151841995)
     ],
     deps = [
@@ -498,6 +477,7 @@ cuda_py_test(
 py_library(
     name = "numpy_dataset",
     srcs = ["numpy_dataset.py"],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
@@ -515,7 +495,7 @@ py_test(
     size = "small",
     srcs = ["numpy_dataset_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":numpy_dataset",
         "//tensorflow/python:framework_test_lib",
@@ -528,6 +508,7 @@ py_test(
 py_library(
     name = "input_lib",
     srcs = ["input_lib.py"],
+    srcs_version = "PY3",
     deps = [
         ":device_util",
         ":distribute_lib",
@@ -536,7 +517,13 @@ py_library(
         ":values",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/data/experimental/ops:batching",
+        "//tensorflow/python/data/experimental/ops:cardinality",
+        "//tensorflow/python/data/experimental/ops:distribute",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:multi_device_iterator_ops",
+        "//tensorflow/python/data/ops:optional_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/ops/ragged:ragged_tensor",
     ],
@@ -545,6 +532,7 @@ py_library(
 py_library(
     name = "input_ops",
     srcs = ["input_ops.py"],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/util:nest",
@@ -573,7 +561,7 @@ py_test(
     name = "multi_worker_util_test",
     srcs = ["multi_worker_util_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":multi_worker_util",
         "//tensorflow/core:protos_all_py",
@@ -591,6 +579,7 @@ py_test(
 py_library(
     name = "tpu_strategy",
     srcs = ["tpu_strategy.py"],
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":cross_device_ops",
@@ -599,6 +588,7 @@ py_library(
         ":input_lib",
         ":numpy_dataset",
         ":reduce_util",
+        ":tpu_util",
         ":tpu_values",
         ":values",
         "//tensorflow/compiler/xla/experimental/xla_sharding",
@@ -613,6 +603,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python:variables",
         "//tensorflow/python/autograph/core",
         "//tensorflow/python/autograph/impl",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
@@ -621,6 +612,25 @@ py_library(
         "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/tpu:tpu_ops",
         "//third_party/py/numpy",
+    ],
+)
+
+distribute_py_test(
+    name = "random_generator_test",
+    srcs = ["random_generator_test.py"],
+    main = "random_generator_test.py",
+    shard_count = 10,
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    tpu_tags = [
+        "no_oss",
+    ],
+    deps = [
+        "//tensorflow/python:stateful_random_ops",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
     ],
 )
 
@@ -661,7 +671,7 @@ py_library(
     srcs = [
         "estimator_training.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":distribute_coordinator",
         ":distribute_coordinator_context",
@@ -672,6 +682,7 @@ py_library(
 py_library(
     name = "reduce_util",
     srcs = ["reduce_util.py"],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
@@ -681,7 +692,7 @@ py_library(
 py_library(
     name = "collective_util",
     srcs = ["collective_util.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
@@ -700,13 +711,14 @@ tf_py_test(
 py_library(
     name = "shared_variable_creator",
     srcs = ["shared_variable_creator.py"],
+    srcs_version = "PY3",
 )
 
 py_test(
     name = "shared_variable_creator_test",
     srcs = ["shared_variable_creator_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":shared_variable_creator",
         "//tensorflow/python:framework_test_lib",
@@ -718,6 +730,7 @@ py_test(
 py_library(
     name = "summary_op_util",
     srcs = ["summary_op_util.py"],
+    srcs_version = "PY3",
     deps = [
         ":distribute_lib",
         "//tensorflow/python:framework_ops",
@@ -728,6 +741,7 @@ py_library(
 py_library(
     name = "packed_distributed_variable",
     srcs = ["packed_distributed_variable.py"],
+    srcs_version = "PY3",
     deps = [
         ":device_util",
         "//tensorflow/python:framework_ops",
@@ -740,6 +754,7 @@ py_library(
 py_library(
     name = "values",
     srcs = ["values.py"],
+    srcs_version = "PY3",
     deps = [
         ":device_util",
         ":distribute_lib",
@@ -752,7 +767,6 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:type_spec",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
@@ -762,12 +776,14 @@ py_library(
         "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/training/tracking:base",
         "//tensorflow/python/types",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
 py_library(
     name = "ps_values",
     srcs = ["ps_values.py"],
+    srcs_version = "PY3",
     deps = [
         ":distribute_lib",
         ":values",
@@ -783,6 +799,7 @@ py_library(
 py_library(
     name = "values_util",
     srcs = ["values_util.py"],
+    srcs_version = "PY3",
     deps = [
         ":distribute_lib",
         ":reduce_util",
@@ -799,8 +816,10 @@ py_library(
 py_library(
     name = "tpu_values",
     srcs = ["tpu_values.py"],
+    srcs_version = "PY3",
     deps = [
         ":packed_distributed_variable",
+        ":tpu_util",
         ":values",
         ":values_util",
         "//tensorflow/python:framework_ops",
@@ -808,14 +827,13 @@ py_library(
         "//tensorflow/python:resource_variable_ops_gen",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
-        "//tensorflow/python/tpu:tpu_lib",
     ],
 )
 
 py_library(
     name = "combinations",
     srcs = ["combinations.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
@@ -829,10 +847,13 @@ py_library(
         "//tensorflow/python:framework_combinations",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_combinations_lib",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:session",
         "//tensorflow/python:tf_decorator",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
 )
@@ -847,6 +868,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_combinations",
         "//tensorflow/python/distribute/cluster_resolver:tfconfig_cluster_resolver_py",
+        "//tensorflow/python/eager:context",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -854,7 +876,7 @@ py_test(
 py_library(
     name = "strategy_combinations",
     srcs = ["strategy_combinations.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
@@ -873,12 +895,12 @@ py_library(
         ":tpu_strategy",
         "//tensorflow/python:platform",
         "//tensorflow/python:tf2",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/tpu:tpu_lib",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -910,7 +932,7 @@ distribute_py_test(
 py_library(
     name = "multi_worker_test_base",
     srcs = ["multi_worker_test_base.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":distribute_coordinator",
         ":multi_process_runner",
@@ -933,7 +955,7 @@ py_library(
 tf_py_test(
     name = "multi_worker_test_base_test",
     srcs = ["multi_worker_test_base_test.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "no_oss",  # TODO(b/170834611)
     ],
@@ -985,6 +1007,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
+        "notsan",  # b/177098062
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -1019,24 +1042,22 @@ distribute_py_test(
         "multi_and_single_gpu",
     ],
     deps = [
+        ":collective_all_reduce_strategy",
         ":combinations",
-        ":distribute_lib",
+        ":input_lib",
+        ":mirrored_strategy",
+        ":multi_worker_test_base",
+        ":reduce_util",
         ":strategy_combinations",
-        ":test_util",
         ":tpu_strategy",
         ":values",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:composite_tensor",
-        "//tensorflow/python:dtypes",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:string_ops",
-        "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:tensor_spec",
-        "//tensorflow/python:tf2",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:readers",
-        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//third_party/py/numpy",
@@ -1067,9 +1088,12 @@ cuda_py_test(
     name = "cross_device_ops_test",
     srcs = ["cross_device_ops_test.py"],
     python_version = "PY3",
+    shard_count = 2,
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
+        "no_rocm",
+        "notsan",  # b/173031470
     ],
     deps = [
         ":collective_util",
@@ -1079,6 +1103,7 @@ cuda_py_test(
         ":multi_process_runner",
         ":multi_worker_test_base",
         ":reduce_util",
+        ":test_util",
         ":values",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:collective_ops",
@@ -1112,22 +1137,26 @@ cuda_py_test(
 py_library(
     name = "sharded_variable",
     srcs = ["sharded_variable.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:composite_tensor",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:type_spec",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/saved_model:revived_types",
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1135,10 +1164,6 @@ tf_py_test(
     name = "sharded_variable_test",
     size = "small",
     srcs = ["sharded_variable_test.py"],
-    tags = [
-        # depend through //third_party/tensorflow/python:extra_py_tests_deps.
-        "ignore_for_dep=third_party.tensorflow.python.keras.engine.base_layer",
-    ],
     deps = [
         ":sharded_variable",
         "//tensorflow/python:array_ops",
@@ -1149,14 +1174,15 @@ tf_py_test(
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:util",
-        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/module",
+        "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/saved_model:signature_constants",
@@ -1169,7 +1195,7 @@ tf_py_test(
 py_library(
     name = "strategy_test_lib",
     srcs = ["strategy_test_lib.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":distribute_lib",
         ":reduce_util",
@@ -1205,7 +1231,9 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
+        "no_oss",  # b/178656226
         "no_rocm",
+        "noasan",  # b/175816710
         "notsan",  # b/168645872
     ],
     tpu_tags = [
@@ -1405,6 +1433,7 @@ distribute_py_test(
 py_library(
     name = "single_loss_example",
     srcs = ["single_loss_example.py"],
+    srcs_version = "PY3",
     deps = [
         ":step_fn",
         ":strategy_test_lib",
@@ -1419,6 +1448,7 @@ py_library(
 py_library(
     name = "step_fn",
     srcs = ["step_fn.py"],
+    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:training",
@@ -1666,9 +1696,11 @@ py_library(
 py_library(
     name = "multi_process_lib",
     srcs = ["multi_process_lib.py"],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:test",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -1695,6 +1727,10 @@ py_test(
     srcs = ["multi_process_runner_test.py"],
     python_version = "PY3",
     shard_count = 12,
+    tags = [
+        "noasan",
+        "nomsan",
+    ],  # b/175904958
     deps = [
         ":multi_process_runner",
         ":multi_worker_test_base",
@@ -1708,7 +1744,6 @@ py_test(
     name = "multi_process_runner_no_init_test",
     srcs = ["multi_process_runner_no_init_test.py"],
     python_version = "PY3",
-    tags = ["no_oss"],
     deps = [
         ":multi_process_runner",
         ":multi_worker_test_base",
@@ -1724,6 +1759,7 @@ distribute_py_test(
     shard_count = 2,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
         "notsan",  # TODO(b/160006974)
     ],
     xla_enable_strict_auto_jit = True,
@@ -1756,7 +1792,11 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
+        "no_rocm",
         "notsan",  # TODO(b/160006974)
+    ],
+    tpu_tags = [
+        "no_oss",  # TODO(b/179045543)
     ],
     xla_enable_strict_auto_jit = True,
     deps = [
@@ -1829,6 +1869,7 @@ distribute_py_test(
     disable_mlir_bridge = False,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     deps = [
         ":combinations",
@@ -1845,7 +1886,7 @@ distribute_py_test(
 py_library(
     name = "parameter_server_strategy_v2",
     srcs = ["parameter_server_strategy_v2.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":distribute_lib",
         ":distribute_utils",

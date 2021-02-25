@@ -191,13 +191,7 @@ class MultiProcessRunner(object):
       raise ValueError('If chief exists in the cluster, there must be at most '
                        'one chief. Current `cluster_spec` has {} chiefs.'
                        .format(len(cluster_spec['chief'])))
-    if not multi_process_lib.initialized():
-      raise NotInitializedError(
-          '`multi_process_runner` is not initialized. '
-          'Please call `tf.__internal__.distribute.multi_process_runner.'
-          'test_main()` within `if __name__ == \'__main__\':` block '
-          'in your python module to properly initialize '
-          '`multi_process_runner`.')
+    _check_initialization()
     if not callable(fn):
       raise ValueError('fn is not a callable')
 
@@ -952,6 +946,7 @@ class MultiProcessPoolRunner(object):
     Returns:
       A list of return values.
     """
+    _check_initialization()
     # TODO(b/150264776): skip in OSS until it's implemented.
     multi_process_lib.Process()
     if self._runner is None:
@@ -1103,6 +1098,16 @@ class NotInitializedError(RuntimeError):
   `multi_process_runner.run`.
   """
   pass
+
+
+def _check_initialization():
+  if not multi_process_lib.initialized():
+    raise NotInitializedError(
+        '`multi_process_runner` is not initialized. '
+        'Please call `tf.__internal__.distribute.multi_process_runner.'
+        'test_main()` within `if __name__ == \'__main__\':` block '
+        'in your python module to properly initialize '
+        '`multi_process_runner`.')
 
 
 def _set_tf_config(task_type, task_id, cluster_spec, rpc_layer=None):

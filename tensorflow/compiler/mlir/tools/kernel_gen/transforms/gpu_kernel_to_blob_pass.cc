@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/Target/NVVMIR.h"  // from @llvm-project
-#include "mlir/Target/ROCDLIR.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm_rocdl_path.h"
+#include "tensorflow/stream_executor/gpu/asm_compiler.h"
 #endif
 
 namespace mlir {
@@ -52,10 +53,14 @@ class GpuKernelToBlobPass
  public:
   GpuKernelToBlobPass(mlir::StringRef blob_annotation,
                       llvm::ArrayRef<std::string> architectures,
-                      bool generate_fatbin) {
-    blob_annotation_ = blob_annotation.str();
+                      bool generate_fatbin, bool print_ptx, bool enable_ftz) {
+    if (!blob_annotation.empty()) {
+      blob_annotation_ = blob_annotation.str();
+    }
     architectures_ = architectures;
     generate_fatbin_ = generate_fatbin;
+    print_ptx_ = print_ptx;
+    enable_ftz_ = enable_ftz;
   }
 
   void runOnOperation() override {
@@ -64,10 +69,12 @@ class GpuKernelToBlobPass
     if (blob_or.ok()) {
       const auto& blob = blob_or.ValueOrDie();
       std::string blob_string(blob.begin(), blob.end());
-      gpu_module.setAttr(blob_annotation_,
-                         mlir::StringAttr::get(blob_string, &getContext()));
+      gpu_module->setAttr(blob_annotation_,
+                          mlir::StringAttr::get(&getContext(), blob_string));
       return;
     }
+    // Forward the error by attaching the message to the gpu module.
+    gpu_module.emitError(blob_or.status().error_message());
     return signalPassFailure();
   }
 
@@ -83,9 +90,9 @@ class GpuKernelToBlobPass
     }
 
     llvm::LLVMContext llvmContext;
+    auto llvmModule = mlir::translateModuleToLLVMIR(gpu_module, llvmContext);
 
 #if TENSORFLOW_USE_ROCM
-    auto llvmModule = mlir::translateModuleToROCDLIR(gpu_module, llvmContext);
     if (!llvmModule) {
       return InternalError("Could not translate MLIR module to ROCDL IR");
     }
@@ -93,30 +100,49 @@ class GpuKernelToBlobPass
     llvmModule->setModuleIdentifier("acme");
 
     xla::HloModuleConfig config;
-    config.set_debug_options(xla::GetDebugOptionsFromFlags());
+    xla::DebugOptions options = xla::GetDebugOptionsFromFlags();
+    options.set_xla_gpu_ftz(enable_ftz_);
+    config.set_debug_options(options);
 
-    // TODO(b/169066682): Support fatbin on ROCm.
-    if (generate_fatbin_) {
-      return InternalError("Fatbins are not yet supported for ROCm.");
+    using AmdGpuHsaco = std::vector<tensorflow::uint8>;
+    std::vector<tensorflow::se::HsacoImage> images;
+    for (const std::string& arch_str : architectures_) {
+      // Parse ROCm architecture.
+      absl::string_view consumable_arch(arch_str);
+      if (!absl::ConsumePrefix(&consumable_arch, "gfx")) {
+        return InternalError(
+            "Could not parse ROCm architecture prefix (expected gfx)");
+      }
+      uint32_t arch;
+      if (!absl::SimpleAtoi(consumable_arch, &arch)) {
+        return InternalError("Could not parse ROCm architecture number");
+      }
+
+      std::string libdevice_dir = tensorflow::RocdlRoot();
+      auto llvm_module_copy = llvm::CloneModule(*llvmModule);
+      xla::gpu::GpuVersion gpu_version{std::make_pair(arch, arch_str)};
+      auto hsaco_or = xla::gpu::amdgpu::CompileToHsaco(
+          llvm_module_copy.get(), gpu_version, config, libdevice_dir);
+      if (!hsaco_or.ok()) {
+        return InternalError("Failure when generating HSACO");
+      }
+
+      auto hsaco = hsaco_or.ValueOrDie();
+      if (!generate_fatbin_) {
+        // Skip fatbin generation and return the first and only GPU machine
+        // code. This is currently only used for `tf_to_gpu_binary` and will
+        // eventually disappear.
+        return hsaco;
+      }
+
+      images.push_back({arch_str, std::move(hsaco)});
     }
 
-    // Parse ROCm architecture.
-    absl::string_view consumable_arch(architectures_.front());
-    if (!absl::ConsumePrefix(&consumable_arch, "gfx")) {
-      return InternalError(
-          "Could not parse ROCm architecture prefix (expected gfx)");
-    }
-    uint32_t arch;
-    if (!absl::SimpleAtoi(consumable_arch, &arch)) {
-      return InternalError("Could not parse ROCm architecture number");
-    }
-
-    std::string libdevice_dir = tensorflow::RocdlRoot();
-    return xla::gpu::amdgpu::CompileToHsaco(llvmModule.get(), arch, config,
-                                            libdevice_dir);
+    // TODO(b/169870789): Revisit the use of fatbins.
+    // Bundle HSACO images into a single fatbin.
+    return tensorflow::se::BundleGpuAsm(images, tensorflow::RocmRoot());
 
 #elif GOOGLE_CUDA
-    auto llvmModule = mlir::translateModuleToNVVMIR(gpu_module, llvmContext);
     if (!llvmModule) {
       return InternalError("Could not translate MLIR module to NVVM");
     }
@@ -125,7 +151,9 @@ class GpuKernelToBlobPass
     llvmModule->setDataLayout(xla::gpu::nvptx::kDataLayout);
 
     xla::HloModuleConfig config;
-    config.set_debug_options(xla::GetDebugOptionsFromFlags());
+    xla::DebugOptions options = xla::GetDebugOptionsFromFlags();
+    options.set_xla_gpu_ftz(enable_ftz_);
+    config.set_debug_options(options);
 
     auto enable_fusion = [](llvm::TargetMachine* target) {
       target->Options.AllowFPOpFusion = llvm::FPOpFusion::FPOpFusionMode::Fast;
@@ -162,7 +190,14 @@ class GpuKernelToBlobPass
           xla::gpu::nvptx::CompileToPtx(llvm_module_copy.get(),
                                         std::make_pair(cc_major, cc_minor),
                                         config, libdevice_dir, enable_fusion));
-      VLOG(1) << ptx;
+
+      if (print_ptx_) {
+        llvm::dbgs() << "Generated PTX code for module '"
+                     << gpu_module.getName() << "' on architecture sm_" << arch
+                     << ":\n";
+        llvm::dbgs() << ptx << "\n";
+      }
+
       TF_ASSIGN_OR_RETURN(std::vector<uint8_t> gpu_asm,
                           tensorflow::se::CompileGpuAsm(
                               cc_major, cc_minor, ptx.c_str(), gpu_asm_opts));
@@ -211,15 +246,16 @@ class GpuKernelToBlobPass
     return InternalError(
         "Can't find libdevice directory ${CUDA_DIR}/nvvm/libdevice");
   }
+  bool enable_ftz_;
 };
 
 }  // namespace
 
 std::unique_ptr<OperationPass<gpu::GPUModuleOp>> CreateGpuKernelToBlobPass(
     mlir::StringRef blob_annotation, ArrayRef<std::string> architectures,
-    bool generate_fatbin) {
-  return std::make_unique<GpuKernelToBlobPass>(blob_annotation, architectures,
-                                               generate_fatbin);
+    bool generate_fatbin, bool print_ptx, bool enable_ftz) {
+  return std::make_unique<GpuKernelToBlobPass>(
+      blob_annotation, architectures, generate_fatbin, print_ptx, enable_ftz);
 }
 
 }  // namespace transforms

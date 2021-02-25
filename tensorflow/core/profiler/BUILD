@@ -1,3 +1,4 @@
+# copybara:uncomment(oss-unused) load("//net/grpc/go/build_defs:go_grpc_library.bzl", "go_grpc_library")
 load("//tensorflow:tensorflow.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -93,6 +94,7 @@ cc_library(
         "//tensorflow/core/profiler/internal/cpu:traceme_recorder_impl",
         "//tensorflow/core/profiler/lib:profiler_factory_impl",
         "//tensorflow/core/profiler/lib:profiler_session_impl",
+        "//tensorflow/core/profiler/utils:time_utils_impl",
     ],
     alwayslink = True,
 )
@@ -139,3 +141,20 @@ filegroup(
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "profiler_analysis_proto_py_pb2",
+#     has_services = 1,
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":profiler_analysis_proto"],
+# )
+#
+# py_proto_library(
+#     name = "protos_all_py_pb2",
+#     api_version = 2,
+#     visibility = [":friends"],
+#     deps = [":protos_all"],
+# )
+# copybara:uncomment_end

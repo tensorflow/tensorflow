@@ -43,8 +43,6 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
-from tensorflow.python import _pywrap_stacktrace_handler
-from tensorflow.python import _pywrap_util_port
 from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import pywrap_tf_session
@@ -79,9 +77,11 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_ops  # pylint: disable=unused-import
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
+from tensorflow.python.platform import _pywrap_stacktrace_handler
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
+from tensorflow.python.util import _pywrap_util_port
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
@@ -616,12 +616,12 @@ def enable_output_all_intermediates(fn):
     The wrapped function
   """
 
-  def wrapper(self, *args, **kwargs):
+  def wrapper(*args, **kwargs):
     output_all_intermediates_old = \
         control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE
     control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = True
     try:
-      return fn(self, *args, **kwargs)
+      return fn(*args, **kwargs)
     finally:
       control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = \
           output_all_intermediates_old
@@ -660,7 +660,7 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
         # versions of python2.7.x.
         for _ in range(warmup_iters):
           f(self, *args, **kwargs)
-        # Since we aren't in the normal test lifecylce, we need to manually run
+        # Since we aren't in the normal test lifecycle, we need to manually run
         # cleanups to clear out their object references.
         self.doCleanups()
 
@@ -668,6 +668,10 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
         # create and save as a dummy variable to include it as a baseline.
         obj_count_by_type = _get_object_count_by_type()
         gc.collect()
+
+        # Make sure any registered functions are cleaned up in the C++ runtime.
+        registered_function_names = context.context().list_function_names()
+
         # unittest.doCleanups adds to self._outcome with each unwound call.
         # These objects are retained across gc collections so we exclude them
         # from the object count calculation.
@@ -682,7 +686,7 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
           }
         for _ in range(3):
           f(self, *args, **kwargs)
-        # Since we aren't in the normal test lifecylce, we need to manually run
+        # Since we aren't in the normal test lifecycle, we need to manually run
         # cleanups to clear out their object references.
         self.doCleanups()
         # Note that gc.get_objects misses anything that isn't subject to garbage
@@ -711,6 +715,14 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
                 exclude=gc.get_referents(self._outcome.errors,
                                          self._outcome.skipped)) -
             obj_count_by_type)
+
+        # There should be no newly registered functions hanging around.
+        leftover_functions = (
+            context.context().list_function_names() - registered_function_names)
+        assert not leftover_functions, (
+            "The following functions were newly created: %s" %
+            leftover_functions)
+
         # In some cases (specifically on MacOS), new_count is somehow
         # smaller than previous_count.
         # Using plain assert because not all classes using this decorator
@@ -1104,21 +1116,6 @@ def run_in_async_and_sync_mode(f):
     else:
       with context.execution_mode(context.SYNC):
         f(self, *args, **kwargs)
-  return decorator
-
-
-def eager_lazy_remote_copy_on_and_off(f):
-  """Execute the test method w/o lazy tensor copy for function remote inputs."""
-
-  @parameterized.named_parameters([("WithLazyRemoteCopy", True), ("", False)])
-  @functools.wraps(f)
-  def decorator(self, lazily_remote_copy, *args, **kwargs):
-    if lazily_remote_copy:
-      context.context().lazy_remote_inputs_copy = True
-    else:
-      context.context().lazy_remote_inputs_copy = False
-    f(self, *args, **kwargs)
-
   return decorator
 
 
@@ -1553,6 +1550,11 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
   Warning: if a non-GPU version of the package is installed, the function would
   also return False. Use `tf.test.is_built_with_cuda` to validate if TensorFlow
   was build with CUDA support.
+
+  For example,
+  >>> gpu_available = tf.test.is_gpu_available()
+  >>> is_cuda_gpu_available = tf.test.is_gpu_available(cuda_only=True)
+  >>> is_cuda_gpu_min_3 = tf.test.is_gpu_available(True, (3,0))
 
   Args:
     cuda_only: limit the search to CUDA GPUs.
@@ -2042,6 +2044,10 @@ class TensorFlowTestCase(googletest.TestCase):
     self._tempdir = None
     self._cached_session = None
     self._test_start_time = None
+    # This flag provides the ability to control whether the graph mode gets
+    # initialized for TF1 or not. Initializing for TF1, which is what was
+    # happening earlier, was preventing enablement of 'eager mode' in the test.
+    self._set_default_seed = True
 
   def setUp(self):
     super(TensorFlowTestCase, self).setUp()
@@ -2056,7 +2062,8 @@ class TensorFlowTestCase(googletest.TestCase):
     # cleared first.
     ops._default_graph_stack.reset()  # pylint: disable=protected-access
     ops.reset_default_graph()
-    random_seed.set_random_seed(random_seed.DEFAULT_GRAPH_SEED)
+    if self._set_default_seed:
+      random_seed.set_random_seed(random_seed.DEFAULT_GRAPH_SEED)
     # Reset summary writer in case another test used set_as_default() with their
     # summary writer.
     summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
@@ -2176,10 +2183,9 @@ class TensorFlowTestCase(googletest.TestCase):
       message: the message to validate.
       msg: Optional message to report on failure.
     """
-    msg = msg if msg else ""
     if isinstance(expected_message_maybe_ascii, type(message)):
       expected_message = expected_message_maybe_ascii
-      self._AssertProtoEquals(expected_message, message)
+      self._AssertProtoEquals(expected_message, message, msg=msg)
     elif isinstance(expected_message_maybe_ascii, (str, bytes)):
       expected_message = type(message)()
       text_format.Merge(
@@ -2188,8 +2194,8 @@ class TensorFlowTestCase(googletest.TestCase):
           descriptor_pool=descriptor_pool.Default())
       self._AssertProtoEquals(expected_message, message, msg=msg)
     else:
-      assert False, ("Can't compare protos of type %s and %s. %s" %
-                     (type(expected_message_maybe_ascii), type(message), msg))
+      assert False, ("Can't compare protos of type %s and %s." %
+                     (type(expected_message_maybe_ascii), type(message)))
 
   def assertProtoEqualsVersion(
       self,
@@ -2267,7 +2273,7 @@ class TensorFlowTestCase(googletest.TestCase):
 
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
-  def session(self, graph=None, config=None, use_gpu=False, force_gpu=False):
+  def session(self, graph=None, config=None, use_gpu=True, force_gpu=False):
     """A context manager for a TensorFlow Session for use in executing tests.
 
     Note that this will set this session and the graph as global defaults.
@@ -2283,7 +2289,7 @@ class TensorFlowTestCase(googletest.TestCase):
     ``` python
     class MyOperatorTest(test_util.TensorFlowTestCase):
       def testMyOperator(self):
-        with self.session(use_gpu=True):
+        with self.session():
           valid_input = [1.0, 2.0, 3.0, 4.0, 5.0]
           result = MyOperator(valid_input).eval()
           self.assertEqual(result, [1.0, 2.0, 3.0, 5.0, 8.0]
@@ -2314,7 +2320,7 @@ class TensorFlowTestCase(googletest.TestCase):
   def cached_session(self,
                      graph=None,
                      config=None,
-                     use_gpu=False,
+                     use_gpu=True,
                      force_gpu=False):
     """Returns a TensorFlow Session for use in executing tests.
 
@@ -2333,7 +2339,7 @@ class TensorFlowTestCase(googletest.TestCase):
     ```python
     class MyOperatorTest(test_util.TensorFlowTestCase):
       def testMyOperator(self):
-        with self.cached_session(use_gpu=True) as sess:
+        with self.cached_session() as sess:
           valid_input = [1.0, 2.0, 3.0, 4.0, 5.0]
           result = MyOperator(valid_input).eval()
           self.assertEqual(result, [1.0, 2.0, 3.0, 5.0, 8.0]
@@ -2368,7 +2374,7 @@ class TensorFlowTestCase(googletest.TestCase):
   def test_session(self,
                    graph=None,
                    config=None,
-                   use_gpu=False,
+                   use_gpu=True,
                    force_gpu=False):
     """Use cached_session instead."""
     if self.id().endswith(".test_session"):
@@ -2551,7 +2557,7 @@ class TensorFlowTestCase(googletest.TestCase):
 
   def _GetNdArray(self, a):
     # If a is tensor-like then convert it to ndarray
-    if tensor_util.is_tensor(a):
+    if tensor_util.is_tf_type(a):
       if isinstance(a, ops._EagerTensorBase):
         a = a.numpy()
       else:
@@ -2575,6 +2581,12 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertEqual(a.shape, b.shape, shape_mismatch_msg)
 
     msgs = [msg]
+    # np.allclose does not always work for our custom bfloat16 extension type
+    # when type promotions are involved, so we first cast any bfloat16 arrays
+    # to float32.
+    a_dtype = a.dtype
+    a = a.astype(np.float32) if a.dtype == dtypes.bfloat16.as_numpy_dtype else a
+    b = b.astype(np.float32) if b.dtype == dtypes.bfloat16.as_numpy_dtype else b
     if not np.allclose(a, b, rtol=rtol, atol=atol):
       # Adds more details to np.testing.assert_allclose.
       #
@@ -2598,7 +2610,7 @@ class TensorFlowTestCase(googletest.TestCase):
       msgs.append("not close rhs = {}".format(y))
       msgs.append("not close dif = {}".format(np.abs(x - y)))
       msgs.append("not close tol = {}".format(atol + rtol * np.abs(y)))
-      msgs.append("dtype = {}, shape = {}".format(a.dtype, a.shape))
+      msgs.append("dtype = {}, shape = {}".format(a_dtype, a.shape))
       # TODO(xpan): There seems to be a bug:
       # tensorflow/compiler/tests:binary_ops_test pass with float32
       # nan even though the equal_nan is False by default internally.
@@ -2759,21 +2771,25 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertAllClose(a, b, rtol=rtol, atol=atol, msg=msg)
 
   @py_func_if_in_function
-  def assertNotAllClose(self, a, b, msg=None, **kwargs):
+  def assertNotAllClose(self, a, b, rtol=1e-6, atol=1e-6, msg=None):
     """Assert that two numpy arrays, or Tensors, do not have near values.
 
     Args:
-      a: the first value to compare.
-      b: the second value to compare.
+      a: The expected numpy `ndarray`, or anything that can be converted into a
+        numpy `ndarray` (including Tensor), or any arbitrarily nested of
+        structure of these.
+      b: The actual numpy `ndarray`, or anything that can be converted into a
+        numpy `ndarray` (including Tensor), or any arbitrarily nested of
+        structure of these.
+      rtol: relative tolerance.
+      atol: absolute tolerance.
       msg: Optional message to report on failure.
-      **kwargs: additional keyword arguments to be passed to the underlying
-        `assertAllClose` call.
 
     Raises:
       AssertionError: If `a` and `b` are unexpectedly close at all elements.
     """
     try:
-      self.assertAllClose(a, b, **kwargs)
+      self.assertAllClose(a, b,  rtol=rtol, atol=atol, msg=msg)
     except AssertionError:
       return
     msg = msg or ""

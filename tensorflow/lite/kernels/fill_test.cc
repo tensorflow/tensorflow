@@ -73,6 +73,41 @@ class FillOpModel : public SingleOpModel {
   int output_;
 };
 
+template <typename dims_type, typename quant_type>
+class QuantizedFillOpModel : public SingleOpModel {
+ public:
+  explicit QuantizedFillOpModel(TensorType dims_tensor_type,
+                                std::initializer_list<int> dims_shape,
+                                std::initializer_list<dims_type> dims_data,
+                                const TensorData& tensor_data, float value) {
+    dims_ = AddInput(dims_tensor_type);
+    value_ = AddInput(tensor_data);
+    output_ = AddOutput(tensor_data);
+    SetBuiltinOp(BuiltinOperator_FILL, BuiltinOptions_FillOptions,
+                 CreateFillOptions(builder_).Union());
+    BuildInterpreter({dims_shape, {}});
+
+    if (dims_data.size() > 0) {
+      PopulateTensor<dims_type>(dims_, dims_data);
+    }
+    QuantizeAndPopulate<quant_type>(value_, {value});
+  }
+
+  std::vector<quant_type> GetOutput() {
+    return ExtractVector<quant_type>(output_);
+  }
+  std::vector<float> GetDequantizedOutput() {
+    TfLiteTensor* t = interpreter_->tensor(output_);
+    return Dequantize(GetOutput(), t->params.scale, t->params.zero_point);
+  }
+  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
+
+ protected:
+  int dims_;
+  int value_;
+  int output_;
+};
+
 class FillOpTest : public ::testing::TestWithParam<TestType> {};
 
 TEST_P(FillOpTest, FillInt32) {
@@ -135,6 +170,46 @@ TEST(FillOpTest, FillString) {
                                                "AB", "AB", "AB"}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
 }
+
+TEST_P(FillOpTest, FillInt8) {
+  FillOpModel<int64_t, int8_t> m(TensorType_INT64, {3}, {2, 2, 2}, 5,
+                                 GetParam());
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 5, 5, 5, 5, 5, 5, 5}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
+}
+
+template <typename quant_type>
+void QuantizedFill(float value) {
+  // Prepare TensorData for quantization of value
+  const float kMin = -1;
+  // Workaround to get a zero-point of 0
+  const float kMax =
+      std::numeric_limits<quant_type>::max() /
+      static_cast<float>(std::numeric_limits<quant_type>::max() + 1);
+  const TensorData tensor_data(GetTensorType<quant_type>(), {},
+                               std::abs(value) * kMin, std::abs(value) * kMax);
+
+  QuantizedFillOpModel<int32_t, quant_type> m(TensorType_INT32, {2}, {2, 3},
+                                              tensor_data, value);
+  m.Invoke();
+
+  constexpr float epsilon = 0.01f;
+  const float min_value = tensor_data.min - epsilon;
+  const float max_value = tensor_data.max + epsilon;
+  const float kQuantizedTolerance =
+      (max_value - min_value) / (std::numeric_limits<quant_type>::max() -
+                                 std::numeric_limits<quant_type>::min());
+  EXPECT_THAT(
+      m.GetDequantizedOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          {value, value, value, value, value, value}, kQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
+}
+
+TEST(FillOpTest, QuantizedFillInt8) { QuantizedFill<int8_t>(3.14f); }
+
+TEST(FillOpTest, QuantizedFillInt16) { QuantizedFill<int16_t>(3.14f); }
 
 INSTANTIATE_TEST_SUITE_P(FillOpTest, FillOpTest,
                          ::testing::Values(TestType::kConst,

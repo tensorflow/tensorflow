@@ -126,9 +126,10 @@ std::unique_ptr<VerifiedHloModule> HloTestBase::CreateNewVerifiedModule(
 
 StatusOr<std::unique_ptr<VerifiedHloModule>>
 HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text,
-                                          int64 replica_count) {
-  return ParseAndReturnVerifiedModule(hlo_text,
-                                      GetModuleConfigForTest(replica_count));
+                                          int64 replica_count,
+                                          int64_t num_partitions) {
+  return ParseAndReturnVerifiedModule(
+      hlo_text, GetModuleConfigForTest(replica_count, num_partitions));
 }
 
 StatusOr<std::unique_ptr<VerifiedHloModule>>
@@ -507,9 +508,9 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 
   absl::optional<Literal> canonical_output;
   for (int i = 0; i < n; ++i) {
-    StatusOr<Literal> output =
-        test_runner_.Execute(std::move(executables[i]), fake_arguments[i],
-                             /*profile=*/&((*profiles)[i]));
+    StatusOr<Literal> output = test_runner_.ExecuteWithExecutable(
+        std::move(executables[i]), fake_arguments[i],
+        /*profile=*/&((*profiles)[i]));
     if (!output.ok()) {
       return ::testing::AssertionFailure() << output.status().error_message();
     }

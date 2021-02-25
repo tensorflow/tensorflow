@@ -47,9 +47,10 @@ class Ftrl(optimizer_v2.OptimizerV2):
   $$n_{t,i} = n_{t-1,i} + g_{t,i}^{2}$$
   $$\sigma_{t,i} = (\sqrt{n_{t,i}} - \sqrt{n_{t-1,i}}) / \alpha$$
   $$z_{t,i} = z_{t-1,i} + g_{t,i} - \sigma_{t,i} * w_{t,i}$$
-  $$w_{t,i} = - ((\beta+\sqrt{n_{t,i}}) / \alpha + 2 * \lambda_{2})^{-1} *
-              (z_{i} - sgn(z_{i}) * \lambda_{1}) if \abs{z_{i}} > \lambda_{i}
-                                                 else 0$$
+  $$w_{t,i} =\begin{cases} 0 & | z_{i}| \leqslant \lambda _{1} ,\\
+              \ -\left(\frac{\beta +\sqrt{n_{t,i}}}{\alpha } 
+              +\lambda _{2}\right)^{-1}( z_{i} -sgn(z_{i} )
+              *\lambda _{1}) & otherwise.\end{cases}$$
 
   Check the documentation for the l2_shrinkage_regularization_strength
   parameter for more details when shrinkage is enabled, in which case gradient
@@ -64,9 +65,9 @@ class Ftrl(optimizer_v2.OptimizerV2):
     initial_accumulator_value: The starting value for accumulators.
       Only zero or positive values are allowed.
     l1_regularization_strength: A float value, must be greater than or
-      equal to zero.
+      equal to zero. Defaults to 0.0.
     l2_regularization_strength: A float value, must be greater than or
-      equal to zero.
+      equal to zero. Defaults to 0.0.
     name: Optional name prefix for the operations created when applying
       gradients.  Defaults to `"Ftrl"`.
     l2_shrinkage_regularization_strength: A float value, must be greater than
@@ -74,6 +75,7 @@ class Ftrl(optimizer_v2.OptimizerV2):
       stabilization penalty, whereas this L2 shrinkage is a magnitude penalty.
       When input is sparse shrinkage will only happen on the active weights.
     beta: A float value, representing the beta value from the paper.
+      Defaults to 0.0.
     **kwargs: Keyword arguments. Allowed to be one of
       `"clipnorm"` or `"clipvalue"`.
       `"clipnorm"` (float) clips gradients by norm; `"clipvalue"` (float) clips
@@ -233,7 +235,7 @@ class Ftrl(optimizer_v2.OptimizerV2):
         'learning_rate':
             self._serialize_hyperparameter('learning_rate'),
         'decay':
-            self._serialize_hyperparameter('decay'),
+            self._initial_decay,
         'initial_accumulator_value':
             self._initial_accumulator_value,
         'learning_rate_power':

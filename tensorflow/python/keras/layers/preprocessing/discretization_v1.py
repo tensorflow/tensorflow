@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.engine.base_preprocessing_layer_v1 import CombinerPreprocessingLayer
 from tensorflow.python.keras.layers.preprocessing import discretization
 from tensorflow.python.util.tf_export import keras_export
@@ -25,4 +26,6 @@ from tensorflow.python.util.tf_export import keras_export
 
 @keras_export(v1=['keras.layers.experimental.preprocessing.Discretization'])
 class Discretization(discretization.Discretization, CombinerPreprocessingLayer):
+  base_preprocessing_layer.keras_kpl_gauge.get_cell(
+      'Discretization_V1').set(True)
   pass

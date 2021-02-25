@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_MLIR_HLO_TO_HLO_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_MLIR_HLO_TO_HLO_H_
 
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -50,6 +50,14 @@ Status ConvertMlirHloToHlo(mlir::ModuleOp module, ::xla::HloProto* hlo_proto,
                            bool use_tuple_args, bool return_tuple,
                            const tensorflow::XlaHelpers::ShapeRepresentationFn
                                shape_representation_fn = nullptr,
+                           MlirToHloConversionOptions options = {});
+
+// Transforms a Block into HLO, where the HLO is represented as calls into an
+// XlaBuilder. Callee functions are allowed in the Block's ancestor ModuleOp.
+// xla_params are inputs to block. returns are the returned XlaOps.
+Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
+                           llvm::ArrayRef<xla::XlaOp> xla_params,
+                           std::vector<xla::XlaOp>& returns,
                            MlirToHloConversionOptions options = {});
 
 // Converts a region to a computation. It returns a standalone module that

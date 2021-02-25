@@ -69,6 +69,132 @@ class StrategyTest(test.TestCase, parameterized.TestCase):
 
 @combinations.generate(
     combinations.combine(
+        distribution=[
+            strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+            strategy_combinations.multi_worker_mirrored_2x2_gpu,
+            strategy_combinations.tpu_strategy
+        ],
+        mode=['graph', 'eager']))
+class StrategyLocalResultTest(test.TestCase):
+
+  def testLocalResultForDictionary(self, distribution):
+
+    @def_function.function
+    def model_fn():
+      return {'a': constant_op.constant(1.), 'b': constant_op.constant(2.)}
+
+    with distribution.scope():
+      result = distribution.run(model_fn)
+      got = self.evaluate(distribution.experimental_local_results(result))
+      self.assertEqual(got, ({'a': 1., 'b': 2.}, {'a': 1., 'b': 2.}))
+
+  def testLocalResultForList(self, distribution):
+
+    @def_function.function
+    def model_fn():
+      return [constant_op.constant(1.), constant_op.constant(2.)]
+
+    with distribution.scope():
+      result = distribution.run(model_fn)
+      got = self.evaluate(distribution.experimental_local_results(result))
+      self.assertEqual(got, ([1., 2.], [1., 2.]))
+
+  def testLocalResultForTuple(self, distribution):
+
+    @def_function.function
+    def model_fn():
+      return (constant_op.constant(1.), constant_op.constant(2.),
+              constant_op.constant(3.))
+
+    with distribution.scope():
+      result = distribution.run(model_fn)
+      got = self.evaluate(distribution.experimental_local_results(result))
+      self.assertEqual(got, ((1., 2., 3.), (1., 2., 3.)))
+
+  def testLocalResultForNestedStruct(self, distribution):
+
+    @def_function.function
+    def model_fn():
+      return ({
+          'a': constant_op.constant(1.),
+          'b': constant_op.constant(2.)
+      }, {
+          'a': constant_op.constant(4.),
+          'b': constant_op.constant(6.)
+      })
+
+    with distribution.scope():
+      result = distribution.run(model_fn)
+      got = self.evaluate(distribution.experimental_local_results(result))
+      self.assertEqual(got, (({
+          'a': 1.,
+          'b': 2.
+      }, {
+          'a': 4.,
+          'b': 6.
+      }), ({
+          'a': 1.,
+          'b': 2.
+      }, {
+          'a': 4.,
+          'b': 6.
+      })))
+
+  def testLocalResultForNestedStructWithoutTensor(self, distribution):
+
+    @def_function.function
+    def model_fn():
+      return {'a': 1., 'b': 2.}
+
+    with distribution.scope():
+      result = distribution.run(model_fn)
+      v = self.evaluate(distribution.experimental_local_results(result))
+      self.assertIsInstance(v, tuple)
+      self.assertAllEqual(v, ({'a': 1., 'b': 2.}, {'a': 1., 'b': 2.}))
+
+  def testLocalResultForScalarValue(self, distribution):
+
+    @def_function.function
+    def model_fn():
+      return distribution.extended._get_local_replica_id(
+          ds_context.get_replica_context().replica_id_in_sync_group)
+
+    with distribution.scope():
+      result = distribution.run(model_fn)
+      v = self.evaluate(distribution.experimental_local_results(result))
+      self.assertIsInstance(v, tuple)
+      self.assertEqual(v, (0, 1))
+
+  def testLocalResultForDictionaryDifferentReplicas(self, distribution):
+
+    @def_function.function
+    def model_fn():
+      replica_id = distribution.extended._get_local_replica_id(
+          ds_context.get_replica_context().replica_id_in_sync_group)
+      return {
+          'a': math_ops.cast(replica_id + 1, dtype=float),
+          'b': math_ops.cast(replica_id + 2, dtype=float)
+      }
+
+    with distribution.scope():
+      result = distribution.run(model_fn)
+      got = self.evaluate(distribution.experimental_local_results(result))
+      self.assertAllEqual(got, ({'a': 1., 'b': 2.}, {'a': 2., 'b': 3.}))
+
+  def testLocalResultForTensor(self, distribution):
+
+    @def_function.function
+    def model_fn():
+      return constant_op.constant([2., 3.])
+
+    with distribution.scope():
+      result = distribution.run(model_fn)
+      v = self.evaluate(distribution.experimental_local_results(result))
+      self.assertAllEqual(v, ([2., 3.], [2., 3.]))
+
+
+@combinations.generate(
+    combinations.combine(
         strategy=[
             strategy_combinations.multi_worker_mirrored_2x1_cpu,
             strategy_combinations.multi_worker_mirrored_2x1_gpu,
@@ -109,6 +235,106 @@ class ReduceTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(1.5, x_m)
     x_s = strategy.reduce(reduce_util.ReduceOp.SUM, x, axis=0)
     self.assertEqual(3 * strategy.num_replicas_in_sync, x_s)
+
+
+@combinations.generate(
+    combinations.combine(
+        strategy=[
+            strategy_combinations.multi_worker_mirrored_2x1_cpu,
+            strategy_combinations.multi_worker_mirrored_2x1_gpu,
+            strategy_combinations.multi_worker_mirrored_2x2_gpu,
+            strategy_combinations.tpu_strategy,
+        ] + strategy_combinations.strategies_minus_tpu,
+        tf_function=[combinations.tf_function, combinations.no_tf_function],
+        mode=['eager']))
+class ReplicaCtxAllReduceTest(test.TestCase, parameterized.TestCase):
+
+  def testDense(self, strategy, tf_function):
+    if (isinstance(strategy, tpu_strategy.TPUStrategy) and
+        tf_function is combinations.no_tf_function):
+      self.skipTest('Skip TPUStrategy + eager combination.')
+
+    @tf_function
+    def fn():
+
+      def replica_fn():
+        value = array_ops.identity(1.0)
+        reduced = strategy.extended._replica_ctx_all_reduce(
+            reduce_util.ReduceOp.SUM, value)
+        return reduced
+
+      return strategy.experimental_local_results(strategy.run(replica_fn))
+
+    got = fn()[0]
+    self.assertEqual(got, 1.0 * strategy.num_replicas_in_sync)
+
+  def testSparse(self, strategy, tf_function):
+    if tf_function is combinations.no_tf_function:
+      self.skipTest('Skip IndexedSlices + eager combination.')
+
+    @tf_function
+    def fn():
+
+      def replica_fn():
+        value = ops.IndexedSlices(
+            values=array_ops.identity([[1.0]]),
+            indices=array_ops.identity([0]),
+            dense_shape=array_ops.identity([5, 1]))
+        reduced = strategy.extended._replica_ctx_all_reduce(
+            reduce_util.ReduceOp.SUM, value)
+        return reduced
+
+      return strategy.experimental_local_results(strategy.run(replica_fn))
+
+    got = fn()[0]
+    expect = ops.IndexedSlices(
+        values=array_ops.identity([[1.0 * strategy.num_replicas_in_sync]]),
+        indices=array_ops.identity([0]),
+        dense_shape=array_ops.identity([5, 1]))
+    self.assertAllEqual(
+        ops.convert_to_tensor(got), ops.convert_to_tensor(expect))
+
+  def testNestedInput(self, strategy, tf_function):
+    if tf_function is combinations.no_tf_function:
+      self.skipTest('Skip IndexedSlices + eager combination.')
+
+    @tf_function
+    def fn():
+
+      def replica_fn():
+        value = (array_ops.identity(1.0),
+                 ops.IndexedSlices(
+                     values=array_ops.identity([[1.0]]),
+                     indices=array_ops.identity([0]),
+                     dense_shape=array_ops.identity([5, 1])),
+                 array_ops.identity(2.0),
+                 ops.IndexedSlices(
+                     values=array_ops.identity([[2.0]]),
+                     indices=array_ops.identity([1]),
+                     dense_shape=array_ops.identity([5, 1])))
+        reduced = strategy.extended._replica_ctx_all_reduce(
+            reduce_util.ReduceOp.SUM, value)
+        return reduced
+
+      return strategy.experimental_local_results(strategy.run(replica_fn))
+
+    got = fn()[0]
+    expect = (1.0 * strategy.num_replicas_in_sync,
+              ops.IndexedSlices(
+                  values=array_ops.identity(
+                      [[1.0 * strategy.num_replicas_in_sync]]),
+                  indices=array_ops.identity([0]),
+                  dense_shape=array_ops.identity([5, 1])),
+              2.0 * strategy.num_replicas_in_sync,
+              ops.IndexedSlices(
+                  values=array_ops.identity(
+                      [[2.0 * strategy.num_replicas_in_sync]]),
+                  indices=array_ops.identity([1]),
+                  dense_shape=array_ops.identity([5, 1])))
+
+    self.assertAllClose(
+        nest.map_structure(ops.convert_to_tensor, got),
+        nest.map_structure(ops.convert_to_tensor, expect))
 
 
 def _make_indexed_slices(values, indices, dense_shape):

@@ -89,7 +89,7 @@ __device__ EIGEN_STRONG_INLINE bool OverThreshold(const Box* a, const Box* b,
   const float aa = intersection;
   const float bb = a_area + b_area - intersection;
   const float bt = bb * iou_threshold;
-  return aa >= bt;
+  return aa > bt;
 }
 
 template <bool flip_box>

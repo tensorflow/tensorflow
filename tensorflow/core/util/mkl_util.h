@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/mkl_threadpool.h"
-#include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -194,8 +193,7 @@ inline std::ostream& operator<<(std::ostream& os,
   return os;
 }
 
-inline std::ostream& operator<<(std::ostream& os,
-                                const MklTensorFormat& format) {
+inline void operator<<(std::ostream& os, const MklTensorFormat& format) {
   if (format == MklTensorFormat::FORMAT_NHWC) {
     os << "FORMAT_NHWC";
   } else if (format == MklTensorFormat::FORMAT_NCHW) {
@@ -247,7 +245,7 @@ inline mkldnn::stream* CreateStream(OpKernelContext* ctx,
 
 class MklDnnShape {
  private:
-  typedef struct {
+  struct MklShapeData {
     // Flag to indicate if the tensor is an MKL tensor or not
     bool is_mkl_tensor_ = false;
     // Number of dimensions in Tensorflow format
@@ -259,7 +257,7 @@ class MklDnnShape {
     mkldnn_memory_desc_t mkl_md_;
     /// TF dimension corresponding to this MKL dimension
     mkldnn_dims_t map_;
-  } MklShapeData;
+  };
   MklShapeData data_;
 
   typedef std::remove_extent<mkldnn_dims_t>::type mkldnn_dim_t;
@@ -1414,7 +1412,7 @@ class MklDnnData {
   /// for reorder. Otherwise, it will return memory primitive for user memory.
   ///
   /// E.g., Conv2D(I, F) is a primitive with I and F being inputs. Then to
-  /// execute Conv2D, we need memory primitive for I and F. Buf if reorder is
+  /// execute Conv2D, we need memory primitive for I and F. But if reorder is
   /// required for I and F (say I_r is reorder primitive for I; F_r is reorder
   /// primitive for F), then we need I_r and F_r to perform Conv2D.
   inline const memory& GetOpMem() const {
@@ -1924,7 +1922,6 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
     FactoryKeyCreator key_creator;
     auto const& from_desc = from->get_desc().data;
     auto const& to_desc = to->get_desc().data;
-    const int kIdxFirstStride = 0;
     memory::dims from_dims(from_desc.dims, &from_desc.dims[from_desc.ndims]);
     memory::dims to_dims(to_desc.dims, &to_desc.dims[to_desc.ndims]);
     auto from_strides = from_desc.format_desc.blocking.strides;
@@ -2010,7 +2007,7 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
 }  // namespace tensorflow
 
 /////////////////////////////////////////////////////////////////////
-// Macros for handling registeration for various types
+// Macros for handling registration for various types
 /////////////////////////////////////////////////////////////////////
 
 #define REGISTER_TEST_FLOAT32(TEST) REGISTER_TEST(TEST, DT_FLOAT, Float32Input);

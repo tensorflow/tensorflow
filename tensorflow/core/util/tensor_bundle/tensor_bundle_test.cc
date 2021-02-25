@@ -768,9 +768,12 @@ TEST(TensorBundleTest, StringTensors) {
     EXPECT_EQ(DT_STRING, dtype);
     EXPECT_EQ(TensorShape({1}), shape);
 
-    // Zero-out the string so that we can be sure the new one is read in.
+    // Fill the string differently so that we can be sure the new one is read
+    // in. Because fragmentation in tc-malloc and we have such a big tensor
+    // of 4GB, therefore it is not ideal to free the buffer right now.
+    // The rationale is to make allocation/free close to each other.
     tstring* backing_string = long_string_tensor.flat<tstring>().data();
-    backing_string->assign("");
+    std::char_traits<char>::assign(backing_string->data(), kLongLength, 'e');
 
     // Read long_scalar and check it contains kLongLength 'd's.
     TF_ASSERT_OK(reader.Lookup("long_scalar", &long_string_tensor));
@@ -1109,9 +1112,8 @@ TEST_F(TensorBundleAlignmentTest, AlignmentTest) {
   }
 }
 
-static void BM_BundleAlignmentByteOff(int iters, int alignment,
-                                      int tensor_size) {
-  testing::StopTiming();
+static void BM_BundleAlignmentByteOff(::testing::benchmark::State& state,
+                                      int alignment, int tensor_size) {
   {
     BundleWriter::Options opts;
     opts.data_alignment = alignment;
@@ -1122,18 +1124,17 @@ static void BM_BundleAlignmentByteOff(int iters, int alignment,
   }
   BundleReader reader(Env::Default(), Prefix("foo"));
   TF_CHECK_OK(reader.status());
-  testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     Tensor t;
     TF_CHECK_OK(reader.Lookup("big", &t));
   }
-  testing::StopTiming();
 }
 
-#define BM_BundleAlignment(ALIGN, SIZE)                        \
-  static void BM_BundleAlignment_##ALIGN##_##SIZE(int iters) { \
-    BM_BundleAlignmentByteOff(iters, ALIGN, SIZE);             \
-  }                                                            \
+#define BM_BundleAlignment(ALIGN, SIZE)            \
+  static void BM_BundleAlignment_##ALIGN##_##SIZE( \
+      ::testing::benchmark::State& state) {        \
+    BM_BundleAlignmentByteOff(state, ALIGN, SIZE); \
+  }                                                \
   BENCHMARK(BM_BundleAlignment_##ALIGN##_##SIZE)
 
 BM_BundleAlignment(1, 512);

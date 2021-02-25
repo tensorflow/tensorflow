@@ -23,7 +23,11 @@ limitations under the License.
 namespace tensorflow {
 
 // Logger for logging/dumping MLIR modules before and after passes in bridge
-// targeting TPUs.
+// targeting TPUs. The passes being logged can be restricted via environment
+// variable `MLIR_BRIDGE_LOG_PASS_PATTERNS` which is interpreted as a comma-
+// separated list of strings, and only passes whose name contains any of those
+// strings as a substring are logged (no regex support). If
+// `MLIR_BRIDGE_LOG_PASS_PATTERNS` is not defined, then all passes are logged.
 class BridgeLoggerConfig : public mlir::PassManager::IRPrinterConfig {
  public:
   explicit BridgeLoggerConfig(bool print_module_scope = false,
@@ -42,6 +46,14 @@ class BridgeLoggerConfig : public mlir::PassManager::IRPrinterConfig {
   // with the stream to dump into.
   void printAfterIfEnabled(mlir::Pass *pass, mlir::Operation *operation,
                            PrintCallbackFn print_callback) override;
+
+ private:
+  bool should_print(mlir::Pass *pass);
+
+  // Only print passes that match any of these patterns. A pass matches a
+  // pattern if its name contains the pattern as a substring. If
+  // `log_pass_patterns_` is empty, print all passes.
+  std::vector<std::string> log_pass_patterns_;
 };
 
 // Logger for logging/dumping pass pipeline timings after completion.

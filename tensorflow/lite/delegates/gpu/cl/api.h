@@ -85,9 +85,13 @@ class InferenceEnvironment {
       const InferenceOptions& options, GraphFloat32 model,
       std::vector<uint8_t>* serialized_model) = 0;
 
+  // std::unique_ptr<InferenceBuilder>* builder - required parameter
+  // std::vector<int64_t>* in_refs - optional, can be nullptr
+  // std::vector<int64_t>* out_refs - optional, can be nullptr
   virtual absl::Status NewInferenceBuilder(
-      const std::vector<uint8_t>& serialized_model,
-      std::unique_ptr<InferenceBuilder>* builder) = 0;
+      const absl::Span<const uint8_t> serialized_model,
+      std::unique_ptr<InferenceBuilder>* builder, std::vector<int64_t>* in_refs,
+      std::vector<int64_t>* out_refs) = 0;
 
   virtual absl::Status NewInferenceBuilder(
       const InferenceOptions& options, GraphFloat32 model,
@@ -135,6 +139,28 @@ absl::Status NewInferenceEnvironment(
     const InferenceEnvironmentOptions& options,
     std::unique_ptr<InferenceEnvironment>* environment,
     InferenceEnvironmentProperties* properties /* optional */);
+
+class CLInferenceRunner : public ::tflite::gpu::InferenceRunner {
+ public:
+  // The RunWithoutExternalBufferCopy provides a contract where the user of this
+  // interface does not need
+  //    a. Inputs to be copied to the internal GPU buffer from the external CPU
+  //       input buffer
+  //    b. Outputs to be copied from the internal GPU buffer to the
+  //       external CPU buffer
+  //
+  // The user of this interface is responsible for copying the inputs prior to
+  // running the GPU kernels and outputs post running with the other interfaces
+  // provided here.
+  virtual absl::Status RunWithoutExternalBufferCopy() = 0;
+
+  // Copies from the external input tensor (normally CPU buffer) to the internal
+  // OpenCL buffer.
+  virtual absl::Status CopyFromExternalInput(int index) = 0;
+
+  // Copies from the internal output OpenCL buffer to the external output tensor
+  virtual absl::Status CopyToExternalOutput(int index) = 0;
+};
 
 }  // namespace cl
 }  // namespace gpu

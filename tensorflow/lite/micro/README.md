@@ -1,15 +1,19 @@
+<!-- mdformat off(b/169948621#comment2) -->
+
 <!--
 Semi-automated TOC generation with instructions from
 https://github.com/ekalinin/github-markdown-toc#auto-insert-and-update-toc
 -->
 
 <!--ts-->
+   * [TensorFlow Lite for Microcontrollers](#tensorflow-lite-for-microcontrollers)
+   * [Continuous Build Status](#continuous-build-status)
+      * [Official Builds](#official-builds)
+      * [Community Supported Builds](#community-supported-builds)
+   * [Getting Help and Involved](#getting-help-and-involved)
+   * [Additional Documentation](#additional-documentation)
 
-*   [TensorFlow Lite for Microcontrollers](#tensorflow-lite-for-microcontrollers)
-*   [Getting Help and Involved](#getting-help-and-involved)
-*   [Additional Documentation for the TFLM Internals](#additional-documentation-for-the-tflm-internals)
-
-<!-- Added by: advaitjain, at: Mon 05 Oct 2020 02:37:34 PM PDT -->
+<!-- Added by: advaitjain, at: Mon 23 Nov 2020 03:32:57 PM PST -->
 
 <!--te-->
 
@@ -22,11 +26,18 @@ kilobytes of memory.
 To learn how to use the framework, visit the developer documentation at
 [tensorflow.org/lite/microcontrollers](https://www.tensorflow.org/lite/microcontrollers).
 
-# Continuous Buils Status
+# Continuous Build Status
 
-Build Type | Status                                                                                                                                                                       | Artifacts
----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------
+## Official Builds
+Build Type | Status      | Artifacts
+---------- | ----------- | ---------
 Linux      | [![Status](https://storage.googleapis.com/tensorflow-kokoro-build-badges/tflite-micro.svg)](https://storage.googleapis.com/tensorflow-kokoro-build-badges/tflite-micro.html) |
+
+## Community Supported Builds
+Build Type | Status      | Artifacts
+---------- | ----------- | ---------
+Xtensa     | [![Status](https://github.com/advaitjain/tensorflow/blob/local-continuous-builds/tensorflow/lite/micro/docs/local_continuous_builds/xtensa-build-status.svg)](https://github.com/advaitjain/tensorflow/tree/local-continuous-builds/tensorflow/lite/micro/docs/local_continuous_builds/xtensa.md) |
+
 
 # Getting Help and Involved
 
@@ -52,6 +63,9 @@ For developers that are interested in more details of the internals of the
 project, we have additional documentation in the [docs](docs/) folder.
 
 *   [Benchmarks](benchmarks/README.md)
+*   [Profiling](docs/profiling.md)
 *   [Memory Management](docs/memory_management.md)
+*   [Optimized Kernel Implementations](docs/optimized_kernel_implementations.md)
 *   [New Platform Support](docs/new_platform_support.md)
 *   [Software Emulation with Renode](docs/renode.md)
+*   [Pre-allocated tensors](docs/preallocated_tensors.md)

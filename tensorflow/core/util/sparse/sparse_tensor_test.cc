@@ -744,7 +744,9 @@ TEST(SparseTensorTest, Dim0SparseTensorToDenseTensor) {
   EXPECT_EQ(dense.scalar<int32>()(), 5);
 }
 
-static void BM_SparseReorderFloat(int iters, int N32, int NDIM32) {
+static void BM_SparseReorderFloat(::testing::benchmark::State& state) {
+  int N32 = state.range(0);
+  int NDIM32 = state.range(1);
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
   const int64 NDIM = static_cast<int64>(NDIM32);
@@ -764,10 +766,9 @@ static void BM_SparseReorderFloat(int iters, int N32, int NDIM32) {
     reorder.push_back(d);
   }
   auto ix_t = ix.matrix<int64>();
-  testing::UseRealTime();
 
-  while (--iters) {
-    testing::StopTiming();
+  for (auto s : state) {
+    state.PauseTiming();
     for (int64 i = 0; i < N; ++i) {
       for (int d = 0; d < NDIM32; ++d) {
         ix_t(i, d) = rnd.Rand64() % 1000;
@@ -776,12 +777,14 @@ static void BM_SparseReorderFloat(int iters, int N32, int NDIM32) {
     SparseTensor st;
     TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
 
-    testing::StartTiming();
+    state.ResumeTiming();
     st.Reorder<float>(reorder);
   }
 }
 
-static void BM_SparseReorderString(int iters, int N32, int NDIM32) {
+static void BM_SparseReorderString(::testing::benchmark::State& state) {
+  int N32 = state.range(0);
+  int NDIM32 = state.range(1);
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
   const int64 NDIM = static_cast<int64>(NDIM32);
@@ -806,10 +809,9 @@ static void BM_SparseReorderString(int iters, int N32, int NDIM32) {
   for (int d = 2; d < NDIM32; ++d) {
     reorder.push_back(d);
   }
-  testing::UseRealTime();
 
-  while (--iters) {
-    testing::StopTiming();
+  for (auto s : state) {
+    state.PauseTiming();
     for (int64 i = 0; i < N; ++i) {
       for (int d = 0; d < NDIM32; ++d) {
         ix_t(i, d) = rnd.Rand64() % 1000;
@@ -818,30 +820,30 @@ static void BM_SparseReorderString(int iters, int N32, int NDIM32) {
     SparseTensor st;
     TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
 
-    testing::StartTiming();
+    state.ResumeTiming();
     st.Reorder<tstring>(reorder);
   }
 }
 
-BENCHMARK(BM_SparseReorderFloat)->ArgPair(10, 2);
-BENCHMARK(BM_SparseReorderFloat)->ArgPair(100, 2);
-BENCHMARK(BM_SparseReorderFloat)->ArgPair(1000, 2);
-BENCHMARK(BM_SparseReorderFloat)->ArgPair(10000, 2);
-BENCHMARK(BM_SparseReorderFloat)->ArgPair(100000, 2);
-BENCHMARK(BM_SparseReorderFloat)->ArgPair(10, 3);
-BENCHMARK(BM_SparseReorderFloat)->ArgPair(100, 3);
-BENCHMARK(BM_SparseReorderFloat)->ArgPair(1000, 3);
-BENCHMARK(BM_SparseReorderFloat)->ArgPair(10000, 3);
-BENCHMARK(BM_SparseReorderFloat)->ArgPair(100000, 3);
+BENCHMARK(BM_SparseReorderFloat)->UseRealTime()->ArgPair(10, 2);
+BENCHMARK(BM_SparseReorderFloat)->UseRealTime()->ArgPair(100, 2);
+BENCHMARK(BM_SparseReorderFloat)->UseRealTime()->ArgPair(1000, 2);
+BENCHMARK(BM_SparseReorderFloat)->UseRealTime()->ArgPair(10000, 2);
+BENCHMARK(BM_SparseReorderFloat)->UseRealTime()->ArgPair(100000, 2);
+BENCHMARK(BM_SparseReorderFloat)->UseRealTime()->ArgPair(10, 3);
+BENCHMARK(BM_SparseReorderFloat)->UseRealTime()->ArgPair(100, 3);
+BENCHMARK(BM_SparseReorderFloat)->UseRealTime()->ArgPair(1000, 3);
+BENCHMARK(BM_SparseReorderFloat)->UseRealTime()->ArgPair(10000, 3);
+BENCHMARK(BM_SparseReorderFloat)->UseRealTime()->ArgPair(100000, 3);
 
-BENCHMARK(BM_SparseReorderString)->ArgPair(10, 2);
-BENCHMARK(BM_SparseReorderString)->ArgPair(100, 2);
-BENCHMARK(BM_SparseReorderString)->ArgPair(1000, 2);
-BENCHMARK(BM_SparseReorderString)->ArgPair(10000, 2);
-BENCHMARK(BM_SparseReorderString)->ArgPair(10, 3);
-BENCHMARK(BM_SparseReorderString)->ArgPair(100, 3);
-BENCHMARK(BM_SparseReorderString)->ArgPair(1000, 3);
-BENCHMARK(BM_SparseReorderString)->ArgPair(10000, 3);
+BENCHMARK(BM_SparseReorderString)->UseRealTime()->ArgPair(10, 2);
+BENCHMARK(BM_SparseReorderString)->UseRealTime()->ArgPair(100, 2);
+BENCHMARK(BM_SparseReorderString)->UseRealTime()->ArgPair(1000, 2);
+BENCHMARK(BM_SparseReorderString)->UseRealTime()->ArgPair(10000, 2);
+BENCHMARK(BM_SparseReorderString)->UseRealTime()->ArgPair(10, 3);
+BENCHMARK(BM_SparseReorderString)->UseRealTime()->ArgPair(100, 3);
+BENCHMARK(BM_SparseReorderString)->UseRealTime()->ArgPair(1000, 3);
+BENCHMARK(BM_SparseReorderString)->UseRealTime()->ArgPair(10000, 3);
 
 }  // namespace
 }  // namespace sparse

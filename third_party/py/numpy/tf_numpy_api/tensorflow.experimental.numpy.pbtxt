@@ -389,6 +389,10 @@ tf_module {
     argspec: "args=[\'a\', \'axis\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "experimental_enable_numpy_behavior"
+    argspec: "args=[\'prefer_float32\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
     name: "expm1"
     argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
   }

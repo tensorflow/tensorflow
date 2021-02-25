@@ -25,9 +25,9 @@ from google.protobuf import message
 
 from tensorflow.core.framework import versions_pb2
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function as defun
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import regularizers
@@ -41,6 +41,7 @@ from tensorflow.python.keras.saving.saved_model.serialized_attributes import Com
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import metrics_utils
 from tensorflow.python.keras.utils.generic_utils import LazyLoader
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import load as tf_load
@@ -49,7 +50,6 @@ from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
-from tensorflow.python.training.tracking.tracking import delete_tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 
@@ -90,12 +90,6 @@ recurrent = LazyLoader(
 PUBLIC_ATTRIBUTES = CommonEndpoints.all_functions.union(
     CommonEndpoints.all_checkpointable_objects)
 PUBLIC_ATTRIBUTES.add(constants.KERAS_ATTR)
-
-
-KERAS_OBJECT_IDENTIFIERS = (
-    '_tf_keras_layer', '_tf_keras_input_layer', '_tf_keras_network',
-    '_tf_keras_model', '_tf_keras_sequential', '_tf_keras_metric',
-    '_tf_keras_rnn_layer')
 
 
 def load(path, compile=True, options=None):  # pylint: disable=redefined-builtin
@@ -139,7 +133,7 @@ def load(path, compile=True, options=None):  # pylint: disable=redefined-builtin
       raise IOError('Cannot parse keras metadata {}: {}.'
                     .format(path_to_metadata_pb, str(e)))
   else:
-    logging.warning('SavedModel saved prior to TF 2.4 detected when loading '
+    logging.warning('SavedModel saved prior to TF 2.5 detected when loading '
                     'Keras model. Please ensure that you are saving the model '
                     'with model.save() or tf.keras.models.save_model(), *NOT* '
                     'tf.saved_model.save(). To confirm, there should be a file '
@@ -152,7 +146,7 @@ def load(path, compile=True, options=None):  # pylint: disable=redefined-builtin
 
   # Recreate layers and metrics using the info stored in the metadata.
   keras_loader = KerasObjectLoader(metadata, object_graph_def)
-  keras_loader.load_layers()
+  keras_loader.load_layers(compile=compile)
 
   # Generate a dictionary of all loaded nodes.
   nodes_to_load = {'root': None}
@@ -174,7 +168,7 @@ def load(path, compile=True, options=None):  # pylint: disable=redefined-builtin
         'training_config', None)
     if training_config is not None:
       model.compile(**saving_utils.compile_args_from_training_config(
-          training_config))
+          training_config), from_serialized=True)
       saving_utils.try_build_compiled_arguments(model)
     else:
       logging.warning('No training configuration found in save file, so the '
@@ -196,7 +190,7 @@ def _read_legacy_metadata(object_graph_def, metadata):
   node_paths = _generate_object_paths(object_graph_def)
   for node_id, proto in enumerate(object_graph_def.nodes):
     if (proto.WhichOneof('kind') == 'user_object' and
-        proto.user_object.identifier in KERAS_OBJECT_IDENTIFIERS):
+        proto.user_object.identifier in constants.KERAS_OBJECT_IDENTIFIERS):
       metadata.nodes.add(
           node_id=node_id,
           node_path=node_paths[node_id],
@@ -210,13 +204,9 @@ def _generate_object_paths(object_graph_def):
   """Traverses through an ObjectGraphDef and builds a map of all node paths."""
   paths = {0: 'root'}
   nodes_to_visit = [0]
-  visited_nodes = set([])
 
   while nodes_to_visit:
     current_node = nodes_to_visit.pop()
-    # if current_node in visited_nodes:
-    #   continue
-    visited_nodes.add(current_node)
     current_path = paths[current_node]
     for reference in object_graph_def.nodes[current_node].children:
       if reference.node_id in paths:
@@ -293,7 +283,7 @@ class KerasObjectLoader(object):
         # loading layers from the config, such as variables.
         continue
       for name in PUBLIC_ATTRIBUTES:
-        delete_tracking(node, name)
+        node._delete_tracking(name)  # pylint: disable=protected-access
 
       if isinstance(node, functional_lib.Functional):
         # Delete the temporary layer dependencies, which were used to restore
@@ -303,7 +293,7 @@ class KerasObjectLoader(object):
         dependencies = list(node._self_unconditional_dependency_names)  # pylint: disable=protected-access
         for name in dependencies:
           if re.match(r'^layer(_with_weights)?-[\d+]', name) is not None:
-            delete_tracking(node, name)
+            node._delete_tracking(name)  # pylint: disable=protected-access
 
   def _add_children_recreated_from_config(self, obj, proto, node_id):
     """Recursively records objects recreated from config."""
@@ -347,7 +337,7 @@ class KerasObjectLoader(object):
       if (child_proto.user_object.identifier in
           revived_types.registered_identifiers()):
         setter = revived_types.get_setter(child_proto.user_object)
-      elif obj_child._object_identifier in KERAS_OBJECT_IDENTIFIERS:
+      elif obj_child._object_identifier in constants.KERAS_OBJECT_IDENTIFIERS:
         setter = _revive_setter
       else:
         setter = setattr
@@ -377,14 +367,14 @@ class KerasObjectLoader(object):
           obj_child, child_proto, child_id)
       self.loaded_nodes[child_id] = obj_child, setter
 
-  def load_layers(self):
+  def load_layers(self, compile=True):  # pylint: disable=redefined-builtin
     """Load all layer nodes from the metadata."""
     # Load metrics after models and layers, since it's likely that models
     # and layers will create the metric when initialized (this avoids wasting
     # time by creating objects multiple times).
     metric_list = []
     for node_metadata in self._metadata.nodes:
-      if node_metadata.identifier == '_tf_keras_metric':
+      if node_metadata.identifier == constants.METRIC_IDENTIFIER:
         metric_list.append(node_metadata)
         continue
 
@@ -393,9 +383,20 @@ class KerasObjectLoader(object):
           node_metadata.metadata)
 
     for node_metadata in metric_list:
-      self.loaded_nodes[node_metadata.node_id] = self._load_layer(
-          node_metadata.node_id, node_metadata.identifier,
-          node_metadata.metadata)
+      try:
+        self.loaded_nodes[node_metadata.node_id] = self._load_layer(
+            node_metadata.node_id, node_metadata.identifier,
+            node_metadata.metadata)
+      except ValueError:
+        # Metrics are only needed when the model is compiled later. We ignore
+        # errors when trying to load custom metrics when `compile=False` until
+        # custom metrics are serialized properly (b/135550038).
+        if compile:
+          raise
+        logging.warning('Unable to restore custom metric. Please ensure that '
+                        'the layer implements `get_config` and `from_config` '
+                        'when saving. In addition, please use the '
+                        '`custom_objects` arg when calling `load_model()`.')
 
   def _load_layer(self, node_id, identifier, metadata):
     """Load a single layer from a SavedUserObject proto."""
@@ -432,12 +433,12 @@ class KerasObjectLoader(object):
 
   def _revive_from_config(self, identifier, metadata, node_id):
     """Revives a layer/model from config, or returns None."""
-    if identifier == '_tf_keras_metric':
+    if identifier == constants.METRIC_IDENTIFIER:
       obj = self._revive_metric_from_config(metadata)
     else:
       obj = (
-          self._revive_graph_network(metadata, node_id) or
-          self._revive_layer_from_config(metadata, node_id))
+          self._revive_graph_network(identifier, metadata, node_id) or
+          self._revive_layer_or_model_from_config(metadata, node_id))
 
     if obj is None:
       return None, None
@@ -447,22 +448,22 @@ class KerasObjectLoader(object):
         obj, self._proto.nodes[node_id], node_id)
     return obj, setter
 
-  def _revive_graph_network(self, metadata, node_id):
+  def _revive_graph_network(self, identifier, metadata, node_id):
     """Revives a graph network from config."""
-    class_name = compat.as_str(metadata['class_name'])
-    config = metadata.get('config')
-
     # Determine whether the metadata contains information for reviving a
     # functional or Sequential model.
+    config = metadata.get('config')
+    if not generic_utils.validate_config(config):
+      return None
+
+    class_name = compat.as_str(metadata['class_name'])
+    if generic_utils.get_registered_object(class_name) is not None:
+      return None
     model_is_functional_or_sequential = (
         metadata.get('is_graph_network', False) or
-        metadata['class_name'] == 'Sequential' or
-        metadata['class_name'] == 'Functional')
-    if not (generic_utils.validate_config(config) and
-            model_is_functional_or_sequential
-           ) or generic_utils.get_registered_object(class_name) is not None:
-      # Model should not be revived as a graph network. Try reviving directly
-      # from config or as a custom model.
+        class_name == 'Sequential' or
+        class_name == 'Functional')
+    if not model_is_functional_or_sequential:
       return None
 
     # Revive functional and sequential models as blank model objects for now (
@@ -471,6 +472,10 @@ class KerasObjectLoader(object):
     # have been revived.
     if class_name == 'Sequential':
       model = models_lib.Sequential(name=config['name'])
+    # The model is a custom Sequential model.
+    elif identifier == constants.SEQUENTIAL_IDENTIFIER:
+      # Uses the custom class name, since the config does not have one.
+      model = models_lib.Sequential(name=class_name)
     else:
       model = models_lib.Functional(
           inputs=[], outputs=[], name=config['name'])
@@ -483,21 +488,23 @@ class KerasObjectLoader(object):
       self._models_to_reconstruct.append(node_id)
     return model
 
-  def _revive_layer_from_config(self, metadata, node_id):
-    """Revives a layer from config, or returns None if infeasible."""
+  def _revive_layer_or_model_from_config(self, metadata, node_id):
+    """Revives a layer/custom model from config; returns None if infeasible."""
     # Check that the following requirements are met for reviving from config:
     #    1. Object can be deserialized from config.
     #    2. If the object needs to be built, then the build input shape can be
     #       found.
     class_name = metadata.get('class_name')
     config = metadata.get('config')
+    shared_object_id = metadata.get('shared_object_id')
     must_restore_from_config = metadata.get('must_restore_from_config')
     if not generic_utils.validate_config(config):
       return None
 
     try:
       obj = layers_module.deserialize(
-          generic_utils.serialize_keras_class_and_config(class_name, config))
+          generic_utils.serialize_keras_class_and_config(
+              class_name, config, shared_object_id=shared_object_id))
     except ValueError:
       if must_restore_from_config:
         raise RuntimeError(
@@ -522,6 +529,12 @@ class KerasObjectLoader(object):
       obj._set_dtype_policy(metadata['dtype'])
     if metadata.get('stateful') is not None:
       obj.stateful = metadata['stateful']
+    # Restore model save spec for subclassed models. (layers do not store a
+    # SaveSpec)
+    if isinstance(obj, training_lib.Model):
+      save_spec = metadata.get('save_spec')
+      if save_spec is not None:
+        obj._set_save_spec(save_spec)
     # pylint: enable=protected-access
 
     build_input_shape = metadata.get('build_input_shape')
@@ -530,7 +543,6 @@ class KerasObjectLoader(object):
     if not built:
       # If the layer cannot be built, revive a custom layer instead.
       return None
-
     return obj
 
   def _revive_metric_from_config(self, metadata):
@@ -921,11 +933,12 @@ def revive_custom_object(identifier, metadata):
     model_class = training_lib_v1.Model
 
   revived_classes = {
-      '_tf_keras_layer': (RevivedLayer, base_layer.Layer),
-      '_tf_keras_input_layer': (RevivedInputLayer, input_layer.InputLayer),
-      '_tf_keras_network': (RevivedNetwork, functional_lib.Functional),
-      '_tf_keras_model': (RevivedNetwork, model_class),
-      '_tf_keras_sequential': (RevivedNetwork, models_lib.Sequential),
+      constants.INPUT_LAYER_IDENTIFIER: (
+          RevivedInputLayer, input_layer.InputLayer),
+      constants.LAYER_IDENTIFIER: (RevivedLayer, base_layer.Layer),
+      constants.MODEL_IDENTIFIER: (RevivedNetwork, model_class),
+      constants.NETWORK_IDENTIFIER: (RevivedNetwork, functional_lib.Functional),
+      constants.SEQUENTIAL_IDENTIFIER: (RevivedNetwork, models_lib.Sequential),
   }
   parent_classes = revived_classes.get(identifier, None)
 
@@ -1065,6 +1078,31 @@ def recursively_deserialize_keras_object(config, module_objects=None):
     raise ValueError('Unable to decode config: {}'.format(config))
 
 
+def get_common_shape(x, y):
+  """Find a `TensorShape` that is compatible with both `x` and `y`."""
+  if x is None != y is None:
+    raise RuntimeError(
+        'Cannot find a common shape when LHS shape is None but RHS shape '
+        'is not (or vice versa): %s vs. %s' % (x, y))
+  if x is None:
+    return None  # The associated input was not a Tensor, no shape generated.
+  if not isinstance(x, tensor_shape.TensorShape):
+    raise TypeError('Expected x to be a TensorShape but saw %s' % (x,))
+  if not isinstance(y, tensor_shape.TensorShape):
+    raise TypeError('Expected y to be a TensorShape but saw %s' % (y,))
+  if x.rank != y.rank or x.rank is None:
+    return tensor_shape.TensorShape(None)
+  dims = []
+  for dim_x, dim_y in zip(x.dims, y.dims):
+    if (dim_x != dim_y
+        or tensor_shape.dimension_value(dim_x) is None
+        or tensor_shape.dimension_value(dim_y) is None):
+      dims.append(None)
+    else:
+      dims.append(tensor_shape.dimension_value(dim_x))
+  return tensor_shape.TensorShape(dims)
+
+
 def infer_inputs_from_restored_call_function(fn):
   """Returns TensorSpec of inputs from a restored call function.
 
@@ -1076,9 +1114,11 @@ def infer_inputs_from_restored_call_function(fn):
     TensorSpec of call function inputs.
   """
   def common_spec(x, y):
-    common_shape = defun.common_shape(x.shape, y.shape)
+    common_shape = get_common_shape(x.shape, y.shape)
     if isinstance(x, sparse_tensor.SparseTensorSpec):
       return sparse_tensor.SparseTensorSpec(common_shape, x.dtype)
+    elif isinstance(x, ragged_tensor.RaggedTensorSpec):
+      return ragged_tensor.RaggedTensorSpec(common_shape, x.dtype)
     return tensor_spec.TensorSpec(common_shape, x.dtype, x.name)
 
   spec = fn.concrete_functions[0].structured_input_signature[0][0]

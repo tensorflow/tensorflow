@@ -41,7 +41,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
           %compile:2 = "tf_device.launch"() ( {
             %b2:2 = "tf._TPUCompileMlir"() {
               NumDynamicShapes = 0 : i64,
-              // The metadata encodes 2 parameter and two return values.
+              // The metadata encodes 2 parameter and 2 return values.
               metadata = "\0A\0E\08\01\18\01\22\08\08\01\1A\01\01\22\01\00\0A \08\01\12\10\12\02\08\03\12\02\08\03\12\02\08\01\12\02\08 \18\01\22\08\08\01\1A\01\01\22\01\00\12\0A\0A\08\08\01\1A\01\01\22\01\00\12\0A\0A\08\08\01\1A\01\01\22\01\00\18\02 \01",
               mlir_module = "..."} : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
             tf_device.return %b2#0, %b2#1 : tensor<!tf.string>, tensor<2x!tf.string>
@@ -124,8 +124,8 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
           %compile:2 = "tf_device.launch"() ( {
             %b2:2 = "tf._TPUCompileMlir"() {
               NumDynamicShapes = 0 : i64,
-              // The metadata encodes 2 parameter and two return values.
-              metadata = "\0A\0E\08\01\18\01\22\08\08\01\1A\01\01\22\01\00\0A \08\01\12\10\12\02\08\03\12\02\08\03\12\02\08\01\12\02\08 \18\01\22\08\08\01\1A\01\01\22\01\00\12\0A\0A\08\08\01\1A\01\01\22\01\00\12\0A\0A\08\08\01\1A\01\01\22\01\00\18\02 \01",
+              // The metadata encodes 3 parameter and 3 return values.
+              metadata = "\0A\0E\08\01\18\01\22\08\08\01\1A\01\01\22\01\00\0A \08\01\12\10\12\02\08\03\12\02\08\03\12\02\08\01\12\02\08 \18\01\22\08\08\01\1A\01\01\22\01\00\0A\0E\08\01\18\01\22\08\08\01\1A\01\01\22\01\00\12\0A\0A\08\08\01\1A\01\01\22\01\00\12\0A\0A\08\08\01\1A\01\01\22\01\00\12\0A\0A\08\08\01\1A\01\01\22\01\00\18\02 \01",
               mlir_module = "..."} : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
             tf_device.return %b2#0, %b2#1 : tensor<!tf.string>, tensor<2x!tf.string>
           }) {device = "/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
@@ -144,7 +144,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
             // %arg32 is not a pass-through.
             "tf_device.launch"() ( {
               "tf.TPUExecuteAndUpdateVariables"(%arg30, %arg31, %arg32, %compile#1)
-                    {device_var_reads_indices = [0, 1], device_var_updates_indices = [0, 1]}
+                    {device_var_reads_indices = [0, 1, 2], device_var_updates_indices = [0, 1, 2]}
                       : (!tf_res_f32, !tf_res_md_f32, !tf_res_f32, tensor<2x!tf.string>) -> ()
               tf_device.return
             }) {device = "TPU_REPLICATED_CORE_0"} : () -> ()
@@ -188,7 +188,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
           %compile:2 = "tf_device.launch"() ( {
             %b2:2 = "tf._TPUCompileMlir"() {
               NumDynamicShapes = 0 : i64,
-              // The metadata encodes 2 parameter and two return values.
+              // The metadata encodes 2 parameter and 2 return values.
               metadata = "\0A\0E\08\01\18\01\22\08\08\01\1A\01\01\22\01\00\0A \08\01\12\10\12\02\08\03\12\02\08\03\12\02\08\01\12\02\08 \18\01\22\08\08\01\1A\01\01\22\01\00\12\0A\0A\08\08\01\1A\01\01\22\01\00\12\0A\0A\08\08\01\1A\01\01\22\01\00\18\02 \01",
               mlir_module = "..."} : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
             tf_device.return %b2#0, %b2#1 : tensor<!tf.string>, tensor<2x!tf.string>
@@ -261,7 +261,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
           %compile:2 = "tf_device.launch"() ( {
             %b2:2 = "tf._TPUCompileMlir"() {
               NumDynamicShapes = 0 : i64,
-              // The metadata encodes 2 parameter and two return values.
+              // The metadata encodes 2 parameter and 2 return values.
               metadata = "\0A\0E\08\01\18\01\22\08\08\01\1A\01\01\22\01\00\0A \08\01\12\10\12\02\08\03\12\02\08\03\12\02\08\01\12\02\08 \18\01\22\08\08\01\1A\01\01\22\01\00\12\0A\0A\08\08\01\1A\01\01\22\01\00\12\0A\0A\08\08\01\1A\01\01\22\01\00\18\02 \01",
               mlir_module = "..."} : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
             tf_device.return %b2#0, %b2#1 : tensor<!tf.string>, tensor<2x!tf.string>

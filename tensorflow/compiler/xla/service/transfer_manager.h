@@ -193,10 +193,9 @@ class TransferManager {
   // shapes, and returns static shapes with dynamic shapes updated.
   // The shape of the buffer also have to be compatible with the host shape and
   // device shape.
-  // TODO(b/170310047): remove host_shape.
   virtual Status ReadDynamicShapes(se::Stream* stream,
                                    ShapedBuffer* device_buffer,
-                                   Shape* host_shape, Shape* device_shape);
+                                   Shape* device_shape);
 
   // Transfers the given literal into the Infeed interface of the device,
   // using the given executor.
@@ -204,10 +203,10 @@ class TransferManager {
                                          const LiteralSlice& literal) = 0;
 
   // Transfers the given literal from the Outfeed interface of the device,
-  // using the given executor.
+  // using the given executor. The shape and layout are determined by the
+  // shape and layout of `literal`.
   virtual Status TransferLiteralFromOutfeed(
-      se::StreamExecutor* executor, const Shape& literal_shape,
-      MutableBorrowingLiteral literal) = 0;
+      se::StreamExecutor* executor, MutableBorrowingLiteral literal) = 0;
 
   // Resets the devices associated with this transfer manager.
   virtual Status ResetDevices(

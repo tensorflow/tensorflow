@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/graph_info.h"
 
 #include <algorithm>
+#include <vector>
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"

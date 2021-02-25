@@ -121,13 +121,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Emit an LLVM global variable for every constant buffer allocation.
   Status EmitConstantGlobals();
 
-  // Emit code to emit the element at `index` for a convolution instruction.
-  StatusOr<llvm::Value*> EmitElementalConvolution(
-      const HloConvolutionInstruction* convolution,
-      const llvm_ir::ElementGenerator& input_generator,
-      const llvm_ir::ElementGenerator& kernel_generator,
-      const llvm_ir::IrArray::Index& index);
-
  protected:
   //
   // The following methods implement the DfsHloVisitor interface.
@@ -386,7 +379,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // "store_address".
   void EmitShardedVectorStore(llvm::Value* store_address,
                               const ShardedVector& value_to_store,
-                              const int alignment,
+                              llvm::Align alignment,
                               const llvm_ir::IrArray& containing_array);
 
   using ReductionGenerator = std ::function<llvm::Value*(
@@ -406,7 +399,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
       const llvm_ir::IrArray::Index& output_index,
       const ShardedVectorType& accumulator_type, HloInstruction* init_value,
       HloInstruction* arg, absl::Span<const int64> dimensions,
-      unsigned element_alignment);
+      llvm::Align element_alignment);
 
   // Tries to emit a fast concatenate operation using memcpy.  Returns true if
   // successful, and false on failure.  On failure, sets "failure_reason" to a
@@ -425,6 +418,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Emits printing during the execution.
   llvm::Value* EmitPrintf(absl::string_view fmt,
                           absl::Span<llvm::Value* const> arguments);
+  llvm::Value* EmitPrintfToStderr(absl::string_view fmt,
+                                  absl::Span<llvm::Value* const> arguments);
 
   // Emits a call to a non-variadic function `func_name` with arguments
   // `arguments` assuming C calling convention.

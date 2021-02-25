@@ -24,6 +24,7 @@ import numpy as np
 from tensorflow import keras
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.lite.python import test_util as tflite_test_util
 from tensorflow.lite.python import tflite_convert
 from tensorflow.lite.python.convert import register_custom_opdefs
 from tensorflow.python import tf2
@@ -50,7 +51,11 @@ class TestModels(test_util.TensorFlowTestCase):
   def _getFilepath(self, filename):
     return os.path.join(self.get_temp_dir(), filename)
 
-  def _run(self, flags_str, should_succeed):
+  def _run(self,
+           flags_str,
+           should_succeed,
+           expected_ops_in_converted_model=None,
+           expected_output_shapes=None):
     output_file = os.path.join(self.get_temp_dir(), 'model.tflite')
     tflite_bin = resource_loader.get_path_to_datafile('tflite_convert')
     cmdline = '{0} --output_file={1} {2}'.format(tflite_bin, output_file,
@@ -61,6 +66,13 @@ class TestModels(test_util.TensorFlowTestCase):
       with gfile.Open(output_file, 'rb') as model_file:
         content = model_file.read()
       self.assertEqual(content is not None, should_succeed)
+      if expected_ops_in_converted_model:
+        op_set = tflite_test_util.get_ops_list(content)
+        for opname in expected_ops_in_converted_model:
+          self.assertIn(opname, op_set)
+      if expected_output_shapes:
+        output_shapes = tflite_test_util.get_output_shapes(content)
+        self.assertEqual(output_shapes, expected_output_shapes)
       os.remove(output_file)
     else:
       self.assertFalse(should_succeed)
@@ -80,13 +92,28 @@ class TestModels(test_util.TensorFlowTestCase):
     keras.models.save_model(model, keras_file)
     return keras_file
 
+  def _getKerasFunctionalModelFile(self):
+    """Returns a functional Keras model with output shapes [[1, 1], [1, 2]]."""
+    input_tensor = keras.layers.Input(shape=(1,))
+    output1 = keras.layers.Dense(1, name='b')(input_tensor)
+    output2 = keras.layers.Dense(2, name='a')(input_tensor)
+    model = keras.models.Model(inputs=input_tensor, outputs=[output1, output2])
+
+    keras_file = self._getFilepath('functional_model.h5')
+    keras.models.save_model(model, keras_file)
+    return keras_file
+
 
 class TfLiteConvertV1Test(TestModels):
 
-  def _run(self, flags_str, should_succeed):
+  def _run(self,
+           flags_str,
+           should_succeed,
+           expected_ops_in_converted_model=None):
     if tf2.enabled():
       flags_str += ' --enable_v1_converter'
-    super(TfLiteConvertV1Test, self)._run(flags_str, should_succeed)
+    super(TfLiteConvertV1Test, self)._run(flags_str, should_succeed,
+                                          expected_ops_in_converted_model)
 
   def testFrozenGraphDef(self):
     with ops.Graph().as_default():
@@ -186,8 +213,8 @@ class TfLiteConvertV1Test(TestModels):
     # Define converter flags
     flags_str = ('--std_dev_values=128,128 --mean_values=128,128 '
                  '--graph_def_file={0} --input_arrays={1} '
-                 '--output_arrays={2}'.format(
-                     graph_def_file, 'inputA,inputB', 'output'))
+                 '--output_arrays={2}'.format(graph_def_file, 'inputA,inputB',
+                                              'output'))
 
     # Set inference_type UINT8 and (default) inference_input_type UINT8
     flags_str_1 = flags_str + ' --inference_type=UINT8'
@@ -213,9 +240,9 @@ class TfLiteConvertV1Test(TestModels):
     flags_str = '--saved_model_dir={}'.format(saved_model_dir)
     self._run(flags_str, should_succeed=True)
 
-  def _createSavedModelWithCustomOp(self):
+  def _createSavedModelWithCustomOp(self, opname='CustomAdd'):
     custom_opdefs_str = (
-        'name: \'CustomAdd\' input_arg: {name: \'Input1\' type: DT_FLOAT} '
+        'name: \'' + opname + '\' input_arg: {name: \'Input1\' type: DT_FLOAT} '
         'input_arg: {name: \'Input2\' type: DT_FLOAT} output_arg: {name: '
         '\'Output\' type: DT_FLOAT}')
 
@@ -231,10 +258,10 @@ class TfLiteConvertV1Test(TestModels):
 
         new_graph.CopyFrom(sess.graph_def)
 
-    # Rename Add op name to CustomAdd.
+    # Rename Add op name to opname.
     for node in new_graph.node:
       if node.op.startswith('Add'):
-        node.op = 'CustomAdd'
+        node.op = opname
         del node.attr['T']
 
     # Register custom op defs to import modified graph def.
@@ -264,7 +291,26 @@ class TfLiteConvertV1Test(TestModels):
         '--saved_model_dir={0} --custom_opdefs="{1}" --allow_custom_ops '
         '--experimental_new_converter'.format(saved_model_dir,
                                               custom_opdefs_str))
-    self._run(flags_str, should_succeed=True)
+    self._run(
+        flags_str,
+        should_succeed=True,
+        expected_ops_in_converted_model=['CustomAdd'])
+
+  def testSavedModelWithFlex(self):
+    saved_model_dir, custom_opdefs_str = self._createSavedModelWithCustomOp(
+        opname='CustomAdd2')
+
+    # Valid conversion. OpDef already registered.
+    flags_str = ('--saved_model_dir={0} --allow_custom_ops '
+                 '--custom_opdefs="{1}" '
+                 '--experimental_new_converter '
+                 '--experimental_select_user_tf_ops=CustomAdd2 '
+                 '--target_ops=TFLITE_BUILTINS,SELECT_TF_OPS'.format(
+                     saved_model_dir, custom_opdefs_str))
+    self._run(
+        flags_str,
+        should_succeed=True,
+        expected_ops_in_converted_model=['FlexCustomAdd2'])
 
   def testSavedModelWithInvalidCustomOpdefsFlag(self):
     saved_model_dir, _ = self._createSavedModelWithCustomOp()
@@ -393,7 +439,30 @@ class TfLiteConvertV1Test(TestModels):
     # Valid conversion.
     flags_str_final = ('{} --allow_custom_ops '
                        '--experimental_new_converter').format(flags_str)
-    self._run(flags_str_final, should_succeed=True)
+    self._run(
+        flags_str_final,
+        should_succeed=True,
+        expected_ops_in_converted_model=['TFLite_Detection_PostProcess'])
+
+  def testObjectDetectionMLIRWithFlex(self):
+    """Tests object detection model through MLIR converter."""
+    self._initObjectDetectionArgs()
+
+    flags_str = ('--graph_def_file={0} --input_arrays={1} '
+                 '--output_arrays={2} --input_shapes={3}'.format(
+                     self._graph_def_file, self._input_arrays,
+                     self._output_arrays, self._input_shapes))
+
+    # Valid conversion.
+    flags_str_final = (
+        '{} --allow_custom_ops '
+        '--experimental_new_converter '
+        '--experimental_select_user_tf_ops=TFLite_Detection_PostProcess '
+        '--target_ops=TFLITE_BUILTINS,SELECT_TF_OPS').format(flags_str)
+    self._run(
+        flags_str_final,
+        should_succeed=True,
+        expected_ops_in_converted_model=['FlexTFLite_Detection_PostProcess'])
 
 
 class TfLiteConvertV2Test(TestModels):
@@ -428,6 +497,25 @@ class TfLiteConvertV2Test(TestModels):
     self._run(flags_str, should_succeed=True)
     os.remove(keras_file)
 
+  @test_util.run_v2_only
+  def testFunctionalKerasModel(self):
+    keras_file = self._getKerasFunctionalModelFile()
+
+    flags_str = '--keras_model_file={}'.format(keras_file)
+    self._run(flags_str, should_succeed=True,
+              expected_output_shapes=[[1, 1], [1, 2]])
+    os.remove(keras_file)
+
+  @test_util.run_v2_only
+  def testFunctionalKerasModelMLIR(self):
+    keras_file = self._getKerasFunctionalModelFile()
+
+    flags_str = (
+        '--keras_model_file={} --experimental_new_converter'.format(keras_file))
+    self._run(flags_str, should_succeed=True,
+              expected_output_shapes=[[1, 1], [1, 2]])
+    os.remove(keras_file)
+
   def testMissingRequired(self):
     self._run('--invalid_args', should_succeed=False)
 
@@ -452,11 +540,13 @@ class ArgParserTest(test_util.TensorFlowTestCase):
     parser = tflite_convert._get_parser(use_v2_converter=False)
     parsed_args = parser.parse_args(args)
     self.assertIsNone(parsed_args.experimental_new_converter)
+    self.assertFalse(parsed_args.experimental_new_quantizer)
 
     # V2 parser.
     parser = tflite_convert._get_parser(use_v2_converter=True)
     parsed_args = parser.parse_args(args)
     self.assertIsNone(parsed_args.experimental_new_converter)
+    self.assertFalse(parsed_args.experimental_new_quantizer)
 
   def test_experimental_new_converter(self):
     args = [
@@ -509,6 +599,22 @@ class ArgParserTest(test_util.TensorFlowTestCase):
     parsed_args = parser.parse_args(args)
     self.assertFalse(parsed_args.experimental_new_converter)
 
+  def test_experimental_new_quantizer(self):
+    args = [
+        '--saved_model_dir=/tmp/saved_model/',
+        '--output_file=/tmp/output.tflite',
+        '--experimental_new_quantizer',
+    ]
+
+    # V1 parser.
+    parser = tflite_convert._get_parser(use_v2_converter=False)
+    parsed_args = parser.parse_args(args)
+    self.assertTrue(parsed_args.experimental_new_quantizer)
+
+    # V2 parser.
+    parser = tflite_convert._get_parser(use_v2_converter=True)
+    parsed_args = parser.parse_args(args)
+    self.assertTrue(parsed_args.experimental_new_quantizer)
 
 if __name__ == '__main__':
   test.main()

@@ -1,0 +1,23 @@
+path: "tensorflow.__internal__.eager_context"
+tf_module {
+  member_method {
+    name: "eager_mode"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_config"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_device_name"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_executor"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_soft_device_placement"
+    argspec: "args=[\'enabled\'], varargs=None, keywords=None, defaults=None"
+  }
+}

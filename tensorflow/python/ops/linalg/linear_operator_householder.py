@@ -155,7 +155,6 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
 
       super(LinearOperatorHouseholder, self).__init__(
           dtype=self._reflection_axis.dtype,
-          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,

@@ -20,19 +20,12 @@ from __future__ import print_function
 import os
 import shutil
 import tempfile
-import time
 
-import numpy as np
-
-from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import matching_files
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
-from tensorflow.python.platform import test
+from tensorflow.python.data.benchmarks import benchmark_base
 
 
-class MatchingFilesBenchmark(test.Benchmark):
+class MatchingFilesBenchmark(benchmark_base.DatasetBenchmarkBase):
   """Benchmark for the experimental `MatchingFilesDataset`."""
 
   def benchmark_nested_directories(self):
@@ -54,47 +47,21 @@ class MatchingFilesBenchmark(test.Benchmark):
                                              for _ in range(depth)]), suffix)
         for suffix in ['*.txt', '*.log']
     ]
+    # the num_elements depends on the pattern that has been defined above.
+    # In the current scenario, the num of files are selected based on the
+    # ['*.txt', '*.log'] patterns. Since the files which match either of these
+    # patterns are created once per `width`. The num_elements would be:
+    num_elements = width * 2
 
-    deltas = []
-    iters = 3
-    for _ in range(iters):
-      with ops.Graph().as_default():
-        dataset = matching_files.MatchingFilesDataset(patterns)
-        options = dataset_ops.Options()
-        options.experimental_optimization.apply_default_optimizations = False
-        dataset = dataset.with_options(options)
-        next_element = dataset_ops.make_one_shot_iterator(dataset).get_next()
-
-        with session.Session() as sess:
-          sub_deltas = []
-          while True:
-            try:
-              start = time.time()
-              sess.run(next_element)
-              end = time.time()
-              sub_deltas.append(end - start)
-            except errors.OutOfRangeError:
-              break
-          deltas.append(sub_deltas)
-
-    median_deltas = np.median(deltas, axis=0)
-    self.report_benchmark(
-        iters=iters,
-        wall_time=np.sum(median_deltas),
-        extras={
-            'read first file:':
-                median_deltas[0],
-            'read second file:':
-                median_deltas[1],
-            'avg time for reading %d more filenames:' %
-            (len(median_deltas) - 2):
-                np.average(median_deltas[2:])
-        },
-        name='nested_directory(%d*%d)' %
-        (width, depth))
+    dataset = matching_files.MatchingFilesDataset(patterns)
+    self.run_and_report_benchmark(
+        dataset=dataset,
+        iters=3,
+        num_elements=num_elements,
+        name='nested_directory(%d*%d)' % (width, depth))
 
     shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 if __name__ == '__main__':
-  test.main()
+  benchmark_base.test.main()

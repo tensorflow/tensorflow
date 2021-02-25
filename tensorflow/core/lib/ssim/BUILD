@@ -1,5 +1,3 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
 package(
     default_visibility = [
         "//tensorflow/core:__pkg__",
@@ -7,11 +5,7 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-filegroup(
+alias(
     name = "testdata",
-    srcs = [
-        "testdata/checkerboard1.png",
-        "testdata/checkerboard2.png",
-        "testdata/checkerboard3.png",
-    ],
+    actual = "//tensorflow/core/lib/ssim/testdata:testdata",
 )

@@ -124,7 +124,7 @@ Status Dataset::MakeIterator(std::unique_ptr<SplitProvider> split_provider,
   // Create the iterator from the dataset.
   std::unique_ptr<IteratorBase> iterator;
   TF_RETURN_IF_ERROR(dataset_->MakeIterator(ctx.get(), /*parent=*/nullptr,
-                                            "iterator", &iterator));
+                                            "Iterator", &iterator));
 
   *result = WrapUnique(new Iterator(iterator.release(), ctx.release()));
 
@@ -138,6 +138,8 @@ Status Dataset::MakeIterator(std::unique_ptr<Iterator>* result) {
 Status Dataset::MakeSplitProvider(std::unique_ptr<SplitProvider>* result) {
   return dataset_->MakeSplitProvider(result);
 }
+
+const DatasetBase* Dataset::Get() const { return dataset_; }
 
 Dataset::Dataset(DatasetBase* dataset, DeviceMgr* device_mgr,
                  ProcessFunctionLibraryRuntime* pflr,

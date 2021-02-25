@@ -27,14 +27,14 @@ func @foo() {
 
 
 // In the newly cloned function, check that we have a _tf.If operation and capture the then and else branch.
-// CHECK: func @[[FUNCTIONALIZE_FUNC]]
+// CHECK: func private @[[FUNCTIONALIZE_FUNC]]
 // CHECK: "tf.If"
 // CHECK-SAME:  else_branch = @[[ELSE_FUNC:[A-Za-z0-9_]*]]
 // CHECK-SAME:  then_branch = @[[THEN_FUNC:[A-Za-z0-9_]*]]
 
 // We expect the _tf.Add in the else func and the _tf.Mul in the then func
 
-// CHECK: func @[[ELSE_FUNC]]
+// CHECK: func private @[[ELSE_FUNC]]
 // CHECK: "tf.Add"
-// CHECK: func @[[THEN_FUNC]]
+// CHECK: func private @[[THEN_FUNC]]
 // CHECK: "tf.Mul"

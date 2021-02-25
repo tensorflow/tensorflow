@@ -15,7 +15,7 @@ Supported Tasks                                                                 
 -------------------------------------------------------------------------------------------------------- | ------------
 Image Classification [guide](https://www.tensorflow.org/lite/tutorials/model_maker_image_classification) | Classify images into predefined categories.
 Text Classification [guide](https://www.tensorflow.org/lite/tutorials/model_maker_text_classification)   | Classify text into predefined categories.
-Question Answer [guide](https://www.tensorflow.org/lite/tutorials/model_maker_question_answer)           | Find the answer in a certain context for a given question.
+BERT Question Answer [guide](https://www.tensorflow.org/lite/tutorials/model_maker_question_answer)      | Find the answer in a certain context for a given question with BERT.
 
 ## End-to-End Example
 
@@ -29,7 +29,7 @@ data = ImageClassifierDataLoader.from_folder('flower_photos/')
 train_data, test_data = data.split(0.9)
 
 # Customize the TensorFlow model.
-model = image_classifier.create(data)
+model = image_classifier.create(train_data)
 
 # Evaluate the model.
 loss, accuracy = model.evaluate(test_data)

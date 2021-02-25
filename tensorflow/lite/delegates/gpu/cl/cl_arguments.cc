@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/cl/texture2d.h"
+#include "tensorflow/lite/delegates/gpu/common/task/util.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
@@ -136,12 +136,12 @@ std::string GetImageModifier(AccessType access) {
   }
 }
 
-std::string GetDefaultSamplers(const DeviceInfo& device_info) {
+std::string GetDefaultSamplers(const GpuInfo& gpu_info) {
   std::string result;
   result +=
       "__constant sampler_t smp_none = CLK_NORMALIZED_COORDS_FALSE | "
       "CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;\n";
-  if (device_info.IsAdreno3xx()) {
+  if (gpu_info.IsAdreno() && gpu_info.adreno_info.IsAdreno3xx()) {
     // Unfortunately, CLK_ADDRESS_CLAMP is very slow on Adreno3xx and
     // we can observe huge register overhead when compared to other modes.
 
@@ -209,30 +209,32 @@ absl::Status CreateCLObject(GPUObjectDescriptor* desc, CLContext* context,
 constexpr char CLArguments::kArgsPrefix[];
 
 absl::Status CLArguments::Init(
-    const DeviceInfo& device_info,
+    const GpuInfo& gpu_info,
     const std::map<std::string, std::string>& linkables, CLContext* context,
     Arguments* args, std::string* code) {
   RETURN_IF_ERROR(AllocateObjects(*args, context));
   RETURN_IF_ERROR(AddObjectArgs(args));
-  RETURN_IF_ERROR(ResolveSelectorsPass(*args, linkables, code));
+  RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, *args, linkables, code));
   object_refs_ = std::move(args->object_refs_);
   args->GetActiveArguments(kArgsPrefix, *code);
-  const bool use_f32_for_halfs = device_info.IsPowerVR();
+  const bool use_f32_for_halfs = gpu_info.IsPowerVR();
   CopyArguments(*args, use_f32_for_halfs);
   RETURN_IF_ERROR(SetObjectsResources(*args));
   RenameArgumentsInCode(code);
   ResolveArgsPass(code);
   *code = absl::Substitute(*code, GetListOfArgs());
-  *code = GetDefaultSamplers(device_info) + *code;
+  if (gpu_info.SupportsImages()) {
+    *code = GetDefaultSamplers(gpu_info) + *code;
+  }
   return absl::OkStatus();
 }
 
-absl::Status CLArguments::Init(const DeviceInfo& device_info, Arguments* args,
+absl::Status CLArguments::Init(const GpuInfo& gpu_info, Arguments* args,
                                CLContext* context) {
   RETURN_IF_ERROR(AllocateObjects(*args, context));
   RETURN_IF_ERROR(AddObjectArgs(args));
   object_refs_ = std::move(args->object_refs_);
-  const bool use_f32_for_halfs = device_info.IsPowerVR();
+  const bool use_f32_for_halfs = gpu_info.IsPowerVR();
   CopyArguments(*args, use_f32_for_halfs);
   RETURN_IF_ERROR(SetObjectsResources(*args));
   return absl::OkStatus();
@@ -271,8 +273,8 @@ absl::Status CLArguments::SetObjectsResources(const Arguments& args) {
 }
 
 absl::Status CLArguments::ResolveSelectorsPass(
-    const Arguments& args, const std::map<std::string, std::string>& linkables,
-    std::string* code) {
+    const GpuInfo& gpu_info, const Arguments& args,
+    const std::map<std::string, std::string>& linkables, std::string* code) {
   std::string result;
   size_t position = 0;
   size_t next_position = code->find(kArgsPrefix);
@@ -303,10 +305,10 @@ absl::Status CLArguments::ResolveSelectorsPass(
       RETURN_IF_ERROR(ParseArgsInsideBrackets(
           *code, next_position, &close_bracket_pos, &function_args));
       for (auto& arg : function_args) {
-        RETURN_IF_ERROR(ResolveSelectorsPass(args, {}, &arg));
+        RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, args, {}, &arg));
       }
       std::string patch;
-      RETURN_IF_ERROR(ResolveSelector(args, linkables, object_name,
+      RETURN_IF_ERROR(ResolveSelector(gpu_info, args, linkables, object_name,
                                       selector_name, function_args,
                                       template_args, &patch));
       code->replace(arg_pos, close_bracket_pos - arg_pos, patch);
@@ -329,7 +331,8 @@ void CLArguments::ResolveObjectNames(
 }
 
 absl::Status CLArguments::ResolveSelector(
-    const Arguments& args, const std::map<std::string, std::string>& linkables,
+    const GpuInfo& gpu_info, const Arguments& args,
+    const std::map<std::string, std::string>& linkables,
     const std::string& object_name, const std::string& selector,
     const std::vector<std::string>& function_args,
     const std::vector<std::string>& template_args, std::string* result) {
@@ -346,7 +349,7 @@ absl::Status CLArguments::ResolveSelector(
   }
   auto names = desc_ptr->GetGPUResources().GetNames();
   const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc_ptr);
-  if (tensor_desc && selector == "Write") {
+  if (tensor_desc && (selector == "Write" || selector == "Linking")) {
     auto it = linkables.find(object_name);
     if (it != linkables.end()) {
       if (desc_ptr->GetAccess() != AccessType::WRITE &&
@@ -364,11 +367,14 @@ absl::Status CLArguments::ResolveSelector(
       ReplaceAllWords("X_COORD", x_coord, result);
       ReplaceAllWords("Y_COORD", y_coord, result);
       ReplaceAllWords("S_COORD", s_coord, result);
-      RETURN_IF_ERROR(ResolveSelectorsPass(args, {}, result));
+      RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, args, {}, result));
+      if (selector == "Linking") {
+        return absl::OkStatus();
+      }
     }
   }
   std::string patch;
-  RETURN_IF_ERROR(desc_ptr->PerformSelector(selector, function_args,
+  RETURN_IF_ERROR(desc_ptr->PerformSelector(gpu_info, selector, function_args,
                                             template_args, &patch));
   ResolveObjectNames(object_name, names, &patch);
   *result += patch;

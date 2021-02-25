@@ -27,7 +27,6 @@ tf_py_test(
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/keras/layers/preprocessing:category_encoding",
-        "@absl_py//absl/flags",
     ],
 )
 
@@ -45,7 +44,6 @@ tf_py_test(
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/keras/layers/preprocessing:category_crossing",
-        "@absl_py//absl/flags",
     ],
 )
 
@@ -63,7 +61,6 @@ tf_py_test(
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/keras/layers/preprocessing:hashing",
-        "@absl_py//absl/flags",
     ],
 )
 
@@ -80,7 +77,21 @@ tf_py_test(
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/keras/layers/preprocessing:index_lookup",
-        "@absl_py//absl/flags",
+    ],
+)
+
+tf_py_test(
+    name = "index_lookup_forward_benchmark",
+    srcs = ["index_lookup_forward_benchmark.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:platform_benchmark",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/keras/layers/preprocessing:index_lookup",
     ],
 )
 
@@ -99,7 +110,6 @@ tf_py_test(
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/keras/layers/preprocessing:normalization",
-        "@absl_py//absl/flags",
     ],
 )
 
@@ -108,7 +118,14 @@ tf_py_test(
     srcs = ["discretization_adapt_benchmark.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_benchmark",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/keras/layers/preprocessing:discretization",
     ],
 )
@@ -129,6 +146,5 @@ cuda_py_test(
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/keras/layers/preprocessing:image_preprocessing",
-        "@absl_py//absl/flags",
     ],
 )

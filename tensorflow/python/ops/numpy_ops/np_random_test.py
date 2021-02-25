@@ -28,6 +28,7 @@ from tensorflow.python.ops import numpy_ops as np
 # Needed for ndarray.reshape.
 from tensorflow.python.ops.numpy_ops import np_array_ops  # pylint: disable=unused-import
 from tensorflow.python.ops.numpy_ops import np_dtypes
+from tensorflow.python.ops.numpy_ops import np_math_ops
 from tensorflow.python.ops.numpy_ops import np_random
 from tensorflow.python.platform import test
 
@@ -78,6 +79,18 @@ class RandNTest(RandomTestBase):
     self._test(*dims, allow_float64=False, onp_dtype=np.float32)
 
 
+class StandardNormalTest(RandomTestBase):
+
+  def setUp(self):
+    self.np_func = np.random.standard_normal
+    self.onp_func = onp.random.standard_normal
+    super(StandardNormalTest, self).setUp()
+
+  @parameterized.parameters((None,), ((),), ((1,),), ((1, 2),))
+  def test(self, size):
+    self._test(size)
+
+
 class UniformTest(RandomTestBase):
 
   def setUp(self):
@@ -104,6 +117,18 @@ class UniformTest(RandomTestBase):
 
   def test_dtype_cast(self):
     self._test(np.int8(0), np.uint8(1), (1, 2))
+
+
+class PoissonTest(RandomTestBase):
+
+  def setUp(self):
+    self.np_func = np.random.poisson
+    self.onp_func = onp.random.poisson
+    super(PoissonTest, self).setUp()
+
+  @parameterized.parameters((1.0, None), (1.0, 1), (2.0, (3, 3)))
+  def test(self, lam, size):
+    self._test(lam, size)
 
 
 class RandomTest(RandomTestBase):
@@ -168,7 +193,7 @@ class RandNDistriutionTest(test.TestCase):
         self.assertEqual(output.shape, tuple(args))
         default_dtype = (
             np.float64 if np_dtypes.is_allow_float64() else np.float32)
-        self.assertEqual(output.dtype.type, default_dtype)
+        self.assertEqual(output.dtype.as_numpy_dtype, default_dtype)
 
       if np.prod(args):  # Don't bother with empty arrays.
         outputs = [output.tolist() for output in outputs]
@@ -206,4 +231,5 @@ class RandNDistriutionTest(test.TestCase):
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
+  np_math_ops.enable_numpy_methods_on_tensor()
   test.main()

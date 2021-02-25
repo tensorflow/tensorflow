@@ -322,7 +322,8 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
     return input_lib.get_distributed_dataset(
         dataset,
         self._input_workers_with_options(options),
-        self._container_strategy())
+        self._container_strategy(),
+        options=options)
 
   def _distribute_datasets_from_function(self, dataset_fn, options):
     if (options and options.experimental_replication_mode ==
@@ -336,7 +337,8 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
         dataset_fn,
         self._input_workers_with_options(options),
         [distribute_lib.InputContext()],
-        self._container_strategy())
+        self._container_strategy(),
+        options=options)
 
   def _experimental_distribute_values_from_function(self, value_fn):
     # TODO(b/137795644): This should return a PerReplica value but other

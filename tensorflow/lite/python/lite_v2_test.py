@@ -27,6 +27,7 @@ from six.moves import range
 from six.moves import zip
 import tensorflow as tf
 
+from tensorflow.lite.python import convert
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_v2_test_util
 from tensorflow.lite.python.convert import mlir_quantize
@@ -36,6 +37,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.ops import map_ops
+from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import saved_model
@@ -67,15 +70,14 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     converter.experimental_new_converter = enable_mlir_converter
     tflite_model = converter.convert()
 
-    # Check values from converted model.
+    # Check output value from converted model.
     expected_value = root.f(input_data)
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
     self.assertEqual(expected_value.numpy(), actual_value)
 
-  @parameterized.named_parameters(
-      ('_INT8InputOutput', dtypes.int8),
-      ('_UINT8InputOutput', dtypes.uint8),
-      ('_INT16InputOutput', dtypes.int16))
+  @parameterized.named_parameters(('_INT8InputOutput', dtypes.int8),
+                                  ('_UINT8InputOutput', dtypes.uint8),
+                                  ('_INT16InputOutput', dtypes.int16))
   @test_util.run_v2_only
   def testInvalidFloat(self, inference_input_output_type):
     root = self._getSimpleVariableModel()
@@ -175,7 +177,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_converter.representative_dataset = calibration_gen
-    quantized_converter._experimental_new_quantizer = mlir_quantizer
+    quantized_converter.experimental_new_quantizer = mlir_quantizer
     quantized_tflite_model = quantized_converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
 
@@ -192,10 +194,9 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     # Ensure that the quantized weights tflite model is smaller.
     self.assertLess(len(quantized_tflite_model), len(float_tflite_model))
 
-  @parameterized.named_parameters(
-      ('_INT8InputOutput', dtypes.int8),
-      ('_UINT8InputOutput', dtypes.uint8),
-      ('_INT16InputOutput', dtypes.int16))
+  @parameterized.named_parameters(('_INT8InputOutput', dtypes.int8),
+                                  ('_UINT8InputOutput', dtypes.uint8),
+                                  ('_INT16InputOutput', dtypes.int16))
   @test_util.run_v2_only
   def testInvalidPostTrainingDynamicRangeQuantization(
       self, inference_input_output_type):
@@ -225,11 +226,9 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       ('_INT16Quantize_INT16InputOutput', False, True, dtypes.int16),
       ('_IntOnly', True, False, dtypes.float32),
       ('_IntOnly_INT8InputOutput', True, False, dtypes.int8),
-      ('_IntOnly_UINT8InputOutput', True, False,
-       dtypes.uint8),
+      ('_IntOnly_UINT8InputOutput', True, False, dtypes.uint8),
       ('_IntOnly_INT16Quantize', True, True, dtypes.float32),
-      ('_IntOnly_INT16Quantize_INT16InputOutput', True, True,
-       dtypes.int16))
+      ('_IntOnly_INT16Quantize_INT16InputOutput', True, True, dtypes.int16))
   def testIntegerQuantization(self, is_int_only, is_int16_quantize,
                               inference_input_output_type):
     func, calibration_gen = self._getIntegerQuantizeModel()
@@ -300,7 +299,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       quantized_converter.inference_output_type = dtypes.int8
       quantized_converter.convert()
     self.assertEqual(
-        "The inference_input_type and inference_output_type "
+        'The inference_input_type and inference_output_type '
         "must be in ['tf.float32', 'tf.int16'].", str(error.exception))
 
   def testCalibrateAndQuantizeBuiltinInt16(self):
@@ -313,9 +312,8 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
 
     converter = lite.TFLiteConverterV2.from_concrete_functions([func])
     # TODO(b/156309549): We should add INT16 to the builtin types.
-    converter.target_spec.supported_ops = [
-        lite.OpsSet.TFLITE_BUILTINS_INT8
-    ]
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    converter.target_spec.supported_ops = [lite.OpsSet.TFLITE_BUILTINS_INT8]
     converter.representative_dataset = calibration_gen
     converter._experimental_calibrate_only = True
     calibrated_tflite = converter.convert()
@@ -377,8 +375,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
 
   @parameterized.named_parameters(
       ('_DefaultFLOAT32InputOutput', dtypes.float32),
-      ('_INT8InputOutput', dtypes.int8),
-      ('_UINT8InputOutput', dtypes.uint8))
+      ('_INT8InputOutput', dtypes.int8), ('_UINT8InputOutput', dtypes.uint8))
   @test_util.run_v2_only
   def testTrainingTimeQuantization(self, inference_input_output_type):
     model = self._getTrainingTimeQuantizedModel()
@@ -420,11 +417,11 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     quantized_converter.representative_dataset = calibration_gen
 
     # default quantizer
-    quantized_converter._experimental_new_quantizer = False
+    quantized_converter.experimental_new_quantizer = False
     old_tflite = quantized_converter.convert()
 
     # new quantizer
-    quantized_converter._experimental_new_quantizer = True
+    quantized_converter.experimental_new_quantizer = True
     new_tflite = quantized_converter.convert()
 
     for _ in range(5):
@@ -610,11 +607,15 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       ('_INT16Quantize_INT16InputOutput', False, True, dtypes.int16),
       ('_IntOnly_INT8InputOutput', True, False, dtypes.int8),
       ('_IntOnly_UINT8InputOutput', True, False, dtypes.uint8),
-      ('_IntOnly_INT16Quantize_INT16InputOutput', True, True, dtypes.int16))
+      ('_IntOnly_INT16Quantize_INT16InputOutput', True, True, dtypes.int16),
+      ('_IntOnly_INT8InputOutputMlirQuant', True, False, dtypes.int8, True),
+      ('_IntOnly_UINT8InputOutputMlirQuant', True, False, dtypes.uint8, True))
   @test_util.run_v2_only
-  def testIntegerQuantizationWithUnsupportedOps(self, is_int_only,
+  def testIntegerQuantizationWithUnsupportedOps(self,
+                                                is_int_only,
                                                 is_int16_quantize,
-                                                inference_input_output_type):
+                                                inference_input_output_type,
+                                                enable_mlir_quantizer=False):
     func, calib_gen = self._getIntegerQuantizationModelWithUnsupportedOps()
 
     quantized_converter = tf.lite.TFLiteConverter.from_concrete_functions(
@@ -646,23 +647,101 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
 
     quantized_converter.inference_input_type = inference_input_output_type
     quantized_converter.inference_output_type = inference_input_output_type
+    quantized_converter.experimental_new_quantizer = enable_mlir_quantizer
     quantized_tflite_model = quantized_converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
+
+    expected_dtype = inference_input_output_type.as_numpy_dtype
+    # Allow float32 for fallback on non-quantizable op.
+    expected_ceil_dtype = (
+        expected_dtype if enable_mlir_quantizer else dtypes.float32)
 
     interpreter = Interpreter(model_content=quantized_tflite_model)
     interpreter.allocate_tensors()
     input_details = interpreter.get_input_details()
     self.assertLen(input_details, 2)
-    # Allow float32 for fallback.
-    self.assertEqual(input_details[0]['dtype'], dtypes.float32)
-    self.assertEqual(input_details[1]['dtype'],
-                     inference_input_output_type.as_numpy_dtype)
+    self.assertEqual(input_details[0]['dtype'], expected_ceil_dtype)
+    self.assertEqual(input_details[1]['dtype'], expected_dtype)
     output_details = interpreter.get_output_details()
     self.assertLen(output_details, 2)
-    # Allow float32 for fallback.
-    self.assertEqual(output_details[0]['dtype'], dtypes.float32)
-    self.assertEqual(output_details[1]['dtype'],
-                     inference_input_output_type.as_numpy_dtype)
+    self.assertEqual(output_details[0]['dtype'], expected_ceil_dtype)
+    self.assertEqual(output_details[1]['dtype'], expected_dtype)
+
+  @test_util.run_v2_only
+  def testNewQuantizerNumericVerificationDebugMode(self):
+    """Test the model quantized by the new converter with numeric verify ops."""
+    func, calibration_gen = self._getIntegerQuantizeModel()
+
+    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    quantized_converter.target_spec.supported_ops = [
+        lite.OpsSet.TFLITE_BUILTINS_INT8
+    ]
+    quantized_converter.representative_dataset = calibration_gen
+
+    # Create a TFLite model with new quantizer.
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.experimental_new_quantizer = True
+    production_tflite = quantized_converter.convert()
+    # Create a TFLite model with new quantizer and numeric verify ops.
+    quantized_converter._experimental_calibrate_only = True
+    calibrated = quantized_converter.convert()
+    debug_mode_tflite = mlir_quantize(calibrated, enable_numeric_verify=True)
+
+    # Check if adding debug mode should output a different flatbuffer.
+    self.assertNotEqual(production_tflite, debug_mode_tflite)
+
+    # Check if newly added ops are numeric verify ops.
+    input_data = tf.constant(
+        np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32))
+
+    def examine_tflite_model(tflite_content, input_data):
+      interpreter = Interpreter(model_content=tflite_content)
+      interpreter.allocate_tensors()
+      input_details = interpreter.get_input_details()
+      interpreter.set_tensor(input_details[0]['index'], input_data.numpy())
+      interpreter.invoke()
+      tensor_details = interpreter.get_tensor_details()
+      return {
+          details['name']: interpreter.get_tensor(details['index'])
+          for details in interpreter.get_tensor_details()
+      }, tensor_details
+
+    tflite_result, _ = examine_tflite_model(production_tflite, input_data)
+    debug_mode_tflite_result, debug_tensor_details = examine_tflite_model(
+        debug_mode_tflite, input_data)
+
+    # MLIR-based quantizer should output flatbuffer model with `tfl.quantize`.
+    num_production_quantize_ops = len([
+        None for output_tensor_name in tflite_result
+        if 'tfl.quantize' in output_tensor_name
+    ])
+    self.assertEqual(num_production_quantize_ops, 1)
+    # MLIR-based quantizer should output flatbuffer model with `tfl.quantize`.
+    num_debug_quantize_ops = len([
+        None for output_tensor_name in debug_mode_tflite_result
+        if 'tfl.quantize' in output_tensor_name
+    ])
+    # Two numbers should be equal.
+    self.assertEqual(num_production_quantize_ops, num_debug_quantize_ops)
+    # DebugMode TFLite flatbuffer should have NumericVerifyOps more than zero.
+    # The name has the prefix "NumericVerify/{name}:{id}
+    # where {name} is the tensor name of the original quantized op's activation,
+    # and {id} is its tensor id.
+    num_debug_ops = 0
+    for output_tensor_name in debug_mode_tflite_result:
+      if 'NumericVerify' in output_tensor_name:
+        pos_end_prefix = len('NumericVerify/')
+        pos_colon = output_tensor_name.rfind(':')
+        self.assertEqual('NumericVerify/',
+                         output_tensor_name[:pos_end_prefix])
+        tensor_id = int(output_tensor_name[pos_colon+1:])
+        original_tensor_name = output_tensor_name[pos_end_prefix:pos_colon]
+        self.assertEqual(original_tensor_name,
+                         debug_tensor_details[tensor_id]['name'])
+        num_debug_ops += 1
+    self.assertEqual(num_debug_ops, 1)
+    # The number of debug ops should be equal to that of quantized ops.
+    self.assertEqual(num_debug_ops, num_debug_quantize_ops)
 
 
 class FromSavedModelTest(lite_v2_test_util.ModelTest):
@@ -739,6 +818,87 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
+  def _createV1ModelWithHashTableInitializer(self):
+    # Create a v1 saved model with hash table initializers.
+    tf.compat.v1.disable_eager_execution()
+    saved_model_dir = os.path.join(self.get_temp_dir(),
+                                   'savedmodel_with_hashtable')
+
+    table_initializer = tf.lookup.KeyValueTensorInitializer(
+        keys=['a', 'b', 'c', 'd'],
+        values=[1, 2, 3, 4],
+        key_dtype=tf.string,
+        value_dtype=tf.int64)
+    table = tf.lookup.StaticHashTable(
+        table_initializer, default_value=tf.constant(-1, dtype=tf.int64))
+
+    x = tf.compat.v1.placeholder(tf.string, shape=(), name='input')
+    y = table.lookup(x)
+
+    tensor_info_x = tf.compat.v1.saved_model.utils.build_tensor_info(x)
+    tensor_info_y = tf.compat.v1.saved_model.utils.build_tensor_info(y)
+
+    signature_def_map, init_op, assets_collection = {
+        'serving_default':
+            (tf.compat.v1.saved_model.signature_def_utils.build_signature_def(
+                inputs={'x': tensor_info_x},
+                outputs={'y': tensor_info_y},
+                method_name='some_function'))
+    }, tf.compat.v1.tables_initializer(), None
+
+    sess = tf.compat.v1.Session()
+    sess.run(tf.compat.v1.initializers.global_variables())
+
+    builder = tf.compat.v1.saved_model.builder.SavedModelBuilder(
+        saved_model_dir)
+    builder.add_meta_graph_and_variables(
+        sess, [tf.compat.v1.saved_model.tag_constants.SERVING],
+        signature_def_map,
+        main_op=init_op,
+        assets_collection=assets_collection,
+        strip_default_attrs=True)
+    builder.save()
+
+    # Restore TF v2 behavior.
+    tf.compat.v1.reset_default_graph()
+    tf.compat.v1.enable_eager_execution()
+    return saved_model_dir
+
+  @test_util.run_v2_only
+  def testModelWithHashTableInitializer(self):
+    """Test a model with saved_model's session initializer for hash tables."""
+    saved_model_dir = self._createV1ModelWithHashTableInitializer()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.allow_custom_ops = True
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    input_data = np.array(['a', 'b', 'c', 'z'], dtype=np.string_)
+    interpreter.resize_tensor_input(
+        input_details[0]['index'], [4], strict=False)
+    interpreter.allocate_tensors()
+
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+
+    # Invoke multiple times to ensure the initializer graph runs only once.
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual([1, 2, 3, -1], list(actual_value))
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual([1, 2, 3, -1], list(actual_value))
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual([1, 2, 3, -1], list(actual_value))
+
   @test_util.run_v2_only
   def testConstModel(self):
     """Test a basic model with functions to make sure functions are inlined."""
@@ -803,6 +963,83 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     expected_value = root.f(input_data)
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
     self.assertEqual(expected_value.numpy(), actual_value)
+
+  @test_util.run_v2_only
+  def testSignatureDefs(self):
+    """Test converting SignatureDef is correct and uses SignatureDef API."""
+    root = self._getMultiFunctionModel()
+    input_data_0 = tf.constant(1., shape=[1])
+    input_data_1 = tf.constant(3., shape=[1])
+    mul_add_func = root.mul_add.get_concrete_function(input_data_1,
+                                                      input_data_0)
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    save(root, save_dir, {'mul_add': mul_add_func})
+
+    converter = lite.TFLiteConverterV2.from_saved_model(
+        save_dir, signature_keys=['mul_add'])
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    expected_value = root.mul_add(input_data_1, input_data_0)
+    interpreter = Interpreter(model_content=tflite_model)
+    signature_defs = interpreter.get_signature_list()
+    results = self._evaluateTFLiteModelUsingSignatureDef(
+        tflite_model, 'mul_add', {
+            'y': input_data_0,
+            'x': input_data_1
+        })
+    self.assertEqual(list(results.keys()), ['output_0'])
+    self.assertEqual(expected_value.numpy(), results['output_0'])
+
+    # Verify the SignatureDef structure returned is as expected.
+    self.assertEqual(len(signature_defs), 1)
+    self.assertEqual(list(signature_defs.keys()), ['mul_add'])
+    self.assertEqual(len(signature_defs.values()), 1)
+    self.assertEqual(
+        list(signature_defs['mul_add'].keys()), ['inputs', 'outputs'])
+    self.assertCountEqual(signature_defs['mul_add']['inputs'], ['x', 'y'])
+    self.assertEqual(list(signature_defs['mul_add']['outputs']), ['output_0'])
+
+  @test_util.run_v2_only
+  def testSignatureDefsWithDefaultValue(self):
+    """Test converting SignatureDef is correct and uses SignatureDef API.
+
+    This test uses None as method_name to test default behavior.
+    """
+    root = self._getMultiFunctionModel()
+    input_data_0 = tf.constant(1., shape=[1])
+    input_data_1 = tf.constant(3., shape=[1])
+    mul_add_func = root.mul_add.get_concrete_function(input_data_1,
+                                                      input_data_0)
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    save(root, save_dir, {'mul_add': mul_add_func})
+
+    converter = lite.TFLiteConverterV2.from_saved_model(
+        save_dir, signature_keys=['mul_add'])
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    expected_value = root.mul_add(input_data_1, input_data_0)
+    interpreter = Interpreter(model_content=tflite_model)
+    signature_defs = interpreter.get_signature_list()
+    results = self._evaluateTFLiteModelUsingSignatureDef(
+        tflite_model, None, {
+            'y': input_data_0,
+            'x': input_data_1
+        })
+    self.assertEqual(list(results.keys()), ['output_0'])
+    self.assertEqual(expected_value.numpy(), results['output_0'])
+
+    # Verify the SignatureDef structure returned is as expected.
+    self.assertEqual(len(signature_defs), 1)
+    self.assertEqual(list(signature_defs.keys()), ['mul_add'])
+    self.assertEqual(len(signature_defs.values()), 1)
+    self.assertEqual(
+        list(signature_defs['mul_add'].keys()), ['inputs', 'outputs'])
+    self.assertCountEqual(signature_defs['mul_add']['inputs'], ['x', 'y'])
+    self.assertEqual(list(signature_defs['mul_add']['outputs']), ['output_0'])
 
   @test_util.run_v2_only
   def testMultipleFunctionModel(self):
@@ -910,6 +1147,81 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     ]
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
+
+  @test_util.run_v2_only
+  def testKerasConvLSTM2DWithMoreThanOneDilationRate(self):
+    input_tensor = tf.keras.layers.Input(
+        batch_size=8,
+        shape=[9, 10, 11, 12],
+        name='input_tensor',
+        dtype=tf.float32)
+
+    output = tf.keras.layers.ConvLSTM2D(
+        filters=3,
+        kernel_size=3,
+        strides=1,
+        padding='VALID',
+        dilation_rate=2,
+        use_bias=False,
+        bias_initializer='ones',
+        data_format='channels_last')(
+            input_tensor)
+
+    model = tf.keras.Model(inputs=[input_tensor], outputs=output)
+    model.compile(
+        optimizer='adam',
+        loss='sparse_categorical_crossentropy',
+        metrics=['accuracy'])
+
+    # Export the keras model to saved model.
+    saved_model_dir = os.path.join(self.get_temp_dir(),
+                                   'conv_lstm_2d_with_dilation_rate')
+    model.save(saved_model_dir, save_format='tf', include_optimizer=False)
+
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
+    ]
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+  def _createUnknownInputShapeModel(self):
+    """Create a simple SavedModel with unknown input."""
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'unknown_input_shape')
+    with tf.Graph().as_default():
+      with tf.compat.v1.Session() as sess:
+        unknown_shape = tf.TensorShape(None)
+        in_tensor = tf.compat.v1.placeholder(
+            shape=unknown_shape, dtype=tf.float32, name='input')
+        out_tensor = in_tensor + in_tensor
+        inputs = {'input': in_tensor}
+        outputs = {'output': out_tensor}
+        saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+    return saved_model_dir
+
+  @test_util.run_v2_only
+  def testUnknownInputShapeModel(self):
+    """Test a SavedModel with an unknown input shape."""
+    saved_model_dir = self._createUnknownInputShapeModel()
+
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    input_data = np.array([1., 2., 3.], dtype=np.float32)
+    interpreter.resize_tensor_input(
+        input_details[0]['index'], [3], strict=False)
+    interpreter.allocate_tensors()
+
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual([2., 4., 6.], list(actual_value))
 
 
 class FromKerasModelTest(lite_v2_test_util.ModelTest):
@@ -1066,6 +1378,18 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     self.assertAllClose(expected_value, actual_value)
 
   @test_util.run_v2_only
+  def testConverterErrorOnControlFlowV1Ops(self):
+    filename = resource_loader.get_path_to_datafile(
+        'testdata/control_flow_v1_saved_model')
+    converter = lite.TFLiteConverterV2.from_saved_model(filename)
+    with self.assertRaises(convert.ConverterError) as error:
+      converter.convert()
+    self.assertIn(
+        'Failed to functionalize Control Flow V1 ops. Consider using Control '
+        'Flow V2 ops instead. See https://www.tensorflow.org/api_docs/python/'
+        'tf/compat/v1/enable_control_flow_v2.', str(error.exception))
+
+  @test_util.run_v2_only
   def testStaticRnn(self):
     input_data = tf.constant(
         np.array(np.random.random_sample((3, 10)), dtype=np.float32))
@@ -1145,18 +1469,25 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
         expected = expected.c
       self.assertAllClose(expected, actual)
 
-  @parameterized.named_parameters(('LSTM', tf.keras.layers.LSTM),
-                                  ('SimpleRNN', tf.keras.layers.SimpleRNN),
-                                  ('GRU', tf.keras.layers.GRU))
+  @parameterized.named_parameters(
+      ('LSTM_BatchSize_None', tf.keras.layers.LSTM, None),
+      ('SimpleRNN_BatchSize_None', tf.keras.layers.SimpleRNN, None),
+      ('GRU_BatchSize_None', tf.keras.layers.GRU, None),
+      ('LSTM_BatchSize_One', tf.keras.layers.LSTM, 1),
+      ('SimpleRNN_BatchSize_One', tf.keras.layers.SimpleRNN, 1),
+      ('GRU_BatchSize_One', tf.keras.layers.GRU, 1))
   @test_util.run_v2_only
-  def testKerasRNN(self, rnn_layer):
-    # This relies on TFLiteConverter to rewrite unknown batch size to 1. The
-    # model will fail if resizing the input to non-1 batch size.
+  def testKerasRNN(self, rnn_layer, batch_size):
+    # This test will run with `batch_size=1` and `batch_size=None`.
+    # When `batch_size=1`, the model will convert to fused RNN, and when
+    # `batch_size=None`, it will convert to unfused RNN
+    # (similar for tests below).
     input_data = tf.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
     rnn_obj = rnn_layer(units=10, input_shape=(10, 10))
     model = tf.keras.models.Sequential([
-        tf.keras.layers.Input(batch_size=1, shape=(10, 10), name='input'),
+        tf.keras.layers.Input(
+            batch_size=batch_size, shape=(10, 10), name='input'),
         rnn_obj,
     ])
 
@@ -1190,12 +1521,16 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     expected_value = model.predict(input_data)
     self.assertAllClose(expected_value, actual_value, atol=1e-05)
 
+  @parameterized.named_parameters(('BatchSize_None', None),
+                                  ('BatchSize_One', 1))
   @test_util.run_v2_only
-  def testKerasBidirectionalRNNReturnSequence(self):
+  def testKerasBidirectionalRNNReturnSequence(self, batch_size):
     input_data = tf.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
     model = tf.keras.models.Sequential()
-    model.add(tf.keras.layers.Input(batch_size=1, shape=(10, 10), name='input'))
+    model.add(
+        tf.keras.layers.Input(
+            batch_size=batch_size, shape=(10, 10), name='input'))
     model.add(
         tf.keras.layers.Bidirectional(
             tf.keras.layers.LSTM(units=10, return_sequences=True),
@@ -1213,12 +1548,16 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     expected_value = model.predict(input_data)
     self.assertAllClose(expected_value, actual_value, atol=1e-05)
 
+  @parameterized.named_parameters(('BatchSize_None', None),
+                                  ('BatchSize_One', 1))
   @test_util.run_v2_only
-  def testKerasBidirectionalRNN(self):
+  def testKerasBidirectionalRNN(self, batch_size):
     input_data = tf.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
     model = tf.keras.models.Sequential()
-    model.add(tf.keras.layers.Input(batch_size=1, shape=(10, 10), name='input'))
+    model.add(
+        tf.keras.layers.Input(
+            batch_size=batch_size, shape=(10, 10), name='input'))
     model.add(tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(units=10)))
     model.add(tf.keras.layers.Dense(5))
     model.add(tf.keras.layers.Activation('softmax'))
@@ -1416,6 +1755,376 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
         'None is only supported in the 1st dimension. Tensor '
         '\'in_tensor\' has invalid shape \'[1, None, 16, 3]\'.',
         str(error.exception))
+
+
+class ResourceAndVariantTypes(lite_v2_test_util.ModelTest):
+
+  @test_util.run_v2_only
+  def testVariants(self):
+
+    @tf.function(input_signature=[tf.TensorSpec(shape=[1], dtype=tf.float32)])
+    def model(v):
+      m = map_ops.empty_tensor_map()
+      k = tf.constant(1.0)
+      p = tf.add(k, v)
+      with ops.control_dependencies([m]):
+        m2 = map_ops.tensor_map_insert(m, p, v)
+        with ops.control_dependencies([m2]):
+          return map_ops.tensor_map_size(m2)
+
+    concrete_func = model.get_concrete_function()
+
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
+    ]
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    interpreter.allocate_tensors()
+
+    input_data = np.array([1.0], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(1, actual_value)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(1, actual_value)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(1, actual_value)
+
+  @test_util.run_v2_only
+  def testVariantsWithCond(self):
+
+    def create_v1_saved_model():
+      saved_model_dir = os.path.join(self.get_temp_dir(), 'variants_with_cond')
+      with tf.Graph().as_default():
+        with tf.compat.v1.Session() as sess:
+          m = map_ops.empty_tensor_map()
+
+          def body(i, m):
+            m = map_ops.tensor_map_insert(m, i, i)
+            return i + 1, m
+
+          in_tensor = tf.compat.v1.placeholder(
+              shape=[1], dtype=tf.int32, name='input')
+          _, result_m = tf.cond(in_tensor < 10, lambda: body(in_tensor, m),
+                                lambda: body(in_tensor + 1, m))
+          out_tensor = in_tensor + map_ops.tensor_map_size(result_m)
+
+          inputs = {'x': in_tensor}
+          outputs = {'z': out_tensor}
+          saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+      return saved_model_dir
+
+    saved_model_dir = create_v1_saved_model()
+
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
+    ]
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    interpreter.allocate_tensors()
+
+    input_data = np.array([0], dtype=np.int32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+
+    interpreter.invoke()
+    expected_value = np.array([1], dtype=np.int32)
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(expected_value, actual_value)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(expected_value, actual_value)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(expected_value, actual_value)
+
+  @test_util.run_v2_only
+  def testVariantsWithWhile(self):
+
+    def create_v1_saved_model():
+      saved_model_dir = os.path.join(self.get_temp_dir(), 'variants_with_while')
+      with tf.Graph().as_default():
+        with tf.compat.v1.Session() as sess:
+          m = map_ops.empty_tensor_map()
+
+          def cond(i, m):
+            del m
+            return i < 10
+
+          def body(i, m):
+            m = map_ops.tensor_map_insert(m, i, i)
+            return i + 1, m
+
+          _, result_m = tf.while_loop(cond, body, [0, m])
+          in_tensor = tf.compat.v1.placeholder(
+              shape=[1], dtype=tf.int32, name='input')
+          out_tensor = in_tensor + map_ops.tensor_map_size(result_m)
+
+          inputs = {'x': in_tensor}
+          outputs = {'z': out_tensor}
+          saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+      return saved_model_dir
+
+    saved_model_dir = create_v1_saved_model()
+
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
+    ]
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    interpreter.allocate_tensors()
+
+    input_data = np.array([0], dtype=np.int32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(10, actual_value)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(10, actual_value)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(10, actual_value)
+
+  @test_util.run_v2_only
+  def testResources(self):
+
+    def create_v1_saved_model():
+      saved_model_dir = os.path.join(self.get_temp_dir(), 'simple_resources')
+      with tf.Graph().as_default():
+        with tf.compat.v1.Session() as sess:
+          in_tensor = tf.compat.v1.placeholder(
+              shape=[1], dtype=tf.float32, name='input')
+
+          stack = tf.raw_ops.StackV2(max_size=10, elem_type=tf.float32)
+          w = tf.raw_ops.StackPushV2(handle=stack, elem=in_tensor)
+          with ops.control_dependencies([w]):
+            a = in_tensor + in_tensor
+            with ops.control_dependencies([a]):
+              out_tensor = a + tf.raw_ops.StackPopV2(
+                  handle=stack, elem_type=tf.float32)
+
+          inputs = {'x': in_tensor}
+          outputs = {'z': out_tensor}
+          saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+      return saved_model_dir
+
+    saved_model_dir = create_v1_saved_model()
+
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
+    ]
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    interpreter.allocate_tensors()
+
+    input_data = np.array([1.0], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(3.0, actual_value)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(3.0, actual_value)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(3.0, actual_value)
+
+  @test_util.run_v2_only
+  def testResourcesWithCond(self):
+
+    def create_v1_saved_model():
+      saved_model_dir = os.path.join(self.get_temp_dir(), 'resources_with_cond')
+      with tf.Graph().as_default():
+        with tf.compat.v1.Session() as sess:
+          in_tensor = tf.compat.v1.placeholder(
+              shape=[1], dtype=tf.float32, name='input')
+
+          def body(i, arr):
+            n = tf.raw_ops.StackPushV2(
+                handle=arr, elem=tf.cast(i, dtype=tf.float32))
+            return n, arr
+
+          arr = tf.raw_ops.StackV2(max_size=10, elem_type=tf.float32)
+          n, result_arr = tf.cond(in_tensor < 10, lambda: body(0, arr),
+                                  lambda: body(1, arr))
+
+          with ops.control_dependencies([result_arr, n]):
+            out_tensor = tf.raw_ops.StackPopV2(
+                handle=result_arr, elem_type=tf.float32)
+
+          inputs = {'x': in_tensor}
+          outputs = {'a': out_tensor}
+          saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+      return saved_model_dir
+
+    saved_model_dir = create_v1_saved_model()
+
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
+    ]
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    interpreter.allocate_tensors()
+
+    input_data = np.array([1.0], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(0.0, actual_value)
+
+  @test_util.run_v2_only
+  def testResourcesWithWhile(self):
+
+    def create_v1_saved_model():
+      saved_model_dir = os.path.join(self.get_temp_dir(),
+                                     'resources_with_while')
+      with tf.Graph().as_default():
+        with tf.compat.v1.Session() as sess:
+          in_tensor = tf.compat.v1.placeholder(
+              shape=[1], dtype=tf.float32, name='input')
+
+          def cond(i, arr, m):
+            del arr
+            del m
+            return i < 10
+
+          def body(i, arr, m):
+            del m
+            n = tf.raw_ops.StackPushV2(
+                handle=arr, elem=tf.cast(i, dtype=tf.float32))
+            return i + 1, arr, n
+
+          arr = tf.raw_ops.StackV2(max_size=10, elem_type=tf.float32)
+          _, result_arr, n = tf.while_loop(cond, body, [0, arr, 0.0])
+
+          with ops.control_dependencies([result_arr, n]):
+            out_tensor = tf.raw_ops.StackPopV2(
+                handle=result_arr, elem_type=tf.float32)
+
+          inputs = {'x': in_tensor}
+          outputs = {'a': out_tensor}
+          saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+      return saved_model_dir
+
+    saved_model_dir = create_v1_saved_model()
+
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
+    ]
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    interpreter.allocate_tensors()
+
+    input_data = np.array([1.0], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(9.0, actual_value)
+
+  @test_util.run_v2_only
+  def testTensorListWithDynamicSize(self):
+
+    def create_v1_saved_model():
+      saved_model_dir = os.path.join(self.get_temp_dir(),
+                                     'simple_mutable_variable')
+      with tf.Graph().as_default():
+        with tf.compat.v1.Session() as sess:
+          in_tensor = tf.compat.v1.placeholder(
+              shape=[1], dtype=tf.float32, name='input')
+
+          ta = tf.TensorArray(
+              tf.float32, size=0, dynamic_size=True, clear_after_read=False)
+          ta = ta.write(0, 10.0)
+          ta = ta.write(1, 20.0)
+          ta = ta.write(2, 30.0)
+
+          out_tensor = ta.read(0) + ta.read(2)
+
+          inputs = {'x': in_tensor}
+          outputs = {'z': out_tensor}
+          saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+      return saved_model_dir
+
+    saved_model_dir = create_v1_saved_model()
+
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
+    ]
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    interpreter.allocate_tensors()
+
+    input_data = np.array([1.0], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+
+    interpreter.invoke()
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    self.assertEqual(40.0, actual_value)
 
 
 if __name__ == '__main__':

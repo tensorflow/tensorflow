@@ -29,8 +29,28 @@ func @dealloc(%ctx: !tf_framework.op_kernel_context,
   return
 }
 
+// CHECK-LABEL: func @assert
+func @assert(%ctx: !tf_framework.op_kernel_context) {
+  tf_framework.report_error %ctx, "INVALID_ARGUMENT", "Everything is awesome"
+  return
+}
+
+// CHECK-LABEL: func @null_memref
+func @null_memref() {
+  tf_framework.null_memref : memref<*xf32>
+  return
+}
+
 // CHECK-LABEL: func @null_context
 func @null_context() {
   tf_framework.null_context : !tf_framework.op_kernel_context
   return
+}
+
+// CHECK-LABEL: func @minimum_broadcast_shapes
+func @minimum_broadcast_shapes(%lhs: tensor<?xindex>, %rhs: tensor<?xindex>)
+    -> (tensor<?xindex>, tensor<?xindex>) {
+  %0, %1 = tf_framework.minimum_broadcast_shapes %lhs, %rhs :
+      tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>, tensor<?xindex>
+  return %0, %1 : tensor<?xindex>, tensor<?xindex>
 }

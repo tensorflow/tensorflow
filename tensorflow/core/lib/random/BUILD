@@ -73,6 +73,7 @@ cc_library(
     visibility = [
         "//tensorflow/c/eager:__pkg__",
         "//tensorflow/core:__pkg__",
+        "//tensorflow/core/grappler/optimizers:__pkg__",
         "//tensorflow/core/lib/core:__pkg__",
         "//tensorflow/core/lib/gtl:__pkg__",
         "//tensorflow/core/lib/io:__pkg__",

@@ -21,7 +21,7 @@ the ideas above. For more sophisticated examples, refer to [Flex delegate](https
 ## Testing & Tooling
 
 There are currently **two options** to plug in a newly created TFLite delegate
-to reuse existing TFLite kernel tests and and tooling:
+to reuse existing TFLite kernel tests and tooling:
 
 - Utilize the **[delegate registrar](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/delegates)**
 mechanism

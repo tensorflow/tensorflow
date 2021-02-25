@@ -23,10 +23,10 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations as ds_combinations
-from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras.distribute.strategy_combinations import all_strategies
 from tensorflow.python.keras.layers.preprocessing import image_preprocessing
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.platform import test
@@ -34,13 +34,15 @@ from tensorflow.python.platform import test
 
 @ds_combinations.generate(
     combinations.combine(
-        distribution=strategy_combinations.all_strategies,
+        distribution=all_strategies,
         mode=["eager", "graph"]))
 class ImagePreprocessingDistributionTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
 
   def test_distribution(self, distribution):
+    if "CentralStorage" in type(distribution).__name__:
+      self.skipTest("Does not work with CentralStorageStrategy yet.")
     # TODO(b/159738418): large image input causes OOM in ubuntu multi gpu.
     np_images = np.random.random((32, 32, 32, 3)).astype(np.float32)
     image_dataset = dataset_ops.Dataset.from_tensor_slices(np_images).batch(

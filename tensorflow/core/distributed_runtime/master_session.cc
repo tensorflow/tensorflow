@@ -263,7 +263,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
     // The interface to the worker. Owned.
     WorkerInterface* worker = nullptr;
 
-    // After registeration with the worker, graph_handle identifies
+    // After registration with the worker, graph_handle identifies
     // this partition on the worker.
     string graph_handle;
 

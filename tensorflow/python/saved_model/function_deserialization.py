@@ -143,17 +143,17 @@ def _deserialize_function_spec_as_nonmethod(function_spec_proto, coder):
       annotations=typeless_fullargspec.annotations)
   input_signature = coder.decode_proto(function_spec_proto.input_signature)
 
-  # See `tf.function` and the ExperimentalCompile proto for details.
-  experimental_compile = {
-      saved_object_graph_pb2.FunctionSpec.ExperimentalCompile.DEFAULT: None,
-      saved_object_graph_pb2.FunctionSpec.ExperimentalCompile.ON: True,
-      saved_object_graph_pb2.FunctionSpec.ExperimentalCompile.OFF: False,
-  }.get(function_spec_proto.experimental_compile)
+  # See `tf.function` and the JitCompile proto for details.
+  jit_compile = {
+      saved_object_graph_pb2.FunctionSpec.JitCompile.DEFAULT: None,
+      saved_object_graph_pb2.FunctionSpec.JitCompile.ON: True,
+      saved_object_graph_pb2.FunctionSpec.JitCompile.OFF: False,
+  }.get(function_spec_proto.jit_compile)
 
   return function_lib.FunctionSpec(fullargspec=fullargspec,
                                    is_method=False,
                                    input_signature=input_signature,
-                                   experimental_compile=experimental_compile)
+                                   jit_compile=jit_compile)
 
 
 # TODO(allenl): The fact that we can't derive ConcreteFunction calling
@@ -191,9 +191,27 @@ class RestoredFunction(def_function.Function):
     # TODO(mdan): We may enable autograph once exceptions are supported.
     super(RestoredFunction, self).__init__(
         python_function, name, autograph=False,
-        experimental_compile=function_spec.experimental_compile)
+        jit_compile=function_spec.jit_compile)
     self.concrete_functions = concrete_functions
     self._function_spec = function_spec
+
+    # Prevent RestoredFunction from spamming users with frequent tracing
+    # warnings.
+    self._omit_frequent_tracing_warning = True
+
+  @property
+  def _run_functions_eagerly(self):
+    # We do not have access to the original python function, and thus, we
+    # cannot meaningfully do anything but call our concrete function graphs
+    # under the hood.
+    #
+    # Attempting to call our bespoke python function (i.e.
+    # `restored_function_body`) will work so long as the user passes in all
+    # required and optional arguments. If an optional argument is missing,
+    # however, the call will break. For this reason, we instead skip the
+    # eager call path altogether if a user has enabled eager function execution
+    # via `tf.config.run_functions_eagerly`.
+    return False
 
   def _list_all_concrete_functions_for_serialization(self):
     return self.concrete_functions

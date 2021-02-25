@@ -18,7 +18,7 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
-install_ubuntu_16_pip_deps pip3.6
+install_ubuntu_16_python_pip_deps python3.6
 # Update bazel
 install_bazelisk
 
@@ -46,7 +46,7 @@ export TF_TEST_FLAGS="--test_tag_filters=${TF_TEST_FILTER_TAGS} --build_tag_filt
 export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/... "
 export TF_PIP_TESTS="test_pip_virtualenv_non_clean test_pip_virtualenv_clean"
 #export IS_NIGHTLY=0 # Not nightly; uncomment if building from tf repo.
-export TF_PROJECT_NAME="tensorflow_gpu"
+export TF_PROJECT_NAME="tensorflow"  # single pip package!
 export TF_PIP_TEST_ROOT="pip_test"
 
 # To build both tensorflow and tensorflow-gpu pip packages

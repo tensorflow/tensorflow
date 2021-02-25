@@ -20,6 +20,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_status.td"
 
 def TFFramework_Dialect : Dialect {
   let name = "tf_framework";
@@ -41,7 +42,7 @@ def TFFramework_OpKernelContextType : DialectType<TFFramework_Dialect,
     CPred<"$_self.isa<::mlir::kernel_gen::tf_framework::OpKernelContextType>()">,
           "op_kernel_construction">,
     BuildableType<"$_builder.getType<::mlir::kernel_gen::tf_framework::OpKernelContextType>()"> {
-  let typeDescription = [{
+  let description = [{
     OpKernelContextType corresponds to C++ class OpKernelContext defined in
     tensorflow/core/framework/op_kernel.h
   }];
@@ -131,6 +132,83 @@ def TFFramework_NullContextOp : TFFramework_Op<"null_context",
   let description = [{Needed for testing}];
   let results = (outs TFFramework_OpKernelContextType:$result);
   let assemblyFormat = "attr-dict `:` type($result)";
+}
+
+//===----------------------------------------------------------------------===//
+// NullMemRefOp
+//===----------------------------------------------------------------------===//
+def TFFramework_NullMemRefOp : TFFramework_Op<"null_memref", []> {
+  let summary = "Op to construct unranked memref with 0-rank";
+  let description = [{
+    The op is needed to construct a throw-away result after error reporting
+    happened. It constructs an unranked memref descriptor with 0-rank and
+    {NULL, NULL, 0} underlying ranked descriptor of type memref<elem_type>.
+  }];
+
+  let results = (outs AnyUnrankedMemRef:$result);
+  let assemblyFormat = "attr-dict `:` type($result)";
+}
+
+//===----------------------------------------------------------------------===//
+// ReportErrorOp
+//===----------------------------------------------------------------------===//
+def TFFramework_ReportErrorOp : TFFramework_Op<"report_error", []> {
+  let summary = "Operation that propagates error message to TF Framework";
+  let description = [{
+    Error reporting operation that corresponds to
+    `OpKernelContext::CtxFailureWithWarning`.
+  }];
+
+  let arguments = (ins
+    TFFramework_OpKernelContextType:$ctx,
+    TFFramework_ErrorCodeAttr:$error_code,
+    StrAttr:$msg
+  );
+
+  let assemblyFormat = "$ctx `,` $error_code `,` $msg attr-dict";
+}
+
+//===----------------------------------------------------------------------===//
+// MinimumBroadcastShapesOp
+//===----------------------------------------------------------------------===//
+def TFFramework_MinimumBroadcastShapesOp :
+    TFFramework_Op<"minimum_broadcast_shapes", [NoSideEffect]> {
+  let summary = "Minimizes the rank of two or more shapes to be broadcasted";
+  let description = [{
+    Given two or more 1D tensors representing shapes, returns one 1D tensor for
+    each operand, where operand `i` corresponds to output `i`.
+
+    The returned tensors have the property that they specify a shape which is a
+    reshape of the corresponding input shape, and the broadcasted output shape
+    (using shape::BroadcastOp) of the returned shapes is a reshape of the
+    broadcasted output shape of the input shapes. Among all possibilities with
+    this property, the one is chosen which minimizes the rank of each returned
+    shape.
+
+    The general idea of this op is that it can be used for ops which have a
+    broadcasting semantic to operate on shapes with a possibly smaller rank
+    while preserving equivalence of the computed values. After computing the
+    result of the op using reshaped operands, the result can be reshaped to the
+    result that would have been originally computed.
+
+    Here is an example with two input shapes:
+
+    ```mlir
+    tf_framework.minimum_broadcast_shapes [1, 2, 3, 1, 2, 1],
+                                             [1, 1, 1, 2, 3] -> [6, 2, 1], [2, 3]
+    ```
+
+    The broadcasted output shape of the operands is [1, 2, 3, 1, 2, 3], the
+    broadcasted output shape of the outputs is [6, 2, 3]. These two shapes are
+    reshapes of each other, and also each output is a reshape of the
+    corresponding input.
+  }];
+
+  let arguments = (ins Variadic<1DTensorOf<[Index]>>:$shapes);
+  let results = (outs Variadic<1DTensorOf<[Index]>>:$results);
+
+  let assemblyFormat = "$shapes attr-dict `:` type($shapes) `->` type($results)";
+
 }
 
 #endif // TF_FRAMEWORK_OPS

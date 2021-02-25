@@ -20,12 +20,12 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python import _pywrap_utils
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import type_spec
+from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -55,10 +55,6 @@ class DenseSpec(type_spec.TypeSpec):
       self._shape_tuple = None
     self._dtype = dtypes.as_dtype(dtype)
     self._name = name
-
-  @classmethod
-  def from_spec(cls, spec, name=None):
-    return cls(spec.shape, spec.dtype, name or spec.name)
 
   @property
   def shape(self):
@@ -118,6 +114,7 @@ class DenseSpec(type_spec.TypeSpec):
 
 
 @tf_export("TensorSpec")
+@type_spec.register("tf.TensorSpec")
 class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec):
   """Describes a tf.Tensor.
 
@@ -142,7 +139,33 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec):
     return super(TensorSpec, self).is_compatible_with(spec_or_tensor)
 
   @classmethod
+  def from_spec(cls, spec, name=None):
+    """Returns a `TensorSpec` with the same shape and dtype as `spec`.
+
+    >>> spec = tf.TensorSpec(shape=[8, 3], dtype=tf.int32, name="OriginalName")
+    >>> tf.TensorSpec.from_spec(spec, "NewName")
+    TensorSpec(shape=(8, 3), dtype=tf.int32, name='NewName')
+
+    Args:
+      spec: The `TypeSpec` used to create the new `TensorSpec`.
+      name: The name for the new `TensorSpec`.  Defaults to `spec.name`.
+    """
+    return cls(spec.shape, spec.dtype, name or spec.name)
+
+  @classmethod
   def from_tensor(cls, tensor, name=None):
+    """Returns a `TensorSpec` that describes `tensor`.
+
+    >>> tf.TensorSpec.from_tensor(tf.constant([1, 2, 3]))
+    TensorSpec(shape=(3,), dtype=tf.int32, name=None)
+
+    Args:
+      tensor: The `tf.Tensor` that should be described.
+      name: A name for the `TensorSpec`.  Defaults to `tensor.op.name`.
+
+    Returns:
+      A `TensorSpec` that describes `tensor`.
+    """
     if isinstance(tensor, ops.EagerTensor):
       return TensorSpec(tensor.shape, tensor.dtype, name)
     elif isinstance(tensor, ops.Tensor):
@@ -150,7 +173,10 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec):
     else:
       raise ValueError("`tensor` should be a tf.Tensor")
 
-  value_type = property(lambda self: ops.Tensor)
+  @property
+  def value_type(self):
+    """The Python type for values that are compatible with this TypeSpec."""
+    return ops.Tensor
 
   def _to_components(self, value):
     try:
@@ -194,6 +220,7 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec):
 
 
 # TODO(b/133606651): Should is_compatible_with should check min/max bounds?
+@type_spec.register("tf.BoundedTensorSpec")
 class BoundedTensorSpec(TensorSpec):
   """A `TensorSpec` that specifies minimum and maximum values.
 
@@ -263,6 +290,21 @@ class BoundedTensorSpec(TensorSpec):
 
   @classmethod
   def from_spec(cls, spec):
+    """Returns a `TensorSpec` with the same shape and dtype as `spec`.
+
+    If `spec` is a `BoundedTensorSpec`, then the new spec's bounds are set to
+    `spec.minimum` and `spec.maximum`; otherwise, the bounds are set to
+    `spec.dtype.min` and `spec.dtype.max`.
+
+    >>> spec = tf.TensorSpec(shape=[8, 3], dtype=tf.int32, name="x")
+    >>> BoundedTensorSpec.from_spec(spec)
+    BoundedTensorSpec(shape=(8, 3), dtype=tf.int32, name='x',
+        minimum=array(-2147483648, dtype=int32),
+        maximum=array(2147483647, dtype=int32))
+
+    Args:
+      spec: The `TypeSpec` used to create the new `BoundedTensorSpec`.
+    """
     dtype = dtypes.as_dtype(spec.dtype)
     minimum = getattr(spec, "minimum", dtype.min)
     maximum = getattr(spec, "maximum", dtype.max)

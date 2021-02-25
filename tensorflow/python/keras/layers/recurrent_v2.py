@@ -22,6 +22,7 @@ import uuid
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
+from tensorflow.python.eager.context import get_device_name
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device
@@ -36,7 +37,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import sysconfig
@@ -59,11 +59,11 @@ _RUNTIME_UNKNOWN = 0
 _RUNTIME_CPU = 1
 _RUNTIME_GPU = 2
 
-_CUDNN_AVAILABLE_MSG = 'Layer %s will use cuDNN kernel when run on GPU.'
-_CUDNN_NOT_AVAILABLE_MSG = ('Layer %s will not use cuDNN kernel since it '
-                            'doesn\'t meet the cuDNN kernel criteria. It will '
-                            'use generic GPU kernel as fallback when running '
-                            'on GPU')
+_CUDNN_AVAILABLE_MSG = 'Layer %s will use cuDNN kernels when running on GPU.'
+_CUDNN_NOT_AVAILABLE_MSG = ('Layer %s will not use cuDNN kernels since it '
+                            'doesn\'t meet the criteria. It will '
+                            'use a generic GPU kernel as fallback when running '
+                            'on GPU.')
 
 
 def _use_new_code():
@@ -132,7 +132,7 @@ class GRUCell(recurrent.GRUCell):
   >>> print(final_state.shape)
   (32, 4)
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use. Default: hyperbolic tangent
       (`tanh`). If you pass None, no activation is applied
@@ -265,7 +265,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
   >>> print(final_state.shape)
   (32, 4)
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use.
       Default: hyperbolic tangent (`tanh`).
@@ -334,6 +334,9 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     inputs: A 3D tensor, with shape `[batch, timesteps, feature]`.
     mask: Binary tensor of shape `[samples, timesteps]` indicating whether
       a given timestep should be masked  (optional, defaults to `None`).
+      An individual `True` entry indicates that the corresponding timestep
+      should be utilized, while a `False` entry indicates that the
+      corresponding timestep should be ignored.
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. This argument is passed to the cell
       when calling it. This is only relevant if `dropout` or
@@ -414,19 +417,6 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
 
     if _use_new_code():
       self._defun_wrapper = _DefunWrapper(time_major, go_backwards, 'gru')
-
-  def build(self, input_shape):
-    super(GRU, self).build(input_shape)
-
-    if not all(isinstance(v, resource_variable_ops.ResourceVariable)
-               for v in self.weights):
-      # Non-resource variables, such as DistributedVariables and
-      # AutoCastVariables, do not work properly with the implementation
-      # selector, which is used when cuDNN is used. However, by chance, such
-      # variables happen to work in LSTM, so this check is only needed for GRU.
-      # TODO(b/136512020): Make non-resource variables work with the
-      # implementation selector.
-      self._could_use_gpu_kernel = False
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
     # The input should be dense, padded with zeros. If a ragged input is fed
@@ -562,7 +552,7 @@ def standard_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask,
   counterpart. The RNN step logic has been simplified, eg dropout and mask is
   removed since CuDNN implementation does not support that.
 
-  Arguments:
+  Args:
     inputs: Input tensor of GRU layer.
     init_h: Initial state tensor for the cell output.
     kernel: Weights for cell kernel.
@@ -570,7 +560,9 @@ def standard_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask,
     bias: Weights for cell kernel bias and recurrent bias. The bias contains the
       combined input_bias and recurrent_bias.
     mask: Binary tensor of shape `(samples, timesteps)` indicating whether
-      a given timestep should be masked.
+      a given timestep should be masked. An individual `True` entry indicates
+      that the corresponding timestep should be utilized, while a `False` entry
+      indicates that the corresponding timestep should be ignored.
     time_major: Boolean, whether the inputs are in the format of
       [time, batch, feature] or [batch, time, feature].
     go_backwards: Boolean (default False). If True, process the input sequence
@@ -697,9 +689,9 @@ def gpu_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
     if go_backwards:
       # Reverse axis 0 since the input is already convert to time major.
       inputs = array_ops.reverse(inputs, axis=[0])
-    outputs, h, _, _ = gen_cudnn_rnn_ops.cudnn_rnn(
-        inputs, input_h=init_h, input_c=0, params=params, is_training=True,
-        rnn_mode='gru')
+    outputs, h, _, _ = gen_cudnn_rnn_ops.CudnnRNN(
+        input=inputs, input_h=init_h, input_c=0, params=params,
+        is_training=True, rnn_mode='gru')
 
   last_output = outputs[-1]
   if not time_major and mask is None:
@@ -740,6 +732,9 @@ def gru_with_backend_selection(inputs, init_h, kernel, recurrent_kernel, bias,
     bias: Weights for cell kernel bias and recurrent bias. Only recurrent bias
       is used in this case.
     mask: Boolean tensor for mask out the steps within sequence.
+      An individual `True` entry indicates that the corresponding timestep
+      should be utilized, while a `False` entry indicates that the corresponding
+      timestep should be ignored.
     time_major: Boolean, whether the inputs are in the format of
       [time, batch, feature] or [batch, time, feature].
     go_backwards: Boolean (default False). If True, process the input sequence
@@ -839,7 +834,7 @@ def gru_with_backend_selection(inputs, init_h, kernel, recurrent_kernel, bias,
     # Call the normal GRU impl and register the CuDNN impl function. The
     # grappler will kick in during session execution to optimize the graph.
     last_output, outputs, new_h, runtime = defun_standard_gru(**params)
-    function.register(defun_gpu_gru, **params)
+    _function_register(defun_gpu_gru, **params)
 
   return last_output, outputs, new_h, runtime
 
@@ -873,7 +868,7 @@ class LSTMCell(recurrent.LSTMCell):
   >>> print(final_carry_state.shape)
   (32, 4)
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use. Default: hyperbolic tangent
       (`tanh`). If you pass `None`, no activation is applied (ie. "linear"
@@ -999,7 +994,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
   >>> print(final_carry_state.shape)
   (32, 4)
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use.
       Default: hyperbolic tangent (`tanh`). If you pass `None`, no activation
@@ -1062,6 +1057,9 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
     inputs: A 3D tensor with shape `[batch, timesteps, feature]`.
     mask: Binary tensor of shape `[batch, timesteps]` indicating whether
       a given timestep should be masked (optional, defaults to `None`).
+      An individual `True` entry indicates that the corresponding timestep
+      should be utilized, while a `False` entry indicates that the corresponding
+      timestep should be ignored.
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. This argument is passed to the cell
       when calling it. This is only relevant if `dropout` or
@@ -1348,6 +1346,9 @@ def standard_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias,
     bias: weights for cell kernel bias and recurrent bias. Only recurrent bias
       is used in this case.
     mask: Boolean tensor for mask out the steps within sequence.
+      An individual `True` entry indicates that the corresponding timestep
+      should be utilized, while a `False` entry indicates that the corresponding
+      timestep should be ignored.
     time_major: boolean, whether the inputs are in the format of
       [time, batch, feature] or [batch, time, feature].
     go_backwards: Boolean (default False). If True, process the input sequence
@@ -1420,6 +1421,9 @@ def gpu_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
     bias: Weights for cell kernel bias and recurrent bias. Only recurrent bias
       is used in this case.
     mask: Boolean tensor for mask out the steps within sequence.
+      An individual `True` entry indicates that the corresponding timestep
+      should be utilized, while a `False` entry indicates that the corresponding
+      timestep should be ignored.
     time_major: Boolean, whether the inputs are in the format of [time, batch,
       feature] or [batch, time, feature].
     go_backwards: Boolean (default False). If True, process the input sequence
@@ -1485,8 +1489,8 @@ def gpu_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
       # expected_output = [0, 0, 6, 5 ,4]
       inputs = array_ops.reverse_sequence_v2(
           inputs, sequence_lengths, seq_axis=seq_axis, batch_axis=batch_axis)
-    outputs, h, c, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv3(
-        inputs,
+    outputs, h, c, _, _ = gen_cudnn_rnn_ops.CudnnRNNV3(
+        input=inputs,
         input_h=init_h,
         input_c=init_c,
         params=params,
@@ -1505,9 +1509,9 @@ def gpu_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
     if go_backwards:
       # Reverse axis 0 since the input is already convert to time major.
       inputs = array_ops.reverse(inputs, axis=[0])
-    outputs, h, c, _ = gen_cudnn_rnn_ops.cudnn_rnn(
-        inputs, input_h=init_h, input_c=init_c, params=params, is_training=True,
-        rnn_mode='lstm')
+    outputs, h, c, _ = gen_cudnn_rnn_ops.CudnnRNN(
+        input=inputs, input_h=init_h, input_c=init_c, params=params,
+        is_training=True, rnn_mode='lstm')
 
   last_output = outputs[-1]
   if not time_major and mask is None:
@@ -1550,6 +1554,9 @@ def lstm_with_backend_selection(inputs, init_h, init_c, kernel,
     bias: Weights for cell kernel bias and recurrent bias. Only recurrent bias
       is used in this case.
     mask: Boolean tensor for mask out the steps within sequence.
+      An individual `True` entry indicates that the corresponding timestep
+      should be utilized, while a `False` entry indicates that the corresponding
+      timestep should be ignored.
     time_major: Boolean, whether the inputs are in the format of
       [time, batch, feature] or [batch, time, feature].
     go_backwards: Boolean (default False). If True, process the input sequence
@@ -1653,7 +1660,7 @@ def lstm_with_backend_selection(inputs, init_h, init_c, kernel,
     # Call the normal LSTM impl and register the CuDNN impl function. The
     # grappler will kick in during session execution to optimize the graph.
     last_output, outputs, new_h, new_c, runtime = defun_standard_lstm(**params)
-    function.register(defun_gpu_lstm, **params)
+    _function_register(defun_gpu_lstm, **params)
 
   return last_output, outputs, new_h, new_c, runtime
 
@@ -1748,7 +1755,7 @@ def _generate_defun_backend(unique_api_name, preferred_device, func,
 
 def _get_context_device_type():
   """Parse the current context and return the device type, eg CPU/GPU."""
-  current_device = context.context().device_name
+  current_device = get_device_name()
   if current_device is None:
     return None
   return device.DeviceSpec.from_string(current_device).device_type
@@ -1765,3 +1772,27 @@ def _read_variable_value(v):
   if isinstance(v, variables.Variable):
     return v.read_value()
   return v
+
+
+def _function_register(func, *args, **kwargs):
+  """Register a specialization of a `Function` into the graph.
+
+  This won't actually call the function with the inputs, and only put the
+  function definition into graph. Register function with different input param
+  will result into multiple version of functions registered in graph.
+
+  Args:
+    func: the `Function` instance that generated by a @defun
+    *args: input arguments for the Python function.
+    **kwargs: input keyword arguments for the Python function.
+
+  Returns:
+    a `ConcreteFunction` object specialized to inputs and execution context.
+
+  Raises:
+    ValueError: When the input function is not a defun wrapped python function.
+  """
+  concrete_func = func.get_concrete_function(*args, **kwargs)
+  concrete_func.add_to_graph()
+  concrete_func.add_gradient_functions_to_graph()
+  return concrete_func

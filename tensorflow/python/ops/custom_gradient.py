@@ -90,7 +90,7 @@ def custom_gradient(f=None):
   all the layers or functions originating from this layer.
 
   By chain rule we know that
-  `dy/dx = dy/x_0 * dx_0/dx_1 * ... * dx_i/dx_i+1 * ... * dx_n/dx`
+  `dy/dx = dy/dx_0 * dx_0/dx_1 * ... * dx_i/dx_i+1 * ... * dx_n/dx`
 
   In this case the gradient of our current function defined as 
   `dx_i/dx_i+1 = (1 - 1 / (1 + e))`. The upstream gradient `dy` would be
@@ -373,8 +373,9 @@ def _graph_mode_decorator(f, args, kwargs):
       v.ref() for v in _get_dependent_variables(
           input_ops=filtered_input_tensors, output_ops=flat_result)
   ])
-  variables = list(
-      [v.deref() for v in variables_in_subgraph.union(variables_in_tape)])
+  variables = sorted(
+      [v.deref() for v in variables_in_subgraph.union(variables_in_tape)],
+      key=lambda v: v.name)
 
   grad_argspec = tf_inspect.getfullargspec(grad_fn)
   variables_in_signature = ("variables" in grad_argspec.args or

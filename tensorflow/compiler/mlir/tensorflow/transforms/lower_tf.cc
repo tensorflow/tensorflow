@@ -20,12 +20,16 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -65,8 +69,9 @@ static APFloat ConvertToAPFloat(double val, Type type) {
 }
 
 // Returns int, float, or complex DenseElementsAttr with scalar shape with the
-// given element type and the integer value.
-static DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
+// given element type and the value.
+template <typename T>
+static DenseElementsAttr GetScalarOfType(Type ty, T raw_value) {
   RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
   if (auto float_ty = ty.dyn_cast_or_null<FloatType>()) {
     FloatAttr attr = FloatAttr::get(float_ty, raw_value);
@@ -85,14 +90,6 @@ static DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
     }
   }
   llvm_unreachable("unsupported type");
-}
-
-// Returns float DenseElementsAttr with scalar shape with the specified value.
-static DenseElementsAttr GetScalarOfFloatType(Type ty, double raw_value) {
-  auto float_ty = ty.cast<FloatType>();
-  FloatAttr attr = FloatAttr::get(float_ty, raw_value);
-  RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
-  return DenseElementsAttr::get(scalar_ty, attr);
 }
 
 // Returns reduction indices to use while lowering tf.BiasAddGrad op to tf.Sum
@@ -241,23 +238,25 @@ class LowerAddNOp : public RewritePattern {
 //     : (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>,
 //        tensor<2xf32>, tensor<i64>) -> tensor<5x2xf32>
 //
+template <typename OpT>
 class LowerDynamicStitchOp : public RewritePattern {
  public:
   explicit LowerDynamicStitchOp(MLIRContext *context)
       : RewritePattern(
-            DynamicStitchOp::getOperationName(),
+            OpT::getOperationName(),
             {ConstOp::getOperationName(), ReshapeOp::getOperationName(),
              UnpackOp::getOperationName(), PackOp::getOperationName()},
             1, context) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
-    auto op = cast<DynamicStitchOp>(src_op);
+    auto op = cast<OpT>(src_op);
 
     // Static output type is used to compute intermediate values. Note that the
     // output type doesn't have to be static but if input types and indices are
     // constant, then the output type can be statically determined.
-    RankedTensorType out_ty = op.getType().dyn_cast<RankedTensorType>();
+    RankedTensorType out_ty =
+        op.getType().template dyn_cast<RankedTensorType>();
     if (!out_ty || !out_ty.hasStaticShape()) return failure();
 
     // Extract out all the constant indices' attributes and verify that data
@@ -272,7 +271,8 @@ class LowerDynamicStitchOp : public RewritePattern {
       if (!matchPattern(index, m_Constant(&index_attr))) return failure();
       indices.push_back(index_attr);
 
-      RankedTensorType data_ty = data.getType().dyn_cast<RankedTensorType>();
+      RankedTensorType data_ty =
+          data.getType().template dyn_cast<RankedTensorType>();
       if (!data_ty || !data_ty.hasStaticShape()) return failure();
     }
 
@@ -297,8 +297,9 @@ class LowerDynamicStitchOp : public RewritePattern {
 
       auto reshaped_data =
           rewriter.create<ReshapeOp>(loc, data, packed_shape_val);
-      auto num_items =
-          reshaped_data.getType().cast<RankedTensorType>().getShape()[0];
+      auto num_items = reshaped_data.getType()
+                           .template cast<RankedTensorType>()
+                           .getShape()[0];
       auto items = rewriter.create<UnpackOp>(
           loc, SmallVector<Type, 4>(num_items, item_ty), reshaped_data,
           /*axis=*/0);
@@ -324,12 +325,13 @@ class LowerDynamicStitchOp : public RewritePattern {
 class ConvertFakeQuantWithMinMaxVarsOp : public RewritePattern {
  public:
   explicit ConvertFakeQuantWithMinMaxVarsOp(MLIRContext *context)
-      : RewritePattern(FakeQuantWithMinMaxVarsOp::getOperationName(),
-                       {SubOp::getOperationName(), ConstOp::getOperationName(),
-                        MulOp::getOperationName(), FloorOp::getOperationName(),
-                        ClipByValueOp::getOperationName(),
-                        DivOp::getOperationName(), RoundOp::getOperationName()},
-                       1, context) {}
+      : RewritePattern(
+            FakeQuantWithMinMaxVarsOp::getOperationName(),
+            {AddV2Op::getOperationName(), SubOp::getOperationName(),
+             ConstOp::getOperationName(), MulOp::getOperationName(),
+             FloorOp::getOperationName(), ClipByValueOp::getOperationName(),
+             DivOp::getOperationName(), RoundOp::getOperationName()},
+            1, context) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -411,8 +413,8 @@ class ConvertFakeQuantWithMinMaxVarsOp : public RewritePattern {
         op.getLoc(),
         DenseElementsAttr::get(scalar_ty, ConvertToAPFloat(0.5, element_ty)));
 
-    quantized_input = rewriter.create<AddOp>(op.getLoc(), input_ty,
-                                             quantized_input, half_val);
+    quantized_input = rewriter.create<AddV2Op>(op.getLoc(), input_ty,
+                                               quantized_input, half_val);
 
     quantized_input = rewriter.create<FloorOp>(op.getLoc(), quantized_input);
 
@@ -420,8 +422,8 @@ class ConvertFakeQuantWithMinMaxVarsOp : public RewritePattern {
     Value output = rewriter.create<MulOp>(op.getLoc(), input_ty,
                                           quantized_input, quant_to_float);
 
-    output =
-        rewriter.create<AddOp>(op.getLoc(), input_ty, output, nudged_float_min);
+    output = rewriter.create<AddV2Op>(op.getLoc(), input_ty, output,
+                                      nudged_float_min);
 
     rewriter.replaceOp(op, {output});
     return success();
@@ -803,10 +805,10 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
                            CastOp::getOperationName(),
                            ConstOp::getOperationName(),
                            ConcatV2Op::getOperationName(),
-                           AddOp::getOperationName(),
+                           AddV2Op::getOperationName(),
                            PadOp::getOperationName(),
-                           SumOp::getOperationName(),
                            SplitOp::getOperationName(),
+                           UnpackOp::getOperationName(),
                            DivOp::getOperationName(),
                            MulOp::getOperationName(),
                            ReshapeOp::getOperationName(),
@@ -829,6 +831,9 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
       return failure();
     }
     auto paddings_type = op.paddings().getType().cast<ShapedType>();
+    if (!paddings_type.hasRank()) {
+      return failure();
+    }
 
     int64_t input_rank = input_type.getRank();
     int64_t block_rank = block_shape_type.getNumElements();
@@ -867,6 +872,7 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
     // full_paddings won't be available as a constant for shape inference.
     ElementsAttr block_shape;
     ElementsAttr paddings;
+    llvm::SmallVector<int64_t, 4> block_shape_ints;
     auto padded_shape = llvm::to_vector<4>(input_shape);
     if (matchPattern(op.block_shape(), m_Constant(&block_shape)) &&
         matchPattern(op.paddings(), m_Constant(&paddings))) {
@@ -876,13 +882,14 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
             paddings.getValue({i, 1}).cast<IntegerAttr>().getInt();
         int64_t block_shape_i =
             block_shape.getValue({i}).cast<IntegerAttr>().getInt();
-        padded_shape[i + 1] =
-            (paddings_sum + padded_shape[i + 1]) / block_shape_i;
+        padded_shape[i + 1] = (paddings_sum + input_shape[i + 1]);
+        block_shape_ints.push_back(block_shape_i);
       }
     } else {
       for (int i = 0; i < block_rank; i++) {
         padded_shape[i + 1] = ShapedType::kDynamicSize;
       }
+      block_shape_ints.resize(block_shape_type.getNumElements(), -1);
     }
 
     auto padded_type =
@@ -893,13 +900,13 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
 
     auto paddings_sum_type =
         RankedTensorType::get({input_rank}, rewriter.getIntegerType(64));
-    auto one_i64 = rewriter.create<ConstOp>(
-        loc, GetScalarOfType(rewriter.getIntegerType(64), 1));
     // paddings_sum = paddings[*,0] + paddings[*,1]
-    auto paddings_sum =
-        rewriter.create<SumOp>(loc, paddings_sum_type, full_paddings, one_i64);
+    auto paddings_split = rewriter.create<UnpackOp>(
+        loc, TypeRange({paddings_sum_type, paddings_sum_type}), full_paddings,
+        rewriter.getI64IntegerAttr(1));
+    auto paddings_sum = rewriter.create<AddV2Op>(
+        loc, paddings_split.getResult(0), paddings_split.getResult(1));
 
-    // input_shape_tensor = input.shape
     auto input_shape_tensor = rewriter.create<ConstOp>(
         loc,
         DenseElementsAttr::get(
@@ -908,7 +915,7 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
 
     // padded_shape_tensor is the shape of padded.
     auto padded_shape_tensor =
-        rewriter.create<AddOp>(loc, paddings_sum, input_shape_tensor);
+        rewriter.create<AddV2Op>(loc, paddings_sum, input_shape_tensor);
 
     auto zero_i32 = rewriter.create<ConstOp>(
         loc, GetScalarOfType(rewriter.getIntegerType(32), 0));
@@ -928,24 +935,45 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
                              block_shape_i64)
             .output());
 
+    SmallVector<int64_t, 4> outer_shape_ints;
     SmallVector<Value, 4> outer_shape_vals;
     for (int64_t i = 0; i < block_rank; ++i) {
       // TODO(b/157475606): Insert tf.Assert that the following division has
       // remainder 0.
       outer_shape_vals.push_back(rewriter.create<DivOp>(
           loc, padded_shape_splits[1 + i], block_shape_splits[i]));
+
+      auto padded_shape_i = padded_shape[1 + i];
+      auto block_shape_ints_i = block_shape_ints[i];
+
+      // Compute the outer_shape constant values to infer the reshape.
+      if (padded_shape_i == -1 || block_shape_ints_i == -1) {
+        outer_shape_ints.push_back(-1);
+      } else {
+        outer_shape_ints.push_back(padded_shape_i / block_shape_ints_i);
+      }
     }
 
     SmallVector<Value, 6> reshaped_shape_vals{padded_shape_splits[0]};
+    SmallVector<int64_t, 6> reshaped_shape_ints{padded_shape[0]};
     for (int64_t i = 0; i < block_rank; ++i) {
       reshaped_shape_vals.push_back(outer_shape_vals[i]);
       reshaped_shape_vals.push_back(block_shape_splits[i]);
+
+      reshaped_shape_ints.push_back(outer_shape_ints[i]);
+      reshaped_shape_ints.push_back(block_shape_ints[i]);
     }
     for (int64_t i = 1 + block_rank; i < input_rank; ++i) {
       reshaped_shape_vals.push_back(padded_shape_splits[i]);
+      reshaped_shape_ints.push_back(padded_shape[i]);
     }
     auto reshaped_shape = ValuesToRank1(
         rewriter, loc, rewriter.getIntegerType(64), reshaped_shape_vals);
+
+    auto reshaped = rewriter.create<ReshapeOp>(
+        loc,
+        RankedTensorType::get(reshaped_shape_ints, input_type.getElementType()),
+        padded, reshaped_shape);
 
     SmallVector<int64_t, 6> permutation_vals;
     for (int64_t i = 0; i < block_rank; ++i) {
@@ -961,6 +989,7 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
     auto permutation = rewriter.create<ConstOp>(
         loc, GetI64ElementsAttr(permutation_vals, &rewriter));
 
+    auto permuted = rewriter.create<TransposeOp>(loc, reshaped, permutation);
     auto output_batch = padded_shape_splits[0];
     for (int64_t i = 0; i < block_rank; ++i) {
       output_batch =
@@ -975,8 +1004,6 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
     }
     auto output_shape = ValuesToRank1(
         rewriter, loc, rewriter.getIntegerType(64), output_shape_vals);
-    auto reshaped = rewriter.create<ReshapeOp>(loc, padded, reshaped_shape);
-    auto permuted = rewriter.create<TransposeOp>(loc, reshaped, permutation);
 
     // Sometimes the result type is more specific than what the reshape builder
     // can infer.
@@ -984,6 +1011,177 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
     rewriter.replaceOpWithNewOp<ReshapeOp>(op, result_type, permuted,
                                            output_shape);
 
+    return success();
+  }
+};
+
+class LowerBatchToSpaceND : public RewritePattern {
+ public:
+  explicit LowerBatchToSpaceND(MLIRContext *context)
+      : RewritePattern(BatchToSpaceNDOp::getOperationName(),
+                       {
+                           ConstOp::getOperationName(),
+                           ReshapeOp::getOperationName(),
+                           SliceOp::getOperationName(),
+                           TransposeOp::getOperationName(),
+                       },
+                       1, context) {}
+
+  LogicalResult matchAndRewrite(Operation *src_op,
+                                PatternRewriter &rewriter) const override {
+    auto op = cast<BatchToSpaceNDOp>(src_op);
+    auto input = op.input();
+    auto input_ty = input.getType().cast<ShapedType>();
+    auto element_ty = input_ty.getElementType();
+    if (!input_ty.hasStaticShape()) {
+      return failure();
+    }
+
+    const int input_rank = input_ty.getRank();
+    auto input_shape = input_ty.getShape();
+
+    DenseIntElementsAttr block_shape;
+    DenseIntElementsAttr crops;
+    if (!matchPattern(op.block_shape(), m_Constant(&block_shape)) ||
+        !matchPattern(op.crops(), m_Constant(&crops))) {
+      return failure();
+    }
+
+    auto block_shape_ty = block_shape.getType();
+    if (!block_shape_ty.hasRank() || block_shape_ty.getRank() != 1) {
+      return failure();
+    }
+
+    const int block_rank = block_shape_ty.getShape().front();
+    auto remainder_shape = input_shape.drop_front(1 + block_rank);
+
+    const int64_t batch_size = input_shape[0];
+
+    // Compute the product of the block_shape values.
+    int64_t block_num_elems = 1;
+
+    for (auto val : block_shape.getIntValues()) {
+      block_num_elems *= val.getSExtValue();
+    }
+
+    if (block_num_elems <= 0) {
+      op.emitOpError()
+          << "The product of the block dimensions must be positive";
+      return failure();
+    }
+
+    // 1. Reshape `input` to `reshaped` of shape:
+    //      [block_shape[0], ..., block_shape[M-1],
+    //       batch / prod(block_shape),
+    //       input_shape[1], ..., input_shape[N-1]]
+    std::vector<int64_t> reshaped_shape;
+    for (auto val : block_shape) {
+      reshaped_shape.push_back(val.getSExtValue());
+    }
+    reshaped_shape.resize(input_rank + block_rank);
+
+    reshaped_shape[block_rank] = batch_size / block_num_elems;
+    std::copy(input_shape.begin() + 1, input_shape.end(),
+              reshaped_shape.begin() + block_rank + 1);
+
+    auto reshaped = rewriter.create<TF::ReshapeOp>(
+        op.getLoc(), RankedTensorType::get(reshaped_shape, element_ty), input,
+        rewriter.create<ConstOp>(op.getLoc(),
+                                 rewriter.getI64TensorAttr(reshaped_shape)));
+
+    // 2. Permute dimensions of `reshaped` to produce `permuted` of shape
+    //      [batch / prod(block_shape),
+    //
+    //       input_shape[1], block_shape[0],
+    //       ...,
+    //       input_shape[M], block_shape[M-1],
+    //
+    //       input_shape[M+1], ..., input_shape[N-1]]
+    std::vector<int64_t> permutation(reshaped_shape.size());
+    permutation[0] = block_rank;
+    for (int i = 0; i < block_rank; ++i) {
+      permutation[1 + 2 * i] = block_rank + 1 + i;
+      permutation[1 + 2 * i + 1] = i;
+    }
+    std::iota(permutation.begin() + 1 + block_rank * 2, permutation.end(),
+              1 + block_rank * 2);
+
+    std::vector<int64_t> transpose_shape(permutation.size());
+    for (auto it : llvm::enumerate(permutation)) {
+      transpose_shape[it.index()] = reshaped_shape[it.value()];
+    }
+
+    auto permuted = rewriter.create<TF::TransposeOp>(
+        op.getLoc(), RankedTensorType::get(transpose_shape, element_ty),
+        reshaped,
+        rewriter.create<ConstOp>(op.getLoc(),
+                                 rewriter.getI64TensorAttr(permutation)));
+
+    // 3. Reshape `permuted` to produce `reshaped_permuted` of shape
+    //      [batch / prod(block_shape),
+    //
+    //       input_shape[1] * block_shape[0],
+    //       ...,
+    //       input_shape[M] * block_shape[M-1],
+    //
+    //       input_shape[M+1],
+    //       ...,
+    //       input_shape[N-1]]
+    std::vector<int64_t> reshaped_permuted_shape(input_rank);
+    auto block_shape_values = llvm::to_vector<4>(block_shape.getIntValues());
+    reshaped_permuted_shape[0] = batch_size / block_num_elems;
+    for (int i = 0; i < block_rank; ++i) {
+      reshaped_permuted_shape[1 + i] =
+          block_shape_values[i].getSExtValue() * input_shape[1 + i];
+    }
+    std::copy(remainder_shape.begin(), remainder_shape.end(),
+              reshaped_permuted_shape.begin() + 1 + block_rank);
+
+    auto reshaped_permuted = rewriter.create<TF::ReshapeOp>(
+        op.getLoc(), RankedTensorType::get(reshaped_permuted_shape, element_ty),
+        permuted,
+        rewriter.create<ConstOp>(
+            op.getLoc(), rewriter.getI64TensorAttr(reshaped_permuted_shape)));
+
+    // 4. Crop the start and end of dimensions `[1, ..., M]` of
+    //    `reshaped_permuted` according to `crops` to produce the output of
+    //    shape:
+    //      [batch / prod(block_shape),
+    //
+    //       input_shape[1] * block_shape[0] - crops[0,0] - crops[0,1],
+    //       ...,
+    //       input_shape[M] * block_shape[M-1] - crops[M-1,0] - crops[M-1,1],
+    //
+    //       input_shape[M+1], ..., input_shape[N-1]]
+    std::vector<int64_t> start_indices(input_rank, 0);
+    std::vector<int64_t> slice_sizes = reshaped_permuted_shape;
+    std::vector<int64_t> strides(input_rank, 1);
+    auto crop_values = llvm::to_vector<4>(crops.getIntValues());
+    for (int i = 0; i < block_rank; ++i) {
+      int64_t crop_start = crop_values[i * 2].getSExtValue();
+      int64_t crop_end = crop_values[i * 2 + 1].getSExtValue();
+
+      if (crop_start < 0 || crop_end < 0) {
+        op.emitOpError() << "Crops must be non-negative";
+        return failure();
+      }
+
+      start_indices[i + 1] = crop_start;
+      slice_sizes[i + 1] -= crop_start + crop_end;
+
+      if (slice_sizes[i + 1] < 0) {
+        op.emitOpError() << "Cropped size must be non-negative: start: "
+                         << crop_start << " end: " << crop_end << " size "
+                         << reshaped_permuted_shape[1 + i];
+      }
+    }
+
+    rewriter.replaceOpWithNewOp<TF::SliceOp>(
+        op, RankedTensorType::get(slice_sizes, element_ty), reshaped_permuted,
+        rewriter.create<ConstOp>(op.getLoc(),
+                                 rewriter.getI64TensorAttr(start_indices)),
+        rewriter.create<ConstOp>(op.getLoc(),
+                                 rewriter.getI64TensorAttr(slice_sizes)));
     return success();
   }
 };
@@ -1061,15 +1259,315 @@ class Lower_UnaryOpsComposition
   }
 };
 
+// Lowers ResizeNearestNeighbor to an indices computations with a gather along
+// the combined spatial dimensions. Generating the indices along the
+// width/height index could be used to gather along each of W and H dimension
+// of the input image array. To reduce to a single gather, these indices are
+// combined, so a single gather can be performed along the combined spatial
+// dimensions.
+//
+// Images must take the shape [b, h, w, c] and size is a rank-1 length-2 tensor
+// containing the height and width values for the output tensor. This lowering
+// should work with a dynamic images array.
+//
+// For example, a scaling with image shape [1, 3, 3, 1] to [2, 2] and unaligned
+// corners would generate a [0, 1] lookup along both the x and y direction.
+// Then when combined to form the 1-D spatial index the values would be
+// [0, 1, 3, 4] which would gather along the reshape image tensor of shape
+// [1, 9, 1], reshaped to the final [1, 3, 3, 1].
+class LowerResizeNearestNeighbor : public RewritePattern {
+ public:
+  explicit LowerResizeNearestNeighbor(MLIRContext *context)
+      : RewritePattern(ResizeNearestNeighborOp::getOperationName(),
+                       {
+                           BroadcastToOp::getOperationName(),
+                           ConstOp::getOperationName(),
+                           DivOp::getOperationName(),
+                           PackOp::getOperationName(),
+                           RangeOp::getOperationName(),
+                           ReshapeOp::getOperationName(),
+                           ShapeOp::getOperationName(),
+                           SplitOp::getOperationName(),
+                           TransposeOp::getOperationName(),
+                       },
+                       1, context) {}
+
+  LogicalResult matchAndRewrite(Operation *src_op,
+                                PatternRewriter &rewriter) const override {
+    auto op = cast<ResizeNearestNeighborOp>(src_op);
+    auto loc = op.getLoc();
+    auto result_ty = op.getType().cast<ShapedType>();
+
+    auto input = op.images();
+    auto input_ty = input.getType().cast<ShapedType>();
+    auto input_element_ty = input_ty.getElementType();
+    auto out_size = op.size();
+    auto out_size_ty = out_size.getType().cast<ShapedType>();
+    auto out_size_element_ty = out_size_ty.getElementType();
+
+    // Input should be rank 4.
+    if (!input_ty.hasRank() || input_ty.getRank() != 4) {
+      return failure();
+    }
+
+    // Check that out_size is rank-1, length-2. Otherwise the size is not legal.
+    if (!out_size_ty.hasRank() || out_size_ty.getRank() != 1 ||
+        out_size_ty.getShape()[0] != 2) {
+      return failure();
+    }
+
+    // Extract the output width / height dim size.
+    int out_height_constant = -1;
+    int out_width_constant = -1;
+    DenseIntElementsAttr out_size_cst;
+    if (matchPattern(out_size, m_Constant(&out_size_cst))) {
+      llvm::SmallVector<int64_t, 2> cst_size;
+      for (auto val : out_size_cst.getIntValues()) {
+        cst_size.push_back(val.getSExtValue());
+      }
+
+      out_height_constant = cst_size[0];
+      out_width_constant = cst_size[1];
+
+      if (out_height_constant < 0 || out_width_constant < 0) return failure();
+    }
+
+    int out_spatial_cst = out_height_constant < 0 || out_width_constant < 0
+                              ? -1
+                              : out_height_constant * out_width_constant;
+
+    // Input rank should be 4. Might be able to drop this requirement entirely
+    // as its an input requirement.
+    if (!input_ty.hasRank() || input_ty.getRank() != 4) {
+      return failure();
+    }
+
+    int batch_cst = input_ty.getShape()[0];
+    int channels_cst = input_ty.getShape()[3];
+
+    int in_y_cst = input_ty.getShape()[1];
+    int in_x_cst = input_ty.getShape()[2];
+    int in_spatial_cst =
+        in_y_cst < 0 || in_x_cst < 0 ? -1 : in_y_cst * in_x_cst;
+
+    // TODO(suderman): Add support for these optional parameters.
+    if (op.align_corners() == true || op.half_pixel_centers() == true) {
+      return failure();
+    }
+
+    auto one =
+        rewriter.create<ConstOp>(loc, GetScalarOfType(out_size_element_ty, 1));
+
+    // Extract the image shape.
+    Value input_shape = rewriter.create<ShapeOp>(
+        loc, RankedTensorType::get({4}, rewriter.getI64Type()), input);
+    input_shape = rewriter.create<CastOp>(
+        loc, RankedTensorType::get({4}, out_size_element_ty), input_shape);
+
+    auto scalar_dim_ty = RankedTensorType::get({}, out_size_element_ty);
+    auto split_image_shape = rewriter.create<UnpackOp>(
+        loc,
+        TypeRange({scalar_dim_ty, scalar_dim_ty, scalar_dim_ty, scalar_dim_ty}),
+        input_shape);
+
+    // Extract the separate components from the input shape.
+    auto batch = split_image_shape.getResult(0);
+    auto in_y = split_image_shape.getResult(1);
+    auto in_x = split_image_shape.getResult(2);
+    auto channels = split_image_shape.getResult(3);
+
+    auto in_count = rewriter.create<MulOp>(
+        loc, RankedTensorType::get({}, out_size_element_ty), in_y, in_x);
+
+    // Unpack and separate the out width/height.
+    auto split_out_size = rewriter.create<UnpackOp>(
+        loc, TypeRange({scalar_dim_ty, scalar_dim_ty}), out_size);
+
+    auto out_y = split_out_size.getResult(0);
+    auto out_x = split_out_size.getResult(1);
+
+    auto out_count = rewriter.create<MulOp>(
+        loc, RankedTensorType::get({}, out_size_element_ty), out_y, out_x);
+
+    // Generate what the final output shape will look like.
+    auto out_shape = rewriter.create<PackOp>(
+        loc, RankedTensorType::get({4}, out_size_element_ty),
+        ValueRange({batch, out_y, out_x, channels}));
+
+    // Compute the indices along the vertical dimension.
+    auto in_y_f32 = rewriter.create<CastOp>(
+        loc, RankedTensorType::get({}, rewriter.getF32Type()), in_y);
+    auto out_w_f32 = rewriter.create<CastOp>(
+        loc, RankedTensorType::get({}, rewriter.getF32Type()), out_y);
+
+    Value y_scale = rewriter.create<DivOp>(
+        loc, RankedTensorType::get({}, rewriter.getF32Type()), in_y_f32,
+        out_w_f32);
+
+    Value zero_f32 = rewriter.create<ConstOp>(
+        loc, GetScalarOfType(rewriter.getF32Type(), 0.0));
+    Value one_f32 = rewriter.create<ConstOp>(
+        loc, GetScalarOfType(rewriter.getF32Type(), 1.0));
+
+    Value y_range = rewriter.create<RangeOp>(
+        loc,
+        RankedTensorType::get({out_height_constant}, rewriter.getF32Type()),
+        zero_f32, out_w_f32, one_f32);
+
+    y_range = rewriter.create<MulOp>(
+        loc,
+        RankedTensorType::get({out_height_constant}, rewriter.getF32Type()),
+        y_range, y_scale);
+
+    y_range = rewriter.create<CastOp>(
+        loc, RankedTensorType::get({out_height_constant}, out_size_element_ty),
+        y_range);
+
+    y_range = rewriter.create<ReshapeOp>(
+        loc,
+        RankedTensorType::get({out_height_constant, 1}, out_size_element_ty),
+        y_range,
+        rewriter.create<PackOp>(loc,
+                                RankedTensorType::get({2}, out_size_element_ty),
+                                ValueRange({out_y, one})));
+
+    Value y_indices = rewriter.create<MulOp>(
+        loc,
+        RankedTensorType::get({out_height_constant, 1}, out_size_element_ty),
+        y_range, in_x);
+
+    // Compute the indices for the nearest neighbour lookup across the width
+    // dim.
+    auto in_x_f32 = rewriter.create<CastOp>(
+        loc, RankedTensorType::get({}, rewriter.getF32Type()), in_x);
+    auto out_h_f32 = rewriter.create<CastOp>(
+        loc, RankedTensorType::get({}, rewriter.getF32Type()), out_x);
+
+    Value x_scale = rewriter.create<DivOp>(
+        loc, RankedTensorType::get({}, rewriter.getF32Type()), in_x_f32,
+        out_h_f32);
+
+    Value x_range = rewriter.create<RangeOp>(
+        loc, RankedTensorType::get({out_width_constant}, rewriter.getF32Type()),
+        zero_f32, out_h_f32, one_f32);
+
+    x_range = rewriter.create<MulOp>(
+        loc, RankedTensorType::get({out_width_constant}, rewriter.getF32Type()),
+        x_range, x_scale);
+
+    x_range = rewriter.create<CastOp>(
+        loc, RankedTensorType::get({out_width_constant}, out_size_element_ty),
+        x_range);
+
+    Value x_indices = rewriter.create<ReshapeOp>(
+        loc,
+        RankedTensorType::get({1, out_width_constant}, out_size_element_ty),
+        x_range,
+        rewriter.create<PackOp>(loc,
+                                RankedTensorType::get({2}, out_size_element_ty),
+                                ValueRange({one, out_x})));
+
+    // Generate the combined index array, reshape to be 1-D.
+    Value indices = rewriter.create<AddV2Op>(
+        loc,
+        RankedTensorType::get({out_height_constant, out_width_constant},
+                              out_size_element_ty),
+        y_indices, x_indices);
+
+    indices = rewriter.create<ReshapeOp>(
+        loc, RankedTensorType::get({out_spatial_cst}, out_size_element_ty),
+        indices,
+        rewriter.create<ReshapeOp>(
+            loc, RankedTensorType::get({1}, out_size_element_ty), out_count,
+            rewriter.create<ConstOp>(loc, rewriter.getI64TensorAttr({1}))));
+
+    // Group the spatial indices and gather along that combined index.
+    Value input_collapsed_spatial = rewriter.create<ReshapeOp>(
+        loc,
+        RankedTensorType::get({batch_cst, in_spatial_cst, channels_cst},
+                              input_element_ty),
+        input,
+        rewriter.create<PackOp>(loc,
+                                RankedTensorType::get({3}, out_size_element_ty),
+                                ValueRange({batch, in_count, channels})));
+
+    Value gathered_values = rewriter.create<GatherV2Op>(
+        loc,
+        RankedTensorType::get({batch_cst, out_spatial_cst, channels_cst},
+                              input_element_ty),
+        input_collapsed_spatial, indices, /*axis=*/one);
+
+    gathered_values =
+        rewriter.create<ReshapeOp>(loc, result_ty, gathered_values, out_shape);
+
+    rewriter.replaceOp(op, gathered_values);
+    return success();
+  }
+};
+
 }  // namespace
 
 void PopulateLoweringTFPatterns(MLIRContext *context,
                                 OwningRewritePatternList *patterns) {
   patterns->insert<LowerAddNOp, ConvertFakeQuantWithMinMaxVarsOp,
-                   LowerDynamicStitchOp, LowerInvertPermutationOp,
-                   LowerLgammaOp, LowerPackOp, LowerSpaceToBatchNDOp,
-                   LowerSparseMatMulOp, Lower_UnaryOpsComposition>(context);
+                   LowerDynamicStitchOp<DynamicStitchOp>,
+                   LowerDynamicStitchOp<ParallelDynamicStitchOp>,
+                   LowerInvertPermutationOp, LowerLgammaOp, LowerPackOp,
+                   LowerBatchToSpaceND, LowerSpaceToBatchNDOp,
+                   LowerResizeNearestNeighbor, LowerSparseMatMulOp,
+                   Lower_UnaryOpsComposition>(context);
   populateWithGenerated(context, *patterns);
+}
+
+void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
+                                         OwningRewritePatternList *patterns) {
+  // clang-format off
+  patterns->insert<
+      ConvertFakeQuantWithMinMaxVarsOp,
+      LowerAddNOp,
+      LowerBatchToSpaceND,
+      LowerDynamicStitchOp<DynamicStitchOp>,
+      LowerDynamicStitchOp<ParallelDynamicStitchOp>,
+      LowerInvertPermutationOp,
+      LowerPackOp,
+      LowerResizeNearestNeighbor,
+      LowerSpaceToBatchNDOp,
+      LowerSparseMatMulOp,
+      Lower_UnaryOpsComposition>(context);
+  // clang-format on
+
+  // Populate the relevant generated patterns.
+  // clang-format off
+  patterns->insert<
+      LowerBiasAddGradOp,
+      LowerDivNoNanOp,
+      LowerEmptyOp,
+      LowerFakeQuantWithMinMaxArgs,
+      LowerFillOp,
+      LowerIsNanOp,
+      LowerL2LossOp,
+      LowerMulNoNanOp,
+      LowerOnesLikeOp,
+      LowerPadOp,
+      LowerReciprocal,
+      LowerRintOp,
+      LowerRoundOpOnFloatTensor,
+      LowerRoundOpOnIntTensor,
+      LowerRsqrtGradOp,
+      LowerScatterNdOp,
+      LowerSizeOp,
+      LowerSoftmaxCrossEntropyWithLogitsOp,
+      LowerSparseSoftmaxCrossEntropyWithLogitsOp,
+      LowerSqrtGradOp,
+      LowerSquareOp,
+      LowerSquaredDifferenceOpOnRealTensors,
+      LowerSquaredDifferenceOpOneComplexTensors,
+      LowerTanhGradOp,
+      LowerXdivyOp,
+      LowerXlog1pyOp,
+      LowerXlogyOp,
+      LowerZerosLikeOp>(context);
+  // clang-format on
 }
 
 }  // namespace TF

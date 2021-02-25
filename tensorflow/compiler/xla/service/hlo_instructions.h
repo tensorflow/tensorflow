@@ -1415,6 +1415,12 @@ class HloCustomCallInstruction : public HloInstruction {
                            HloComputation* to_apply,
                            absl::string_view custom_call_target, string opaque);
 
+  // Constructor for a custom call with multiple computations.
+  HloCustomCallInstruction(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      absl::Span<HloComputation* const> called_computations,
+      absl::string_view custom_call_target, string opaque);
+
   const Window& window() const override {
     CHECK(window_ != nullptr);
     return *window_;
@@ -1459,6 +1465,13 @@ class HloCustomCallInstruction : public HloInstruction {
   void set_padding_type(PaddingType padding_type) {
     padding_type_ = padding_type;
   }
+
+  // Returns the literal associated with this instruction.
+  const Literal& literal() const { return *literal_; }
+  // Set the value of literal to a new one.
+  void set_literal(Literal&& literal) { literal_.emplace(std::move(literal)); }
+  // Returns whether there is literal associated with this instruction.
+  bool HasLiteral() const { return literal_.has_value(); }
 
   const PrecisionConfig& precision_config() const { return precision_config_; }
   PrecisionConfig* mutable_precision_config() { return &precision_config_; }
@@ -1526,6 +1539,7 @@ class HloCustomCallInstruction : public HloInstruction {
   // output_to_operand_aliasing().
   std::vector<std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
       output_to_operand_aliasing_;
+  absl::optional<Literal> literal_;
 };
 
 class HloPadInstruction : public HloInstruction {

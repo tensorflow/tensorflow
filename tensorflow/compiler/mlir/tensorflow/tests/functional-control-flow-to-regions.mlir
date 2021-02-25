@@ -1,10 +1,10 @@
 // RUN: tf-opt %s -tf-functional-control-flow-to-regions -split-input-file | FileCheck %s
 
 // Simple If
-// CHECK: func @testIf1Then{{.+}}
-// CHECK: func @testIf1Else{{.+}}
-func @testIf1Then(tensor<*xf32>) -> tensor<*xf32>
-func @testIf1Else(tensor<*xf32>) -> tensor<*xf32>
+// CHECK: func private @testIf1Then{{.+}}
+// CHECK: func private @testIf1Else{{.+}}
+func private @testIf1Then(tensor<*xf32>) -> tensor<*xf32>
+func private @testIf1Else(tensor<*xf32>) -> tensor<*xf32>
 
 // CHECK-LABEL: func @testIf1Result(%arg0: tensor<i1>, %arg1: tensor<*xf32>)
 func @testIf1Result(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
@@ -20,6 +20,8 @@ func @testIf1Result(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: "tf.Yield"([[Result1]])
   // CHECK: _attr0 = 10
   // CHECK-SAME: _attr1 = true
+  // CHECK-SAME: _else_func_name = "testIf1Else"
+  // CHECK-SAME: _then_func_name = "testIf1Then"
   // CHECK-NOT: attr2 =
   // CHECK-NOT: else_branch
   // CHECK-SAME: is_stateless = false
@@ -32,10 +34,10 @@ func @testIf1Result(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
 
 // If with mismatching input types
 
-// CHECK: func @testIf1Then{{.+}}
-// CHECK: func @testIf1Else{{.+}}
-func @testIf1Then(tensor<*xf32>) -> tensor<*xf32>
-func @testIf1Else(tensor<*xf32>) -> tensor<*xf32>
+// CHECK: func private @testIf1Then{{.+}}
+// CHECK: func private @testIf1Else{{.+}}
+func private @testIf1Then(tensor<*xf32>) -> tensor<*xf32>
+func private @testIf1Else(tensor<*xf32>) -> tensor<*xf32>
 
 // CHECK-LABEL: func @testIf2Result(%arg0: tensor<i1>, %arg1: tensor<2xf32>)
 func @testIf2Result(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
@@ -56,10 +58,10 @@ func @testIf2Result(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
 // -----
 
 // If with no inputs, some outputs
-// CHECK: func @testIf1Then{{.+}}
-// CHECK: func @testIf1Else{{.+}}
-func @testIf1Then() -> tensor<*xf32>
-func @testIf1Else() -> tensor<*xf32>
+// CHECK: func private @testIf1Then{{.+}}
+// CHECK: func private @testIf1Else{{.+}}
+func private @testIf1Then() -> tensor<*xf32>
+func private @testIf1Else() -> tensor<*xf32>
 
 // CHECK-LABEL: func @testIfNoInputs(%arg0: tensor<i1>)
 func @testIfNoInputs(%arg0: tensor<i1>) -> tensor<2xf32> {
@@ -78,10 +80,10 @@ func @testIfNoInputs(%arg0: tensor<i1>) -> tensor<2xf32> {
 // -----
 
 // If with no outputs, some inputs
-// CHECK: func @testIf1Then{{.+}}
-// CHECK: func @testIf1Else{{.+}}
-func @testIf1Then(tensor<*xf32>) -> ()
-func @testIf1Else(tensor<*xf32>) -> ()
+// CHECK: func private @testIf1Then{{.+}}
+// CHECK: func private @testIf1Else{{.+}}
+func private @testIf1Then(tensor<*xf32>) -> ()
+func private @testIf1Else(tensor<*xf32>) -> ()
 
 // CHECK-LABEL: func @testIfNoResult(%arg0: tensor<i1>, %arg1: tensor<2xf32>)
 func @testIfNoResult(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> () {
@@ -102,10 +104,10 @@ func @testIfNoResult(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> () {
 // -----
 
 // If with no outputs, No inputs
-// CHECK: func @testIf1Then{{.+}}
-// CHECK: func @testIf1Else{{.+}}
-func @testIf1Then() -> ()
-func @testIf1Else() -> ()
+// CHECK: func private @testIf1Then{{.+}}
+// CHECK: func private @testIf1Else{{.+}}
+func private @testIf1Then() -> ()
+func private @testIf1Else() -> ()
 
 // CHECK-LABEL: func @testIfNoInputAndNoResult(%arg0: tensor<i1>)
 func @testIfNoInputAndNoResult(%arg0: tensor<i1>) -> () {
@@ -126,10 +128,10 @@ func @testIfNoInputAndNoResult(%arg0: tensor<i1>) -> () {
 // If with non tensor<i1> condition
 
 // Simple If
-// CHECK: func @testIf1Then{{.+}}
-// CHECK: func @testIf1Else{{.+}}
-func @testIf1Then(tensor<*xf32>) -> tensor<*xf32>
-func @testIf1Else(tensor<*xf32>) -> tensor<*xf32>
+// CHECK: func private @testIf1Then{{.+}}
+// CHECK: func private @testIf1Else{{.+}}
+func private @testIf1Then(tensor<*xf32>) -> tensor<*xf32>
+func private @testIf1Else(tensor<*xf32>) -> tensor<*xf32>
 
 // CHECK-LABEL: func @testIf1Result(%arg0: tensor<i32>, %arg1: tensor<*xf32>)
 func @testIf1Result(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
@@ -145,8 +147,8 @@ func @testIf1Result(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
 // -----
 
 // Simple While
-func @testWhileCond(tensor<*xf32>) -> (tensor<i1>)
-func @testWhileBody(tensor<*xf32>) -> (tensor<*xf32>)
+func private @testWhileCond(tensor<*xf32>) -> (tensor<i1>)
+func private @testWhileBody(tensor<*xf32>) -> (tensor<*xf32>)
 
 // CHECK-LABEL: func @testWhileResult
 func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
@@ -176,8 +178,8 @@ func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
 // -----
 
 // While with no inputs & outputs
-func @testWhileCond() -> (tensor<i1>)
-func @testWhileBody() -> ()
+func private @testWhileCond() -> (tensor<i1>)
+func private @testWhileBody() -> ()
 
 // CHECK-LABEL: func @testWhileResultNoIO
 func @testWhileResultNoIO() -> () {
@@ -198,8 +200,8 @@ func @testWhileResultNoIO() -> () {
 // -----
 
 // While with type mismatch
-func @testWhileCond(tensor<4xf32>) -> (tensor<i1>)
-func @testWhileBody(tensor<4xf32>) -> (tensor<4xf32>)
+func private @testWhileCond(tensor<4xf32>) -> (tensor<i1>)
+func private @testWhileBody(tensor<4xf32>) -> (tensor<4xf32>)
 
 // CHECK-LABEL: func @testWhileResult
 func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
@@ -224,8 +226,8 @@ func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
 // -----
 
 // While with non tensor<i1> condition
-func @testWhileCond(tensor<*xf32>) -> (tensor<f32>)
-func @testWhileBody(tensor<*xf32>) -> (tensor<*xf32>)
+func private @testWhileCond(tensor<*xf32>) -> (tensor<f32>)
+func private @testWhileBody(tensor<*xf32>) -> (tensor<*xf32>)
 
 // CHECK-LABEL: func @testWhileResult
 func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
@@ -249,8 +251,8 @@ func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
 
 // -----
 
-func @then_branch() -> ()
-func @else_branch() -> ()
+func private @then_branch() -> ()
+func private @else_branch() -> ()
 
 // Test tf.If device is preserved.
 // CHECK-LABEL: func @testIfDevice
@@ -264,8 +266,8 @@ func @testIfDevice(%arg0: tensor<i1>) {
 
 // -----
 
-func @cond() -> tensor<i1>
-func @body() -> ()
+func private @cond() -> tensor<i1>
+func private @body() -> ()
 
 // Test tf.While device is preserved.
 // CHECK-LABEL: func @testWhileDevice

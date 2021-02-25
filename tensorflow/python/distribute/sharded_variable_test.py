@@ -30,13 +30,12 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
-from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
@@ -302,6 +301,19 @@ class ShardedVariableTest(test.TestCase):
     # Continue using root.train for training
     self.assertAllEqual([3., 2.], root.train([0, 1]).numpy())
 
+  def test_load_raises_error(self):
+    root = tracking.AutoTrackable()
+    v1 = variables_lib.Variable([3.])
+    v2 = variables_lib.Variable([2.])
+    root.v = sharded_variable.ShardedVariable([v1, v2])
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    save.save(root, save_dir)
+
+    with self.assertRaisesWithLiteralMatch(
+        ValueError, 'Loading `ShardedVariable` is not supported'):
+      load.load(save_dir)
+
   def test_validation_errors(self):
     with self.assertRaisesRegex(ValueError, 'Expected a list of '):
       sharded_variable.ShardedVariable(
@@ -387,83 +399,6 @@ class ShardedVariableTest(test.TestCase):
     self.assertLen(model._checkpoint_dependencies, 1)
     self.assertEqual(model._checkpoint_dependencies[0].ref, model.w)
 
-  def test_keras_layer_setattr(self):
-
-    class Layer(base_layer.Layer):
-
-      def __init__(self):
-        super().__init__()
-        variables1 = [
-            variables_lib.Variable([0]),
-            variables_lib.Variable([1]),
-        ]
-        variables2 = [
-            variables_lib.Variable([2], trainable=False),
-            variables_lib.Variable([3], trainable=False),
-        ]
-        self.w = sharded_variable.ShardedVariable(variables1)
-        self.b = sharded_variable.ShardedVariable(variables2)
-
-    layer = Layer()
-
-    self.assertLen(layer.trainable_weights, 2)
-    self.assertEqual(layer.trainable_weights[0], [0])
-    self.assertEqual(layer.trainable_weights[1], [1])
-    self.assertLen(layer.non_trainable_weights, 2)
-    self.assertEqual(layer.non_trainable_weights[0], [2])
-    self.assertEqual(layer.non_trainable_weights[1], [3])
-    self.assertAllEqual(layer.weights,
-                        layer.trainable_weights + layer.non_trainable_weights)
-    self.assertAllEqual(layer.trainable_weights, layer.trainable_variables)
-    self.assertAllEqual(layer.weights, layer.variables)
-
-    checkpoint_deps = set(dep.ref for dep in layer._checkpoint_dependencies)
-    self.assertEqual(checkpoint_deps, set([layer.w, layer.b]))
-
-  def test_keras_layer_add_weight(self):
-
-    class Layer(base_layer.Layer):
-
-      def __init__(self):
-        super().__init__()
-        self.w = self.add_weight(
-            shape=(2,), initializer=lambda shape, dtype: [0, 1], trainable=True)
-        self.b = self.add_weight(
-            shape=(2,),
-            initializer=lambda shape, dtype: [2, 3],
-            trainable=False)
-
-    def sharded_variable_creator(next_creator, **kwargs):
-      v1_value = kwargs['initial_value']()[0:1]
-      v2_value = kwargs['initial_value']()[1:]
-
-      kwargs['initial_value'] = v1_value
-      kwargs['shape'] = (1,)
-      v1 = next_creator(**kwargs)
-
-      kwargs['initial_value'] = v2_value
-      kwargs['shape'] = (1,)
-      v2 = next_creator(**kwargs)
-
-      return sharded_variable.ShardedVariable([v1, v2])
-
-    with variable_scope.variable_creator_scope(sharded_variable_creator):
-      layer = Layer()
-
-    self.assertLen(layer.trainable_weights, 2)
-    self.assertEqual(layer.trainable_weights[0], [0])
-    self.assertEqual(layer.trainable_weights[1], [1])
-    self.assertLen(layer.non_trainable_weights, 2)
-    self.assertEqual(layer.non_trainable_weights[0], [2])
-    self.assertEqual(layer.non_trainable_weights[1], [3])
-    self.assertAllEqual(layer.weights,
-                        layer.trainable_weights + layer.non_trainable_weights)
-    self.assertAllEqual(layer.trainable_weights, layer.trainable_variables)
-    self.assertAllEqual(layer.weights, layer.variables)
-
-    checkpoint_deps = set(dep.ref for dep in layer._checkpoint_dependencies)
-    self.assertEqual(checkpoint_deps, set([layer.w, layer.b]))
-
   def test_embedding_lookup(self):
     v = [
         variables_lib.Variable([[1., 2.], [3., 4.]]),
@@ -513,6 +448,99 @@ class ShardedVariableTest(test.TestCase):
     self.assertAllEqual(lookup(), [[1., 2.], [7., 8.], [9., 10.]])
     self.assertAllClose(sparse_lookup(), [[4., 5.], [9., 10.], [3., 4.]])
     self.assertAllClose(safe_sparse_lookup(), [[1., 2.], [0., 0.], [3., 4.]])
+
+  def test_slicing(self):
+    v = [
+        variables_lib.Variable([[1, 2], [3, 4], [5, 6]]),
+        variables_lib.Variable([[7, 8], [9, 10], [11, 12]]),
+        variables_lib.Variable([[13, 14], [15, 16]])
+    ]
+    sv = sharded_variable.ShardedVariable(v)
+    empty = v[0][0:0]
+
+    # Test cases: positive step
+    self.assertAllEqual(sv[:], array_ops.concat(v, axis=0))
+    self.assertAllEqual(sv[:2], [[1, 2], [3, 4]])
+    self.assertAllEqual(sv[-8:2], [[1, 2], [3, 4]])
+    self.assertAllEqual(sv[-10:2], [[1, 2], [3, 4]])
+    self.assertAllEqual(sv[5:], [[11, 12], [13, 14], [15, 16]])
+    self.assertAllEqual(sv[5:-1], [[11, 12], [13, 14]])
+    self.assertAllEqual(sv[::3], [[1, 2], [7, 8], [13, 14]])
+    self.assertAllEqual(sv[::5], [[1, 2], [11, 12]])
+    self.assertAllEqual(sv[1::6], [[3, 4], [15, 16]])
+    self.assertAllEqual(sv[1:5:6], [[3, 4]])
+    self.assertAllEqual(sv[1::7], [[3, 4]])
+    self.assertAllEqual(sv[2:7], [[5, 6], [7, 8], [9, 10], [11, 12], [13, 14]])
+    self.assertAllEqual(sv[2:7:2], [[5, 6], [9, 10], [13, 14]])
+    self.assertAllEqual(sv[2:7:3], [[5, 6], [11, 12]])
+
+    # Test cases: negative step
+    self.assertAllEqual(
+        sv[::-1], array_ops.reverse(array_ops.concat(v, axis=0), axis=[0]))
+    self.assertAllEqual(sv[2::-1], [[5, 6], [3, 4], [1, 2]])
+    self.assertAllEqual(sv[2:-8:-1], [[5, 6], [3, 4]])
+    self.assertAllEqual(sv[2:-10:-1], [[5, 6], [3, 4], [1, 2]])
+    self.assertAllEqual(sv[4::-1], [[9, 10], [7, 8], [5, 6], [3, 4], [1, 2]])
+    self.assertAllEqual(sv[-1:-3:-1], [[15, 16], [13, 14]])
+    self.assertAllEqual(sv[::-5], [[15, 16], [5, 6]])
+    self.assertAllEqual(sv[6::-6], [[13, 14], [1, 2]])
+    self.assertAllEqual(sv[6:5:-6], [[13, 14]])
+    self.assertAllEqual(sv[6::-7], [[13, 14]])
+    self.assertAllEqual(sv[7:1:-1],
+                        [[15, 16], [13, 14], [11, 12], [9, 10], [7, 8], [5, 6]])
+    self.assertAllEqual(sv[7:1:-2], [[15, 16], [11, 12], [7, 8]])
+    self.assertAllEqual(sv[7:1:-4], [[15, 16], [7, 8]])
+
+    # Test cases: empty slice
+    self.assertAllEqual(sv[0:0], empty)
+    self.assertAllEqual(sv[5:3], empty)
+    self.assertAllEqual(sv[3:5:-1], empty)
+    self.assertAllEqual(sv[-1:0], empty)
+    self.assertAllEqual(sv[2:-1:-1], empty)
+
+    # Test cases: slicing other dimensions
+    self.assertAllEqual(sv[:, 0], [1, 3, 5, 7, 9, 11, 13, 15])
+    self.assertAllEqual(sv[:, 0:1], [[1], [3], [5], [7], [9], [11], [13], [15]])
+
+    # Test cases: normal indexing
+    self.assertAllEqual(sv[2], [5, 6])
+    self.assertAllEqual(sv[6], [13, 14])
+    self.assertAllEqual(sv[2, 1], 6)
+    self.assertAllEqual(sv[-2], [13, 14])
+    with self.assertRaisesRegex(IndexError, 'out of bounds'):
+      _ = sv[100]
+    with self.assertRaisesRegex(IndexError, 'out of bounds'):
+      _ = sv[-100]
+
+    # Test cases: Ellipsis
+    self.assertAllEqual(sv[...], array_ops.concat(v, axis=0))
+    self.assertAllEqual(sv[..., 0], [1, 3, 5, 7, 9, 11, 13, 15])
+    self.assertAllEqual(sv[0:1, ...], [[1, 2]])
+
+    # Test cases: newaxis
+    self.assertAllEqual(
+        sv[array_ops.newaxis, ...],
+        array_ops.expand_dims_v2(array_ops.concat(v, axis=0), axis=0))
+
+    # Test cases: boolean masks
+    self.assertAllEqual(sv[ops.convert_to_tensor(sv) > 10],
+                        [11, 12, 13, 14, 15, 16])
+
+    # Test cases: tensor input
+    with self.assertRaisesRegex(TypeError, 'not allowed'):
+      _ = sv[constant_op.constant(1)::]
+    with self.assertRaisesRegex(TypeError, 'not allowed'):
+      _ = sv[:constant_op.constant(1):]
+    with self.assertRaisesRegex(TypeError, 'not allowed'):
+      _ = sv[constant_op.constant(1)]
+
+    # Test cases: inside tf.function
+    @def_function.function
+    def func():
+      a = sv[:, 0]
+      return a
+
+    self.assertAllEqual(func(), [1, 3, 5, 7, 9, 11, 13, 15])
 
 
 if __name__ == '__main__':

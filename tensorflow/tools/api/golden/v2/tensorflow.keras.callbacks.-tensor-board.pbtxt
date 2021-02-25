@@ -6,7 +6,7 @@ tf_class {
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'log_dir\', \'histogram_freq\', \'write_graph\', \'write_images\', \'update_freq\', \'profile_batch\', \'embeddings_freq\', \'embeddings_metadata\'], varargs=None, keywords=kwargs, defaults=[\'logs\', \'0\', \'True\', \'False\', \'epoch\', \'2\', \'0\', \'None\'], "
+    argspec: "args=[\'self\', \'log_dir\', \'histogram_freq\', \'write_graph\', \'write_images\', \'write_steps_per_second\', \'update_freq\', \'profile_batch\', \'embeddings_freq\', \'embeddings_metadata\'], varargs=None, keywords=kwargs, defaults=[\'logs\', \'0\', \'True\', \'False\', \'False\', \'epoch\', \'2\', \'0\', \'None\'], "
   }
   member_method {
     name: "on_batch_begin"

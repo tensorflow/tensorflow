@@ -23,7 +23,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import smart_cond as smart_module
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
@@ -95,7 +94,7 @@ def smart_cond(pred, true_fn=None, false_fn=None, name=None):  # pylint: disable
   If `pred` is a bool or has a constant value, we return either `true_fn()`
   or `false_fn()`, otherwise we use `tf.cond` to dynamically route to both.
 
-  Arguments:
+  Args:
     pred: A scalar determining whether to return the result of `true_fn` or
       `false_fn`.
     true_fn: The callable to be performed if pred is true.
@@ -111,14 +110,27 @@ def smart_cond(pred, true_fn=None, false_fn=None, name=None):  # pylint: disable
   if isinstance(pred, variables.Variable):
     return control_flow_ops.cond(
         pred, true_fn=true_fn, false_fn=false_fn, name=name)
-  return smart_module.smart_cond(
-      pred, true_fn=true_fn, false_fn=false_fn, name=name)
+
+  if not callable(true_fn):
+    raise TypeError("`true_fn` must be callable.")
+  if not callable(false_fn):
+    raise TypeError("`false_fn` must be callable.")
+
+  pred_value = constant_value(pred)
+  if pred_value is not None:
+    if pred_value:
+      return true_fn()
+    else:
+      return false_fn()
+  else:
+    return control_flow_ops.cond(pred, true_fn=true_fn, false_fn=false_fn,
+                                 name=name)
 
 
 def constant_value(pred):  # pylint: disable=invalid-name
   """Return the bool value for `pred`, or None if `pred` had a dynamic value.
 
-  Arguments:
+  Args:
     pred: A scalar, either a Python bool or a TensorFlow boolean variable
       or tensor, or the Python integer 1 or 0.
 

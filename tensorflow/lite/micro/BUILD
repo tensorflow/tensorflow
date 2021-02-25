@@ -1,15 +1,12 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(
-    "//tensorflow/lite/micro/testing:micro_test.bzl",
-    "tflite_micro_cc_test",
-)
-load(
     "//tensorflow/lite/micro:build_def.bzl",
     "micro_copts",
 )
 
 package(
     default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -66,7 +63,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels/internal:reference",
         "//tensorflow/lite/schema:schema_fbs",
-        "@flatbuffers",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -110,6 +107,9 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/micro/kernels:conv",
+        "//tensorflow/lite/micro/kernels:depthwise_conv",
+        "//tensorflow/lite/micro/kernels:ethosu",
         "//tensorflow/lite/micro/kernels:fully_connected",
         "//tensorflow/lite/micro/kernels:micro_ops",
         "//tensorflow/lite/schema:schema_fbs",
@@ -158,12 +158,12 @@ cc_library(
 cc_library(
     name = "micro_time",
     srcs = [
-        "posix/micro_time.cc",
+        "micro_time.cc",
     ],
     hdrs = [
         "micro_time.h",
     ],
-    copts = micro_copts(),
+    copts = micro_copts() + ["-DTF_LITE_USE_CTIME"],
     deps = ["//tensorflow/lite/c:common"],
 )
 
@@ -177,9 +177,8 @@ cc_library(
     ],
     copts = micro_copts(),
     deps = [
-        ":micro_compatibility",
+        ":micro_error_reporter",
         ":micro_time",
-        "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels/internal:compatibility",
     ],
 )
@@ -219,7 +218,18 @@ cc_library(
     ],
 )
 
-tflite_micro_cc_test(
+cc_library(
+    name = "system_setup",
+    srcs = [
+        "system_setup.cc",
+    ],
+    hdrs = [
+        "system_setup.h",
+    ],
+    copts = micro_copts(),
+)
+
+cc_test(
     name = "micro_error_reporter_test",
     srcs = [
         "micro_error_reporter_test.cc",
@@ -229,7 +239,7 @@ tflite_micro_cc_test(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "micro_mutable_op_resolver_test",
     srcs = [
         "micro_mutable_op_resolver_test.cc",
@@ -241,12 +251,13 @@ tflite_micro_cc_test(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "micro_interpreter_test",
     srcs = [
         "micro_interpreter_test.cc",
     ],
     deps = [
+        ":micro_compatibility",
         ":micro_framework",
         ":micro_utils",
         ":op_resolvers",
@@ -257,7 +268,7 @@ tflite_micro_cc_test(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "simple_memory_allocator_test",
     srcs = [
         "simple_memory_allocator_test.cc",
@@ -269,7 +280,7 @@ tflite_micro_cc_test(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "recording_simple_memory_allocator_test",
     srcs = [
         "recording_simple_memory_allocator_test.cc",
@@ -282,7 +293,7 @@ tflite_micro_cc_test(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "micro_allocator_test",
     srcs = [
         "micro_allocator_test.cc",
@@ -296,7 +307,7 @@ tflite_micro_cc_test(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "recording_micro_allocator_test",
     srcs = [
         "recording_micro_allocator_test.cc",
@@ -311,7 +322,7 @@ tflite_micro_cc_test(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "memory_helpers_test",
     srcs = [
         "memory_helpers_test.cc",
@@ -323,7 +334,7 @@ tflite_micro_cc_test(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "testing_helpers_test",
     srcs = [
         "testing_helpers_test.cc",
@@ -335,7 +346,7 @@ tflite_micro_cc_test(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "micro_utils_test",
     srcs = [
         "micro_utils_test.cc",
@@ -346,7 +357,7 @@ tflite_micro_cc_test(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "micro_string_test",
     srcs = [
         "micro_string_test.cc",
@@ -357,7 +368,7 @@ tflite_micro_cc_test(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "micro_time_test",
     srcs = [
         "micro_time_test.cc",
@@ -368,7 +379,7 @@ tflite_micro_cc_test(
     ],
 )
 
-tflite_micro_cc_test(
+cc_test(
     name = "memory_arena_threshold_test",
     srcs = [
         "memory_arena_threshold_test.cc",
@@ -386,5 +397,4 @@ bzl_library(
     name = "build_def_bzl",
     srcs = ["build_def.bzl"],
     visibility = [":micro"],
-    deps = ["//tensorflow:tensorflow_bzl"],
 )

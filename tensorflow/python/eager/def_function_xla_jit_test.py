@@ -45,11 +45,11 @@ class DefFunctionTest(xla_test.XLATestCase):
 
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(experimental_compile=False)
+      @def_function.function(jit_compile=False)
       def outer(a, b, c):
         return a * inner(b, c) + c
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def inner(b, c):
         return b + c * b
 
@@ -71,8 +71,8 @@ class DefFunctionTest(xla_test.XLATestCase):
       def fn(x, a):
         return x + a
 
-      func = def_function.function(fn, experimental_compile=False)
-      xla_func = def_function.function(fn, experimental_compile=True)
+      func = def_function.function(fn, jit_compile=False)
+      xla_func = def_function.function(fn, jit_compile=True)
 
       inputs = constant_op.constant([1, 2, 2, 3, 3])
       self.assertAllClose([2, 3, 3, 4, 4], func(inputs, 1))
@@ -81,7 +81,7 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testBasicInt32(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def fn(x, a):
         return x + a
 
@@ -94,7 +94,7 @@ class DefFunctionTest(xla_test.XLATestCase):
       def fn(x, a):
         return 2 * x + a
 
-      xla_func = def_function.function(fn, experimental_compile=True)
+      xla_func = def_function.function(fn, jit_compile=True)
 
       with backprop.GradientTape() as tape:
         inputs = constant_op.constant([1., 2., 2., 3., 3.])
@@ -112,60 +112,188 @@ class DefFunctionTest(xla_test.XLATestCase):
       self.assertTrue(backward.function_def.attr['_XlaMustCompile'])
       self.assertTrue(forward.definition.attr['_XlaMustCompile'])
 
-  # Calling function with experimental_compile=True from
-  # experimental_compile=False should compile the inner func.
+  # Calling function with jit_compile=True from
+  # jit_compile=False should compile the inner func.
   def testNestedCall(self):
     if 'tpu' in self.device.lower():
       self.skipTest('b/162800687: Inner function runs on host')
 
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def fn(x, a):
         return x + a
 
-      @def_function.function(experimental_compile=False)
+      @def_function.function(jit_compile=False)
       def fn2(x, a):
         return fn(x, a)
 
       inputs = constant_op.constant([1, 2, 2, 3, 3])
       self.assertAllClose([2, 3, 3, 4, 4], fn2(inputs, 1))
 
-  @test_util.disable_mlir_bridge('TODO(b/162272821): MLIR bridge returns'
-                                 ' wrong status type')
   def testNestedCallUnsupportedOps(self):
+    if 'tpu' in self.device.lower():
+      self.skipTest('XLA TPU supports tf.unique')
+
     with ops.device('device:{}:0'.format(self.device)):
 
       def fn(x):
         return array_ops.unique(x).y
 
-      xla_func = def_function.function(fn, experimental_compile=True)
+      xla_func = def_function.function(fn, jit_compile=True)
 
       def fn2(x):
         return xla_func(x)
 
-      func = def_function.function(fn2, experimental_compile=False)
+      func = def_function.function(fn2, jit_compile=False)
       inputs = constant_op.constant([1, 2, 2, 3, 3])
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  'not compilable'):
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, 'legalization failed'
+          if test_util.is_mlir_bridge_enabled() else 'unsupported operations'):
         func(inputs)
 
-  @test_util.disable_mlir_bridge('TODO(b/162272821): MLIR bridge returns'
-                                 ' wrong status type')
   def testUnsupportedOps(self):
+    if 'tpu' in self.device.lower():
+      self.skipTest('XLA TPU supports tf.unique')
+
     with ops.device('device:{}:0'.format(self.device)):
 
       def fn(x):
         return array_ops.unique(x).y  # Unique is not supported by XLA
 
-      func = def_function.function(fn, experimental_compile=False)
-      xla_func = def_function.function(fn, experimental_compile=True)
+      func = def_function.function(fn, jit_compile=False)
+      xla_func = def_function.function(fn, jit_compile=True)
 
       inputs = constant_op.constant([1, 2, 2, 3, 3])
       self.assertAllClose([1, 2, 3], func(inputs))
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  'not compilable'):
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, 'legalization failed'
+          if test_util.is_mlir_bridge_enabled() else 'unsupported operations'):
         xla_func(inputs)
+
+  @test_util.disable_mlir_bridge('TODO(b/155782411): MLIR bridge does not'
+                                 'support stack traces')
+  def testPythonLocationInMetadata(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(jit_compile=True)
+      def fn(x, y):
+        return x + y
+
+      inputs = constant_op.constant([1, 2, 2, 3, 3])
+      self.assertIn('def_function_xla_jit_test',
+                    fn.experimental_get_compiler_ir(inputs, inputs)())
+
+  @test_util.disable_mlir_bridge('TODO(b/155782411): MLIR bridge does not'
+                                 'support stack traces')
+  def testPythonLocationNestedInMetadata(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(jit_compile=True)
+      def f(x, y):
+        return x + y
+
+      @def_function.function(jit_compile=True)
+      def g(x, y):
+        return f(x, y)
+
+      inputs = constant_op.constant([1, 2, 2, 3, 3])
+      self.assertIn('def_function_xla_jit_test',
+                    g.experimental_get_compiler_ir(inputs, inputs)())
+
+  def testPythonStackTrace(self):
+    if 'tpu' in self.device.lower():
+      self.skipTest('XLA TPU supports tf.unique')
+
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(jit_compile=True)
+      def fn(x):
+        return array_ops.unique(x).y  # COMMENT2
+
+      inputs = constant_op.constant([1, 2, 2, 3, 3])
+      with self.assertRaisesRegex(errors.InvalidArgumentError, 'COMMENT2'):
+        fn(inputs)
+
+  def testPythonStackTraceControlFlow(self):
+    if 'tpu' in self.device.lower():
+      self.skipTest('XLA TPU supports tf.unique')
+
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(jit_compile=True)
+      def f(x):
+        x = ops.convert_to_tensor(x)
+
+        def body(i, a):
+          return i + 1 + array_ops.unique([i]).y[0], \
+              control_flow_ops.cond(i > 2, lambda: a + (x**2), lambda: a + 3)
+
+        return control_flow_ops.while_loop(
+            lambda i, *_: i < 10,
+            body, (constant_op.constant(0), constant_op.constant(3.)),
+            maximum_iterations=10)[1]
+
+      with self.assertRaisesRegex(errors.InvalidArgumentError, r'\.y\[0\]'):
+        f(constant_op.constant(100.0))
+
+  def testPythonStackTraceUncompiledWithinCompiled(self):
+    if 'tpu' in self.device.lower():
+      self.skipTest('XLA TPU supports tf.unique')
+
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function
+      def fn(x):
+        return array_ops.unique(x).y  # COMMENT3
+
+      @def_function.function(jit_compile=True)
+      def outer(x):
+        return fn(x)
+
+      inputs = constant_op.constant([1, 2, 2, 3, 3])
+      with self.assertRaisesRegex(errors.InvalidArgumentError, 'COMMENT3'):
+        outer(inputs)
+
+  @test_util.disable_mlir_bridge('TODO(b/155782411): MLIR bridge does not'
+                                 'support stack traces')
+  def testPythonStackTraceCompiledWithinUncompiled(self):
+    if 'tpu' in self.device.lower():
+      self.skipTest('XLA TPU supports tf.unique')
+
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(jit_compile=True)
+      def fn(x):
+        return array_ops.unique(x).y  # COMMENT1
+
+      @def_function.function
+      def outer(x):
+        return fn(x)
+
+      inputs = constant_op.constant([1, 2, 2, 3, 3])
+      with self.assertRaisesRegex(errors.InvalidArgumentError, 'COMMENT1'):
+        outer(inputs)
+
+  @test_util.disable_mlir_bridge('TODO(b/155782411): MLIR bridge does not'
+                                 'support stack traces')
+  def testPythonStackTraceCompiledWithinCompiled(self):
+    if 'tpu' in self.device.lower():
+      self.skipTest('XLA TPU supports tf.unique')
+
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(jit_compile=True)
+      def fn(x):
+        return array_ops.unique(x).y  # COMMENT4
+
+      @def_function.function
+      def outer(x):
+        return fn(x)
+
+      inputs = constant_op.constant([1, 2, 2, 3, 3])
+      with self.assertRaisesRegex(errors.InvalidArgumentError, 'COMMENT4'):
+        outer(inputs)
 
   def testFunctionGradient(self):
     with ops.device('device:{}:0'.format(self.device)):
@@ -174,8 +302,8 @@ class DefFunctionTest(xla_test.XLATestCase):
       def fn(x):
         return v * x
 
-      func = def_function.function(fn, experimental_compile=False)
-      xla_func = def_function.function(fn, experimental_compile=True)
+      func = def_function.function(fn, jit_compile=False)
+      xla_func = def_function.function(fn, jit_compile=True)
 
       def run_and_check(test_func):
         x = constant_op.constant(3.0)
@@ -195,7 +323,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def f(x):
         assert control_flow_util.GraphOrParentsInXlaContext(
             ops.get_default_graph())
@@ -210,7 +338,7 @@ class DefFunctionTest(xla_test.XLATestCase):
             body, (constant_op.constant(0), constant_op.constant(3.)),
             maximum_iterations=10)[1]
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def g(x):
         x = ops.convert_to_tensor(x)
         with backprop.GradientTape() as tape:
@@ -232,7 +360,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       class C(object):
 
-        @def_function.function(experimental_compile=True)
+        @def_function.function(jit_compile=True)
         def f1(self, x, a):
           return x + a
 
@@ -240,22 +368,23 @@ class DefFunctionTest(xla_test.XLATestCase):
       c = C()
       self.assertAllClose([2, 3, 3, 4, 4], c.f1(inputs, 1))
 
-  @test_util.disable_mlir_bridge('TODO(b/162272821): MLIR bridge returns '
-                                 ' wrong status type')
   def testMethodCompilationUnsupportedFunc(self):
+    if 'tpu' in self.device.lower():
+      self.skipTest('XLA TPU supports tf.unique')
 
     with ops.device('device:{}:0'.format(self.device)):
 
       class C(object):
 
-        @def_function.function(experimental_compile=True)
+        @def_function.function(jit_compile=True)
         def f1(self, x):
           return array_ops.unique(x).y
 
       inputs = constant_op.constant([1, 2, 2, 3, 3])
       c = C()
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  'not compilable'):
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, 'legalization failed'
+          if test_util.is_mlir_bridge_enabled() else 'unsupported operations'):
         c.f1(inputs)
 
   def testMustBeConstantPropagation(self):
@@ -264,11 +393,11 @@ class DefFunctionTest(xla_test.XLATestCase):
 
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def f():
         return constant_op.constant([0, 2, 1], dtype=dtypes.int32)
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def g(a, b):
         return array_ops.transpose(a, b)
 
@@ -283,11 +412,11 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testArgMinMax(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def argmax(x):
         return math_ops.argmax(x)
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def argmin(x):
         return math_ops.argmin(x)
 
@@ -300,7 +429,7 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testErrorMessagePassingTensorArray(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def f(x):
         ta = tensor_array_ops.TensorArray(
             dtype=dtypes.float32, size=1, element_shape=[])
@@ -328,7 +457,7 @@ class DefFunctionTest(xla_test.XLATestCase):
         ta = ta.write(1, 3 * x)
         return ta.concat()
 
-      compiled_f = def_function.function(experimental_compile=True)(f)
+      compiled_f = def_function.function(jit_compile=True)(f)
 
       inputs = constant_op.constant([3.14, 2.68, 7.69])
 
@@ -348,7 +477,7 @@ class DefFunctionTest(xla_test.XLATestCase):
         ta = ta.write(1, 3 * x)
         return ta.concat()
 
-      compiled_f = def_function.function(experimental_compile=True)(f)
+      compiled_f = def_function.function(jit_compile=True)(f)
 
       inputs = constant_op.constant([[3.14, 21.1], [2.68, 22.2], [7.69, 23.3]])
       self.assertAllClose(f(inputs), compiled_f(inputs))
@@ -365,7 +494,7 @@ class DefFunctionTest(xla_test.XLATestCase):
         ta = ta.write(1, 3 * x)
         return ta.concat()
 
-      compiled_f = def_function.function(experimental_compile=True)(f)
+      compiled_f = def_function.function(jit_compile=True)(f)
       inputs = constant_op.constant([3.14])
       self.assertAllClose(f(inputs), compiled_f(inputs))
 
@@ -388,7 +517,7 @@ class DefFunctionTest(xla_test.XLATestCase):
           y = f(x)
           return tape.gradient(y, x)
 
-      compiled_g = def_function.function(experimental_compile=True)(g)
+      compiled_g = def_function.function(jit_compile=True)(g)
 
       self.assertAllClose([5.0, 5.0, 5.0], g())
       self.assertAllClose(compiled_g(), g())
@@ -398,7 +527,7 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testTensorListConcatGradNestedCompile(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def f(x):
         ta = tensor_array_ops.TensorArray(
             dtype=dtypes.float32, size=2, element_shape=[3])
@@ -406,7 +535,7 @@ class DefFunctionTest(xla_test.XLATestCase):
         ta = ta.write(1, 3 * x)
         return ta.concat()
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def g():
         x = constant_op.constant([3.14, 2.68, 7.69])
         with backprop.GradientTape() as tape:
@@ -423,7 +552,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def f(x):
         return math_ops.cumsum(x)
 
@@ -434,7 +563,7 @@ class DefFunctionTest(xla_test.XLATestCase):
     with ops.device('device:{}:0'.format(self.device)):
       inner_retracings = 0
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def inner(a, b):
         nonlocal inner_retracings
         inner_retracings += 1
@@ -449,13 +578,14 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       self.assertEqual(inner_retracings, 1)
 
+  @test_util.disable_mlir_bridge('b/180951174')
   def testUpdateVariable(self):
     with ops.device('device:{}:0'.format(self.device)):
 
       on_gpu = 'gpu' in self.device.lower()
       v = variables.Variable([3.1, 3.2])
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def update_var(a, b):
         v.assign_add(a * b)
 
@@ -476,7 +606,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       class C(object):
 
-        @def_function.function(experimental_compile=True)
+        @def_function.function(jit_compile=True)
         def update_var(self, a, b):
           if not hasattr(self, 'v'):
             self.v = variables.Variable(3.1)
@@ -497,7 +627,7 @@ class DefFunctionTest(xla_test.XLATestCase):
     with ops.device('device:{}:0'.format(self.device)):
       v = variables.Variable(3.1)
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def update_var(a, b):
         v.assign_add(a * b)
         return a * b + v
@@ -509,7 +639,7 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testReturnIdentity(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def f(a, b):
         return (a, b)
 
@@ -532,7 +662,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def f(a, b):
         return array_ops.transpose(a, b)
 
@@ -549,7 +679,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       v = variables.Variable([3.1, 3.2])
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def f(a, b):
         v.assign_add(a * b)
 
@@ -568,17 +698,17 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       a = random_ops.random_normal([10, 10])
       with self.assertRaisesRegex(ValueError,
-                                  'marked with experimental_compile'):
+                                  'marked with \'jit_compile'):
         f.experimental_get_compiler_ir(a)()
 
   def testGetCompilerIrNested(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def fn(x, a):
         return x + a
 
-      @def_function.function(experimental_compile=False)
+      @def_function.function(jit_compile=False)
       def fn2(x, a):
         fn.experimental_get_compiler_ir(x, a)()
         return fn(x, a)
@@ -592,7 +722,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       v = variables.Variable([0.1, 0.1])
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def f(a, b):
         return (a + b) * v
 
@@ -605,7 +735,7 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testGetCompilerIrDot(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def f(a, b):
         return a + b
 
@@ -620,7 +750,7 @@ class DefFunctionTest(xla_test.XLATestCase):
     if 'gpu' not in self.device.lower():
       self.skipTest('Testing get_compiler_ir on GPUs without placement')
 
-    @def_function.function(experimental_compile=True)
+    @def_function.function(jit_compile=True)
     def f(a, b):
       return a + b
 
@@ -634,7 +764,7 @@ class DefFunctionTest(xla_test.XLATestCase):
   def testGetCompilerIrNonTensors(self):
     with ops.device('device:{}:0'.format(self.device)):
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def f(l):
         return l[0] + l[1]
 
@@ -643,18 +773,217 @@ class DefFunctionTest(xla_test.XLATestCase):
       self.assertIn('tuple',
                     f.experimental_get_compiler_ir(l)())
 
+  def testGetCompilerIrSerialized(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(jit_compile=True)
+      def fn(x):
+        return x - x
+
+      inputs = constant_op.constant([1, 2, 2, 3, 3])
+      for stage in ('hlo_serialized', 'optimized_hlo_serialized'):
+        hlo = fn.experimental_get_compiler_ir(inputs)(
+            stage=stage, device_name=f'/device:{self.device}:0')
+        self.assertIsInstance(hlo, bytes)
+
   def testConstantOnWrongDevice(self):
     with ops.device('device:{}:0'.format(self.device)):
 
       s = random_ops.random_uniform([2], 1, 10, dtypes.int32)
       l = random_ops.random_normal([s[0] * s[1]])
 
-      @def_function.function(experimental_compile=True)
+      @def_function.function(jit_compile=True)
       def f(l):
         return array_ops.reshape(l, s)
 
       self.assertIn('tuple',
                     f.experimental_get_compiler_ir(l)())
+
+  @test_util.disable_mlir_bridge('TODO(b/172845417): MLIR bridge does not '
+                                 'support getting constants out of resources')
+  def testGetConstantOutOfResourceVariable(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      # Use floats to force device placement.
+      a = variables.Variable(50.0)
+      b = variables.Variable(2.0)
+
+      @def_function.function(jit_compile=True)
+      def f(x):
+        return array_ops.reshape(
+            x, [math_ops.cast(a, dtypes.int32),
+                math_ops.cast(b, dtypes.int32)])
+
+      # OK since the value is known at compile time.
+      out = f(random_ops.random_normal([10, 10]))
+      self.assertEqual(out.shape[0], 50)
+      self.assertEqual(out.shape[1], 2)
+
+  @test_util.disable_mlir_bridge('TODO(b/172845417): MLIR bridge does not '
+                                 'support getting constants out of resources')
+  def testGetConstantOutOfResourceVariableAfterWrite(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      # Use floats to force device placement.
+      a = variables.Variable(50.0)
+      b = variables.Variable(2.0)
+
+      @def_function.function(jit_compile=True)
+      def f(x, val1, val2):
+        a.assign(math_ops.cast(val1, dtypes.float32))
+        b.assign(math_ops.cast(val2, dtypes.float32))
+        return array_ops.reshape(
+            x, [math_ops.cast(a, dtypes.int32),
+                math_ops.cast(b, dtypes.int32)])
+
+      val1 = constant_op.constant(2)
+      val2 = constant_op.constant(50)
+
+      # Returns an error, since the value known at compile time was overriden.
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  'concrete values at compile time'):
+        f(random_ops.random_normal([10, 10]), val1, val2)
+
+  @test_util.disable_mlir_bridge('TODO(b/172845417): MLIR bridge does not '
+                                 'support getting constants out of resources')
+  def testGetConstantOutOfResourceVariableBeforeWrite(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      # Use floats to force device placement.
+      a = variables.Variable(50.0)
+      b = variables.Variable(2.0)
+
+      @def_function.function(jit_compile=True)
+      def f(x, val1, val2):
+        out = array_ops.reshape(
+            x, [math_ops.cast(a, dtypes.int32),
+                math_ops.cast(b, dtypes.int32)])
+        a.assign(math_ops.cast(val1, dtypes.float32))
+        b.assign(math_ops.cast(val2, dtypes.float32))
+        return out
+
+      val1 = constant_op.constant(2)
+      val2 = constant_op.constant(50)
+
+      # OK since the write happens after the reshape.
+      out = f(random_ops.random_normal([10, 10]), val1, val2)
+      self.assertEqual(out.shape[0], 50)
+      self.assertEqual(out.shape[1], 2)
+
+  def testTfAssert(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(jit_compile=True)
+      def f(x):
+        control_flow_ops.Assert(x == 1, ['Wrong value'])
+
+      f(constant_op.constant(1))
+
+  def testTensorArrayErrorMessage(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(jit_compile=True)
+      def f():
+        # The error message as old and new bridge differ in which op they flag.
+        # The one points to the creation of the unitialized tensor array, the
+        # other is the use of the unitialized tensor array.
+        ta = tensor_array_ops.TensorArray(  # EXPECTED_MESSAGE_NEW
+            dtype=dtypes.float32,
+            size=2,
+            dynamic_size=True,
+            element_shape=(None,))
+        return ta.concat()  # EXPECTED_MESSAGE_OLD
+
+      if test_util.is_mlir_bridge_enabled():
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    'EXPECTED_MESSAGE_NEW'):
+          f()
+      else:
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    'EXPECTED_MESSAGE_OLD'):
+          f()
+
+  def test_counter(self):
+    cell_nojit = def_function._tf_function_counter.get_cell('0')
+    cell_jit = def_function._tf_function_counter.get_cell('1')
+    orig_nojit = cell_nojit.value()
+    orig_jit = cell_jit.value()
+
+    with ops.device('device:{}:0'.format(self.device)):
+      @def_function.function
+      def f(a):
+        return a + a
+      f(constant_op.constant(1))
+      self.assertEqual(cell_nojit.value(), orig_nojit + 1)
+      self.assertEqual(cell_jit.value(), orig_jit)
+      f(constant_op.constant(1.))  # Calling again does not increment
+      self.assertEqual(cell_nojit.value(), orig_nojit + 1)
+
+      @def_function.function(jit_compile=True)
+      def f1(a):
+        return a + a
+      f1(constant_op.constant(1))
+      self.assertEqual(cell_nojit.value(), orig_nojit + 1)
+      self.assertEqual(cell_jit.value(), orig_jit + 1)
+
+      @def_function.function
+      def f2(a):
+        @def_function.function
+        def g(a):
+          return a + a
+        @def_function.function(jit_compile=True)
+        def h(a):
+          return a + a
+        return g(a) + h(a)
+      f2(constant_op.constant(1))
+      self.assertEqual(cell_nojit.value(), orig_nojit + 2)
+      self.assertEqual(cell_jit.value(), orig_jit + 2)
+
+      @def_function.function(jit_compile=True)
+      def f3(a):
+        @def_function.function
+        def g(a):
+          return a + a
+        @def_function.function(jit_compile=True)
+        def h(a):
+          return a + a
+        return g(a) + h(a)
+      f3(constant_op.constant(1))
+      self.assertEqual(cell_nojit.value(), orig_nojit + 2)
+      self.assertEqual(cell_jit.value(), orig_jit + 3)
+
+  @test_util.disable_mlir_bridge('TODO(b/162272821): MLIR bridge returns '
+                                 ' wrong status type')
+  def testResourceWrongDevice(self):
+    if 'gpu' not in self.device.lower():
+      self.skipTest('Need a GPU to have non-trivial device placement')
+
+    with ops.device('device:CPU:0'):
+      v = variables.Variable([3.1, 3.2])
+
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(experimental_compile=True)
+      def update_var(a):
+        v.assign_add(a)
+
+      arg = random_ops.random_normal([2])
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  'def_function_xla_jit_test.py'):
+        update_var(arg)
+
+  def testMustBeConstantInsideCondition(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(jit_compile=True)
+      def f(x, d):
+        if math_ops.reduce_all(
+            math_ops.greater(x, random_ops.random_normal([10, 10]))):
+          return array_ops.reshape(x * 2, constant_op.constant([100]))
+        else:
+          return array_ops.reshape(x * 3, d)
+
+      f(random_ops.random_normal([10, 10]), constant_op.constant([100]))
 
 
 if __name__ == '__main__':

@@ -25,12 +25,12 @@ import sys
 import threading
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python import _pywrap_tfprof as print_mdl
 from tensorflow.python.client import session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.profiler import model_analyzer
+from tensorflow.python.util import _pywrap_tfprof as print_mdl
 from tensorflow.python.util import compat
 
 WARMUP_STEPS = 10

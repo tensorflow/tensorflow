@@ -228,6 +228,17 @@ Status ZlibInputStream::ReadNBytes(int64 bytes_to_read, tstring* result) {
   return Status::OK();
 }
 
+#if defined(TF_CORD_SUPPORT)
+Status ZlibInputStream::ReadNBytes(int64 bytes_to_read, absl::Cord* result) {
+  // TODO(frankchn): Optimize this instead of bouncing through the buffer.
+  tstring buf;
+  TF_RETURN_IF_ERROR(ReadNBytes(bytes_to_read, &buf));
+  result->Clear();
+  result->Append(buf.data());
+  return Status::OK();
+}
+#endif
+
 int64 ZlibInputStream::Tell() const { return bytes_read_; }
 
 Status ZlibInputStream::Inflate() {
@@ -243,6 +254,9 @@ Status ZlibInputStream::Inflate() {
       strings::StrAppend(&error_string, ": ", z_stream_def_->stream->msg);
     }
     return errors::DataLoss(error_string);
+  }
+  if (error == Z_STREAM_END && zlib_options_.window_bits == MAX_WBITS + 16) {
+    inflateReset(z_stream_def_->stream.get());
   }
   return Status::OK();
 }

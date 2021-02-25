@@ -40,8 +40,6 @@ def LHLO_IntOrFpBuffer : MemRefOf<[HLO_Int, AnyFloat]>;
 
 def LHLO_PredOrIntBuffer : MemRefOf<[HLO_Int, HLO_Pred]>;
 
-def LHLO_Buffer : MemRefOf<[AnyFloat, AnySignlessInteger, AnyComplex]>;
-
-def LHLO_ExtentBuffer : MemRefRankOf<[AnySignlessInteger, Index], [1]>;
+def LHLO_Buffer : MemRefOf<[AnyFloat, AnyInteger, AnyComplex]>;
 
 #endif // LHLO_OPS_BASE

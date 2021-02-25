@@ -25,7 +25,9 @@ import numpy as np
 
 from tensorflow.python import tf2
 from tensorflow.python.compat import compat
+from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
+from tensorflow.python.data.experimental.service import server_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import device_util
@@ -41,6 +43,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -48,6 +51,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor as ragged_tensor_lib
 from tensorflow.python.util import nest
 
@@ -982,6 +986,34 @@ class DistributedIteratorTest(DistributedIteratorTestBase,
                                dataset_or_input_fn, worker_device_pairs,
                                expected_values, distribution)
 
+  @combinations.generate(
+      combinations.combine(
+          strategy=[
+              strategy_combinations.multi_worker_mirrored_2x1_cpu,
+              strategy_combinations.multi_worker_mirrored_2x1_gpu,
+          ],
+          mode=["eager"]))
+  def testLoopOverDatasetInTFFunction(self, strategy):
+    dataset = dataset_ops.Dataset.range(10).map(lambda x: {  # pylint: disable=g-long-lambda
+        "y": math_ops.cast(x, dtypes.float32) ** 2,
+    }).batch(4)
+    dist_dataset = strategy.experimental_distribute_dataset(dataset)
+
+    with strategy.scope():
+      v = variables.Variable(0.0, aggregation=variables.VariableAggregation.SUM)
+
+    @def_function.function
+    def iterator_fn(dist_dataset):
+
+      def assign_add_fn(data):
+        v.assign_add(math_ops.reduce_sum(data["y"]))
+
+      for data in dist_dataset:
+        strategy.run(assign_add_fn, args=(data,))
+
+    iterator_fn(dist_dataset)
+    self.assertEqual(v.numpy(), 285.0)
+
 
 class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
                                         parameterized.TestCase):
@@ -1088,21 +1120,21 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
         except (StopIteration, errors.OutOfRangeError):
           return sums
 
-    expected_for_sum = 200.
-    if (not drop_remainder or input_type == "input_fn"):
-      expected_for_sum = 310.
     while_sums = sum_while_loop(
         iter(dataset),
         defun(lambda state, iterator: _reduce(state, next(iterator))))
-    self.assertAllEqual(nest.flatten(while_sums), [expected_for_sum] * 3)
-
+    self.assertAllEqual(
+        nest.flatten(while_sums),
+        # When there's no partial batch, the sum is smaller.
+        [200. if drop_remainder else 310.] * 3)
+    for_sums = defun(sum_for_loop)(dataset)
     # For loops always call get next as optional inside tf functions, so we
     # expect 310 here when using an input function (as there are 5 batches of
     # size 4 round robined over 2 replicas.
     expected_for_sum = 200.
-    if (not drop_remainder or input_type == "input_fn"):
+    if (not drop_remainder or (
+        defun_type == "tf_function" and input_type == "input_fn")):
       expected_for_sum = 310.
-    for_sums = defun(sum_for_loop)(dataset)
     self.assertAllEqual(nest.flatten(for_sums), [expected_for_sum] * 3)
 
   @combinations.generate(
@@ -1116,12 +1148,12 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
           ],
           input_type=["dataset", "input_fn"],
           drop_remainder=[False, True],
-          repeat=[False, True],
           tensor_type=["sparse", "ragged"],
-          enable_get_next_as_optional=[True, False]))
-  def testRaggedSparseGetNextAsOptional(self, distribution, input_type,
-                                        drop_remainder, repeat, tensor_type,
-                                        enable_get_next_as_optional):
+          enable_get_next_as_optional=[True, False]
+      ))
+  def testRaggedSparseGetNextAsOptional(
+      self, distribution, input_type, drop_remainder, tensor_type,
+      enable_get_next_as_optional):
     """Test with `RaggedTensor`s and `SparseTensor`s."""
     if not tf2.enabled():
       self.skipTest("Only V2 is supported.")
@@ -1142,8 +1174,6 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
                         ragged_tensor.to_sparse()),
       })
       dataset = dataset.shard(ctx.num_input_pipelines, ctx.input_pipeline_id)
-      if repeat:
-        dataset = dataset.repeat()
       return dataset.batch(batch_size, drop_remainder=drop_remainder)
 
     if input_type == "dataset":
@@ -1153,8 +1183,8 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
       ds = distribution.distribute_datasets_from_function(dataset_fn)
     iterator = iter(ds)
 
-    self.assertEqual(iterator._enable_get_next_as_optional, (not repeat) and
-                     enable_get_next_as_optional)
+    self.assertEqual(iterator._enable_get_next_as_optional,
+                     (not drop_remainder) and enable_get_next_as_optional)
 
   @combinations.generate(
       combinations.combine(
@@ -1543,6 +1573,39 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
                   experimental_prefetch_to_device=False,
+                  experimental_per_replica_buffer_size=2),
+              distribute_lib.InputOptions(
+                  experimental_place_dataset_on_device=False,
+                  experimental_prefetch_to_device=True,
+                  experimental_per_replica_buffer_size=2),
+          ],
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_two_gpus,
+              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ]))
+  def testPrefetchBufferSizeInputOptions(self, distribution, input_options):
+
+    def dataset_fn(input_context):
+      return dataset_ops.Dataset.from_tensor_slices(
+          np.arange(1, 11).reshape(
+              (2, 5)) * (input_context.input_pipeline_id + 1))
+
+    ds = distribution.experimental_distribute_datasets_from_function(
+        dataset_fn, input_options)
+
+    # validating the values
+    x = next(iter(ds))
+    assert np.array_equal(x.values[0].numpy(), np.array([1, 2, 3, 4, 5]))
+    assert np.array_equal(x.values[1].numpy(), np.array([6, 7, 8, 9, 10]))
+
+  @combinations.generate(
+      combinations.combine(
+          input_options=[
+              distribute_lib.InputOptions(
+                  experimental_place_dataset_on_device=False,
+                  experimental_prefetch_to_device=False,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_WORKER),
               distribute_lib.InputOptions(
@@ -1614,6 +1677,65 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
       assert x.values[1].numpy() == expected[i] * 2
       loop_num = i
     assert loop_num == len(expected) - 1
+
+
+class DistributedIteratorTfDataServiceTest(DistributedIteratorTestBase,
+                                           parameterized.TestCase):
+  """Tests for distributed iterators which read from tf.data service."""
+
+  def setUp(self):
+    super(DistributedIteratorTfDataServiceTest, self).setUp()
+    self.num_workers = 3
+    if combinations.in_main_process():
+      self.dispatcher = server_lib.DispatchServer()
+      self.workers = []
+      for _ in range(self.num_workers):
+        self.workers.append(
+            server_lib.WorkerServer(
+                server_lib.WorkerConfig(
+                    dispatcher_address=self.dispatcher.target.split("://")[1],
+                    heartbeat_interval_ms=100,
+                    dispatcher_timeout_ms=1000)))
+      combinations.env().tf_data_service_dispatcher = self.dispatcher.target
+
+  @combinations.generate(
+      combinations.combine(
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.one_device_strategy,
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+              strategy_combinations.multi_worker_mirrored_2x2_gpu,
+              strategy_combinations.multi_worker_mirrored_2x1_cpu,
+          ]))
+  def testTfDataService(self, distribution):
+    worker_device_pairs = [("/device:CPU:0", ["/device:CPU:0"])]
+    input_workers = input_lib.InputWorkers(worker_device_pairs)
+
+    dataset = dataset_ops.Dataset.range(1, 50)
+    dataset = dataset.apply(
+        data_service_ops._distribute(
+            processing_mode="parallel_epochs",
+            service=combinations.env().tf_data_service_dispatcher,
+            job_name="foo"))
+
+    dist_dataset = input_lib.get_distributed_dataset(dataset, input_workers,
+                                                     distribution)
+
+    iterator = iter(dist_dataset)
+    results = []
+    for element in iterator:
+      local_results = distribution.experimental_local_results(element)
+      for result in local_results:
+        # input_lib.distributed_dataset may add extra '0' elements to pad
+        # per-replica results.
+        if result.numpy() != 0:
+          results.append(result.numpy())
+    self.assertNotEmpty(results)
+    gathered = distribution.gather(constant_op.constant(results), axis=0)
+    self.assertCountEqual(self.num_workers * list(range(1, 50)), gathered)
 
 
 if __name__ == "__main__":

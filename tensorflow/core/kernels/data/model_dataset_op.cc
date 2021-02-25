@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/model_dataset_op.h"
 
+#include "tensorflow/core/framework/cancellation.h"
+
 // On mobile we do not provide model dataset op because not all of its
 // dependencies are available there. The op is replaced with a no-op.
 #if !defined(IS_MOBILE_PLATFORM)
@@ -25,13 +27,12 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
-
-constexpr int64 kOptimizationPeriodThresholdMs = 60 * EnvTime::kSecondsToMillis;
 
 // Default share of available RAM that can be used by model's internal buffers.
 constexpr double kRamBudgetShare = 0.5;
@@ -51,7 +52,15 @@ class ModelDatasetOp::Dataset : public DatasetBase {
         input_(input),
         algorithm_(algorithm),
         cpu_budget_(cpu_budget),
-        ram_budget_(ram_budget) {
+        ram_budget_(ram_budget),
+        traceme_metadata_(
+            {{"algorithm", algorithm == model::AutotuneAlgorithm::HILL_CLIMB
+                               ? "hill climb"
+                               : "gradient descent"},
+             {"cpu_budget",
+              strings::Printf("%lld", static_cast<long long>(cpu_budget))},
+             {"ram_budget",
+              strings::Printf("%lldB", static_cast<long long>(ram_budget))}}) {
     input_->Ref();
   }
 
@@ -116,16 +125,11 @@ class ModelDatasetOp::Dataset : public DatasetBase {
           ram_budget_(dataset()->ram_budget_ == 0
                           ? kRamBudgetShare * port::AvailableRam()
                           : dataset()->ram_budget_) {
+      cancellation_manager_ = absl::make_unique<CancellationManager>();
       model_ = std::make_shared<model::Model>();
     }
 
-    ~Iterator() override {
-      // Signal the optimize thread to terminate it. We will then join that
-      // thread when we delete `this->optimize_thread_`.
-      mutex_lock l(mu_);
-      cancelled_ = true;
-      cond_var_.notify_all();
-    }
+    ~Iterator() override { cancellation_manager_->StartCancel(); }
 
     Status Initialize(IteratorContext* ctx) override {
       IteratorContext::Params params(ctx);
@@ -140,7 +144,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
       IteratorContext::Params params(ctx);
       {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(EnsureModelThreadStarted(ctx));
+        TF_RETURN_IF_ERROR(EnsureOptimizationLoopThreadStarted(ctx));
         params.model = model_;
         int64 now_nanos = EnvTime::NowNanos();
         RecordInput(now_nanos);
@@ -169,55 +173,32 @@ class ModelDatasetOp::Dataset : public DatasetBase {
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
+      IteratorContext::Params params(ctx);
+      params.model = model_;
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+      TF_RETURN_IF_ERROR(RestoreInput(IteratorContext(std::move(params)),
+                                      reader, input_impl_));
       return Status::OK();
+    }
+
+    TraceMeMetadata GetTraceMeMetadata() const override {
+      return dataset()->traceme_metadata_;
     }
 
    private:
-    Status EnsureModelThreadStarted(IteratorContext* ctx)
+    Status EnsureOptimizationLoopThreadStarted(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!model_thread_) {
-        model_thread_ =
-            ctx->StartThread("tf_data_model", [this]() { ModelThread(); });
+        model_thread_ = ctx->StartThread("tf_data_model", [this]() {
+          Status status =
+              model_->OptimizeLoop(dataset()->algorithm_, cpu_budget_,
+                                   ram_budget_, cancellation_manager_.get());
+          if (!status.ok()) {
+            LOG(WARNING) << "Optimization loop failed: " << status.ToString();
+          }
+        });
       }
       return Status::OK();
-    }
-
-    void ModelThread() {
-      int64 last_optimization_ms = 0;
-      int64 optimization_period_ms = 10;
-      int64 current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
-      while (true) {
-        {
-          mutex_lock l(mu_);
-          while (!cancelled_ && last_optimization_ms + optimization_period_ms >
-                                    current_time_ms) {
-            auto wait_ms =
-                last_optimization_ms + optimization_period_ms - current_time_ms;
-            VLOG(2) << "Waiting for " << wait_ms << " ms.";
-            cond_var_.wait_for(l, std::chrono::milliseconds(wait_ms));
-            current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
-          }
-          if (cancelled_) return;
-        }
-        double model_input_time;
-        {
-          tf_shared_lock l(mu_);
-          model_input_time = SelfInputTime();
-        }
-        model_->Optimize(dataset()->algorithm_, cpu_budget_, ram_budget_,
-                         /*model_input_time=*/0);
-        // Exponentially increase the period of running the optimization
-        // until a threshold is reached.
-        if (optimization_period_ms != kOptimizationPeriodThresholdMs) {
-          optimization_period_ms = std::min(optimization_period_ms << 1,
-                                            kOptimizationPeriodThresholdMs);
-        }
-        current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
-        last_optimization_ms = current_time_ms;
-        model_->FlushMetrics();
-      }
     }
 
     void RecordInput(int64 time_nanos) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -241,10 +222,11 @@ class ModelDatasetOp::Dataset : public DatasetBase {
     }
 
     mutex mu_;
-    condition_variable cond_var_;
     std::shared_ptr<model::Model> model_;
+    // Controls cancellation of `model_thread_`. Must be ordered before
+    // `model_thread_` so that `model_thread_` is destroyed first.
+    std::unique_ptr<CancellationManager> cancellation_manager_;
     std::unique_ptr<Thread> model_thread_ TF_GUARDED_BY(mu_);
-    bool cancelled_ TF_GUARDED_BY(mu_) = false;
     std::unique_ptr<IteratorBase> input_impl_;
     int64 num_input_events_ TF_GUARDED_BY(mu_) = 0;
     int64 input_time_ TF_GUARDED_BY(mu_) = 0;
@@ -257,6 +239,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
   const model::AutotuneAlgorithm algorithm_;
   const int64 cpu_budget_;
   const int64 ram_budget_;
+  const TraceMeMetadata traceme_metadata_;
 };
 
 ModelDatasetOp::ModelDatasetOp(OpKernelConstruction* ctx)

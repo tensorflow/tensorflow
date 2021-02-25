@@ -1,10 +1,10 @@
 // RUN: tf-opt %s | tf-opt | FileCheck %s
 
-// CHECK-LABEL: func @control_type() -> !tf_executor.control
-func @control_type() -> !tf_executor.control
+// CHECK-LABEL: func private @control_type() -> !tf_executor.control
+func private @control_type() -> !tf_executor.control
 
-// CHECK-LABEL: func @token_type() -> !tf_executor.token
-func @token_type() -> !tf_executor.token
+// CHECK-LABEL: func private @token_type() -> !tf_executor.token
+func private @token_type() -> !tf_executor.token
 
 // CHECK-LABEL: func @empty_graph
 func @empty_graph() {

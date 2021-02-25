@@ -46,7 +46,7 @@ struct DecomposeResourceOps
     OwningRewritePatternList patterns;
     mlir::TF::PopulateDecomposeResourceOpsPatterns(&getContext(), &patterns);
 
-    applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
   }
 };
 

@@ -23,12 +23,12 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations as ds_combinations
-from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras.distribute import strategy_combinations
 from tensorflow.python.keras.layers.preprocessing import category_encoding
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.platform import test
@@ -64,13 +64,13 @@ class CategoryEncodingDistributionTest(
     expected_output = [[0, 1, 1, 1, 0, 0],
                        [1, 1, 0, 1, 0, 0]]
     # pyformat: enable
-    max_tokens = 6
+    num_tokens = 6
     config.set_soft_device_placement(True)
 
     with distribution.scope():
       input_data = keras.Input(shape=(4,), dtype=dtypes.int32)
       layer = category_encoding.CategoryEncoding(
-          max_tokens=max_tokens, output_mode=category_encoding.BINARY)
+          num_tokens=num_tokens, output_mode=category_encoding.BINARY)
       int_data = layer(input_data)
       model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(inp_dataset)

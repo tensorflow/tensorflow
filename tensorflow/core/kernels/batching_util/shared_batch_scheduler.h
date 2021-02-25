@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/time/clock.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/periodic_function.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -594,6 +595,10 @@ Queue<TaskType>::Queue(
       env_(env),
       process_batch_callback_(process_batch_callback),
       schedulable_batch_callback_(schedulable_batch_callback) {
+  // Set the higher 32 bits of traceme_context_id_counter_ to be the creation
+  // time of the queue. This prevents the batches in different queues to have
+  // the same traceme_context_id_counter_.
+  traceme_context_id_counter_ = absl::GetCurrentTimeNanos() << 32;
   // Create an initial, open batch.
   batches_.emplace_back(new Batch<TaskType>);
 }

@@ -18,12 +18,22 @@ limitations under the License.
 namespace tensorflow {
 REGISTER6(BinaryOp, CPU, "Add", functor::add, float, Eigen::half, double, int32,
           int64, bfloat16);
+
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
+    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER6(BinaryOp, CPU, "AddV2", functor::add, float, Eigen::half, double,
           int32, int64, bfloat16);
+#else
+REGISTER(BinaryOp, CPU, "AddV2", functor::add, bfloat16);
+#endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
+    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER3(BinaryOp, GPU, "Add", functor::add, float, Eigen::half, double);
 REGISTER3(BinaryOp, GPU, "AddV2", functor::add, float, Eigen::half, double);
+#endif
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel

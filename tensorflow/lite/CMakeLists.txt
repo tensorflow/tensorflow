@@ -27,11 +27,18 @@
 # - Host Tools (i.e conversion / analysis tools etc.)
 
 cmake_minimum_required(VERSION 3.16)
+if(NOT CMAKE_BUILD_TYPE)
+  message(STATUS "Setting build type to Release, for debug builds use"
+    "'-DCMAKE_BUILD_TYPE=Debug'.")
+  set(CMAKE_BUILD_TYPE "Release")
+endif()
+
 # Double colon in target name means ALIAS or IMPORTED target.
 cmake_policy(SET CMP0028 NEW)
 # Enable MACOSX_RPATH (@rpath) for built dynamic libraries.
 cmake_policy(SET CMP0042 NEW)
 project(tensorflow-lite C CXX)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(TENSORFLOW_SOURCE_DIR "" CACHE PATH
   "Directory that contains the TensorFlow project"
 )
@@ -51,8 +58,6 @@ set(CMAKE_PREFIX_PATH
   "${TFLITE_SOURCE_DIR}/tools/cmake/modules"
   ${CMAKE_PREFIX_PATH}
 )
-# b/168750039: To workaround absl module not found error on Android build.
-set(absl_DIR ${CMAKE_MODULE_PATH})
 
 option(TFLITE_ENABLE_RUY "Enable experimental RUY integration" OFF)
 option(TFLITE_ENABLE_RESOURCE "Enable experimental support for resources" ON)
@@ -119,7 +124,7 @@ macro(populate_tf_source_vars RELATIVE_DIR SOURCES_VAR)
   )
 endmacro()
 # Find TensorFlow Lite dependencies.
-find_package(absl REQUIRED CONFIG)
+find_package(absl REQUIRED)
 find_package(eigen REQUIRED)
 find_package(farmhash REQUIRED)
 find_package(fft2d REQUIRED)
@@ -165,6 +170,14 @@ if(CMAKE_SYSTEM_NAME MATCHES "Android")
 endif()
 # Build a list of source files to compile into the TF Lite library.
 populate_tflite_source_vars("." TFLITE_SRCS)
+
+# This particular file is excluded because the more explicit approach to enable
+# XNNPACK delegate is preferred to the weak-symbol one.
+list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*tflite_with_xnnpack\\.cc$")
+
+# Exclude Flex related files.
+list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*with_selected_ops\\.cc$")
+
 if(_TFLITE_ENABLE_MMAP)
   list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*mmap_allocation_disabled\\.cc$")
 else()
@@ -192,25 +205,18 @@ endif()
 if(TFLITE_ENABLE_GPU)
   find_package(opencl_headers REQUIRED)
   find_package(vulkan_headers REQUIRED)
+  find_package(fp16_headers REQUIRED)
+  # Android NDK already has OpenGL, EGL headers.
+  if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
+    find_package(opengl_headers REQUIRED)
+    find_package(egl_headers REQUIRED)
+  endif()
   populate_tflite_source_vars(
     "delegates/gpu/cl" TFLITE_DELEGATES_GPU_CL_SRCS
-    FILTER "(_test|gl_interop|egl_sync)\\.(cc|h)$"
+    FILTER "(_test|gl_interop|gpu_api_delegate|egl_sync)\\.(cc|h)$"
   )
   populate_tflite_source_vars(
     "delegates/gpu/cl/kernels" TFLITE_DELEGATES_GPU_CL_KERNELS_SRCS
-    FILTER "(_test)\\.(cc|h)$"
-  )
-  populate_tflite_source_vars(
-    "delegates/gpu/cl/kernels/special"
-    TFLITE_DELEGATES_GPU_CL_KERNELS_SPECIAL_SRCS
-    FILTER "(_test)\\.(cc|h)$"
-  )
-  populate_tflite_source_vars(
-    "delegates/gpu/cl/selectors" TFLITE_DELEGATES_GPU_CL_SELECTORS_SRCS
-    FILTER "(_test)\\.(cc|h)$"
-  )
-  populate_tflite_source_vars(
-    "delegates/gpu/common" TFLITE_DELEGATES_GPU_COMMON_SRCS
     FILTER "(_test)\\.(cc|h)$"
   )
   populate_tflite_source_vars(
@@ -223,6 +229,33 @@ if(TFLITE_ENABLE_GPU)
     FILTER "(_test)\\.(cc|h)$"
   )
   populate_tflite_source_vars(
+    "delegates/gpu/common/selectors" TFLITE_DELEGATES_GPU_COMMON_SELECTORS_SRCS
+    FILTER "(_test)\\.(cc|h)$"
+  )
+  populate_tflite_source_vars(
+    "delegates/gpu/common/selectors/default" TFLITE_DELEGATES_GPU_COMMON_SELECTORS_DEFAULT_SRCS
+    FILTER "(_test)\\.(cc|h)$"
+  )
+  populate_tflite_source_vars(
+    "delegates/gpu/common" TFLITE_DELEGATES_GPU_COMMON_SRCS
+    FILTER "(_test)\\.(cc|h)$"
+  )
+  populate_tflite_source_vars(
+    "delegates/gpu/common/task"
+    TFLITE_DELEGATES_GPU_COMMON_TASK_SRCS
+    FILTER "(_test)\\.(cc|h)$"
+  )
+  populate_tflite_source_vars(
+    "delegates/gpu/common/tasks"
+    TFLITE_DELEGATES_GPU_COMMON_TASKS_SRCS
+    FILTER "(_test)\\.(cc|h)$"
+  )
+  populate_tflite_source_vars(
+    "delegates/gpu/common/tasks/special"
+    TFLITE_DELEGATES_GPU_COMMON_TASKS_SPECIAL_SRCS
+    FILTER "(_test)\\.(cc|h)$"
+  )
+  populate_tflite_source_vars(
     "delegates/gpu/common/transformations"
     TFLITE_DELEGATES_GPU_COMMON_TRANSFORMATIONS_SRCS
     FILTER "(_test)\\.(cc|h)$"
@@ -230,14 +263,17 @@ if(TFLITE_ENABLE_GPU)
   list(APPEND TFLITE_DELEGATES_GPU_SRCS
     ${TFLITE_SOURCE_DIR}/delegates/gpu/api.cc
     ${TFLITE_SOURCE_DIR}/delegates/gpu/delegate.cc
+    ${TFLITE_SOURCE_DIR}/experimental/acceleration/compatibility/android_info.cc
     ${TFLITE_DELEGATES_GPU_CL_SRCS}
     ${TFLITE_DELEGATES_GPU_CL_KERNELS_SRCS}
-    ${TFLITE_DELEGATES_GPU_CL_KERNELS_SPECIAL_SRCS}
-    ${TFLITE_DELEGATES_GPU_CL_SELECTORS_SRCS}
-    ${TFLITE_SOURCE_DIR}/delegates/gpu/cl/selectors/default/default_selector.cc
-    ${TFLITE_DELEGATES_GPU_COMMON_SRCS}
     ${TFLITE_DELEGATES_GPU_COMMON_DEFAULT_SRCS}
     ${TFLITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_SRCS}
+    ${TFLITE_DELEGATES_GPU_COMMON_SELECTORS_SRCS}
+    ${TFLITE_DELEGATES_GPU_COMMON_SELECTORS_DEFAULT_SRCS}
+    ${TFLITE_DELEGATES_GPU_COMMON_SRCS}
+    ${TFLITE_DELEGATES_GPU_COMMON_TASK_SRCS}
+    ${TFLITE_DELEGATES_GPU_COMMON_TASKS_SRCS}
+    ${TFLITE_DELEGATES_GPU_COMMON_TASKS_SPECIAL_SRCS}
     ${TFLITE_DELEGATES_GPU_COMMON_TRANSFORMATIONS_SRCS}
   )
   list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DCL_DELEGATE_NO_GL" "-DEGL_NO_X11")
@@ -271,6 +307,7 @@ if(TFLITE_ENABLE_XNNPACK)
   list(APPEND TFLITE_TARGET_DEPENDENCIES
     XNNPACK
   )
+  list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DTFLITE_BUILD_WITH_XNNPACK_DELEGATE")
 endif()
 if (TFLITE_ENABLE_RESOURCE)
   populate_tflite_source_vars("experimental/resource"
@@ -292,7 +329,7 @@ if(TFLITE_ENABLE_RUY)
 endif()
 populate_tflite_source_vars("kernels"
   TFLITE_KERNEL_SRCS
-  FILTER ".*(_test_util_internal|test_main)\\.(cc|h)"
+  FILTER "(.*_test_util_internal|test_.*)\\.(cc|h)"
 )
 populate_tflite_source_vars("kernels/internal" TFLITE_KERNEL_INTERNAL_SRCS)
 populate_tflite_source_vars("kernels/internal/optimized"
@@ -313,6 +350,12 @@ populate_tflite_source_vars("kernels/internal/reference/integer_ops"
 populate_tflite_source_vars("kernels/internal/reference/sparse_ops"
   TFLITE_KERNEL_INTERNAL_REF_SPARSE_OPS_SRCS
 )
+set(TFLITE_PROFILER_SRCS ${TFLITE_SOURCE_DIR}/profiling/platform_profiler.cc)
+if(CMAKE_SYSTEM_NAME MATCHES "Android")
+  list(APPEND TFLITE_PROFILER_SRCS
+    ${TFLITE_SOURCE_DIR}/profiling/atrace_profiler.cc
+  )
+endif()
 
 # Common include directories
 set(TFLITE_INCLUDE_DIRS
@@ -347,7 +390,7 @@ add_library(tensorflow-lite
   ${TFLITE_KERNEL_SRCS}
   ${TFLITE_NNAPI_SRCS}
   ${TFLITE_SRCS}
-  ${TFLITE_SOURCE_DIR}/profiling/platform_profiler.cc
+  ${TFLITE_PROFILER_SRCS}
   ${TFLITE_SOURCE_DIR}/schema/schema_utils.cc
   ${TFLITE_SOURCE_DIR}/tools/optimize/sparsity/format_converter.cc
 )
@@ -386,7 +429,6 @@ populate_source_vars("${TFLITE_SOURCE_DIR}/tools/benchmark"
 list(APPEND TFLITE_BENCHMARK_SRCS
   ${TF_SOURCE_DIR}/core/util/stats_calculator.cc
   ${TFLITE_SOURCE_DIR}/profiling/memory_info.cc
-  ${TFLITE_SOURCE_DIR}/profiling/platform_profiler.cc
   ${TFLITE_SOURCE_DIR}/profiling/profile_summarizer.cc
   ${TFLITE_SOURCE_DIR}/profiling/profile_summary_formatter.cc
   ${TFLITE_SOURCE_DIR}/profiling/time.cc
@@ -418,9 +460,6 @@ else()
 endif()  # TFLITE_ENABLE_XNNPACK
 
 if(CMAKE_SYSTEM_NAME MATCHES "Android")
-  list(APPEND TFLITE_BENCHMARK_SRCS
-    ${TFLITE_SOURCE_DIR}/profiling/atrace_profiler.cc
-  )
   if(_TFLITE_ENABLE_NNAPI)
     list(APPEND TFLITE_BENCHMARK_SRCS
       ${TFLITE_SOURCE_DIR}/tools/delegates/nnapi_delegate_provider.cc
@@ -450,3 +489,28 @@ target_link_libraries(benchmark_model
     ${TFLITE_BENCHMARK_LIBS}
 )
 
+# Python interpreter wrapper.
+add_library(_pywrap_tensorflow_interpreter_wrapper SHARED EXCLUDE_FROM_ALL
+  ${TFLITE_SOURCE_DIR}/python/interpreter_wrapper/interpreter_wrapper.cc
+  ${TFLITE_SOURCE_DIR}/python/interpreter_wrapper/interpreter_wrapper_pybind11.cc
+  ${TFLITE_SOURCE_DIR}/python/interpreter_wrapper/numpy.cc
+  ${TFLITE_SOURCE_DIR}/python/interpreter_wrapper/python_error_reporter.cc
+  ${TFLITE_SOURCE_DIR}/python/interpreter_wrapper/python_utils.cc
+)
+
+# To remove "lib" prefix.
+set_target_properties(_pywrap_tensorflow_interpreter_wrapper PROPERTIES PREFIX "")
+
+target_include_directories(_pywrap_tensorflow_interpreter_wrapper
+  PUBLIC
+    ${TFLITE_INCLUDE_DIRS}
+)
+
+target_link_libraries(_pywrap_tensorflow_interpreter_wrapper
+  tensorflow-lite
+  ${CMAKE_DL_LIBS}
+)
+target_compile_options(_pywrap_tensorflow_interpreter_wrapper
+  PUBLIC ${TFLITE_TARGET_PUBLIC_OPTIONS}
+  PRIVATE ${TFLITE_TARGET_PRIVATE_OPTIONS}
+)

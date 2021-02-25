@@ -706,10 +706,12 @@ class HloInstruction {
       const absl::optional<int64>& channel_id);
 
   // Creates an instruction that returns a U32 replica ID.
-  static std::unique_ptr<HloInstruction> CreateReplicaId();
+  static std::unique_ptr<HloInstruction> CreateReplicaId(
+      const Shape& shape = ShapeUtil::MakeShape(U32, {}));
 
   // Creates an instruction that returns a U32 partition ID.
-  static std::unique_ptr<HloInstruction> CreatePartitionId();
+  static std::unique_ptr<HloInstruction> CreatePartitionId(
+      const Shape& shape = ShapeUtil::MakeShape(U32, {}));
 
   // Creates a conversion instruction, where operand is the data to convert and
   // shape is the target shape for the conversion.
@@ -983,11 +985,18 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::string_view custom_call_target, string opaque = "");
 
-  // Overload with a to_apply computation
+  // Overload with a to_apply computation.
   static std::unique_ptr<HloInstruction> CreateCustomCall(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* to_apply, absl::string_view custom_call_target,
       string opaque = "");
+
+  // Overload with multiple computations. The called computations can have
+  // different function signatures.
+  static std::unique_ptr<HloInstruction> CreateCustomCall(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      absl::Span<HloComputation* const> called_computations,
+      absl::string_view custom_call_target, string opaque = "");
 
   // Overload which constrains the layouts of the operand and result. 'shape'
   // and 'operand_shapes_with_layout' must have layouts.
@@ -1476,6 +1485,8 @@ class HloInstruction {
   // Returns true if this instruction is elementwise on all its operands.
   bool IsElementwise() const;
 
+  static bool IsOpElementwise(HloOpcode opcode);
+
   // Returns true if this is a cross module all-reduce instruction.
   bool IsCrossModuleAllReduce() const;
 
@@ -1590,8 +1601,22 @@ class HloInstruction {
   const PrecisionConfig& precision_config() const;
   PrecisionConfig* mutable_precision_config();
 
-  // Sets the debug metadata for this instruction.
-  void set_metadata(const OpMetadata& metadata) { metadata_ = metadata; }
+  // Sets the debug metadata for this instruction, excluding creation_pass_id,
+  // which should never be copied anywhere.
+  void set_metadata(const OpMetadata& metadata) {
+    int64 creation_pass_id = metadata_.creation_pass_id();
+    metadata_ = metadata;
+    metadata_.set_creation_pass_id(creation_pass_id);
+  }
+  void set_creation_pass_id(int64 pass_id) {
+    metadata_.set_creation_pass_id(pass_id);
+  }
+  void set_metadata_op_name(const std::string& name) {
+    metadata_.set_op_name(name);
+  }
+  void set_logical_creation_pass_id(int64 pass_id) {
+    metadata_.set_logical_creation_pass_id(pass_id);
+  }
   const OpMetadata& metadata() const { return metadata_; }
 
   // Set/get the computation containing this instruction. set_parent should only
@@ -2137,7 +2162,6 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
 string PaddingConfigToString(const PaddingConfig& padding);
 string FrontendAttributesToString(
     const FrontendAttributes& frontend_attributes);
-string OpMetadataToString(const OpMetadata& metadata);
 string RandomAlgorithmToString(const RandomAlgorithm& algorithm);
 string RandomDistributionToString(const RandomDistribution& distribution);
 string PrecisionToString(const PrecisionConfig::Precision& precision);

@@ -49,6 +49,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
+from tensorflow.python.util.tf_export import tf_export
 
 ALLOWLIST_COLLECTIONS = [
     ops.GraphKeys.GLOBAL_VARIABLES,
@@ -133,6 +134,7 @@ def convert_structure_to_signature(structure, arg_names=None):
   return nest.pack_sequence_as(structure, mapped)
 
 
+@tf_export("__internal__.FuncGraph", v1=[])
 class FuncGraph(ops.Graph):
   """Graph representing a function body.
 
@@ -889,7 +891,7 @@ def func_graph_from_py_func(name,
 
   with func_graph.as_default(), deps_control_manager as deps_ctx:
     current_scope = variable_scope.get_variable_scope()
-    default_use_recource = current_scope.use_resource
+    default_use_resource = current_scope.use_resource
     current_scope.set_use_resource(True)
 
     if signature is not None and override_flat_arg_shapes is not None:
@@ -1003,7 +1005,7 @@ def func_graph_from_py_func(name,
       check_mutation(func_args_before, func_args, original_func)
       check_mutation(func_kwargs_before, func_kwargs, original_func)
     finally:
-      current_scope.set_use_resource(default_use_recource)
+      current_scope.set_use_resource(default_use_resource)
 
     # Variables in `func_args`, `func_kwargs` should be explicit inputs
     # to the function, not captured inputs.

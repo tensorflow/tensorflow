@@ -50,7 +50,7 @@ PREPROCESS_INPUT_DOC = """
   result = model(image)
   ```
 
-  Arguments:
+  Args:
     x: A floating point `numpy.array` or a `tf.Tensor`, 3D or 4D with 3 color
       channels, with values in the range [0, 255].
       The preprocessed data are written over the input data
@@ -129,7 +129,7 @@ preprocess_input.__doc__ = PREPROCESS_INPUT_DOC.format(
 def decode_predictions(preds, top=5):
   """Decodes the prediction of an ImageNet model.
 
-  Arguments:
+  Args:
     preds: Numpy array encoding a batch of predictions.
     top: Integer, how many top-guesses to return. Defaults to 5.
 
@@ -169,7 +169,7 @@ def decode_predictions(preds, top=5):
 def _preprocess_numpy_input(x, data_format, mode):
   """Preprocesses a Numpy array encoding a batch of images.
 
-  Arguments:
+  Args:
     x: Input array, 3D or 4D.
     data_format: Data format of the image array.
     mode: One of "caffe", "tf" or "torch".
@@ -242,7 +242,7 @@ def _preprocess_numpy_input(x, data_format, mode):
 def _preprocess_symbolic_input(x, data_format, mode):
   """Preprocesses a tensor encoding a batch of images.
 
-  Arguments:
+  Args:
     x: Input tensor, 3D or 4D.
     data_format: Data format of the image tensor.
     mode: One of "caffe", "tf" or "torch".
@@ -289,7 +289,10 @@ def _preprocess_symbolic_input(x, data_format, mode):
   else:
     x = backend.bias_add(x, mean_tensor, data_format)
   if std is not None:
-    x /= std
+    std_tensor = backend.constant(np.array(std))
+    if data_format == 'channels_first':
+      std_tensor = backend.reshape(std_tensor, (-1, 1, 1))
+    x /= std_tensor
   return x
 
 
@@ -301,7 +304,7 @@ def obtain_input_shape(input_shape,
                        weights=None):
   """Internal utility to compute/validate a model's input shape.
 
-  Arguments:
+  Args:
     input_shape: Either None (will return the default network input shape),
       or a user-provided shape to be validated.
     default_size: Default input width/height for the model.
@@ -388,7 +391,7 @@ def obtain_input_shape(input_shape,
 def correct_pad(inputs, kernel_size):
   """Returns a tuple for zero-padding for 2D convolution with downsampling.
 
-  Arguments:
+  Args:
     inputs: Input tensor.
     kernel_size: An integer or tuple/list of 2 integers.
 

@@ -6,7 +6,6 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 package(
     default_visibility = [
         # Remove this deps to integration test.
-        "//tensorflow/lite/experimental/tf_runtime:__pkg__",
         "//tensorflow/python/keras:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
@@ -37,12 +36,11 @@ py_library(
         "vgg19.py",
         "xception.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python/keras:activations",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:models",
@@ -50,6 +48,7 @@ py_library(
         "//tensorflow/python/keras/layers",
         "//tensorflow/python/keras/utils:data_utils",
         "//tensorflow/python/keras/utils:layer_utils",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
 )

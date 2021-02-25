@@ -1048,7 +1048,7 @@ class DynamicStitchOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testCint32Gpu(self):
-    with self.session(use_gpu=True):
+    with self.session():
       indices = [
           ops.convert_to_tensor([0, 1, 2]),
           ops.convert_to_tensor([2, 3])
@@ -1076,7 +1076,7 @@ class DynamicStitchOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testInt32Gpu(self):
-    with self.session(use_gpu=True):
+    with self.session():
       indices = [
           ops.convert_to_tensor([0, 1, 2]),
           ops.convert_to_tensor([2, 3])

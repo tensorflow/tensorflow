@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
@@ -42,6 +43,18 @@ id<MTLDevice> GetBestSupportedMetalDevice();
 absl::Status CreateComputeProgram(id<MTLDevice> device, NSString* code, NSString* functionName,
                                   NSDictionary<NSString*, NSString*>* macros,
                                   id<MTLComputePipelineState>* program);
+
+int PixelFormatToSizeInBytes(MTLPixelFormat pixel_format);
+MTLPixelFormat DataTypeToRGBAPixelFormat(DataType type, bool normalized = false);
+
+void WriteDataToTexture2D(id<MTLTexture> texture, id<MTLDevice> device, const void* data);
+void ReadDataFromTexture2D(id<MTLTexture> texture, id<MTLDevice> device, void* data);
+
+void WriteDataToTexture3D(id<MTLTexture> texture, id<MTLDevice> device, const void* data);
+void ReadDataFromTexture3D(id<MTLTexture> texture, id<MTLDevice> device, void* data);
+
+void WriteDataToTexture2DArray(id<MTLTexture> texture, id<MTLDevice> device, const void* data);
+void ReadDataFromTexture2DArray(id<MTLTexture> texture, id<MTLDevice> device, void* data);
 
 }  // namespace metal
 }  // namespace gpu

@@ -15,6 +15,9 @@ or
 **Note:** This page only covers 32-bit builds. If you're looking for 64-bit
 builds, check [Build for ARM64](build_arm64.md) page.
 
+**Note:** Cross-compile ARM with CMake is available. Please check
+[this](https://www.tensorflow.org/lite/guide/build_cmake_arm).
+
 ## Cross-compile for Raspberry Pi with Make
 
 The following instructions have been tested on Ubuntu 16.04.3 64-bit PC (AMD64)
@@ -119,7 +122,7 @@ cd tensorflow_src && ./tensorflow/lite/tools/make/download_dependencies.sh
 
 You can use
 [ARM GCC toolchains](https://github.com/tensorflow/tensorflow/tree/master/third_party/toolchains/embedded/arm-linux)
-with Bazel to build an armhf shared library which is compatibile with Raspberry
+with Bazel to build an armhf shared library which is compatible with Raspberry
 Pi 2, 3 and 4.
 
 Note: The generated shared library requires glibc 2.28 or higher to run.
@@ -165,7 +168,7 @@ page for the detail.
 bazel build --config=elinux_armhf -c opt //tensorflow/lite:libtensorflowlite.so
 ```
 
-You can find a shared library library in:
+You can find a shared library in:
 `bazel-bin/tensorflow/lite/libtensorflowlite.so`.
 
 Currently, there is no straightforward way to extract all header files needed,

@@ -18,8 +18,10 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <algorithm>
+#include <complex>
 #include <limits>
 #include <memory>
+#include <string>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
@@ -282,8 +284,7 @@ TfLiteStatus GetQuantizedConvolutionMultipler(TfLiteContext* context,
                                               double* multiplier) {
   const double input_product_scale = static_cast<double>(input->params.scale) *
                                      static_cast<double>(filter->params.scale);
-  // TODO(ahentz): The following conditions must be guaranteed by the training
-  // pipeline.
+  // The following conditions must be guaranteed by the training pipeline.
   if (bias) {
     const double bias_scale = static_cast<double>(bias->params.scale);
     // Here we're making sure the input_product_scale & bias_scale are about the
@@ -382,9 +383,25 @@ bool HaveSameShapes(const TfLiteTensor* input1, const TfLiteTensor* input2) {
   return TfLiteIntArrayEqual(input1->dims, input2->dims);
 }
 
-// TODO(petewarden): Having macros around this is ugly, look at other strategies
-// before replicating this approach elsewhere.
 #ifndef TF_LITE_STATIC_MEMORY
+
+// TODO(b/172067338): Having this function be part of TF_LITE_STATIC_MEMORY
+// build results in a 6KB size increase, even though the function is unsused for
+// that build. What appears to be happening is that while the linker drops the
+// unsused function, the string library that gets pulled in is not dropped,
+// resulting in the increased binary size.
+std::string GetShapeDebugString(const TfLiteIntArray* shape) {
+  std::string str;
+  for (int d = 0; d < shape->size; ++d) {
+    if (str.empty())
+      str = "[" + std::to_string(shape->data[d]);
+    else
+      str += ", " + std::to_string(shape->data[d]);
+  }
+  str += "]";
+  return str;
+}
+
 TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
                                         const TfLiteTensor* input1,
                                         const TfLiteTensor* input2,
@@ -401,7 +418,13 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
   for (int i = 0; i < out_dims; ++i) {
     int d1 = i >= dims1 ? 1 : SizeOfDimension(input1, dims1 - i - 1);
     int d2 = i >= dims2 ? 1 : SizeOfDimension(input2, dims2 - i - 1);
-    TF_LITE_ENSURE(context, d1 == d2 || d1 == 1 || d2 == 1);
+    if (!(d1 == d2 || d1 == 1 || d2 == 1)) {
+      context->ReportError(context,
+                           "Given shapes, %s and %s, are not broadcastable.",
+                           GetShapeDebugString(input1->dims).c_str(),
+                           GetShapeDebugString(input2->dims).c_str());
+      return kTfLiteError;
+    }
     shape->data[out_dims - i - 1] = std::max(d1, d2);
   }
   *output_shape = shape.release();
@@ -424,14 +447,66 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
     int d2 = i >= dims2 ? 1 : SizeOfDimension(input2, dims2 - i - 1);
     int d3 = i >= dims3 ? 1 : SizeOfDimension(input3, dims3 - i - 1);
     int max_value = std::max(std::max(d1, d2), d3);
-    TF_LITE_ENSURE(context, d1 == 1 || d1 == max_value);
-    TF_LITE_ENSURE(context, d2 == 1 || d2 == max_value);
-    TF_LITE_ENSURE(context, d3 == 1 || d3 == max_value);
+    if (!(d1 == 1 || d1 == max_value) || !(d2 == 1 || d2 == max_value) ||
+        !(d3 == 1 || d3 == max_value)) {
+      context->ReportError(
+          context, "Given shapes, %s, %s and %s, are not broadcastable.",
+          GetShapeDebugString(input1->dims).c_str(),
+          GetShapeDebugString(input2->dims).c_str(),
+          GetShapeDebugString(input3->dims).c_str());
+      return kTfLiteError;
+    }
     shape->data[out_dims - i - 1] = max_value;
   }
   *output_shape = shape.release();
   return kTfLiteOk;
 }
 #endif  // TF_LITE_STATIC_MEMORY
+
+// Size of string is not constant, return 0 in such case.
+int TfLiteTypeGetSize(TfLiteType type) {
+  switch (type) {
+    case kTfLiteUInt8:
+      TF_LITE_ASSERT_EQ(sizeof(uint8_t), 1);
+      return 1;
+    case kTfLiteInt8:
+      TF_LITE_ASSERT_EQ(sizeof(int8_t), 1);
+      return 1;
+    case kTfLiteBool:
+      return sizeof(bool);
+    case kTfLiteInt16:
+      TF_LITE_ASSERT_EQ(sizeof(int16_t), 2);
+      return 2;
+    case kTfLiteFloat16:
+      TF_LITE_ASSERT_EQ(sizeof(int16_t), 2);
+      return 2;
+    case kTfLiteFloat32:
+      TF_LITE_ASSERT_EQ(sizeof(float), 4);
+      return 4;
+    case kTfLiteInt32:
+      TF_LITE_ASSERT_EQ(sizeof(int32_t), 4);
+      return 4;
+    case kTfLiteUInt32:
+      TF_LITE_ASSERT_EQ(sizeof(uint32_t), 4);
+      return 4;
+    case kTfLiteInt64:
+      TF_LITE_ASSERT_EQ(sizeof(int64_t), 8);
+      return 8;
+    case kTfLiteUInt64:
+      TF_LITE_ASSERT_EQ(sizeof(uint64_t), 8);
+      return 8;
+    case kTfLiteFloat64:
+      TF_LITE_ASSERT_EQ(sizeof(double), 8);
+      return 8;
+    case kTfLiteComplex64:
+      TF_LITE_ASSERT_EQ(sizeof(std::complex<float>), 8);
+      return 8;
+    case kTfLiteComplex128:
+      TF_LITE_ASSERT_EQ(sizeof(std::complex<double>), 16);
+      return 16;
+    default:
+      return 0;
+  }
+}
 
 }  // namespace tflite

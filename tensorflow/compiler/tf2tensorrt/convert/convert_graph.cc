@@ -456,7 +456,7 @@ Status CreateTRTNode(const ConversionParams& params,
         trt_allocator.get(), /*calibrator=*/nullptr, &engine,
         info.use_calibration, params.use_implicit_batch,
         /*convert_successfully=*/nullptr,
-        /*profile=*/nullptr));
+        /*profile=*/nullptr, info.engine_name));
     TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
     segment_string = string(static_cast<const char*>(engine_data->data()),
                             engine_data->size());
@@ -618,11 +618,6 @@ Status RegisterGraphToFunctionLibrary(const GraphDef& segment_graph_def,
   auto segment_func = library.add_function();
   TF_RETURN_IF_ERROR(GraphToFunctionDef(
       segment_graph, StrCat(engine_name, "_native_segment"), segment_func));
-  // Set kIntsonDeviceAttr to true so that all TRTEngineOp outputs are always on
-  // a GPU device as expected. Otherwise, some of the tensors of type DT_INT32
-  // would be on host if the op generating the tensor has host memory tag set.
-  (*segment_func->mutable_attr())[FunctionLibraryDefinition::kIntsOnDeviceAttr]
-      .set_b(true);
   if (VLOG_IS_ON(7)) {
     VLOG(7) << engine_name << " Function_Def ";
     VLOG(7) << segment_func->DebugString();
@@ -650,7 +645,7 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
       // allocator must have been initialized already, so the
       // GetGPUAllocator() call won't create a new allocator.
       dev_allocator = GPUProcessState::singleton()->GetGPUAllocator(
-          gpu_options, tf_gpu_id, 1);
+          gpu_options, tf_gpu_id, /*total_bytes=*/1, /*peer_gpu_ids=*/{});
     }
     return std::make_pair(cuda_device_id, dev_allocator);
   }

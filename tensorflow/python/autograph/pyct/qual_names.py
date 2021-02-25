@@ -108,6 +108,12 @@ class QN(object):
     return self._has_attr
 
   @property
+  def attr(self):
+    if not self._has_attr:
+      raise ValueError('Cannot get attr of non-attribute "%s".' % self)
+    return self.qn[1]
+
+  @property
   def parent(self):
     if self._parent is None:
       raise ValueError('Cannot get parent of simple name "%s".' % self.qn[0])
@@ -160,6 +166,18 @@ class QN(object):
             self.has_subscript() == other.has_subscript() and
             self.has_attr() == other.has_attr())
 
+  def __lt__(self, other):
+    if isinstance(other, QN):
+      return self.qn < other.qn
+    else:
+      return str(self) < str(other)
+
+  def __gt__(self, other):
+    if isinstance(other, QN):
+      return self.qn > other.qn
+    else:
+      return str(self) > str(other)
+
   def __str__(self):
     root = self.qn[0]
     if self.has_subscript():
@@ -190,7 +208,7 @@ class QN(object):
     if self.has_subscript():
       return gast.Subscript(
           value=self.parent.ast(),
-          slice=gast.Index(self.qn[-1].ast()),
+          slice=self.qn[-1].ast(),
           ctx=CallerMustSetThis)
     if self.has_attr():
       return gast.Attribute(
@@ -229,16 +247,16 @@ class QnResolver(gast.NodeTransformer):
     # TODO(mdan): This may no longer apply if we overload getitem.
     node = self.generic_visit(node)
     s = node.slice
-    if not isinstance(s, gast.Index):
+    if isinstance(s, (gast.Tuple, gast.Slice)):
       # TODO(mdan): Support range and multi-dimensional indices.
       # Continuing silently because some demos use these.
       return node
-    if isinstance(s.value, gast.Constant):
-      subscript = QN(Literal(s.value.value))
+    if isinstance(s, gast.Constant) and s.value != Ellipsis:
+      subscript = QN(Literal(s.value))
     else:
       # The index may be an expression, case in which a name doesn't make sense.
-      if anno.hasanno(node.slice.value, anno.Basic.QN):
-        subscript = anno.getanno(node.slice.value, anno.Basic.QN)
+      if anno.hasanno(s, anno.Basic.QN):
+        subscript = anno.getanno(s, anno.Basic.QN)
       else:
         return node
     if anno.hasanno(node.value, anno.Basic.QN):

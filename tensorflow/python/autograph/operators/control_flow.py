@@ -223,8 +223,8 @@ def _verify_single_loop_var(
   if isinstance(exit_, (bool, int, float, str, np.ndarray)):
     exit_ = ops.convert_to_tensor_v2(exit_)
 
-  if (not tensor_util.is_tensor(entry) or
-      not tensor_util.is_tensor(exit_)):
+  if (not tensor_util.is_tf_type(entry) or
+      not tensor_util.is_tf_type(exit_)):
     return
 
   # TODO(mdan): Properly account for CompositeTensors.
@@ -322,8 +322,8 @@ def verify_single_cond_var(name, body_var, orelse_var):
   if isinstance(orelse_var, (bool, int, float, str, np.ndarray)):
     orelse_var = ops.convert_to_tensor_v2(orelse_var)
 
-  if (not tensor_util.is_tensor(body_var) or
-      not tensor_util.is_tensor(orelse_var)):
+  if (not tensor_util.is_tf_type(body_var) or
+      not tensor_util.is_tf_type(orelse_var)):
     return
 
   # TODO(mdan): Properly account for CompositeTensors.
@@ -407,7 +407,7 @@ def for_stmt(iter_, extra_test, body, get_state, set_state, symbol_names, opts):
       get_state.
     opts: Optional dict of extra loop parameters.
   """
-  if tensor_util.is_tensor(iter_):
+  if tensor_util.is_tf_type(iter_):
     if tensors.is_range_tensor(iter_):
       _tf_range_for_stmt(iter_, extra_test, body, get_state, set_state,
                          symbol_names, opts)
@@ -974,7 +974,7 @@ def _placeholder_value(like, original=None):
     return original
   if isinstance(like, (int, float, bool)):
     return type(like)(0)
-  if tensor_util.is_tensor(like):
+  if tensor_util.is_tf_type(like):
     return array_ops.zeros(like.shape, like.dtype)
   elif isinstance(like, (list, tuple, dict)):
     return nest.map_structure(_placeholder_value, like)
@@ -1115,7 +1115,7 @@ def _tf_while_stmt(test, body, get_state, set_state, symbol_names, opts):
         ])
     ]):
       final_loop_vars = nest.map_structure(
-          lambda v: (array_ops.identity(v) if tensor_util.is_tensor(v) else v),
+          lambda v: (array_ops.identity(v) if tensor_util.is_tf_type(v) else v),
           final_loop_vars[1:],
       )
 

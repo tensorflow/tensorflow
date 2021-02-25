@@ -1,5 +1,5 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 
 package(
@@ -13,13 +13,11 @@ exports_files([
     "logging.h",
 ])
 
-common_copts = ["-Wall"]
-
 py_binary(
     name = "visualize",
     srcs = ["visualize.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/lite/python:schema_py",
         "//third_party/py/numpy",
@@ -30,10 +28,7 @@ py_test(
     name = "visualize_test",
     srcs = ["visualize_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
-    ],
+    srcs_version = "PY3",
     deps = [
         ":test_utils",
         ":visualize",
@@ -46,14 +41,15 @@ py_binary(
     name = "convert_image_to_csv",
     srcs = ["convert_image_to_csv.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:image_ops",
         "//tensorflow/python:io_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python:session",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -62,7 +58,7 @@ py_test(
     srcs = ["convert_image_to_csv_test.py"],
     data = ["//tensorflow/core:image_testdata"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":convert_image_to_csv",
         "//tensorflow/python:client_testlib",
@@ -77,10 +73,11 @@ py_binary(
     name = "strip_strings",
     srcs = ["strip_strings.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":flatbuffer_utils",
-        "//tensorflow/python:platform",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -88,10 +85,11 @@ py_binary(
     name = "reverse_xxd_dump_from_cc",
     srcs = ["reverse_xxd_dump_from_cc.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":flatbuffer_utils",
-        "//tensorflow/python:platform",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -99,19 +97,21 @@ py_binary(
     name = "randomize_weights",
     srcs = ["randomize_weights.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":flatbuffer_utils",
-        "//tensorflow/python:platform",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
 py_library(
     name = "flatbuffer_utils",
     srcs = ["flatbuffer_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/lite/python:schema_py",
+        "//tensorflow/python/platform",
         "@flatbuffers//:runtime_py",
     ],
 )
@@ -120,10 +120,7 @@ py_test(
     name = "flatbuffer_utils_test",
     srcs = ["flatbuffer_utils_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
-    ],
+    srcs_version = "PY3",
     deps = [
         ":flatbuffer_utils",
         ":test_utils",
@@ -135,7 +132,7 @@ py_test(
 py_library(
     name = "test_utils",
     srcs = ["test_utils.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/lite/python:schema_py",
         "@flatbuffers//:runtime_py",
@@ -231,7 +228,7 @@ cc_test(
 cc_library(
     name = "logging",
     hdrs = ["logging.h"],
-    copts = common_copts,
+    copts = tflite_copts_warnings(),
 )
 
 cc_library(

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/resource.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
@@ -527,6 +528,26 @@ DatasetBaseIterator::DatasetBaseIterator(const BaseParams& params)
     : params_(params) {
   params_.dataset->Ref();
   VLOG(2) << prefix() << " constructor";
+  traceme_metadata_ = strings::StrCat("id=", id_);
+  if (parent_) {
+    strings::StrAppend(&traceme_metadata_, ",parent_id=", parent_id_);
+  }
+  strings::StrAppend(&traceme_metadata_, ",shapes=");
+  auto& shapes = output_shapes();
+  for (int i = 0; i < shapes.size(); ++i) {
+    if (i > 0) {
+      strings::StrAppend(&traceme_metadata_, " ");
+    }
+    strings::StrAppend(&traceme_metadata_, shapes.at(i).DebugString());
+  }
+  strings::StrAppend(&traceme_metadata_, ",types=");
+  auto& types = output_dtypes();
+  for (int i = 0; i < types.size(); ++i) {
+    if (i > 0) {
+      strings::StrAppend(&traceme_metadata_, " ");
+    }
+    strings::StrAppend(&traceme_metadata_, DataTypeString(types.at(i)));
+  }
 }
 
 DatasetBaseIterator::~DatasetBaseIterator() {
@@ -535,11 +556,7 @@ DatasetBaseIterator::~DatasetBaseIterator() {
 }
 
 string DatasetBaseIterator::BuildTraceMeName() {
-  string result = strings::StrCat(params_.prefix, "#id=", id_);
-  if (parent_) {
-    strings::StrAppend(&result, ",parent_id=", parent_id_);
-  }
-
+  string result = strings::StrCat(params_.prefix, "#", traceme_metadata_);
   TraceMeMetadata metadata = GetTraceMeMetadata();
   for (const auto& pair : metadata) {
     strings::StrAppend(&result, ",", pair.first, "=", pair.second);

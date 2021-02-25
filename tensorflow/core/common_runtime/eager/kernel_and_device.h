@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
@@ -97,16 +98,11 @@ typedef absl::variant<Tensor, TensorShape> EagerKernelRet;
 // https://www.tensorflow.org/code/tensorflow/core/kernels/ops_testutil.h
 class KernelAndDevice : public core::RefCounted {
  public:
-  struct Context {
-    bool log_device_placement = false;
-    bool eager_lazy_copy = false;
-  };
-
   // Populates this with a kernel appropriate for 'ndef'.
   //
   // The provided FunctionLibraryRuntime MUST outlive all calls to
   // Run() on the returned KernelAndDevice.
-  virtual Status Init(const Context& ctx, const NodeDef& ndef,
+  virtual Status Init(const bool log_device_placement, const NodeDef& ndef,
                       GraphCollector* graph_collector) = 0;
 
   // Non-multi-device functions are run using regular CallOp and look like
@@ -136,7 +132,8 @@ class KernelAndDevice : public core::RefCounted {
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
       std::vector<EagerKernelRet>* outputs,
       CancellationManager* cancellation_manager,
-      const absl::optional<EagerRemoteFunctionParams>& remote_func_params) = 0;
+      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+      const absl::optional<ManagedStackTrace>& stack_trace) = 0;
 
   // Execute kernel asynchronously when applicable. Different from `Run` which
   // blocks the caller thread and waits for the execution of the op/function,
@@ -201,21 +198,19 @@ class KernelAndDeviceOp final : public KernelAndDevice {
       : KernelAndDevice(flr, runner, std::move(collective_executor),
                         host_cpu_device),
         rendezvous_(rendezvous),
-        log_memory_(log_memory),
-        step_container_(0, [this](const string& name) {
-          device_->resource_manager()->Cleanup(name).IgnoreError();
-        }) {}
+        log_memory_(log_memory) {}
 
   ~KernelAndDeviceOp() override {}
 
-  Status Init(const Context& ctx, const NodeDef& ndef,
+  Status Init(const bool log_device_placement, const NodeDef& ndef,
               GraphCollector* graph_collector) override;
 
-  Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
-             std::vector<EagerKernelRet>* outputs,
-             CancellationManager* cancellation_manager,
-             const absl::optional<EagerRemoteFunctionParams>&
-                 remote_func_params) override;
+  Status Run(
+      ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
+      std::vector<EagerKernelRet>* outputs,
+      CancellationManager* cancellation_manager,
+      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+      const absl::optional<ManagedStackTrace>& stack_trace) override;
 
   void RunAsync(
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
@@ -225,7 +220,7 @@ class KernelAndDeviceOp final : public KernelAndDevice {
       StatusCallback done) override {
     // Trivial async implementation on top of the sync version
     done(Run(step_container, inputs, outputs, cancellation_manager,
-             remote_func_params));
+             remote_func_params, {}));
   }
 
   const OpKernel* kernel() const override { return kernel_.get(); }
@@ -252,7 +247,6 @@ class KernelAndDeviceOp final : public KernelAndDevice {
   Rendezvous* const rendezvous_;
   checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_;
   const bool log_memory_;
-  ScopedStepContainer step_container_;
 };
 
 // Represents a multi-device function. Functions can also be run using
@@ -286,15 +280,7 @@ class KernelAndDeviceFunc : public KernelAndDevice {
             std::move(input_resource_dtypes_and_shapes)),
         name_(name),
         rendezvous_creator_(std::move(rendezvous_creator)),
-        get_op_id_(std::move(get_op_id)),
-        step_container_(0, [this](const string& name) {
-          // TODO(b/139809335): This does not properly clean up remote resources
-          const std::vector<Device*> devices =
-              pflr_->device_mgr()->ListDevices();
-          for (Device* device : devices) {
-            device->resource_manager()->Cleanup(name).IgnoreError();
-          }
-        }) {}
+        get_op_id_(std::move(get_op_id)) {}
 
   ~KernelAndDeviceFunc() override;
 
@@ -302,17 +288,18 @@ class KernelAndDeviceFunc : public KernelAndDevice {
 
   bool IsCrossProcess() override { return is_cross_process_; }
 
-  Status InstantiateFunc(const Context& ctx, const NodeDef& ndef,
+  Status InstantiateFunc(const bool log_device_placement, const NodeDef& ndef,
                          GraphCollector* graph_collector);
 
-  Status Init(const Context& ctx, const NodeDef& ndef,
+  Status Init(const bool log_device_placement, const NodeDef& ndef,
               GraphCollector* graph_collector) override;
 
-  Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
-             std::vector<EagerKernelRet>* outputs,
-             CancellationManager* cancellation_manager,
-             const absl::optional<EagerRemoteFunctionParams>&
-                 remote_func_params) override;
+  Status Run(
+      ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
+      std::vector<EagerKernelRet>* outputs,
+      CancellationManager* cancellation_manager,
+      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+      const absl::optional<ManagedStackTrace>& stack_trace) override;
 
   void RunAsync(
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
@@ -362,8 +349,6 @@ class KernelAndDeviceFunc : public KernelAndDevice {
 
   std::function<Rendezvous*(const int64)> rendezvous_creator_;
   std::function<int64()> get_op_id_;
-
-  ScopedStepContainer step_container_;
 };
 
 }  // namespace tensorflow

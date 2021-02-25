@@ -35,8 +35,8 @@ PLATFORM_DEFINE_ID(kDummyTestId);
 constexpr char kDummyTriple[] = "dummy-triple";
 constexpr char kDummyLayout[] = "e";
 
-// This class is is a dummy implementation of GpuCompiler and is targeted for
-// unit test only
+// This class is a dummy implementation of GpuCompiler and is targeted for unit
+// test only
 class GpuDummyCompiler : public GpuCompiler {
  public:
   GpuDummyCompiler() : GpuCompiler(kDummyTestId, kDummyTriple, kDummyLayout) {}
@@ -53,15 +53,14 @@ class GpuDummyCompiler : public GpuCompiler {
     return Status::OK();
   }
 
-  GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) { return 0; }
+  GpuVersion GetGpuVersion(se::StreamExecutor*) override {
+    return std::make_pair(0, 0);
+  }
 
   StatusOr<std::pair<std::string, std::vector<uint8>>> CompileTargetBinary(
-      const HloModule* hlo_module, llvm::Module* llvm_module,
-      GpuVersion gpu_version, se::StreamExecutor* stream_exec) {
-    if (user_post_optimization_hook_) {
-      user_post_optimization_hook_(*llvm_module);
-    }
-
+      const HloModuleConfig& module_config, llvm::Module* llvm_module,
+      GpuVersion gpu_version, se::StreamExecutor* stream_exec, bool relocatable,
+      const HloModule* debug_module) {
     std::vector<uint8> compiled_results;
     return std::pair<std::string, std::vector<uint8>>(
         "", std::move(compiled_results));

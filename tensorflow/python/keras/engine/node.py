@@ -43,7 +43,7 @@ class Node(object):
   Each time the output of a layer is used by another layer,
   a node is added to `layer._outbound_nodes`.
 
-  Arguments:
+  Args:
       layer: The Layer for the Layer.__call__ this node represents.
       call_args: The positional arguments the Layer was called with.
       call_kwargs: The keyword arguments the Layer was called with.
@@ -78,7 +78,7 @@ class Node(object):
     self._flat_arguments = nest.flatten((self.call_args, self.call_kwargs))
     # Used to avoid expensive `nest` operations in the most common case.
     self._single_positional_tensor_passed = (not self.call_kwargs and len(
-        self.call_args) == 1 and tensor_util.is_tensor(self.call_args[0]))
+        self.call_args) == 1 and tensor_util.is_tf_type(self.call_args[0]))
 
     if not keras_tensor.keras_tensors_enabled():
       # Create TensorFlowOpLayers if needed.

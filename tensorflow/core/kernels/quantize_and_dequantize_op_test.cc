@@ -341,7 +341,7 @@ TEST_P(ParameterizedQuantizeAndDequantizeTest,
   // Then it is dequantized to:
   //   (slice_idx + 1) * {-1, -63.0/127, 0, 38.0/127, 102.0/127, 70/127, 64/127}
 
-  // With int8, each slice of the the tensor is quantized to
+  // With int8, each slice of the tensor is quantized to
   // {-127, -64, 0, 38, 102, 70, 64}.
   // Scale is: (slice_idx + 1) / 127
   // Then it is dequantized to:

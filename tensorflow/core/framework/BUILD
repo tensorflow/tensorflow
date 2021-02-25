@@ -17,7 +17,7 @@ load(
 load("//tensorflow:tensorflow.bzl", "filegroup")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_generate_proto_text_sources")
@@ -37,6 +37,7 @@ load(
 package(
     default_visibility = [
         "//tensorflow/core:__subpackages__",
+        "//tensorflow/security/fuzzing:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -67,7 +68,6 @@ exports_files(
         "model.h",
         "node_def_builder.h",
         "numeric_op.h",
-        "numeric_op_base.h",
         "op_kernel.h",
         "op_requires.h",
         "op_segment.h",
@@ -119,12 +119,14 @@ exports_files(
         "api_def.proto",
         "attr_value.proto",
         "cost_graph.proto",
+        "dataset_options.proto",
         "device_attributes.proto",
         "function.proto",
         "graph.proto",
         "graph_transfer_info.proto",
         "kernel_def.proto",
         "log_memory.proto",
+        "model.proto",
         "node_def.proto",
         "op_def.proto",
         "reader_base.proto",
@@ -203,7 +205,6 @@ filegroup(
         "node_def_util.h",
         "node_properties.h",
         "numeric_op.h",
-        "numeric_op_base.h",
         "numeric_types.h",
         "op.h",
         "op_def_builder.h",
@@ -304,7 +305,6 @@ filegroup(
         "kernel_shape_util.h",
         "log_memory.cc",
         "log_memory.h",
-        "numeric_op_base.h",
         "numeric_types.h",
         "op_requires.h",
         "ops_util.cc",
@@ -401,7 +401,10 @@ filegroup(
         "op_segment.h",
         "partial_tensor_shape.h",
         "queue_interface.h",
+        "reader_base.cc",
+        "reader_base.h",
         "reader_interface.h",
+        "reader_op_kernel.h",
         "register_types_traits.h",
         "registration_options.h",
         "rendezvous.cc",
@@ -625,7 +628,10 @@ cc_library(
     name = "bfloat16",
     srcs = ["bfloat16.cc"],
     hdrs = ["bfloat16.h"],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/security/fuzzing:__subpackages__",
+    ],
     deps = [
         ":numeric_types",
         "//tensorflow/core/platform:byte_order",
@@ -668,6 +674,7 @@ cc_library(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/runtime_fallback:__subpackages__",
+        "//tensorflow/core/tfrt/utils:__subpackages__",
     ],
     deps = [
         ":bounds_check",
@@ -680,7 +687,9 @@ cc_library(
         "//tensorflow/core/lib/gtl:inlined_vector",
         "//tensorflow/core/lib/strings:str_util",
         "//tensorflow/core/lib/strings:strcat",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:macros",
         "//tensorflow/core/util:overflow",
         "//third_party/eigen3",
     ],
@@ -699,6 +708,7 @@ cc_library(
         "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/platform:tensor_coding",
         "//tensorflow/core/platform:types",
+        "//tensorflow/core/util:managed_stack_trace",
     ],
     alwayslink = 1,
 )
@@ -755,6 +765,7 @@ tf_cuda_library(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
+        "//tensorflow/core/tfrt/utils:__subpackages__",
         "//tensorflow/core/util:__pkg__",
         "//tensorflow/security/fuzzing:__subpackages__",
     ],
@@ -793,6 +804,7 @@ tf_cuda_library(
         "//tensorflow/core/platform:tensor_coding",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/public:version",
+        "//tensorflow/core/util:managed_stack_trace",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -1065,7 +1077,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test_gpu(
+tf_cuda_cc_test(
     name = "variant_op_copy_test",
     size = "small",
     srcs = ["variant_op_copy_test.cc"],
@@ -1076,13 +1088,11 @@ tf_cc_test_gpu(
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
-        "//tensorflow/core",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
-        "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -1250,6 +1260,32 @@ cc_library(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/util:__pkg__",
+    ],
+)
+
+cc_library(
+    name = "extension_type_variant",
+    srcs = ["extension_type_variant.cc"],
+    hdrs = ["extension_type_variant.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "extension_type_variant_test",
+    size = "small",
+    srcs = ["extension_type_variant_test.cc"],
+    deps = [
+        ":extension_type_variant",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -1619,6 +1655,20 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "model_proto",
+    srcs = ["model.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+)
+
+tf_proto_library(
+    name = "dataset_options_proto",
+    srcs = ["dataset_options.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+)
+
+tf_proto_library(
     name = "protos_all",
     cc_api_version = 2,
     make_default_target_header_only = True,
@@ -1633,8 +1683,10 @@ tf_proto_library(
         ":graph_transfer_info_proto",
         ":kernel_def_proto",
         ":log_memory_proto",
+        ":model_proto",
         ":node_def_proto",
         ":op_def_proto",
+        ":dataset_options_proto",
         ":reader_base_proto",
         ":remote_fused_graph_execute_info_proto",
         ":resource_handle_proto",

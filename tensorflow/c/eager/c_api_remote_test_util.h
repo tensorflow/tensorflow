@@ -16,11 +16,12 @@ limitations under the License.
 #define TENSORFLOW_C_EAGER_C_API_REMOTE_TEST_UTIL_H_
 
 // Run a function containing a MatMul op and check its output.
-// If heavy_load_on_streaming_rpc is true, send some rpc reqeusts before the one
-// which creates a remote remote input, to simulate a scenario that the remote
-// input is not ready when we start running an op or a function.
+// If heavy_load_on_streaming_rpc is true, send some rpc requests before the one
+// which creates a remote input, to simulate a scenario that the remote input
+// is not ready when we start running an op or a function.
 void TestRemoteExecuteSilentCopies(bool async, bool remote, bool func,
                                    bool heavy_load_on_streaming_rpc,
-                                   bool remote_func_outputs = false);
+                                   bool remote_func_outputs = false,
+                                   bool has_packed_input = false);
 
 #endif  // TENSORFLOW_C_EAGER_C_API_REMOTE_TEST_UTIL_H_

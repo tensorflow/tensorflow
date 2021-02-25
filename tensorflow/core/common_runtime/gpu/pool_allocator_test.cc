@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/pool_allocator.h"
 
 #include "gpu_init.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_host_allocator.h"
+#include "tensorflow/core/common_runtime/device/device_host_allocator.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/test.h"
 namespace tensorflow {
@@ -30,7 +30,7 @@ TEST(PoolAllocatorTest, ZeroSizeBuffers) {
           .ValueOrDie();
   PoolAllocator pool(
       2 /*pool_size_limit*/, false /*auto_resize*/,
-      new GpuHostAllocator(
+      new DeviceHostAllocator(
           platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
               .ValueOrDie(),
           0 /*numa_node*/, {}, {}),
@@ -50,7 +50,7 @@ TEST(PoolAllocatorTest, ZeroSizePool) {
           .ValueOrDie();
   PoolAllocator pool(
       0 /*pool_size_limit*/, false /*auto_resize*/,
-      new GpuHostAllocator(
+      new DeviceHostAllocator(
           platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
               .ValueOrDie(),
           0 /*numa_node*/, {}, {}),
@@ -85,7 +85,7 @@ TEST(PoolAllocatorTest, Alignment) {
           .ValueOrDie();
   PoolAllocator pool(
       0 /*pool_size_limit*/, false /*auto_resize*/,
-      new GpuHostAllocator(
+      new DeviceHostAllocator(
           platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
               .ValueOrDie(),
           0 /*numa_node*/, {}, {}),
@@ -146,7 +146,7 @@ TEST(PoolAllocatorTest, CudaHostAllocator) {
   se::Platform* platform =
       se::MultiPlatformManager::PlatformWithName(GpuPlatformName())
           .ValueOrDie();
-  GpuHostAllocator* sub_allocator = new GpuHostAllocator(
+  DeviceHostAllocator* sub_allocator = new DeviceHostAllocator(
       platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
           .ValueOrDie(),
       0 /*numa_node*/, {alloc_visitor}, {free_visitor});
@@ -252,7 +252,7 @@ TEST(PoolAllocatorTest, Name) {
           .ValueOrDie();
   PoolAllocator pool(
       2 /*pool_size_limit*/, false /*auto_resize*/,
-      new GpuHostAllocator(
+      new DeviceHostAllocator(
           platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
               .ValueOrDie(),
           0 /*numa_node*/, {}, {}),

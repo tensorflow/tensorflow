@@ -11,8 +11,9 @@ https://github.com/ekalinin/github-markdown-toc#auto-insert-and-update-toc
    * [Running Unit Tests](#running-unit-tests)
       * [Under the hood of the Testing Infrastructure](#under-the-hood-of-the-testing-infrastructure)
    * [Running a non-test Binary with Renode](#running-a-non-test-binary-with-renode)
+   * [Useful External Links for Renode and Robot Documentation](#useful-external-links-for-renode-and-robot-documentation)
 
-<!-- Added by: advaitjain, at: Fri 23 Oct 2020 04:40:49 PM PDT -->
+<!-- Added by: advaitjain, at: Tue 10 Nov 2020 09:43:05 AM PST -->
 
 <!--te-->
 
@@ -31,19 +32,14 @@ Renode can be installed and used in a variety of ways, as documented
 [here](https://renode.readthedocs.io/en/latest/). For the purpose of Tensorflow
 Lite Micro, we make use of a portable version for Linux.
 
- 1. Download portable version of Renode for Linux:
+Portable renode wil be automatically installed when using the TfLite Micro
+Makefile to `tensorflow/lite/micro/tools/make/downloads/renode`.
 
-    ```
-    tensorflow/lite/micro/testing/download_renode.sh tensorflow/lite/micro/tools/make/downloads/renode
-    ```
+The Makefile internally calls the `renode_download.sh` script:
 
- 2. Install the Renode test dependencies
-
-    ```
-    pip3 install -r tensorflow/lite/micro/tools/make/downloads/renode/tests/requirements.txt
-    ```
-
-At this point in time you will be ready to run TFLM tests with Renode.
+```
+tensorflow/lite/micro/testing/renode_download.sh tensorflow/lite/micro/tools/make/downloads
+```
 
 # Running Unit Tests
 
@@ -55,6 +51,7 @@ make -f tensorflow/lite/micro/tools/make/Makefile TARGET=bluepill test
 
  * This makes use of the robot framework from Renode.
  * Note that the tests can currently not be run in parallel.
+ * It takes about 25 second to complete all tests, including around 3 seconds for suite startup/teardown and average 0.38 second per test.
 
 ## Under the hood of the Testing Infrastructure
 
@@ -73,6 +70,68 @@ failing.
 
 # Running a non-test Binary with Renode
 
-It may be useful to run binaries on Renode that are not tests, independent of
-the robot framework. We will be adding some documentation for that in this
-section.
+Renode can also be used to run and debug binaries interactively. For example,
+to debug `kernel_addr_test` on Bluepill platform, run Renode:
+
+```
+tensorflow/lite/micro/tools/make/downloads/renode/renode
+```
+and issue following commands:
+```
+# Create platform
+include @tensorflow/lite/micro/testing/bluepill_nontest.resc
+# Load ELF file
+sysbus LoadELF @tensorflow/lite/micro/tools/make/gen/bluepill_cortex-m3_default/bin/keyword_benchmark
+# Start simulation
+start
+
+# To run again:
+Clear
+include @tensorflow/lite/micro/testing/bluepill_nontest.resc
+sysbus LoadELF @tensorflow/lite/micro/tools/make/gen/bluepill_cortex-m3_default/bin/keyword_benchmark
+start
+
+```
+
+To make repeat runs a bit easier, you can put all the commands into a
+single line (up arrow will show the last command in the Renode terminal):
+```
+Clear; include @tensorflow/lite/micro/testing/bluepill_nontest.resc; sysbus LoadELF @tensorflow/lite/micro/tools/make/gen/bluepill_cortex-m3_default/bin/keyword_benchmark; start
+```
+
+You can also connect GDB to the simulation.
+To do that, start the GDB server in Renode before issuing the `start` command:
+```
+machine StartGdbServer 3333
+```
+Than you can connect from GDB with:
+```
+target remote localhost:3333
+```
+
+For further reference please see the [Renode documentation](https://renode.readthedocs.io/en/latest/).
+
+# Useful External Links for Renode and Robot Documentation
+
+ * [Testing with Renode](https://renode.readthedocs.io/en/latest/introduction/testing.html?highlight=robot#running-the-robot-test-script)
+
+ * [Robot Testing Framework on Github](https://github.com/robotframework/robotframework). For someone new to
+   the Robot Framework, the documentation  can be a bit hard to navigate, so
+   here are some links that are relevant to the use of the Robot Framework with
+   Renode for TFLM:
+
+   * [Creating Test Data](http://robotframework.org/robotframework/latest/RobotFrameworkUserGuide.html#creating-test-data)
+     section of the user guide.
+
+   * Renode-specific additions to the Robot test description format are in the
+     [RobotFrameworkEngine directory](https://github.com/renode/renode/tree/master/src/Renode/RobotFrameworkEngine). For example,
+
+       * [Start Emulation](https://github.com/renode/renode/blob/master/src/Renode/RobotFrameworkEngine/RenodeKeywords.cs#L41-L42)
+       * [Wait For Line On Uart](https://github.com/renode/renode/blob/master/src/Renode/RobotFrameworkEngine/UartKeywords.cs#L62-L63)
+     is where `Wait For Line On Uart` is defined.
+
+   * Some documentation for all the [Standard Libraries](http://robotframework.org/robotframework/#standard-libraries)
+     that define commands such as:
+
+       * [Remove File](http://robotframework.org/robotframework/latest/libraries/OperatingSystem.html#Remove%20File)
+       * [List Files In Directory](https://robotframework.org/robotframework/latest/libraries/OperatingSystem.html#List%20Files%20In%20Directory)

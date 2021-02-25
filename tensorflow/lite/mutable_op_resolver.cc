@@ -15,6 +15,13 @@ limitations under the License.
 
 #include "tensorflow/lite/mutable_op_resolver.h"
 
+#include <string>
+#include <unordered_map>
+#include <utility>
+
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+
 namespace tflite {
 
 const TfLiteRegistration* MutableOpResolver::FindOp(tflite::BuiltinOperator op,

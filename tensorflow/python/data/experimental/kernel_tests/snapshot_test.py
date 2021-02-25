@@ -37,6 +37,18 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
 
+def is_graphdef_file(filename):
+  return filename.endswith("-graph.pbtxt")
+
+
+def is_temp_file(filename):
+  return "-tmp-" in filename
+
+
+def listdir_and_filter(dirname, filter_fn):
+  return [path for path in sorted(os.listdir(dirname)) if filter_fn(path)]
+
+
 class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
                           parameterized.TestCase):
 
@@ -76,19 +88,18 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
   def assertSnapshotDirectoryContains(self, directory, num_fingerprints,
                                       num_runs_per_fingerprint,
                                       num_snapshot_shards_per_run):
-    dirlist_raw = os.listdir(directory)
-    dirlist = []
 
-    # Ignore the graphdef pbtxts we write for debugging purposes.
-    for i in range(len(dirlist_raw)):
-      if not dirlist_raw[i].endswith("-graph.pbtxt"):
-        dirlist.append(dirlist_raw[i])
-
+    # Ignore the graphdef pbtxts we write for debugging purposes and temporary
+    # files that are an artifact of how TF writes files.
+    dirlist = listdir_and_filter(
+        directory,
+        lambda p: not (is_graphdef_file(p) or is_temp_file(p)))
     self.assertLen(dirlist, num_fingerprints)
 
     for i in range(num_fingerprints):
       fingerprint_dir = os.path.join(directory, dirlist[i])
-      fingerprint_dir_list = sorted(os.listdir(fingerprint_dir))
+      fingerprint_dir_list = listdir_and_filter(
+          fingerprint_dir, lambda p: not is_temp_file(p))
       self.assertLen(fingerprint_dir_list, num_runs_per_fingerprint + 1)
       self.assertEqual(fingerprint_dir_list[num_runs_per_fingerprint],
                        "snapshot.metadata")
@@ -237,6 +248,21 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
       self.evaluate(next_fn())
 
   @combinations.generate(test_base.default_test_combinations())
+  def testRoundtripEmptySnapshot(self):
+    dataset = dataset_ops.Dataset.range(0)
+    dataset = dataset.apply(snapshot.snapshot(self._snapshot_dir))
+    self.assertDatasetProduces(dataset, [])
+    self.assertSnapshotDirectoryContains(
+        self._snapshot_dir,
+        num_fingerprints=1,
+        num_runs_per_fingerprint=1,
+        num_snapshot_shards_per_run=0)
+
+    dataset2 = dataset_ops.Dataset.range(0)
+    dataset2 = dataset.apply(snapshot.snapshot(self._snapshot_dir))
+    self.assertDatasetProduces(dataset2, [])
+
+  @combinations.generate(test_base.default_test_combinations())
   def testWriteSnapshotDatasetSimple(self):
     dataset = dataset_ops.Dataset.range(1000)
     dataset = dataset.apply(snapshot.snapshot(self._snapshot_dir))
@@ -356,6 +382,35 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
         num_runs_per_fingerprint=1,
         num_snapshot_shards_per_run=multiprocessing.cpu_count())
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testReadUsingFlatMap(self):
+    dataset = dataset_ops.Dataset.range(1000)
+    dataset = dataset.apply(snapshot.snapshot(self._snapshot_dir))
+    self.assertDatasetProduces(dataset, list(range(1000)))
+    flat_map = dataset_ops.Dataset.from_tensors(dataset).flat_map(lambda x: x)
+    self.assertDatasetProduces(flat_map, list(range(1000)))
+    self.assertSnapshotDirectoryContains(
+        self._snapshot_dir,
+        num_fingerprints=1,
+        num_runs_per_fingerprint=1,
+        num_snapshot_shards_per_run=multiprocessing.cpu_count())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testReadOptimizableUsingFlatMap(self):
+    dataset = dataset_ops.Dataset.range(1000)
+    # Will be optimized into ShuffleAndRepeat.
+    dataset = dataset.shuffle(10)
+    dataset = dataset.repeat(2)
+    dataset = dataset.apply(snapshot.snapshot(self._snapshot_dir))
+    self.assertDatasetProducesSet(dataset, 2 * list(range(1000)))
+    flat_map = dataset_ops.Dataset.from_tensors(dataset).flat_map(lambda x: x)
+    self.assertDatasetProducesSet(flat_map, 2 * list(range(1000)))
+    self.assertSnapshotDirectoryContains(
+        self._snapshot_dir,
+        num_fingerprints=1,
+        num_runs_per_fingerprint=1,
+        num_snapshot_shards_per_run=multiprocessing.cpu_count())
+
 
 class LegacySnapshotDatasetTest(
     reader_dataset_ops_test_base.TFRecordDatasetTestBase,
@@ -388,19 +443,17 @@ class LegacySnapshotDatasetTest(
 
   def assertSnapshotDirectoryContains(self, directory, num_fingerprints,
                                       num_runs_per_fp, num_snapshot_files):
-    dirlist_raw = os.listdir(directory)
-    dirlist = []
-
-    # Ignore the graphdef pbtxts we write for debugging purposes.
-    for i in range(len(dirlist_raw)):
-      if not dirlist_raw[i].endswith("-graph.pbtxt"):
-        dirlist.append(dirlist_raw[i])
-
+    # Ignore the graphdef pbtxts we write for debugging purposes and temporary
+    # files that are an artifact of how TF writes files.
+    dirlist = listdir_and_filter(
+        directory,
+        lambda p: not (is_graphdef_file(p) or is_temp_file(p)))
     self.assertLen(dirlist, num_fingerprints)
 
     for i in range(num_fingerprints):
       fingerprint_dir = os.path.join(directory, dirlist[i])
-      fingerprint_dir_list = sorted(os.listdir(fingerprint_dir))
+      fingerprint_dir_list = listdir_and_filter(
+          fingerprint_dir, lambda p: not is_temp_file(p))
       self.assertLen(fingerprint_dir_list, num_runs_per_fp + 1)
       self.assertEqual(fingerprint_dir_list[num_runs_per_fp],
                        "snapshot.metadata")

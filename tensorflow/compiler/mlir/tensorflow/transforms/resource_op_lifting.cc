@@ -32,12 +32,11 @@ limitations under the License.
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -120,7 +119,7 @@ namespace {
 //   return %read
 // }
 //
-// will be be transformed to:
+// will be transformed to:
 //
 // func @cluster_with_loop() {
 //   %0 = "tf.VarHandleOp"() ...
@@ -245,7 +244,7 @@ class RegionResourceHoister {
   // Returns all resources accessed by the regions attached the op.
   auto& GetResources() { return resources_; }
 
-  // Returns if the given value is a resouce that needs lifting.
+  // Returns if the given value is a resource that needs lifting.
   bool Contains(Value resource) const {
     return resources_.find(resource) != resources_.end();
   }
@@ -379,7 +378,7 @@ LogicalResult RegionResourceHoister::Analyze() {
       // If the user is not in one of the regions, we are not interested in it.
       // Since all the sub-regions within this region (i.e., regions attached to
       // op's in this region) have themselves gone through lifting, all resource
-      // users are expected to be operations in this region and and not embedded
+      // users are expected to be operations in this region and not embedded
       // within other sub-regions attached to op's in this region. So the check
       // for whether a user is in one of the regions attached to this op is
       // straightforward.
@@ -446,6 +445,7 @@ LogicalResult RegionResourceHoister::Analyze() {
 // Generates hoisted reads for all resources that need them just before the op.
 void RegionResourceHoister::GenerateHoistedReads() {
   OpBuilder builder(op_);
+  DictionaryAttr empty_attrs = builder.getDictionaryAttr({});
   for (auto& resource_it : GetResources()) {
     Value resource = resource_it.first;
     auto& info = resource_it.second;
@@ -453,7 +453,7 @@ void RegionResourceHoister::GenerateHoistedReads() {
     if (info.is_read) {
       Operation* read = builder.create<TF::ReadVariableOp>(
           op_->getLoc(), info.data_type, resource);
-      read->setAttrs(info.read_attrs);
+      read->setAttrs(info.read_attrs ? info.read_attrs : empty_attrs);
       info.hoisted_read = read->getResult(0);
     }
   }
@@ -531,7 +531,7 @@ void RegionResourceHoister::ReplaceOpWithNewOp() {
   new_result_types.insert(new_result_types.end(), extra_result_types.begin(),
                           extra_result_types.end());
   OpBuilder builder(op_);
-  // Clone ths old operation but with new result types.
+  // Clone this old operation but with new result types.
   Operation* new_op = Operation::create(
       op_->getLoc(), op_->getName(), new_result_types, op_->getOperands(),
       op_->getAttrs(), op_->getSuccessors(), op_->getNumRegions());
@@ -786,9 +786,9 @@ void RemoveUnusedResourceArgumentsAndForwardedRetvals(
     }
   }
   func_op.eraseArguments(indices_to_erase);
-  func_op.setType(FunctionType::get(
-      new_types, llvm::to_vector<4>(return_op->getOperandTypes()),
-      func_op.getContext()));
+  func_op.setType(
+      FunctionType::get(func_op.getContext(), new_types,
+                        llvm::to_vector<4>(return_op->getOperandTypes())));
 }
 
 // Lifts reads/writes of resource arguments from func_op and changes its
@@ -808,7 +808,7 @@ LogicalResult LiftArgRetResourcesForFunction(
   // value to be written.
 
   // Now create read values that will be used to replace each resource that
-  // is read in the function body. These read vaulues are just the same argument
+  // is read in the function body. These read values are just the same argument
   // with type replaced.
   llvm::SmallVector<Value, 4> skipped_args;
   for (auto& it : hoister.GetResources()) {
@@ -842,10 +842,9 @@ LogicalResult LiftArgRetResourcesForFunction(
     assign_variable_op.erase();
   }
 
-  func_op.setType(
-      FunctionType::get(func_op.front().getArgumentTypes(),
-                        func_op.front().getTerminator()->getOperandTypes(),
-                        func_op.getContext()));
+  func_op.setType(FunctionType::get(
+      func_op.getContext(), func_op.front().getArgumentTypes(),
+      func_op.front().getTerminator()->getOperandTypes()));
 
   return success();
 }
@@ -915,15 +914,15 @@ LogicalResult HandleWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
       resource_arg_uses, body, &old_to_new_indices,
       &remaining_resource_data_types);
   RemoveUnusedResourceArgumentsAndForwardedRetvals(resource_arg_uses, cond);
-  LiftArgRetResourcesForFunction(
+  (void)LiftArgRetResourcesForFunction(
       body, remaining_resource_data_types,
       [&](int64_t index, Value value) { return_op->setOperand(index, value); });
-  LiftArgRetResourcesForFunction(cond, remaining_resource_data_types,
-                                 [&](int64_t index, Value value) {
-                                   // We already checked that cond should not
-                                   // have variable writes.
-                                   assert(false && "Should not happen");
-                                 });
+  (void)LiftArgRetResourcesForFunction(cond, remaining_resource_data_types,
+                                       [&](int64_t index, Value value) {
+                                         // We already checked that cond should
+                                         // not have variable writes.
+                                         assert(false && "Should not happen");
+                                       });
   // Recreate the while op.
   OpBuilder builder(while_op);
   // Now use the filtered original operands, which will be replaced by
@@ -1020,7 +1019,7 @@ LogicalResult HandleCaseOrIfOp(CaseOrIfOp op, ArrayRef<FuncOp> branches) {
     auto new_return =
         builder.create<ReturnOp>(old_return->getLoc(), new_retvals);
     old_return->erase();
-    LiftArgRetResourcesForFunction(
+    (void)LiftArgRetResourcesForFunction(
         branch, remaining_resource_data_types, [&](int64_t index, Value value) {
           new_return.setOperand(resource_arg_to_new_output[index], value);
         });
@@ -1107,11 +1106,11 @@ LogicalResult HandlePartitionedCallOpCallee(
 
   // Clone the callee before making changes.
   SmallString<64> name_base = callee.getName();
-  auto module = callee.getParentOfType<ModuleOp>();
+  auto module = callee->getParentOfType<ModuleOp>();
   name_base += "_resource_lifted";
   auto name = name_base;
   callee = callee.clone();
-  callee.setVisibility(SymbolTable::Visibility::Private);
+  callee.setPrivate();
   callee.setName(name);
   SymbolTable(module).insert(callee);
   result->lifted_callee = callee;
@@ -1134,7 +1133,7 @@ LogicalResult HandlePartitionedCallOpCallee(
   int64_t num_retvals = retval_indices_to_preserve.size();
   llvm::SmallVector<Value, 4> new_retvals;
   // Lift resources.
-  LiftArgRetResourcesForFunction(
+  (void)LiftArgRetResourcesForFunction(
       callee, remaining_resource_data_types, [&](int64_t index, Value value) {
         result->arg_data_type_and_updated_output_index[index].second =
             num_retvals++;
@@ -1154,9 +1153,9 @@ LogicalResult HandlePartitionedCallOpCallee(
   auto new_return =
       builder.create<ReturnOp>(old_return->getLoc(), old_and_new_retvals);
   old_return->erase();
-  callee.setType(FunctionType::get(
-      callee.getType().getInputs(),
-      llvm::to_vector<4>(new_return.getOperandTypes()), callee.getContext()));
+  callee.setType(
+      FunctionType::get(callee.getContext(), callee.getType().getInputs(),
+                        llvm::to_vector<4>(new_return.getOperandTypes())));
   return success();
 }
 
@@ -1181,7 +1180,7 @@ void UpdatePartitionedCallOpWithNewCallee(
   auto new_call = builder.create<CallOpType>(
       call_op.getLoc(), lifting_info.lifted_callee.getType().getResults(),
       new_operands, call_op.getAttrs());
-  new_call.setAttr(
+  new_call->setAttr(
       "f", builder.getSymbolRefAttr(lifting_info.lifted_callee.getName()));
   AddLoadsStoresOutsideControlFlowOp(
       new_call, lifting_info.arg_data_type_and_updated_output_index);
@@ -1239,19 +1238,19 @@ LogicalResult HoistForControlFlow(
       auto body = while_op.body_function();
       auto cond = while_op.cond_function();
       // Recursively handle the nested control flow.
-      HoistForControlFlow(&body.front(), module, vars_initialized,
-                          lifted_partitioned_call_callees);
-      HoistForControlFlow(&cond.front(), module, vars_initialized,
-                          lifted_partitioned_call_callees);
+      (void)HoistForControlFlow(&body.front(), module, vars_initialized,
+                                lifted_partitioned_call_callees);
+      (void)HoistForControlFlow(&cond.front(), module, vars_initialized,
+                                lifted_partitioned_call_callees);
       if (failed(HandleWhileLoop(while_op, body, cond))) return failure();
     } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(&op)) {
       auto then_branch = if_op.then_function();
       auto else_branch = if_op.else_function();
       // Recursively handle the nested control flow.
-      HoistForControlFlow(&then_branch.front(), module, vars_initialized,
-                          lifted_partitioned_call_callees);
-      HoistForControlFlow(&else_branch.front(), module, vars_initialized,
-                          lifted_partitioned_call_callees);
+      (void)HoistForControlFlow(&then_branch.front(), module, vars_initialized,
+                                lifted_partitioned_call_callees);
+      (void)HoistForControlFlow(&else_branch.front(), module, vars_initialized,
+                                lifted_partitioned_call_callees);
       if (failed(HandleCaseOrIfOp(if_op, {then_branch, else_branch})))
         return failure();
     } else if (auto case_op = llvm::dyn_cast<TF::CaseOp>(&op)) {
@@ -1259,8 +1258,8 @@ LogicalResult HoistForControlFlow(
       case_op.get_branch_functions(branch_functions);
       for (FuncOp func : branch_functions) {
         // Recursively handle the nested control flow.
-        HoistForControlFlow(&func.front(), module, vars_initialized,
-                            lifted_partitioned_call_callees);
+        (void)HoistForControlFlow(&func.front(), module, vars_initialized,
+                                  lifted_partitioned_call_callees);
       }
       if (failed(HandleCaseOrIfOp(case_op, branch_functions))) return failure();
     } else if (auto call_op = llvm::dyn_cast<TF::PartitionedCallOp>(&op)) {
@@ -1284,8 +1283,8 @@ LogicalResult HoistForControlFlow(
       }
     } else if (isa<TF::IfRegionOp, TF::CaseRegionOp, TF::WhileRegionOp>(op)) {
       for (Region& region : op.getRegions())
-        HoistForControlFlow(&region.front(), module, vars_initialized,
-                            lifted_partitioned_call_callees);
+        (void)HoistForControlFlow(&region.front(), module, vars_initialized,
+                                  lifted_partitioned_call_callees);
       LogicalResult result = RegionResourceHoister::ReplaceOpWithNewOp(&op);
       if (failed(result)) return failure();
     }
@@ -1377,7 +1376,7 @@ LogicalResult ResourceLiftingForFunctionalControlFlow(FuncOp function) {
   llvm::SmallDenseMap<llvm::StringRef, PartitionedCallLiftingInfo>
       lifted_partitioned_call_callees;
   if (failed(HoistForControlFlow(
-          &function.front(), cast<ModuleOp>(function.getParentOp()),
+          &function.front(), cast<ModuleOp>(function->getParentOp()),
           /*vars_initialized=*/false, &lifted_partitioned_call_callees)))
     return failure();
 

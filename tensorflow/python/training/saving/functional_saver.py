@@ -292,7 +292,7 @@ class MultiDeviceSaver(object):
     # latest values of options like experimental_io_device.
     if context.executing_eagerly() and len(self._single_device_savers) > 1:
       # Explicitly place the identity op on the first device.
-      @def_function.function(experimental_compile=False)
+      @def_function.function(jit_compile=False)
       def tf_function_save():
         save_fn()
       tf_function_save()
@@ -328,7 +328,7 @@ class MultiDeviceSaver(object):
     # latest values of options like experimental_io_device.
     if context.executing_eagerly() and len(self._single_device_savers) > 1:
       first_device, _ = list(self._single_device_savers.items())[0]
-      @def_function.function(experimental_compile=False)
+      @def_function.function(jit_compile=False)
       def tf_function_restore():
         restore_ops = restore_fn()
         restore_tensors = {}

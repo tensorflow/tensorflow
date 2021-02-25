@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/conv_buffer_1x1.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/conv_buffer_1x1.h"
 
 #include <vector>
 
@@ -57,9 +57,11 @@ TEST_F(OpenCLOperationTest, ConvBuffer1x1SimpleWeights) {
         {data_type, TensorStorageType::BUFFER, Layout::HWC});
     TensorFloat32 dst_tensor;
     ConvBuffer1x1 operation = CreateConvBuffer1x1(
-        creation_context_.GetDeviceInfo(), op_def, attr, &src_tensor.shape);
-    ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                  BHWC(1, 2, 1, 2), &dst_tensor));
+        creation_context_.GetGpuInfo(), op_def, attr, &src_tensor.shape);
+    ASSERT_OK(ExecuteGPUOperation(
+        src_tensor, creation_context_,
+        absl::make_unique<ConvBuffer1x1>(std::move(operation)),
+        BHWC(1, 2, 1, 2), &dst_tensor));
     EXPECT_THAT(dst_tensor.data,
                 Pointwise(FloatNear(eps), {6.0f, 6.0f, 22.0f, 22.0f}));
   }
@@ -92,9 +94,11 @@ TEST_F(OpenCLOperationTest, ConvBuffer1x1) {
         {data_type, TensorStorageType::BUFFER, Layout::HWC});
     TensorFloat32 dst_tensor;
     ConvBuffer1x1 operation = CreateConvBuffer1x1(
-        creation_context_.GetDeviceInfo(), op_def, attr, &src_tensor.shape);
-    ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
-                                  BHWC(1, 2, 1, 4), &dst_tensor));
+        creation_context_.GetGpuInfo(), op_def, attr, &src_tensor.shape);
+    ASSERT_OK(ExecuteGPUOperation(
+        src_tensor, creation_context_,
+        absl::make_unique<ConvBuffer1x1>(std::move(operation)),
+        BHWC(1, 2, 1, 4), &dst_tensor));
     EXPECT_THAT(dst_tensor.data,
                 Pointwise(FloatNear(eps), {20.5f, 43.5f, 68.5f, 91.5f, 60.5f,
                                            147.5f, 236.5f, 323.5f}));

@@ -33,6 +33,7 @@ BenchmarkParams BenchmarkModel::DefaultParams() {
   params.AddParam("min_secs", BenchmarkParam::Create<float>(1.0f));
   params.AddParam("max_secs", BenchmarkParam::Create<float>(150.0f));
   params.AddParam("run_delay", BenchmarkParam::Create<float>(-1.0f));
+  params.AddParam("run_frequency", BenchmarkParam::Create<float>(-1.0f));
   params.AddParam("num_threads", BenchmarkParam::Create<int32_t>(1));
   params.AddParam("use_caching", BenchmarkParam::Create<bool>(false));
   params.AddParam("benchmark_name", BenchmarkParam::Create<std::string>(""));
@@ -83,6 +84,12 @@ std::vector<Flag> BenchmarkModel::GetFlags() {
           "is exceeded in the middle of a run, the benchmark will continue to "
           "the end of the run but will not start the next run."),
       CreateFlag<float>("run_delay", &params_, "delay between runs in seconds"),
+      CreateFlag<float>(
+          "run_frequency", &params_,
+          "Execute at a fixed frequency, instead of a fixed delay."
+          "Note if the targeted rate per second cannot be reached, the "
+          "benchmark would start the next run immediately, trying its best to "
+          "catch up. If set, this will override run_delay."),
       CreateFlag<int32_t>("num_threads", &params_, "number of threads"),
       CreateFlag<bool>(
           "use_caching", &params_,
@@ -118,6 +125,8 @@ void BenchmarkModel::LogParams() {
   LOG_BENCHMARK_PARAM(float, "max_secs", "Max runs duration (seconds)",
                       verbose);
   LOG_BENCHMARK_PARAM(float, "run_delay", "Inter-run delay (seconds)", verbose);
+  LOG_BENCHMARK_PARAM(float, "run_frequency",
+                      "Number of prorated runs per second", verbose);
   LOG_BENCHMARK_PARAM(int32_t, "num_threads", "Num threads", verbose);
   LOG_BENCHMARK_PARAM(bool, "use_caching", "Use caching", verbose);
   LOG_BENCHMARK_PARAM(std::string, "benchmark_name", "Benchmark name", verbose);
@@ -143,6 +152,11 @@ Stat<int64_t> BenchmarkModel::Run(int min_num_times, float min_secs,
   int64_t max_finish_us = now_us + static_cast<int64_t>(max_secs * 1.e6f);
 
   *invoke_status = kTfLiteOk;
+  float inter_run_sleep_time = params_.Get<float>("run_delay");
+  auto run_frequency = params_.Get<float>("run_frequency");
+  double manual_inter_run_gap = 1.0 / run_frequency;
+  // float doesn't have sufficient precision for storing this number
+  double next_run_finish_time = now_us * 1e-6 + manual_inter_run_gap;
   for (int run = 0; (run < min_num_times || now_us < min_finish_us) &&
                     now_us <= max_finish_us;
        run++) {
@@ -154,7 +168,14 @@ Stat<int64_t> BenchmarkModel::Run(int min_num_times, float min_secs,
     listeners_.OnSingleRunEnd();
 
     run_stats.UpdateStat(end_us - start_us);
-    util::SleepForSeconds(params_.Get<float>("run_delay"));
+    if (run_frequency > 0) {
+      inter_run_sleep_time =
+          next_run_finish_time - profiling::time::NowMicros() * 1e-6;
+      next_run_finish_time += manual_inter_run_gap;
+    }
+    // Note when "inter_run_sleep_time" is negative or 0.0,
+    // the function will return immediately.
+    util::SleepForSeconds(inter_run_sleep_time);
     now_us = profiling::time::NowMicros();
 
     if (status != kTfLiteOk) {

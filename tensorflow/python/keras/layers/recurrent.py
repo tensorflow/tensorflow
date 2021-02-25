@@ -19,7 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections.abc as collections_abc
+import collections
 import warnings
 
 import numpy as np
@@ -47,7 +47,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import nest
-from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -63,7 +62,7 @@ class StackedRNNCells(Layer):
 
   Used to implement efficient stacked RNNs.
 
-  Arguments:
+  Args:
     cells: List of RNN cell instances.
 
   Examples:
@@ -206,7 +205,7 @@ class RNN(Layer):
   See [the Keras RNN API guide](https://www.tensorflow.org/guide/keras/rnn)
   for details about the usage of RNN API.
 
-  Arguments:
+  Args:
     cell: A RNN cell instance or a list of RNN cell instances.
       A RNN cell is a class that has:
       - A `call(input_at_t, states_at_t)` method, returning
@@ -237,7 +236,7 @@ class RNN(Layer):
         `batch_size` is a scalar tensor that represents the batch size
         of the inputs. `dtype` is `tf.DType` that represents the dtype of
         the inputs.
-        For backward compatible reason, if this method is not implemented
+        For backward compatibility, if this method is not implemented
         by the cell, the RNN layer will create a zero filled tensor with the
         size of [batch_size, cell.state_size].
       In the case that `cell` is a list of RNN cell instances, the cells
@@ -275,7 +274,9 @@ class RNN(Layer):
   Call arguments:
     inputs: Input tensor.
     mask: Binary tensor of shape `[batch_size, timesteps]` indicating whether
-      a given timestep should be masked.
+      a given timestep should be masked. An individual `True` entry indicates
+      that the corresponding timestep should be utilized, while a `False`
+      entry indicates that the corresponding timestep should be ignored.
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. This argument is passed to the cell
       when calling it. This is for use with cells that use dropout.
@@ -839,7 +840,7 @@ class RNN(Layer):
     # input shape: `(samples, time (padded with zeros), input_dim)`
     # note that the .build() method of subclasses MUST define
     # self.input_spec and self.state_spec with complete input shapes.
-    if (isinstance(inputs, collections_abc.Sequence)
+    if (isinstance(inputs, collections.abc.Sequence)
         and not isinstance(inputs, tuple)):
       # get initial_state from full input spec
       # as they could be copied to multiple GPU.
@@ -1239,7 +1240,7 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
   This class processes one step within the whole time sequence input, whereas
   `tf.keras.layer.SimpleRNN` processes the whole sequence.
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use.
       Default: hyperbolic tangent (`tanh`).
@@ -1438,7 +1439,7 @@ class SimpleRNN(RNN):
   See [the Keras RNN API guide](https://www.tensorflow.org/guide/keras/rnn)
   for details about the usage of RNN API.
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use.
       Default: hyperbolic tangent (`tanh`).
@@ -1492,7 +1493,9 @@ class SimpleRNN(RNN):
   Call arguments:
     inputs: A 3D tensor, with shape `[batch, timesteps, feature]`.
     mask: Binary tensor of shape `[batch, timesteps]` indicating whether
-      a given timestep should be masked.
+      a given timestep should be masked. An individual `True` entry indicates
+      that the corresponding timestep should be utilized, while a `False` entry
+      indicates that the corresponding timestep should be ignored.
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. This argument is passed to the cell
       when calling it. This is only relevant if `dropout` or
@@ -1687,7 +1690,7 @@ class SimpleRNN(RNN):
 class GRUCell(DropoutRNNCellMixin, Layer):
   """Cell class for the GRU layer.
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use.
       Default: hyperbolic tangent (`tanh`).
@@ -1971,7 +1974,7 @@ class GRU(RNN):
   `recurrent_kernel`. Use `'reset_after'=True` and
   `recurrent_activation='sigmoid'`.
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use.
       Default: hyperbolic tangent (`tanh`).
@@ -2037,7 +2040,9 @@ class GRU(RNN):
   Call arguments:
     inputs: A 3D tensor.
     mask: Binary tensor of shape `(samples, timesteps)` indicating whether
-      a given timestep should be masked.
+      a given timestep should be masked. An individual `True` entry indicates
+      that the corresponding timestep should be utilized, while a `False`
+      entry indicates that the corresponding timestep should be ignored.
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. This argument is passed to the cell
       when calling it. This is only relevant if `dropout` or
@@ -2239,7 +2244,7 @@ class GRU(RNN):
 class LSTMCell(DropoutRNNCellMixin, Layer):
   """Cell class for the LSTM layer.
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use.
       Default: hyperbolic tangent (`tanh`).
@@ -2642,7 +2647,7 @@ class LSTM(RNN):
    Note that this cell is not optimized for performance on GPU. Please use
   `tf.compat.v1.keras.layers.CuDNNLSTM` for better performance on GPU.
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use.
       Default: hyperbolic tangent (`tanh`).
@@ -2711,7 +2716,9 @@ class LSTM(RNN):
   Call arguments:
     inputs: A 3D tensor.
     mask: Binary tensor of shape `(samples, timesteps)` indicating whether
-      a given timestep should be masked.
+      a given timestep should be masked. An individual `True` entry indicates
+      that the corresponding timestep should be utilized, while a `False`
+      entry indicates that the corresponding timestep should be ignored.
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. This argument is passed to the cell
       when calling it. This is only relevant if `dropout` or
@@ -2930,7 +2937,7 @@ def _standardize_args(inputs, initial_state, constants, num_constants):
   makes sure the arguments are separated and that `initial_state` and
   `constants` are lists of tensors (or None).
 
-  Arguments:
+  Args:
     inputs: Tensor or list/tuple of tensors. which may include constants
       and initial states. In that case `num_constant` must be specified.
     initial_state: Tensor or list of tensors or None, initial states.

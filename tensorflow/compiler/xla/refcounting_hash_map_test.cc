@@ -16,9 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/refcounting_hash_map.h"
 
 #include <functional>
+#include <memory>
 
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace xla {
 namespace {
@@ -77,29 +79,6 @@ TEST(RefcountingHashMapTest, CustomFactory) {
   auto factory = [](const int& x) { return absl::make_unique<int>(x + 1); };
   EXPECT_EQ(*m.GetOrCreateIfAbsent(0, factory), 1);
   EXPECT_EQ(*m.GetOrCreateIfAbsent(100, factory), 101);
-}
-
-TEST(RefcountingHashMapTest, ForEachEmpty) {
-  RefcountingHashMap<int, int> m;
-  int64 count = 0;
-  m.ForEach([&](const int&, std::shared_ptr<int>) { ++count; });
-  EXPECT_EQ(count, 0);
-}
-
-TEST(RefcountingHashMapTest, ForEachNonempty) {
-  RefcountingHashMap<int, int> m;
-  auto factory = [](const int&) { return absl::make_unique<int>(); };
-  auto a = m.GetOrCreateIfAbsent(0, factory);
-  auto b = m.GetOrCreateIfAbsent(1, factory);
-
-  std::vector<int> seen_keys;
-  std::vector<int*> seen_values;
-  m.ForEach([&](const int& k, std::shared_ptr<int> v) {
-    seen_keys.push_back(k);
-    seen_values.push_back(v.get());
-  });
-  EXPECT_THAT(seen_keys, testing::UnorderedElementsAre(0, 1));
-  EXPECT_THAT(seen_values, testing::UnorderedElementsAre(a.get(), b.get()));
 }
 
 }  // anonymous namespace
