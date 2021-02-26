@@ -244,9 +244,9 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
 
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
-
-  se::DeviceMemoryAllocator* allocator =
-      GetAllocator(ctx->device(), stream, platform_info_).get();
+  std::shared_ptr<se::DeviceMemoryAllocator> allocator_ptr =
+      GetAllocator(ctx->device(), stream, platform_info_);
+  se::DeviceMemoryAllocator* allocator = allocator_ptr.get();
   int device_ordinal = stream ? stream->parent()->device_ordinal()
                               : client->default_device_ordinal();
   XlaComputationLaunchContext launch_context(
@@ -467,8 +467,9 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
 
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
-  se::DeviceMemoryAllocator* allocator =
-      GetAllocator(ctx->device(), stream, platform_info_).get();
+  std::shared_ptr<se::DeviceMemoryAllocator> allocator_ptr =
+      GetAllocator(ctx->device(), stream, platform_info_);
+  se::DeviceMemoryAllocator* allocator = allocator_ptr.get();
   int device_ordinal = stream ? stream->parent()->device_ordinal()
                               : closure.client()->default_device_ordinal();
   XlaComputationLaunchContext launch_context(

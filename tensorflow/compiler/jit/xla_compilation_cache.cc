@@ -53,6 +53,8 @@ limitations under the License.
 namespace tensorflow {
 
 constexpr int64 XlaCompilationCache::kDefaultCompilationThreshold;
+constexpr int64 XlaCompilationCache::AsyncCompilationState::kNumCompilerThreads;
+constexpr int64 XlaCompilationCache::AsyncCompilationState::kMaxNumOngoingCompilations;
 
 XlaCompilationCache::XlaCompilationCache(xla::LocalClient* client,
                                          DeviceType device_type)
