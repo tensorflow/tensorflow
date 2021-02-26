@@ -960,3 +960,11 @@ cc_library(
     ],
     alwayslink = 1,
 )
+
+cc_library(
+    name = "tpu_ordinal_selector_interface",
+    hdrs = ["tpu_ordinal_selector_interface.h"],
+    deps = [
+        "//tensorflow/core:framework",
+    ],
+)
