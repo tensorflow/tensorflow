@@ -203,6 +203,10 @@ std::unique_ptr<OperationPass<mlir::ModuleOp>> CreateCrossHostTransferPass();
 // will replicate the tf.Const op once for each device.
 std::unique_ptr<OperationPass<ModuleOp>> CreateConstantOpDeviceAssignmentPass();
 
+// Populates the supplied passmanager with the passes required to export
+// to TensorFlow Graph.
+void AddGraphExportLoweringPasses(OpPassManager& pm);
+
 }  // namespace TF
 
 namespace tf_executor {

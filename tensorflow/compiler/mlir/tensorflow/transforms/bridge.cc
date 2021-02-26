@@ -39,21 +39,8 @@ void EnableLogging(PassManager *pm) {
 }  // namespace
 
 namespace TFTPU {
+
 namespace {
-void AddGraphExportLoweringPasses(OpPassManager &pm) {
-  auto add_pass = [&](std::unique_ptr<Pass> pass) {
-    pm.addNestedPass<FuncOp>(std::move(pass));
-    pm.addPass(CreateBreakUpIslandsPass());
-  };
-
-  add_pass(CreateFunctionalToExecutorDialectConversionPass());
-  add_pass(TFDevice::CreateReplicateToIslandPass());
-  add_pass(TFDevice::CreateParallelExecuteToIslandsPass());
-  add_pass(TFDevice::CreateLaunchToDeviceAttributePass());
-  pm.addNestedPass<FuncOp>(CreateTPUDevicePropagationPass());
-  pm.addPass(createSymbolDCEPass());
-}
-
 tensorflow::Status RunTPUBridge(
     ModuleOp module, bool enable_logging,
     llvm::function_ref<void(OpPassManager &pm)> pipeline_builder) {
@@ -68,7 +55,7 @@ tensorflow::Status RunTPUBridge(
   pipeline_builder(bridge);
 
   // Add set of passes to lower back to graph (from tf_executor).
-  AddGraphExportLoweringPasses(bridge);
+  TF::AddGraphExportLoweringPasses(bridge);
 
   // Run the bridge on the module, in case of failure, the `diag_handler`
   // converts MLIR errors emitted to the MLIRContext into a tensorflow::Status.
@@ -165,6 +152,20 @@ tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool enable_logging) {
 }  // namespace TFTPU
 
 namespace TF {
+
+void AddGraphExportLoweringPasses(OpPassManager &pm) {
+  auto add_pass = [&](std::unique_ptr<Pass> pass) {
+    pm.addNestedPass<FuncOp>(std::move(pass));
+    pm.addPass(CreateBreakUpIslandsPass());
+  };
+
+  add_pass(CreateFunctionalToExecutorDialectConversionPass());
+  add_pass(TFDevice::CreateReplicateToIslandPass());
+  add_pass(TFDevice::CreateParallelExecuteToIslandsPass());
+  add_pass(TFDevice::CreateLaunchToDeviceAttributePass());
+  pm.addNestedPass<FuncOp>(TFTPU::CreateTPUDevicePropagationPass());
+  pm.addPass(createSymbolDCEPass());
+}
 
 tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
                                                  bool enable_logging,
