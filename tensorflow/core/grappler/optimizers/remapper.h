@@ -27,7 +27,7 @@ namespace grappler {
 class Remapper : public GraphOptimizer {
  public:
   explicit Remapper(RewriterConfig::Toggle opt_level,
-                    bool xla_auto_clustering_on) :
+                    bool xla_auto_clustering_on = false) :
     opt_level_(opt_level), xla_auto_clustering_on_(xla_auto_clustering_on)  {}
 
   ~Remapper() override {}
