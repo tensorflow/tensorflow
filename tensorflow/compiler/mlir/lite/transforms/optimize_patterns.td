@@ -760,28 +760,11 @@ foreach ArgMinMaxOp = [TFL_ArgMinOp, TFL_ArgMaxOp] in {
      (AxesIsLastDimension $axes, $logits)]>;
 }
 
-class AllElementsAreI32OrI64<string val> : Constraint<CPred<
-  "($0.isa<DenseIntElementsAttr>() && "
-  "($0.cast<DenseIntElementsAttr>().getType().cast<ShapedType>().getElementType().isInteger(32) || "
-  "$0.cast<DenseIntElementsAttr>().getType().cast<ShapedType>().getElementType().isInteger(64)) && "
-  "llvm::all_of($0.cast<DenseIntElementsAttr>().getIntValues(), "
-               "[](APInt v){ return v.getSExtValue() == static_cast<int64_t>(" #val# ");}))">>;
-
-// There are two cases that the shape represents the whole input
-//   1. shape[i] = -1: no matter whether i-dim is static.
-//   2. shape[i] = input.shape[i].
-def IsSliceWholeInput : Constraint<CPred<
-  "$0.getType().cast<ShapedType>().hasRank() && "
-  "$1.isa<DenseIntElementsAttr>() && "
-  "$0.getType().cast<ShapedType>().getRank() == $1.cast<DenseIntElementsAttr>().getNumElements() && "
-  "llvm::all_of(llvm::zip($0.getType().cast<ShapedType>().getShape(), "
-                         "$1.cast<DenseIntElementsAttr>().getIntValues()), "
-               "[](auto v){ return std::get<1>(v).getSExtValue() == -1 || "
-                                  "std::get<0>(v) == std::get<1>(v).getSExtValue(); })">>;
+def CanOptimizeIdentitySliceOp : Constraint<CPred<
+  "TFL::CanOptimizeIdentitySliceOp($0, $1, $2)">>;
 
 // Remove Slice ops slicing the whole input tensor, effectively no-op.
 def OptimizeSliceOp : Pat<
-  (TFL_SliceOp:$output $input, (ConstantOp $begin), (ConstantOp $shape)),
+  (TFL_SliceOp:$output $input, (ConstantOp $begin), (ConstantOp $size)),
   (replaceWithValue $input),
-  [(AllElementsAreI32OrI64<"0"> $begin),
-   (IsSliceWholeInput $input, $shape)]>;
+  [(CanOptimizeIdentitySliceOp $input, $begin, $size)]>;
