@@ -313,8 +313,8 @@ class SerializeKerasObjectTest(test.TestCase):
   def test_serialize_type_object_initializer(self):
      layer = keras.layers.Dense(
          1,
-         kernel_initializer=keras.initializer.ones,
-         bias_initializer=keras.initializer.zeros)
+         kernel_initializer=keras.initializers.ones,
+         bias_initializer=keras.initializers.zeros)
      config = keras.layers.serialize(layer)
      self.assertEqual(
          config['config']['bias_initializer'],
