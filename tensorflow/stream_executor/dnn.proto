@@ -100,6 +100,12 @@ message AlgorithmProto {
   MathType math_type = 2;
 }
 
+// CUDNN execution plan representation.
+message ExecutionPlanProto {
+  // A unique ID to represent which engine and knobs are used in the plan.
+  string exec_plan_id = 1;
+}
+
 // Convolution-specific parameters.
 message ConvolutionDescriptorProto {
   repeated int64 paddings = 1;

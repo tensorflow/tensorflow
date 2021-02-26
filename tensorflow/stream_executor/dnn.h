@@ -58,6 +58,10 @@ enum class DimIndex : int {
   Z = 2,
 };
 
+// Return a reordered dims.
+std::vector<int64> ReorderDims(const std::vector<int64>& input,
+                               const DataLayout& from, const DataLayout& to);
+
 // Helper functions to make methods more readable.
 inline int64 GetDim(absl::Span<const int64> data, DimIndex dim) {
   return data.rbegin()[static_cast<int64>(dim)];
@@ -183,6 +187,15 @@ class RnnSequenceTensorDescriptor {
 class RnnStateTensorDescriptor {
  public:
   virtual ~RnnStateTensorDescriptor() {}
+};
+
+// Specifies the execution plan in convolution.
+class ConvolveExecutionPlan {
+ public:
+  virtual ~ConvolveExecutionPlan() {}
+  virtual std::string getTag() { return "unknown"; };
+  virtual void* get_raw_desc() { return nullptr; };
+  virtual int64_t getWorkspaceSize() { return -1; };
 };
 
 // Returns a string representation of the given quantization mode.
@@ -766,6 +779,35 @@ class AlgorithmDesc {
   AlgorithmProto proto_;
 };
 
+// Collects parameters for DNN execution plans
+class ExecutionPlanDesc {
+ public:
+  typedef std::string Index;
+  ExecutionPlanDesc() : ExecutionPlanDesc("unknown", nullptr) {}
+  ExecutionPlanDesc(Index a, void* b) {
+    proto_.set_exec_plan_id(a);
+    exec_plan_desc_ = b;
+  }
+  Index exec_plan_id() const { return proto_.exec_plan_id(); }
+  void* exec_plan_desc() const { return exec_plan_desc_; }
+  bool operator==(const ExecutionPlanDesc& other) const {
+    return exec_plan_id() == other.exec_plan_id();
+  }
+  // TODO(kaixih): Currently, hash() and ToString() only recognize the
+  // exec_plan_id. We might include more information in this class, such as the
+  // CUDNN numerical notes, which can tell whether the underlying engine uses
+  // deterministic algorithm, tensor cores, etc.
+  uint64 hash() const;
+
+  ExecutionPlanProto ToProto() const { return proto_; }
+
+  std::string ToString() const;
+
+ private:
+  ExecutionPlanProto proto_;
+  void* exec_plan_desc_;
+};
+
 // Describes the result from a perf experiment.
 //
 // Arguments:
@@ -794,6 +836,29 @@ class ProfileResult {
   // convolutions.
   size_t scratch_size_ = 0;
 };
+
+class ProfileExecutionPlanResult {
+ public:
+  bool is_valid() const {
+    return plan_.has_value() &&
+           elapsed_time_in_ms() != std::numeric_limits<float>::max();
+  }
+
+  ExecutionPlanDesc plan() const { return *plan_; }
+  void set_plan(ExecutionPlanDesc val) { plan_ = val; }
+
+  float elapsed_time_in_ms() const { return elapsed_time_in_ms_; }
+  void set_elapsed_time_in_ms(float val) { elapsed_time_in_ms_ = val; }
+
+  size_t scratch_size() const { return scratch_size_; }
+  void set_scratch_size(size_t val) { scratch_size_ = val; }
+
+ private:
+  absl::optional<ExecutionPlanDesc> plan_;
+  float elapsed_time_in_ms_ = std::numeric_limits<float>::max();
+  size_t scratch_size_ = 0;
+};
+
 
 // Describes the configuration for the algorithms that will used.
 //
@@ -844,6 +909,53 @@ class AlgorithmConfig {
   absl::optional<AlgorithmDesc> algorithm_no_scratch_;
   absl::optional<size_t> scratch_size_;
 };
+
+// Describes the configuration for the execution plans that will used.
+//
+// Arguments:
+//  plan: the primary execution plan that should be used.
+//  plan_no_scratch: a secondary execution plan that should be used, if the
+//    the allocation for the scratch memory fails.
+//  scrach_size: specify the size of scratch memory in bytes needed for the
+//    primary execution plan used.
+//
+// This class is only for CUDA platform with CUDNN v8 library. Given the
+// execution plan, users can query the scratch size. However, for convenience,
+// we also store this size in the class.
+
+class ExecutionPlanConfig {
+ public:
+  ExecutionPlanConfig() {}
+  ExecutionPlanConfig(ExecutionPlanDesc plan, size_t scratch_size)
+      : plan_(plan), scratch_size_(scratch_size) {}
+  ExecutionPlanConfig(ExecutionPlanDesc plan, size_t scratch_size,
+                      ExecutionPlanDesc plan_no_scratch)
+      : plan_(plan), scratch_size_(scratch_size),
+        plan_no_scratch_(plan_no_scratch) {}
+  absl::optional<ExecutionPlanDesc> plan() const { return plan_; }
+  void set_plan(ExecutionPlanDesc val) { plan_ = val; }
+  absl::optional<ExecutionPlanDesc> plan_no_scratch() const {
+    return plan_no_scratch_;
+  }
+  void set_plan_no_scratch(ExecutionPlanDesc val) { plan_no_scratch_ = val; }
+  absl::optional<size_t> scratch_size() const { return scratch_size_; }
+  void set_scratch_size(size_t val) { scratch_size_ = val; }
+  bool operator==(const ExecutionPlanConfig& other) const {
+    return this->plan_ == other.plan_ &&
+           this->scratch_size_ == other.scratch_size_ &&
+           this->plan_no_scratch_ == other.plan_no_scratch_;
+  }
+  bool operator!=(const ExecutionPlanConfig& other) const {
+    return !(*this == other);
+  }
+  std::string ToString() const;
+
+ private:
+  absl::optional<ExecutionPlanDesc> plan_;
+  absl::optional<size_t> scratch_size_;
+  absl::optional<ExecutionPlanDesc> plan_no_scratch_;
+};
+
 
 // Describes a local response normalization (LRN). LRN is used e.g. in
 // dist_belief.
@@ -1301,6 +1413,17 @@ class DnnSupport {
       AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
       ProfileResult* output_profile_result) = 0;
 
+  virtual port::Status DoConvolve(
+      ConvolutionKind kind, DataType element_type, DataType output_type,
+      Stream* stream, const BatchDescriptor& input_descriptor,
+      DeviceMemoryBase input_data, const FilterDescriptor& filter_descriptor,
+      DeviceMemoryBase filter_data, const BatchDescriptor& output_descriptor,
+      DeviceMemoryBase output_data,
+      const ConvolutionDescriptor& convolution_descriptor,
+      const ExecutionPlanConfig& plan_config,
+      ScratchAllocator* scratch_allocator, 
+      ProfileExecutionPlanResult* output_profile_result) = 0;
+
   template <typename ElementType, typename OutputType>
   bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& input_descriptor,
                   const DeviceMemory<ElementType>& input_data,
@@ -1326,6 +1449,14 @@ class DnnSupport {
   virtual bool GetConvolveAlgorithms(
       bool with_winograd_nonfused, int cc_major, int cc_minor,
       std::vector<AlgorithmDesc>* out_algorithms);
+
+  virtual bool GetConvolveExecutionPlans(
+      dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
+      const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>>* out_exec_plans);
 
   virtual bool GetMIOpenConvolveAlgorithms(
       dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,

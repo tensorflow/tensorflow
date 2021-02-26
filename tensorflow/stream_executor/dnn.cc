@@ -41,9 +41,29 @@ std::string AlgorithmDesc::ToString() const {
   }
 }
 
+uint64 ExecutionPlanDesc::hash() const {
+  auto p = exec_plan_id();
+  return absl::Hash<decltype(p)>()(p);
+}
+
+std::string ExecutionPlanDesc::ToString() const {
+  return absl::StrCat(exec_plan_id());
+}
+
 bool DnnSupport::GetConvolveAlgorithms(
     bool with_winograd_nonfused, int cc_major, int cc_minor,
     std::vector<AlgorithmDesc>* out_algorithms) {
+  return false;
+}
+
+bool DnnSupport::GetConvolveExecutionPlans(
+    dnn::ConvolutionKind /*kind*/, dnn::DataType /*element_type*/,
+    Stream* /*stream*/,
+    const dnn::BatchDescriptor& /*input_descriptor*/,
+    const dnn::FilterDescriptor& /*filter_descriptor*/,
+    const dnn::BatchDescriptor& /*output_descriptor*/,
+    const dnn::ConvolutionDescriptor& /*convolution_descriptor*/,
+    std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>>* /*exec_plans*/) {
   return false;
 }
 
@@ -262,6 +282,20 @@ std::string AlgorithmConfig::ToString() const {
     algo_no_scratch = algorithm_no_scratch()->ToString();
   }
   return absl::StrCat(algo, ", ", algo_no_scratch);
+}
+
+// -- ExecutionPlanConfig
+
+std::string ExecutionPlanConfig::ToString() const {
+  std::string plan_str = "none";
+  if (plan().has_value()) {
+    plan_str = plan()->ToString();
+  }
+  std::string plan_no_scratch_str = "none";
+  if (plan_no_scratch().has_value()) {
+    plan_no_scratch_str = plan_no_scratch()->ToString();
+  }
+  return absl::StrCat(plan_str, ", ", plan_no_scratch_str);
 }
 
 // -- BatchDescriptor
