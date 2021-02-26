@@ -304,16 +304,6 @@ def create_mirrored_variable(strategy, real_mirrored_creator, class_mapping,
   # here.
   with tape.stop_recording():
     value_list = real_mirrored_creator(**kwargs)
-    # MirroredVariable is recreated during saved_model loading, and its
-    # component variables (value_list) will have None initializer. We
-    # set their initializers to no_op so that consumer like
-    # `global_variables_initializer` wouldn't complain, as it groups all
-    # variables' initializers thus all variables have to have initializers.
-    for v in value_list:
-      # pylint:disable=protected-access
-      if v._initializer_op is None:
-        v._initializer_op = control_flow_ops.no_op()
-      # pylint:enable=protected-access
     if use_var_policy:
       var_policy_cls = policy_mapping.get(synchronization)
       var_policy = var_policy_cls(aggregation=aggregation)
