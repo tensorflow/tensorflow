@@ -22,14 +22,14 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/micro_utils.h"
 
 namespace tflite {
-namespace ops {
-namespace builtin {
-namespace gather {
+namespace {
+
 constexpr int kInputTensor = 0;
-constexpr int kInputPositions = 1;
+constexpr int kAxisTensor = 1;
 constexpr int kOutputTensor = 0;
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -64,16 +64,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Check conditions for different types.
   switch (input->type) {
     case kTfLiteFloat32:
-    case kTfLiteUInt8:
     case kTfLiteInt8:
-    case kTfLiteInt16:
-    case kTfLiteInt64:
-    case kTfLiteInt32:
-    case kTfLiteBool:
-      break;
-    case kTfLiteString: {
-      // Only 1D input is supported.
-      TF_LITE_ENSURE_EQ(context, NumDimensions(input), 1);
     } break;
     default:
       TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by gather.",
@@ -100,7 +91,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   for (int i = axis + 1; i < input->dims->size; ++i) {
     output_shape->data[output_index++] = input->dims->data[i];
   }
-  return context->ResizeTensor(context, output, output_shape);
+  return kTfLiteOk;
 }
 
 template <typename InputT, typename PositionsT>
@@ -115,55 +106,22 @@ TfLiteStatus Gather(const TfLiteGatherParams& params, const TfLiteTensor* input,
   return kTfLiteOk;
 }
 
-template <typename PositionT>
-TfLiteStatus GatherStrings(TfLiteContext* context, const TfLiteTensor* input,
-                           const TfLiteTensor* positions,
-                           TfLiteTensor* output) {
-  DynamicBuffer buffer;
-  const PositionT* indexes = GetTensorData<PositionT>(positions);
-  const PositionT num_strings = GetStringCount(input);
-  const int num_indexes = NumElements(positions);
-
-  for (int i = 0; i < num_indexes; ++i) {
-    const PositionT pos = indexes[i];
-    TF_LITE_ENSURE(context, pos < num_strings);
-    const auto string_ref = GetString(input, pos);
-    buffer.AddString(string_ref.str, string_ref.len);
-  }
-  buffer.WriteToTensor(output, /*new_shape=*/nullptr);
-  return kTfLiteOk;
-}
-
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const auto* params =
       reinterpret_cast<const TfLiteGatherParams*>(node->builtin_data);
-  const TfLiteTensor* input;
-  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
-  const TfLiteTensor* positions;
-  TF_LITE_ENSURE_OK(context,
-                    GetInputSafe(context, node, kInputPositions, &positions));
-  TfLiteTensor* output;
-  TF_LITE_ENSURE_OK(context,
-                    GetOutputSafe(context, node, kOutputTensor, &output));
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
+  const TfLiteEvalTensor* positions;
+      tflite::micro::GetEvalInput(context, node, kInputPositions);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
 
   if (positions->type == kTfLiteInt32) {
     switch (input->type) {
       case kTfLiteFloat32:
-        return Gather<float, int32_t>(*params, input, positions, output);
-      case kTfLiteUInt8:
-        return Gather<uint8_t, int32_t>(*params, input, positions, output);
+        return Gather<float, int32_t>(params, input, positions, output);
       case kTfLiteInt8:
-        return Gather<int8_t, int32_t>(*params, input, positions, output);
-      case kTfLiteInt16:
-        return Gather<int16_t, int32_t>(*params, input, positions, output);
-      case kTfLiteInt32:
-        return Gather<int32_t, int32_t>(*params, input, positions, output);
-      case kTfLiteInt64:
-        return Gather<int64_t, int32_t>(*params, input, positions, output);
-      case kTfLiteBool:
-        return Gather<bool, int32_t>(*params, input, positions, output);
-      case kTfLiteString:
-        return GatherStrings<int32_t>(context, input, positions, output);
+        return Gather<int8_t, int32_t>(params, input, positions, output);
       default:
         TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by gather.",
                            TfLiteTypeGetName(input->type));
@@ -173,21 +131,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   if (positions->type == kTfLiteInt64) {
     switch (input->type) {
       case kTfLiteFloat32:
-        return Gather<float, int64_t>(*params, input, positions, output);
-      case kTfLiteUInt8:
-        return Gather<uint8_t, int64_t>(*params, input, positions, output);
+        return Gather<float, int64_t>(params, input, positions, output);
       case kTfLiteInt8:
-        return Gather<int8_t, int64_t>(*params, input, positions, output);
-      case kTfLiteInt16:
-        return Gather<int16_t, int64_t>(*params, input, positions, output);
-      case kTfLiteInt32:
-        return Gather<int32_t, int64_t>(*params, input, positions, output);
-      case kTfLiteInt64:
-        return Gather<int64_t, int64_t>(*params, input, positions, output);
-      case kTfLiteBool:
-        return Gather<bool, int64_t>(*params, input, positions, output);
-      case kTfLiteString:
-        return GatherStrings<int64_t>(context, input, positions, output);
+        return Gather<int8_t, int64_t>(params, input, positions, output);
       default:
         TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by gather.",
                            TfLiteTypeGetName(input->type));
@@ -199,14 +145,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                      TfLiteTypeGetName(positions->type));
   return kTfLiteError;
 }
-}  // namespace gather
+}  // namespace
 
-TfLiteRegistration* Register_GATHER() {
-  static TfLiteRegistration r = {nullptr, nullptr, gather::Prepare,
-                                 gather::Eval};
-  return &r;
+TfLiteRegistration Register_GATHER() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/Prepare,
+          /*invoke=*/Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
-}  // namespace builtin
-}  // namespace ops
 }  // namespace tflite
