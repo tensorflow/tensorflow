@@ -214,7 +214,7 @@ bool CanOptimizeIdentityGatherNdOrScatterNdOp(Value params,
 // all 0s and `size[i]` is equal to either -1 or `input.shape[i]`
 // for each dim i, the output tensor is identical to `input`.
 bool CanOptimizeIdentitySliceOp(Value input, Attribute begin, Attribute size) {
-  // Checks if `begin` and `shape` are i32 or i64.
+  // Checks if `begin` and `size` are i32 or i64.
   auto begin_attr = begin.dyn_cast<DenseIntElementsAttr>();
   auto size_attr = size.dyn_cast<DenseIntElementsAttr>();
   if (!begin_attr || !size_attr) {
