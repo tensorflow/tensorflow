@@ -7333,6 +7333,34 @@ ENTRY entry {
   EXPECT_THAT(dot_op, op::Dot(op1, op2));
 }
 
+TEST_F(SpmdPartitioningTest, PartitionDotGroupOnBatchContractingReshard) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[32,32,24,4096] parameter(0),
+    sharding={devices=[2,1,1,2]0,1,2,3}
+  %rhs = f32[32,4096,1024] parameter(1),
+    sharding={devices=[2,2,1]0,1,2,3}
+  ROOT %dot = f32[32,32,24,1024] dot(%lhs, %rhs),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={3}, rhs_contracting_dims={1},
+    sharding={devices=[1,2,1,2]0,1,2,3}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  auto dot = AllOf(op::Shape("f32[16,32,24,1024]"),
+                   op::Dot(op::Parameter(0), op::Parameter(1)));
+  auto reduce_scatter = AllOf(op::Shape("f32[16,32,24,512]"),
+                              op::DynamicSlice(op::AllReduce(dot), _, _, _, _));
+  EXPECT_THAT(root, AllOf(op::Reshape(op::Transpose(
+                              op::AllToAll(op::Reshape(reduce_scatter)))),
+                          op::Shape("f32[32,16,24,512]")));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla
