@@ -82,7 +82,6 @@ void PrintCantFindCudaMessage(absl::string_view msg,
 
 }  // namespace
 
-// Returns the directory containing nvvm libdevice files.
 string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
   for (const string& cuda_root : CandidateCudaRoots(hlo_module_config)) {
     string libdevice_dir =
