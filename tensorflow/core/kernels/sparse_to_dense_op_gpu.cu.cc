@@ -104,6 +104,33 @@ struct IndicesValidStatus {
   int different;
 };
 
+template<typename T, typename Index>
+Status LaunchComputeKernels(OpKernelContext* c, const int dense_size,
+           const T default_value, const Index* indices, const T* values,
+           const int num_elems, const int num_values, const Index* shape,
+           const int num_dims, T* dense) {
+  const Eigen::GpuDevice& d = c->eigen_gpu_device();
+  if (dense_size > 0) {
+    GpuLaunchConfig config0 = GetGpuLaunchConfig(dense_size, d);
+    // The template type T might not necessarily be 32bit, and therefore, we use
+    // SetDefaultValue instead of memset32.
+    TF_RETURN_IF_ERROR(GpuLaunchKernel(
+                           SetDefaultValue<T, Index>, config0.block_count,
+                           config0.thread_per_block, 0, d.stream(),
+                           default_value, dense_size, dense));
+  }
+
+  if (num_elems > 0) {
+    GpuLaunchConfig config1 = GetGpuLaunchConfig(num_elems, d);
+    TF_RETURN_IF_ERROR(GpuLaunchKernel(
+                           SparseToDenseKernel<T, Index>, config1.block_count,
+                           config1.thread_per_block, 0, d.stream(), indices,
+                           values, num_elems, num_values, shape, num_dims,
+                           dense));
+  }
+  return Status::OK();
+}
+
 }  // namespace
 
 namespace functor {
@@ -141,7 +168,11 @@ void LaunchSparseToDense<T, Index>::operator()(
     stream->ThenMemcpy(reinterpret_cast<int*>(&valid_status), valid_status_ptr,
                        valid_status_bytes);
 
-    auto check_status = [op, c, &valid_status, done]() {
+    auto check_status_and_compute = [op, c, valid_status, dense_size,
+                                     default_value, indices, values, num_elems,
+                                     num_values, shape, num_dims, dense,
+                                     done]() {
+      const Eigen::GpuDevice& d = c->eigen_gpu_device();
       OP_REQUIRES_ASYNC(c, valid_status.valid == INT_MAX,
                         errors::InvalidArgument(
                             "indices[", valid_status.valid,
@@ -159,31 +190,21 @@ void LaunchSparseToDense<T, Index>::operator()(
                             "indices[", valid_status.different, "] is "
                             "repeated."),
                         done);
+
+      OP_REQUIRES_OK_ASYNC(c, LaunchComputeKernels(c, dense_size, default_value,
+                                  indices, values, num_elems, num_values, shape,
+                                  num_dims, dense), done);
       done();
     };
 
     c->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-        stream, check_status);
+        stream, check_status_and_compute);
+  } else {
+    OP_REQUIRES_OK_ASYNC(c, LaunchComputeKernels(c, dense_size, default_value,
+                                indices, values, num_elems, num_values, shape,
+                                num_dims, dense), done);
+    done();
   }
-
-  if (dense_size > 0) {
-    GpuLaunchConfig config0 = GetGpuLaunchConfig(dense_size, d);
-    // The template type T might not necessarily be 32bit, and therefore, we use
-    // SetDefaultValue instead of memset32.
-    OP_REQUIRES_OK_ASYNC(c, GpuLaunchKernel(
-        SetDefaultValue<T, Index>, config0.block_count, config0.thread_per_block,
-        0, d.stream(), default_value, dense_size, dense), done);
-  }
-
-  if (num_elems > 0) {
-    GpuLaunchConfig config1 = GetGpuLaunchConfig(num_elems, d);
-    OP_REQUIRES_OK_ASYNC(c, GpuLaunchKernel(
-        SparseToDenseKernel<T, Index>, config1.block_count,
-        config1.thread_per_block, 0, d.stream(), indices, values, num_elems,
-        num_values, shape, num_dims, dense), done);
-  }
-
-  done();
 }
 
 }  // namespace functor
