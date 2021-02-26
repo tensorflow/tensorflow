@@ -58,14 +58,14 @@ namespace wrap {
 
 #define STREAM_EXECUTOR_ROCFFT_WRAP(__name)                               \
   struct DynLoadShim__##__name {                                          \
-    static const char *kName;                                             \
+    static const char* kName;                                             \
     using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
-    static void *GetDsoHandle() {                                         \
-      auto s = internal::CachedDsoLoader::GetRocfftDsoHandle();           \
+    static void* GetDsoHandle() {                                         \
+      auto s = internal::CachedDsoLoader::GetHipfftDsoHandle();           \
       return s.ValueOrDie();                                              \
     }                                                                     \
     static FuncPtrT LoadOrDie() {                                         \
-      void *f;                                                            \
+      void* f;                                                            \
       auto s = port::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
                                                           kName, &f);     \
       CHECK(s.ok()) << "could not find " << kName                         \
@@ -77,12 +77,12 @@ namespace wrap {
       return f;                                                           \
     }                                                                     \
     template <typename... Args>                                           \
-    hipfftResult operator()(GpuExecutor *parent, Args... args) {          \
+    hipfftResult operator()(GpuExecutor* parent, Args... args) {          \
       gpu::ScopedActivateExecutorContext sac{parent};                     \
       return DynLoad()(args...);                                          \
     }                                                                     \
   } __name;                                                               \
-  const char *DynLoadShim__##__name::kName = #__name;
+  const char* DynLoadShim__##__name::kName = #__name;
 
 #endif
 
