@@ -49,11 +49,13 @@ __global__ void SparseTensorDenseMatMulKernel(
       continue;
     }
 
-    // a_value == (ADJ_A) ? a[k, i] : a[i, k]
-    const T a_value = ldg(a_values + a_ix);
+    // a_value == (ADJ_A) ? conj(a[k, i]) : a[i, k]
+    const T a_input = ldg(a_values + a_ix);
+    const T a_value = ADJ_A ? Eigen::numext::conj(a_input) : a_input;
 
-    // b_value == (ADJ_B) ? b[j, k] : b[k, j]
-    const T b_value = ldg(b + ((ADJ_B) ? j * b_cols + k : k * b_cols + j));
+    // b_value == (ADJ_B) ? conj(b[j, k]) : b[k, j]
+    const T b_input = ldg(b + ((ADJ_B) ? j * b_cols + k : k * b_cols + j));
+    const T b_value = ADJ_B ? Eigen::numext::conj(b_input) : b_input;
     GpuAtomicAdd(out_location, a_value * b_value);
   }
 }
@@ -101,8 +103,15 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
   template struct functor::SparseTensorDenseMatMulFunctor< \
       GPUDevice, T, Tindices, true, true>;
 
-DEFINE(float, int32);
-DEFINE(float, int64);
+#define DEFINE_ALL_INDEX_TYPES(T) \
+  DEFINE(T, int32);               \
+  DEFINE(T, int64)
+
+DEFINE_ALL_INDEX_TYPES(float);
+DEFINE_ALL_INDEX_TYPES(double);
+DEFINE_ALL_INDEX_TYPES(complex64);
+DEFINE_ALL_INDEX_TYPES(complex128);
+#undef DEFINE_ALL_INDEX_TYPES
 #undef DEFINE
 
 }  // end namespace tensorflow
