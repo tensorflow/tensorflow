@@ -56,8 +56,9 @@ se::DeviceMemoryBase WrapRedzoneBestEffort(se::RedzoneAllocator* rz_allocator,
   return se::DeviceMemoryBase(output_rz_or.ValueOrDie());
 }
 
+template<typename T>
 void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
-                   tensorflow::AutotuneResult* autotune_result) {
+                   T* autotune_result) {
   if (RedzoneCheckDisabled()) {
     return;
   }
@@ -79,7 +80,7 @@ void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
   if (!rz_check_status.ok()) {
     auto* fail = autotune_result->mutable_failure();
     fail->set_msg(rz_check_status.RedzoneFailureMsg());
-    fail->set_kind(AutotuneResult::REDZONE_MODIFIED);
+    fail->set_kind(T::REDZONE_MODIFIED);
     fail->set_buffer_address(
         reinterpret_cast<uint64>(rz_check_status.user_buffer_address));
     LOG(ERROR)
@@ -93,6 +94,14 @@ void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
     LOG(ERROR) << rz_check_status.RedzoneFailureMsg();
   }
 }
+
+// explicit instantiation
+template void CheckRedzones<tensorflow::AutotuneResult>(
+    const se::RedzoneAllocator&, tensorflow::AutotuneResult*);
+
+template void CheckRedzones<tensorflow::AutotuneExecutionPlanResult>(
+    const se::RedzoneAllocator&,
+    tensorflow::AutotuneExecutionPlanResult* autotune_result);
 
 namespace {
 
@@ -121,20 +130,17 @@ tensorflow::ComputeCapability GetComputeCapability(
   return cc;
 }
 
-}  // namespace
-
-void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
-                            se::dnn::DataType element_type,
-                            se::DeviceMemoryBase input_buffer,
-                            se::DeviceMemoryBase filter_buffer,
-                            se::DeviceMemoryBase output_buffer,
-                            const se::dnn::BatchDescriptor& input_desc,
-                            const se::dnn::FilterDescriptor& filter_desc,
-                            const se::dnn::BatchDescriptor& output_desc,
-                            const se::dnn::ConvolutionDescriptor& conv_desc,
-                            se::StreamExecutor* stream_exec,
-                            absl::Span<const AutotuneResult> results) {
-  AutotuningLog log;
+template<typename TResult, typename TLog>
+void LogConvAutotuneResultsImpl(se::dnn::ConvolutionKind kind,
+    se::dnn::DataType element_type, se::DeviceMemoryBase input_buffer,
+    se::DeviceMemoryBase filter_buffer, se::DeviceMemoryBase output_buffer,
+    const se::dnn::BatchDescriptor& input_desc,
+    const se::dnn::FilterDescriptor& filter_desc,
+    const se::dnn::BatchDescriptor& output_desc,
+    const se::dnn::ConvolutionDescriptor& conv_desc,
+    se::StreamExecutor* stream_exec,
+    absl::Span<const TResult> results) {
+  TLog log;
   {
     ConvolutionProto instr;
     instr.set_kind(kind);
@@ -165,6 +171,39 @@ void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
   }
   VLOG(2) << log.DebugString();
   Logger::GetSingleton()->LogProto(log);
+}
+
+}  // namespace
+
+void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
+                            se::dnn::DataType element_type,
+                            se::DeviceMemoryBase input_buffer,
+                            se::DeviceMemoryBase filter_buffer,
+                            se::DeviceMemoryBase output_buffer,
+                            const se::dnn::BatchDescriptor& input_desc,
+                            const se::dnn::FilterDescriptor& filter_desc,
+                            const se::dnn::BatchDescriptor& output_desc,
+                            const se::dnn::ConvolutionDescriptor& conv_desc,
+                            se::StreamExecutor* stream_exec,
+                            absl::Span<const AutotuneResult> results) {
+  LogConvAutotuneResultsImpl<AutotuneResult, AutotuningLog>(
+      kind, element_type, input_buffer, filter_buffer, output_buffer,
+      input_desc, filter_desc, output_desc, conv_desc, stream_exec, results);
+}
+
+void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
+    se::dnn::DataType element_type, se::DeviceMemoryBase input_buffer,
+    se::DeviceMemoryBase filter_buffer, se::DeviceMemoryBase output_buffer,
+    const se::dnn::BatchDescriptor& input_desc,
+    const se::dnn::FilterDescriptor& filter_desc,
+    const se::dnn::BatchDescriptor& output_desc,
+    const se::dnn::ConvolutionDescriptor& conv_desc,
+    se::StreamExecutor* stream_exec,
+    absl::Span<const AutotuneExecutionPlanResult> results) {
+  LogConvAutotuneResultsImpl<AutotuneExecutionPlanResult,
+                             AutotuningExecutionPlanLog>(
+      kind, element_type, input_buffer, filter_buffer, output_buffer,
+      input_desc, filter_desc, output_desc, conv_desc, stream_exec, results);
 }
 
 void LogFusedConvForwardAutotuneResults(
@@ -277,6 +316,34 @@ Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
     algo->set_algorithm_no_scratch(
         {selected_result_no_scratch->conv().algorithm(),
          selected_result_no_scratch->conv().tensor_ops_enabled()});
+  }
+
+  return Status::OK();
+}
+
+Status BestCudnnConvExecutionPlan(
+           absl::Span<const AutotuneExecutionPlanResult> results,
+           int* idx, int* idx_no_scratch) {
+  *idx = -1;
+  *idx_no_scratch = -1;
+  for (int i = 0; i < results.size(); i++) {
+    if (!results[i].has_failure()) {
+      if (*idx == -1 or
+          proto_utils::FromDurationProto(results[i].run_time()) <
+          proto_utils::FromDurationProto(results[*idx].run_time())) {
+        *idx = i;
+      }
+      if (results[i].scratch_bytes() == 0 and (*idx_no_scratch == -1 or
+          proto_utils::FromDurationProto(results[i].run_time()) <
+          proto_utils::FromDurationProto(
+              results[*idx_no_scratch].run_time()))) {
+        *idx_no_scratch = i;
+      }
+    }
+  }
+
+  if (*idx == -1 and *idx_no_scratch == -1) {
+    return errors::NotFound("No execution plan worked!");
   }
 
   return Status::OK();
