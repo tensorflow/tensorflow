@@ -1,5 +1,0 @@
-op {
-  graph_op_name: "TensorForestTreeResourceHandleOp"
-  visibility: HIDDEN
-  summary: "Creates a handle to a TensorForestTreeResource"
-}
