@@ -298,8 +298,8 @@ static Graph* MklConv2DBwdFilter(const Conv2DDimensions& dims) {
 // eigen_benchmark_cpu_test.cc.
 
 #define BM_Conv2DT(kind, N, H, W, C, FC, FH, FW, type, LABEL)           \
-  static void BM_NAME(Conv2D_##kind, type, N, H, W, C, FC, FH, FW)(      \
-                      ::testing::benchmark::State& state) {             \
+  static void BM_NAME(Conv2D_##kind, type, N, H, W, C, FC, FH,          \
+                      FW)(::testing::benchmark::State & state) {        \
     testing::SetLabel(LABEL);                                           \
                                                                         \
     int64 num_computed_elements = (N) * (H) * (W) * (FC);               \
@@ -322,20 +322,20 @@ static Graph* MklConv2DBwdFilter(const Conv2DDimensions& dims) {
   BM_Conv2DT(Default, N, H, W, C, FC, FH, FW, type, LABEL);
 #endif
 
-#define BM_Conv2DBwdInputT(kind, N, H, W, C, FC, FH, FW, type, LABEL)      \
-  static void BM_NAME(Conv2DBwdInput_##kind, type, N, H, W, C, FC, FH, FW)( \
-                      ::testing::benchmark::State& state) {                \
-    testing::SetLabel(LABEL);                                              \
-                                                                           \
-    int64 num_computed_elements = (N) * (H) * (W) * (C);                   \
-    int64 flops_per_iter = num_computed_elements * ((C) * (FH) * (FW));    \
-                                                                           \
-    Conv2DDimensions dims(N, H, W, C, FC, FW, FH);                         \
-    test::Benchmark(#type, BM_CONCAT(kind, Conv2DBwdInput)(dims),          \
-                    /*old_benchmark_api*/ false)                           \
-        .Run(state);                                                       \
-    testing::ItemsProcessed(state.iterations() * flops_per_iter);          \
-  }                                                                        \
+#define BM_Conv2DBwdInputT(kind, N, H, W, C, FC, FH, FW, type, LABEL)   \
+  static void BM_NAME(Conv2DBwdInput_##kind, type, N, H, W, C, FC, FH,  \
+                      FW)(::testing::benchmark::State & state) {        \
+    testing::SetLabel(LABEL);                                           \
+                                                                        \
+    int64 num_computed_elements = (N) * (H) * (W) * (C);                \
+    int64 flops_per_iter = num_computed_elements * ((C) * (FH) * (FW)); \
+                                                                        \
+    Conv2DDimensions dims(N, H, W, C, FC, FW, FH);                      \
+    test::Benchmark(#type, BM_CONCAT(kind, Conv2DBwdInput)(dims),       \
+                    /*old_benchmark_api*/ false)                        \
+        .Run(state);                                                    \
+    testing::ItemsProcessed(state.iterations() * flops_per_iter);       \
+  }                                                                     \
   BENCHMARK(BM_NAME(Conv2DBwdInput_##kind, type, N, H, W, C, FC, FH, FW))
 
 #if defined(INTEL_MKL_DNN_ONLY)
