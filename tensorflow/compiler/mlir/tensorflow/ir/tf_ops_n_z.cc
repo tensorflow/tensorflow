@@ -2967,7 +2967,8 @@ struct WhileRegionEliminatePassThrough
 
   LogicalResult matchAndRewrite(WhileRegionOp while_op,
                                 PatternRewriter &rewriter) const override {
-    // Replace values that simply passthrough the body with extern values. The
+    // Remove any extern values that are explicitly captured and returned. Also
+    // replace values that simply passthrough the body with extern values. The
     // block arguments of body and while match and so the corresponding cond
     // argument can be easily found.
     int old_num_operands = while_op.getNumOperands();
@@ -2981,22 +2982,23 @@ struct WhileRegionEliminatePassThrough
 
     for (int op_idx : llvm::seq<int>(0, old_num_operands)) {
       auto body_arg = body_block.getArgument(op_idx);
-      if (body_arg == yield.getOperand(op_idx)) {
+      auto yield_operand = yield.getOperand(op_idx);
+      auto while_operand = while_op.getOperand(op_idx);
+      if (body_arg == yield_operand || while_operand == yield_operand) {
         // Replace the use of the passthrough value with the while operand
         // in the body and condition regions, as well as the while output (if
         // type match)
         // TODO(jurahul): Use PatternRewriter API for IR modification.
-        auto value = while_op.getOperand(op_idx);
-        if (body_arg.getType() == value.getType())
-          body_arg.replaceAllUsesWith(value);
+        if (body_arg.getType() == while_operand.getType())
+          body_arg.replaceAllUsesWith(while_operand);
 
         auto cond_arg = cond_block.getArgument(op_idx);
-        if (cond_arg.getType() == value.getType())
-          cond_arg.replaceAllUsesWith(value);
+        if (cond_arg.getType() == while_operand.getType())
+          cond_arg.replaceAllUsesWith(while_operand);
 
         auto result = while_op.getResult(op_idx);
-        if (result.getType() == value.getType())
-          result.replaceAllUsesWith(value);
+        if (result.getType() == while_operand.getType())
+          result.replaceAllUsesWith(while_operand);
       }
 
       // Now check if the operand is unused in both regions as well as the
