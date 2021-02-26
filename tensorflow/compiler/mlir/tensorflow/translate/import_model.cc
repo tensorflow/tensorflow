@@ -3592,7 +3592,7 @@ Status SavedModelSignatureDefImporterLite::ConvertInitializer(
   mlir::SymbolTable sub_symbol_table(*sub_module);
 
   auto init_func_op = sub_symbol_table.lookup<mlir::FuncOp>(target_node_name);
-  init_func_op.removeAttr("tf.entry_function");
+  init_func_op->removeAttr("tf.entry_function");
 
   mlir::OpBuilder builder(module_->getBodyRegion());
 
@@ -3820,7 +3820,7 @@ class SavedModelSignatureDefImporter {
     (*module)->setAttr("tf_saved_model.under_construction",
                        builder.getUnitAttr());
     TF_RETURN_IF_ERROR(LiftVariables(bundle, *module));
-    module->removeAttr("tf_saved_model.under_construction");
+    (*module)->removeAttr("tf_saved_model.under_construction");
 
     return module;
   }
