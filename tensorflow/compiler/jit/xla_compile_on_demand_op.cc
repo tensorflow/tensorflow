@@ -48,10 +48,11 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
                                  const ResourceVarsSnapshot& variable_args) {
   xla::LocalClient* client = static_cast<xla::LocalClient*>(cache->client());
 
-  se::DeviceMemoryAllocator* allocator = GetAllocator(
-      ctx->device(),
-      ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr,
-      platform_info_).get();
+  se::Stream* stream =
+      ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
+  std::shared_ptr<se::DeviceMemoryAllocator> allocator_ptr =
+      GetAllocator(ctx->device(), stream, platform_info_);
+  se::DeviceMemoryAllocator* allocator = allocator_ptr.get();
   XlaComputationLaunchContext launch_context(
       client, allocator, client->default_device_ordinal(),
       /*allocate_xla_tensors=*/platform_info_.xla_device_metadata() != nullptr,
@@ -72,9 +73,6 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
                                     /*missing_ctx_input_prefix=*/0,
                                     input_output_alias);
   TF_RETURN_IF_ERROR(execution_inputs.status());
-
-  se::Stream* stream =
-      ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
 
   VLOG(2) << "Executing computation: " << name();
   xla::ExecutableRunOptions run_options;
