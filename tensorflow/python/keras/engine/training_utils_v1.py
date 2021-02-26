@@ -846,6 +846,7 @@ def collect_per_output_metric_info(metrics,
                                    output_names,
                                    output_shapes,
                                    loss_fns,
+                                   from_serialized=False,
                                    is_weighted=False):
   """Maps metric names and functions to model outputs.
 
@@ -854,6 +855,8 @@ def collect_per_output_metric_info(metrics,
       output_names: a list of the names (strings) of model outputs.
       output_shapes: a list of the shapes (strings) of model outputs.
       loss_fns: a list of the loss functions corresponding to the model outputs.
+      from_serialized: whether the model the metrics are being sourced from is
+        being initialized from a serialized format.
       is_weighted: Boolean indicating whether the given metrics are weighted.
 
   Returns:
@@ -910,11 +913,16 @@ def collect_per_output_metric_info(metrics,
       metric_name = get_metric_name(metric, is_weighted)
       metric_fn = get_metric_function(
           metric, output_shape=output_shapes[i], loss_fn=loss_fns[i])
+      metric_fn._from_serialized = from_serialized  # pylint: disable=protected-access
 
       # If the metric function is not stateful, we create a stateful version.
       if not isinstance(metric_fn, metrics_module.Metric):
         metric_fn = metrics_module.MeanMetricWrapper(
             metric_fn, name=metric_name)
+        # If the metric is being revived from something stateless, such as a
+        # string (e.g. "accuracy"), we may need to later reapply transformations
+        # such as renaming.
+        metric_fn._from_serialized = False  # pylint: disable=protected-access
       metrics_dict[metric_name] = metric_fn
     per_output_metrics.append(metrics_dict)
 

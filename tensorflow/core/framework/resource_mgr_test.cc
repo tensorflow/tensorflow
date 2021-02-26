@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -281,6 +282,36 @@ TEST(ResourceHandleTest, CRUD) {
   {
     TF_EXPECT_OK(DeleteResource<StubResource>(&ctx, p));
     core::RefCountPtr<StubResource> unused;
+    EXPECT_FALSE(LookupResource(&ctx, p, &unused).ok());
+  }
+}
+
+TEST(ResourceHandleTest, LookupDeleteGenericResource) {
+  ResourceMgr resource_mgr("");
+  OpKernelContext::Params params;
+  params.resource_manager = &resource_mgr;
+  StubDevice device("device_name");
+  params.device = &device;
+  OpKernelContext ctx(&params, 0);
+
+  ResourceHandle p =
+      MakeResourceHandle<StubResource>(&ctx, "container", "name");
+
+  {
+    auto* r = new StubResource();
+    r->value_ = 42;
+    TF_EXPECT_OK(CreateResource(&ctx, p, r));
+  }
+  {
+    ResourceBase* r;
+    TF_ASSERT_OK(LookupResource(&ctx, p, &r));
+    ASSERT_TRUE(r != nullptr);
+    core::ScopedUnref unref(r);
+    EXPECT_EQ(static_cast<StubResource*>(r)->value_, 42);
+  }
+  {
+    TF_EXPECT_OK(DeleteResource(&ctx, p));
+    ResourceBase* unused;
     EXPECT_FALSE(LookupResource(&ctx, p, &unused).ok());
   }
 }

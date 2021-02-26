@@ -2210,6 +2210,70 @@ static LogicalResult Verify(UnidirectionalSequenceLSTMOp op) {
       "UnidirectionalSequenceLSTMOp expected to have two stateful operands");
 }
 
+LogicalResult UnidirectionalSequenceLSTMOp::inferReturnTypes(
+    MLIRContext *, Optional<Location>, ValueRange operands, DictionaryAttr attr,
+    RegionRange, SmallVectorImpl<Type> &inferredReturnTypes) {
+  Value input = operands[0];
+  auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
+
+  Value output_state = operands[18];
+  auto output_state_type =
+      output_state.getType().dyn_cast_or_null<RankedTensorType>();
+
+  if (input_type && input_type.hasRank() && input_type.getRank() != 3) {
+    return failure();
+  }
+
+  if (output_state_type && output_state_type.hasRank() &&
+      output_state_type.getRank() != 2) {
+    return failure();
+  }
+
+  if (!input_type || !input_type.hasRank() || !output_state_type ||
+      !output_state_type.hasRank()) {
+    // We cannot infer the output shape since we don't know the input shape or
+    // the output state shape. We will set the output shape as unranked.
+    Type result_type;
+    result_type = UnrankedTensorType::get(
+        input.getType().cast<ShapedType>().getElementType());
+    inferredReturnTypes.assign({result_type});
+    return success();
+  }
+
+  // Default to non-time_major.
+  bool time_majored = attr.getNamed("time_major").hasValue()
+                          ? attr.getNamed("time_major")
+                                .getValue()
+                                .second.cast<BoolAttr>()
+                                .getValue()
+                          : false;
+
+  int batch =
+      time_majored ? input_type.getDimSize(1) : input_type.getDimSize(0);
+  int time = time_majored ? input_type.getDimSize(0) : input_type.getDimSize(1);
+  int n_output = output_state_type.getDimSize(1);
+
+  // Build the output shape.
+  SmallVector<int64_t, 3> output_shape;
+  if (time_majored) {
+    output_shape = {time, batch, n_output};
+  } else {
+    output_shape = {batch, time, n_output};
+  }
+  auto result_type =
+      mlir::RankedTensorType::get(output_shape, input_type.getElementType());
+
+  inferredReturnTypes.assign({result_type});
+  return success();
+}
+
+bool UnidirectionalSequenceLSTMOp::isCompatibleReturnTypes(ArrayRef<Type> lhs,
+                                                           ArrayRef<Type> rhs) {
+  if (lhs.size() != rhs.size() || lhs.size() != 1) return false;
+  if (failed(mlir::verifyCompatibleShape(lhs[0], rhs[0]))) return false;
+  return true;
+}
+
 //===----------------------------------------------------------------------===//
 // BidirectionalSequenceLSTMOp
 //===----------------------------------------------------------------------===//

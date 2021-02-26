@@ -323,7 +323,7 @@ class _DynamicLossScaleState(trackable.Trackable):
 
   def __call__(self):
     """Returns the current loss scale as a scalar `float32` tensor."""
-    return ops.convert_to_tensor(self._current_loss_scale)
+    return ops.convert_to_tensor_v2_with_dispatch(self._current_loss_scale)
 
   def update(self, grads):
     """Updates the value of the loss scale.
@@ -567,9 +567,10 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
   def loss_scale(self):
     """The current loss scale as a float32 scalar tensor."""
     if isinstance(self._loss_scale, _DynamicLossScaleState):
-      return ops.convert_to_tensor(self._loss_scale.current_loss_scale)
+      return ops.convert_to_tensor_v2_with_dispatch(
+          self._loss_scale.current_loss_scale)
     else:
-      return ops.convert_to_tensor(self._loss_scale)
+      return ops.convert_to_tensor_v2_with_dispatch(self._loss_scale)
 
   @property
   def dynamic_counter(self):

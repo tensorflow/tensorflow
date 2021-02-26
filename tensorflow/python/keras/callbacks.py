@@ -1108,6 +1108,19 @@ class History(Callback):
   This callback is automatically applied to
   every Keras model. The `History` object
   gets returned by the `fit` method of models.
+
+  Example:
+
+  >>> model = tf.keras.models.Sequential([tf.keras.layers.Dense(10)])
+  >>> model.compile(tf.keras.optimizers.SGD(), loss='mse')
+  >>> history = model.fit(np.arange(100).reshape(5, 20), np.zeros(5),
+  ...                     epochs=10)
+  >>> print(history.params)
+  {'verbose': 1, 'epochs': 10, 'steps': 1}
+  >>> # check the keys of history object
+  >>> print(history.history.keys())
+  dict_keys(['loss'])
+
   """
 
   def __init__(self):
@@ -1208,8 +1221,9 @@ class ModelCheckpoint(Callback):
         decision to overwrite the current save file is made based on either
         the maximization or the minimization of the monitored quantity.
         For `val_acc`, this should be `max`, for `val_loss` this should be
-        `min`, etc. In `auto` mode, the direction is automatically inferred
-        from the name of the monitored quantity.
+        `min`, etc. In `auto` mode, the mode is set to `max` if the quantities
+        monitored are 'acc' or start with 'fmeasure' and are set to `min` for
+        the rest of the quantities.
       save_weights_only: if True, then only the model's weights will be saved
         (`model.save_weights(filepath)`), else the full model is saved
         (`model.save(filepath)`).
@@ -1309,14 +1323,6 @@ class ModelCheckpoint(Callback):
     # Only the chief worker writes model checkpoints, but all workers
     # restore checkpoint at on_train_begin().
     self._chief_worker_only = False
-
-  def set_model(self, model):
-    self.model = model
-    # Use name matching rather than `isinstance` to avoid circular dependencies.
-    if (not self.save_weights_only and
-        not model._is_graph_network and  # pylint: disable=protected-access
-        model.__class__.__name__ != 'Sequential'):
-      self.save_weights_only = True
 
   def on_train_begin(self, logs=None):
     if self.load_weights_on_restart:

@@ -3764,123 +3764,6 @@ func BoostedTreesEnsembleResourceHandleOp(scope *Scope, optional ...BoostedTrees
 	return op.Output(0)
 }
 
-// Deserializes a proto into the tree handle
-//
-// Arguments:
-//	tree_handle: Handle to the tree resource to be restored.
-//	tree_config: Serialied proto string of the boosted_trees.Tree proto.
-//
-// Returns the created operation.
-func TensorForestTreeDeserialize(scope *Scope, tree_handle tf.Output, tree_config tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorForestTreeDeserialize",
-		Input: []tf.Input{
-			tree_handle, tree_config,
-		},
-	}
-	return scope.AddOperation(opspec)
-}
-
-// Serializes the tree handle to a proto
-//
-// Arguments:
-//	tree_handle: Handle to the tree resource to be serialized.
-//
-// Returns Serialied proto string of the tree resource.
-func TensorForestTreeSerialize(scope *Scope, tree_handle tf.Output) (tree_config tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorForestTreeSerialize",
-		Input: []tf.Input{
-			tree_handle,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Creates a tree resource and returns a handle to it.
-//
-// Arguments:
-//	tree_handle: Handle to the tree resource to be created.
-//	tree_config: Serialized proto string of the boosted_trees.Tree.
-//
-// Returns the created operation.
-func TensorForestCreateTreeVariable(scope *Scope, tree_handle tf.Output, tree_config tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorForestCreateTreeVariable",
-		Input: []tf.Input{
-			tree_handle, tree_config,
-		},
-	}
-	return scope.AddOperation(opspec)
-}
-
-// Checks whether a tree has been initialized.
-//
-// Arguments:
-//	tree_handle: Handle to the tree.
-//
-// Returns Whether the tree is initialized.
-func TensorForestTreeIsInitializedOp(scope *Scope, tree_handle tf.Output) (is_initialized tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorForestTreeIsInitializedOp",
-		Input: []tf.Input{
-			tree_handle,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// TensorForestTreeResourceHandleOpAttr is an optional argument to TensorForestTreeResourceHandleOp.
-type TensorForestTreeResourceHandleOpAttr func(optionalAttr)
-
-// TensorForestTreeResourceHandleOpContainer sets the optional container attribute to value.
-// If not specified, defaults to ""
-func TensorForestTreeResourceHandleOpContainer(value string) TensorForestTreeResourceHandleOpAttr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// TensorForestTreeResourceHandleOpSharedName sets the optional shared_name attribute to value.
-// If not specified, defaults to ""
-func TensorForestTreeResourceHandleOpSharedName(value string) TensorForestTreeResourceHandleOpAttr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// Creates a handle to a TensorForestTreeResource
-func TensorForestTreeResourceHandleOp(scope *Scope, optional ...TensorForestTreeResourceHandleOpAttr) (resource tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorForestTreeResourceHandleOp",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // AllCandidateSamplerAttr is an optional argument to AllCandidateSampler.
 type AllCandidateSamplerAttr func(optionalAttr)
 
@@ -9912,30 +9795,6 @@ func DecodeProtoV2(scope *Scope, bytes tf.Output, message_type string, field_nam
 		return
 	}
 	return sizes, values
-}
-
-// Output the logits for the given input data
-//
-// Arguments:
-//	tree_handle: Handle to the tree resource.
-//	dense_features: Rank 2 dense features tensor.
-//	logits_dimension: Scalar, dimension of the logits.
-//
-// Returns The logits predictions from the tree for each instance in the batch.
-func TensorForestTreePredict(scope *Scope, tree_handle tf.Output, dense_features tf.Output, logits_dimension int64) (logits tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"logits_dimension": logits_dimension}
-	opspec := tf.OpSpec{
-		Type: "TensorForestTreePredict",
-		Input: []tf.Input{
-			tree_handle, dense_features,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // EncodeProtoAttr is an optional argument to EncodeProto.
@@ -32685,26 +32544,6 @@ func DeserializeManySparse(scope *Scope, serialized_sparse tf.Output, dtype tf.D
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// Get the number of nodes in a tree
-//
-// Arguments:
-//	tree_handle: Handle to the tree resource.
-//
-// Returns The size of the tree.
-func TensorForestTreeSize(scope *Scope, tree_handle tf.Output) (tree_size tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorForestTreeSize",
-		Input: []tf.Input{
-			tree_handle,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // Subtracts sparse updates from the variable referenced by `resource`.

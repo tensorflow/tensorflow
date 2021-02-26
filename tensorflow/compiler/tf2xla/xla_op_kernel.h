@@ -89,10 +89,16 @@ class XlaOpKernelContext {
   // xla::PRIMITIVE_TYPE_INVALID.
   xla::PrimitiveType InputXlaType(absl::string_view name);
 
-  // Returns the shape of input `index`.
+  // Returns the shape of input at `index` or input the given `name`. Note that
+  // in case the shape of the input is not static, then the returned shape has
+  // bounds as the dimension size instead of having unknown dimensions. Use
+  // InputXlaShape instead that provides shapes with dynamism information.
+  //
+  ABSL_DEPRECATED(
+      "Prefer InputXlaShape which handles dynamic shapes accurately.")
   TensorShape InputShape(int index);
-
-  // Returns the shape of input with name `name`.
+  ABSL_DEPRECATED(
+      "Prefer InputXlaShape which handles dynamic shapes accurately.")
   TensorShape InputShape(absl::string_view name);
 
   // Returns input `index` as a XlaOp. Unlike

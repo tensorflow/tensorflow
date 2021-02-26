@@ -459,3 +459,40 @@ func @tensorlistConcat(%arg0: tensor<?xf32>, %element_shape: tensor<0xi32>, %lea
 // CHECK: %tensor, %lengths = "tf.TensorListConcatV2"(%0, %arg1, %arg2) : (tensor<!tf.variant<tensor<f32>>>, tensor<0xi32>, tensor<i64>) -> (tensor<?xf32>, tensor<0xi64>)
 // CHECK: return %tensor, %lengths : tensor<?xf32>, tensor<0xi64>
 }
+
+// -----
+
+func @whileLoopWithDynamicTensorList(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<*xf32> {
+  %cst = constant dense<3> : tensor<1xi32>
+  %cst_0 = constant dense<0> : tensor<i32>
+  %cst_1 = constant dense<-1> : tensor<i32>
+  %0 = "tf.TensorListReserve"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<!tf.variant<tensor<?x?xf32>>>
+  %1:2 = "tf.While"(%cst_0, %0) {T = ["tfdtype$DT_INT32", "tfdtype$DT_VARIANT"], body = @tensorlistWhileBody, cond = @tensorlistWhileCond, is_stateless = false} : (tensor<i32>, tensor<!tf.variant<tensor<?x?xf32>>>) -> (tensor<i32>, tensor<!tf.variant<tensor<*xf32>>>)
+  %2 = "tf.TensorListStack"(%1#1, %cst_1) : (tensor<!tf.variant<tensor<*xf32>>>, tensor<i32>) -> tensor<*xf32>
+  return %2 : tensor<*xf32>
+
+// verify tensorlist ops pass through.
+// CHECK-LABEL: func @whileLoopWithDynamicTensorList
+// CHECK: "tf.TensorListReserve"
+// CHECK: "tf.While"
+// CHECK-SAME: (tensor<i32>, tensor<!tf.variant<tensor<?x?xf32>>>) -> (tensor<i32>, tensor<!tf.variant<tensor<*xf32>>>)
+// CHECK: "tf.TensorListStack"
+}
+
+func @tensorlistWhileBody(%arg0: tensor<i32>, %arg1: tensor<!tf.variant>) -> (tensor<i32>, tensor<!tf.variant>) {
+  %0 = "tf.TensorListLength"(%arg1) : (tensor<!tf.variant>) -> tensor<i32>
+  %1 = "tf.Identity"(%arg1) : (tensor<!tf.variant>) -> tensor<!tf.variant>
+  return %0, %1 : tensor<i32>, tensor<!tf.variant>
+
+// verify `body` function's signature stays unchanged.
+// CHECK: func @tensorlistWhileBody(%[[ARG0:.*]]: tensor<i32>, %[[ARG:.*]]: tensor<!tf.variant>) -> (tensor<i32>, tensor<!tf.variant>)
+}
+
+func @tensorlistWhileCond(%arg0: tensor<i32>, %arg1: tensor<!tf.variant>) -> tensor<i1> {
+  %cst = constant dense<2> : tensor<i32>
+  %0 = "tf.Less"(%arg0, %cst) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  return %0 : tensor<i1>
+
+// verify `cond` function's signature stays unchanged.
+// CHECK: func @tensorlistWhileCond(%[[ARG0:.*]]: tensor<i32>, %[[ARG1:.*]]: tensor<!tf.variant>) -> tensor<i1>
+}

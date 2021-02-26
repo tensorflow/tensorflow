@@ -277,9 +277,23 @@ def conv(lhs,
   precision_config_proto = ""
   if precision_config:
     precision_config_proto = precision_config.SerializeToString()
+  needs_v2 = preferred_element_type or (lhs.dtype != rhs.dtype)
   if preferred_element_type is None:
     preferred_element_type = np_utils.result_type(lhs.dtype, rhs.dtype)
-  return gen_xla_ops.xla_conv_v2(
+  if needs_v2:
+    return gen_xla_ops.xla_conv_v2(
+        lhs,
+        rhs,
+        window_strides=window_strides,
+        padding=padding,
+        lhs_dilation=lhs_dilation,
+        rhs_dilation=rhs_dilation,
+        feature_group_count=feature_group_count,
+        dimension_numbers=dimension_numbers.SerializeToString(),
+        precision_config=precision_config_proto,
+        preferred_element_type=preferred_element_type,
+        name=name)
+  return gen_xla_ops.xla_conv(
       lhs,
       rhs,
       window_strides=window_strides,
@@ -289,7 +303,6 @@ def conv(lhs,
       feature_group_count=feature_group_count,
       dimension_numbers=dimension_numbers.SerializeToString(),
       precision_config=precision_config_proto,
-      preferred_element_type=preferred_element_type,
       name=name)
 
 
@@ -309,14 +322,22 @@ def dot_general(lhs,
   precision_config_proto = ""
   if precision_config:
     precision_config_proto = precision_config.SerializeToString()
+  needs_v2 = preferred_element_type or (lhs.dtype != rhs.dtype)
   if preferred_element_type is None:
     preferred_element_type = np_utils.result_type(lhs.dtype, rhs.dtype)
-  return gen_xla_ops.xla_dot_v2(
+  if needs_v2:
+    return gen_xla_ops.xla_dot_v2(
+        lhs,
+        rhs,
+        dimension_numbers=dimension_numbers.SerializeToString(),
+        precision_config=precision_config_proto,
+        preferred_element_type=preferred_element_type,
+        name=name)
+  return gen_xla_ops.xla_dot(
       lhs,
       rhs,
       dimension_numbers=dimension_numbers.SerializeToString(),
       precision_config=precision_config_proto,
-      preferred_element_type=preferred_element_type,
       name=name)
 
 

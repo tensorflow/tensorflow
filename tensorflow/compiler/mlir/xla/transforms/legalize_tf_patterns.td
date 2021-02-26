@@ -496,7 +496,7 @@ def : Pat<(TF_EluGradOp AnyStaticShapeTensor:$gradients, AnyRankedTensor:$featur
 
 // TODO(hinsu): Lower unsigned and quantized types after supporting
 // them in GetScalarOfType.
-def : Pat<(TF_ReluOp AnyRankedTensor:$input),
+def : Pat<(TF_ReluOp AnyTensor:$input),
           (HLOClient_BroadcastMaxOp
                (HLO_ConstOp:$zero (GetScalarOfType<0> $input)), $input,
                (BinBroadcastDimensions $zero, $input)),

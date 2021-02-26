@@ -403,6 +403,15 @@ bool GpuInfo::IsRoundToNearestSupported() const {
   if (IsApple()) {
     return apple_info.IsRoundToNearestSupported();
   }
+  if (IsAdreno()) {
+    if (adreno_info.IsAdreno1xx() || adreno_info.IsAdreno2xx() ||
+        adreno_info.IsAdreno3xx()) {
+      return false;
+    }
+  }
+  if (IsPowerVR()) {
+    return false;
+  }
   return true;
 }
 
