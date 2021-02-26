@@ -61,7 +61,7 @@ namespace wrap {
     static const char *kName;                                             \
     using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
     static void *GetDsoHandle() {                                         \
-      auto s = internal::CachedDsoLoader::GetRocfftDsoHandle();           \
+      auto s = internal::CachedDsoLoader::GetHipfftDsoHandle();           \
       return s.ValueOrDie();                                              \
     }                                                                     \
     static FuncPtrT LoadOrDie() {                                         \
