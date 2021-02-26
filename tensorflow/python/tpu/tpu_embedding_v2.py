@@ -1603,7 +1603,7 @@ def cpu_embedding_lookup(inputs, weights, tables, feature_config):
     elif isinstance(inp, sparse_tensor.SparseTensor):
       if feature.max_sequence_length > 0:
         batch_size = math_ops.cast(array_ops.shape(inp)[0], dtype=dtypes.int64)
-        sparse_shape = array_ops.concat(
+        sparse_shape = array_ops.stack(
             [batch_size, feature.max_sequence_length], axis=0)
         # TPU Embedding truncates sequences to max_sequence_length, and if we
         # don't truncate, scatter_nd will error out if the index was out of
@@ -1611,7 +1611,7 @@ def cpu_embedding_lookup(inputs, weights, tables, feature_config):
         truncated_inp = sparse_ops.sparse_slice(inp, start=[0, 0],
                                                 size=sparse_shape)
 
-        dense_output_shape = array_ops.concat(
+        dense_output_shape = array_ops.stack(
             [batch_size, feature.max_sequence_length, feature.table.dim],
             axis=0)
         outputs.append(

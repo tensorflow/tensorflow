@@ -221,11 +221,20 @@ cc_library(
     srcs = ["denormal.cc"],
     hdrs = ["denormal.h"],
     deps = [
-        ":byte_order",
-        ":logging",
         ":macros",
         ":platform",
         ":platform_port",
+    ],
+)
+
+tf_cc_test(
+    name = "denormal_test",
+    size = "small",
+    srcs = ["denormal_test.cc"],
+    deps = [
+        ":denormal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 

@@ -860,6 +860,26 @@ gentbl(
     ],
 )
 
+gentbl(
+    name = "tf_savedmodel_pass_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            "-gen-pass-decls -name TensorFlowSavedModel",
+            "transforms/tf_savedmodel_passes.h.inc",
+        ),
+        (
+            "-gen-pass-doc",
+            "g3doc/includes/tf_savedmodel_passes.md",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/tf_savedmodel_passes.td",
+    td_srcs = [
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
 cc_library(
     name = "tensorflow_passes",
     srcs = [
@@ -873,7 +893,6 @@ cc_library(
         "transforms/cluster_tf_ops_pass.cc",
         "transforms/collection_ops_util.cc",
         "transforms/constant_op_device_assignment.cc",
-        "transforms/contraction_fusion.cc",
         "transforms/cross_host_transfer.cc",
         "transforms/decompose_resource_ops_pass.cc",
         "transforms/device_index_selector.cc",
@@ -960,7 +979,9 @@ cc_library(
     textual_hdrs = [
         "ir/tf_ops_helpers.inc",
         "transforms/passes_detail.h",
+        "transforms/savedmodel_passes_detail.h",
         "transforms/tf_passes.h.inc",
+        "transforms/tf_savedmodel_passes.h.inc",
     ],
     deps = [
         ":attribute_utils",
@@ -984,6 +1005,7 @@ cc_library(
         ":tensorflow_types",
         ":tf_data_optimization",
         ":tf_pass_inc_gen",
+        ":tf_savedmodel_pass_inc_gen",
         ":tpu_rewrite_device_util",
         ":translate_utils",
         ":unroll_batch_matmul_pass",

@@ -856,7 +856,6 @@ transitive_hdrs(
         ":queue_runner",
         ":remote_fused_graph_ops",
         ":scope",
-        "//tensorflow/cc/profiler",
         "//tensorflow/cc/saved_model:constants",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/cc/saved_model:reader",

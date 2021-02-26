@@ -304,9 +304,9 @@ struct ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
                                    /*symmetric=*/true, mins, maxs);
       double scale = maxs[0] / -llvm::minIntN(tensor_property.number_of_bits);
       quant_type = UniformQuantizedType::getChecked(
-          quant::QuantizationFlags::Signed, rewriter.getIntegerType(16),
-          attr.getType().getElementType(), scale, /*zeroPoint=*/0,
-          llvm::minIntN(10), -llvm::minIntN(10), const_op->getLoc());
+          const_op->getLoc(), quant::QuantizationFlags::Signed,
+          rewriter.getIntegerType(16), attr.getType().getElementType(), scale,
+          /*zeroPoint=*/0, llvm::minIntN(10), -llvm::minIntN(10));
     } else {
       quant_type =
           quant::GetUniformQuantizedTypeForWeight(
@@ -366,11 +366,11 @@ struct ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
       double bound = PowerOfTwoBound(std::max(std::abs(min), std::abs(max)));
       // Set flags to 1 for signed type.
       quant_type = UniformQuantizedType::getChecked(
-          quant::QuantizationFlags::Signed,
+          op.getLoc(), quant::QuantizationFlags::Signed,
           rewriter.getIntegerType(tensor_property.number_of_bits), expressed,
           /*scale=*/bound / -llvm::minIntN(tensor_property.number_of_bits),
           /*zeroPoint=*/0, llvm::minIntN(tensor_property.number_of_bits),
-          llvm::maxIntN(tensor_property.number_of_bits), op.getLoc());
+          llvm::maxIntN(tensor_property.number_of_bits));
     } else {
       // int16 uses range [-32767, 32767]
       if (tensor_property.number_of_bits == 16) {

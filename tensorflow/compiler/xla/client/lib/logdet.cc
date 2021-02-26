@@ -39,40 +39,23 @@ namespace xla {
 XlaOp LogDet(XlaOp a) {
   return a.builder()->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, a.builder()->GetShape(a));
-    // Compute the number of Householder transformations required on 'a' by
-    // determining the number of rows in 'a' that are already triangular. The
-    // determinant of Q is -1 ^ (number of Householder transfomations)
-    auto rows = Iota(a.builder(), ShapeUtil::ChangeElementType(a_shape, S32),
-                     a_shape.rank() - 2);
-    auto cols = Iota(a.builder(), ShapeUtil::ChangeElementType(a_shape, S32),
-                     a_shape.rank() - 1);
-    auto in_lower_triangle = Lt(cols, rows);
-    auto is_zero = Eq(a, ScalarLike(a, 0));
-    auto num_zeros_in_triangle_per_row = Einsum(
-        ConvertElementType(And(in_lower_triangle, is_zero), S32), "...a->...");
-    TF_ASSIGN_OR_RETURN(auto row_shape,
-                        a.builder()->GetShape(num_zeros_in_triangle_per_row));
-    rows = Iota(a.builder(), row_shape, row_shape.rank() - 1);
-    auto num_triangle_rows =
-        Einsum(ConvertElementType(Eq(rows, num_zeros_in_triangle_per_row), S32),
-               "...a->...");
-    auto num_rows =
-        ScalarLike(num_triangle_rows, a_shape.dimensions(a_shape.rank() - 2));
+    auto qr = Qr(a);
 
-    TF_ASSIGN_OR_RETURN(auto qr, QRDecomposition(a, true));
-    // Get the and log of the determinant based on the values along the diagonal
-    // of R.
-    auto log_abs_det = Einsum(Log(Abs(qr.r)), "...aa->...");
+    // Get the sign and logarithm of the determinant based on the values along
+    // the diagonal of R and the number of zeros in taus.
+    auto log_abs_det = Einsum(Log(Abs(qr.q_and_r)), "...aa->...");
     auto sign_diag = Reduce(
-        Sign(Einsum(qr.r, "...aa->...a")),
+        Sign(Einsum(qr.q_and_r, "...aa->...a")),
         One(a.builder(), a_shape.element_type()),
         CreateScalarMultiplyComputation(a_shape.element_type(), a.builder()),
         {a_shape.rank() - 2});
-    return sign_diag * log_abs_det *
-           Select(ConvertElementType(Rem(num_rows - num_triangle_rows,
-                                         ScalarLike(num_triangle_rows, 2)),
-                                     PRED),
-                  ScalarLike(sign_diag, -1.0), ScalarLike(sign_diag, 1.0));
+    auto sign_taus = Reduce(
+        Select(Eq(qr.taus, ZerosLike(qr.taus)), FullLike(qr.taus, -1),
+               FullLike(qr.taus, 1)),
+        One(a.builder(), a_shape.element_type()),
+        CreateScalarMultiplyComputation(a_shape.element_type(), a.builder()),
+        {a_shape.rank() - 2});
+    return sign_diag * log_abs_det * sign_taus;
   });
 }
 

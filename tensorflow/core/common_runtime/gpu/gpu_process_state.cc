@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_cudamallocasync_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
@@ -41,21 +42,35 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
-namespace {
 
-bool useCudaMallocAllocator() {
-  const char* debug_allocator_str = std::getenv("TF_GPU_ALLOCATOR");
-  return debug_allocator_str != nullptr &&
-         std::strcmp(debug_allocator_str, "cuda_malloc") == 0;
+// NOLINTNEXTLINE(clang-diagnostic-unused-function)
+static bool UseCudaMallocAllocator() {
+  const char* allocator_env = std::getenv("TF_GPU_ALLOCATOR");
+  return allocator_env != nullptr &&
+         std::strcmp(allocator_env, "cuda_malloc") == 0;
 }
 
-bool useCudaMemoryGuardAllocator() {
-  const char* debug_allocator_str = std::getenv("TF_GPU_ALLOCATOR");
-  return debug_allocator_str != nullptr &&
-         std::strcmp(debug_allocator_str, "memory_guard") == 0;
+// NOLINTNEXTLINE(clang-diagnostic-unused-function)
+static bool UseCudaMemoryGuardAllocator() {
+  const char* allocator_env = std::getenv("TF_GPU_ALLOCATOR");
+  return allocator_env != nullptr &&
+         std::strcmp(allocator_env, "memory_guard") == 0;
 }
 
-}  // namespace
+// NOLINTNEXTLINE(clang-diagnostic-unused-function)
+static bool UseCudaMallocAsyncAllocator() {
+  const char* allocator_env = std::getenv("TF_GPU_ALLOCATOR");
+  auto result = allocator_env != nullptr &&
+                std::strcmp(allocator_env, "cuda_malloc_async") == 0;
+#if TF_CUDA_MALLOC_ASYNC_SUPPORTED
+  return result;
+#else
+  if (result)
+    LOG(ERROR) << "TF_GPU_ALLOCATOR=cuda_malloc_async environment found, "
+               << "but TensorFlow was not compiled with CUDA 11.2+.";
+  return false;
+#endif
+}
 
 /*static*/ GPUProcessState* GPUProcessState::singleton(GPUProcessState* ps) {
   static GPUProcessState* instance = ps ? ps : new GPUProcessState;
@@ -178,17 +193,24 @@ Allocator* GPUProcessState::GetGPUAllocator(
 
     // If true, checks for memory overwrites by writing
     // distinctive patterns on both ends of allocated memory.
-    if (useCudaMemoryGuardAllocator()) {
+    if (UseCudaMemoryGuardAllocator()) {
       LOG(INFO) << "Using memory guard allocator for GPU.";
       gpu_allocator = new GPUDebugAllocator(gpu_allocator, platform_gpu_id);
       gpu_allocator = new GPUNanResetAllocator(gpu_allocator, platform_gpu_id);
-    } else if (useCudaMallocAllocator()) {
+    } else if (UseCudaMallocAllocator()) {
       LOG(INFO) << "Using CUDA malloc allocator for GPU.";
       // If true, passes all allocation requests through to cudaMalloc
       // useful for doing memory debugging with tools like cuda-memcheck
       // **WARNING** probably will not work in a multi-gpu scenario
       gpu_allocator =
           new GPUcudaMallocAllocator(gpu_allocator, platform_gpu_id);
+    } else if (UseCudaMallocAsyncAllocator()) {
+      LOG(INFO) << "Using CUDA malloc Async allocator for GPU.";
+      // If true, passes all allocation requests through to cudaMallocAsync
+      // TODO: useful for doing memory debugging with tools like cuda-memcheck
+      // TODO: **WARNING** probably will not work in a multi-gpu scenario
+      gpu_allocator =
+          new GpuCudaMallocAsyncAllocator(platform_gpu_id, total_bytes);
     }
 
     Allocator* recording_allocator = nullptr;

@@ -61,7 +61,6 @@ filegroup(
         "summary_io.py",
         "supervisor.py",
         "sync_replicas_optimizer.py",
-        "tensorboard_logging.py",
         "training.py",
         "training_ops.py",
         "warm_starting_util.py",
@@ -108,7 +107,6 @@ py_library(
         ":summary_io",
         ":supervisor",
         ":sync_replicas_optimizer",
-        ":tensorboard_logging",
         ":training_util",
         ":warm_starting_util",
         "//tensorflow/python:learning_rate_decay",
@@ -541,15 +539,6 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/util:tf_export",
-    ],
-)
-
-py_library(
-    name = "tensorboard_logging",
-    srcs = ["tensorboard_logging.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python:platform",
     ],
 )
 
@@ -1182,7 +1171,6 @@ cuda_py_tests(
         "queue_runner_test.py",
         "rmsprop_test.py",
         "slot_creator_test.py",
-        "tensorboard_logging_test.py",
         "training_ops_test.py",
     ],
     python_version = "PY3",

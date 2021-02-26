@@ -113,6 +113,8 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   // Run another shape inference pass because resource decomposition might have
   // created new partial types.
   pm.addPass(TF::CreateTFShapeInferencePass());
+  // Note that the region-based control-flow produced here still contains
+  // function call ops which get inlined by the subsequent inliner pass.
   pm.addPass(TF::CreateTFFunctionalControlFlowToRegions());
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(CreateTPUClusterCleanupAttributesPass());

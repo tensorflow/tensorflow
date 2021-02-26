@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library", "flatbuffer_java_library", "flatc_path")
+load("@flatbuffers//:build_defs.bzl", "DEFAULT_FLATC_ARGS", "flatbuffer_cc_library", "flatbuffer_java_library", "flatc_path")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
@@ -73,6 +73,7 @@ flatbuffer_cc_library(
     name = "configuration_fbs",
     srcs = [":configuration.fbs"],
     compatible_with = get_compatible_with_portable(),
+    flatc_args = DEFAULT_FLATC_ARGS + ["--gen-compare"],
 )
 
 flatbuffer_java_library(

@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -389,8 +390,8 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
     int64 num_threads = 0;
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument<int64>(ctx, "num_threads", &num_threads));
-    OP_REQUIRES(ctx, num_threads >= 1,
-                errors::InvalidArgument("`num_threads` must be >= 1"));
+    OP_REQUIRES(ctx, num_threads >= 0,
+                errors::InvalidArgument("`num_threads` must be >= 0"));
     *output = new Dataset(ctx, input, num_threads);
   }
 
@@ -400,9 +401,10 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
     Dataset(OpKernelContext* ctx, const DatasetBase* input, int num_threads)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
-          num_threads_(num_threads) {
+          num_threads_(num_threads == 0 ? port::MaxParallelism()
+                                        : num_threads) {
       thread_pool_ = absl::make_unique<thread::ThreadPool>(
-          ctx->env(), ThreadOptions{}, "data_private_threadpool", num_threads,
+          ctx->env(), ThreadOptions{}, "data_private_threadpool", num_threads_,
           /*low_latency_hint=*/false);
       input_->Ref();
     }

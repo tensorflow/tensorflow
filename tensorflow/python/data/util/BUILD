@@ -29,6 +29,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/ops/ragged",
         "//third_party/py/numpy",
     ],
@@ -63,6 +64,7 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/data/kernel_tests:test_base",
     ],
 )
 
@@ -132,6 +134,7 @@ py_test(
     deps = [
         ":options",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/kernel_tests:test_base",
     ],
 )
 
@@ -158,6 +161,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:util",
+        "//tensorflow/python/data/kernel_tests:test_base",
     ],
 )
 
@@ -183,6 +187,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:util",
+        "//tensorflow/python/data/kernel_tests:test_base",
     ],
 )
 
@@ -204,6 +209,7 @@ py_test(
         ":traverse",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )

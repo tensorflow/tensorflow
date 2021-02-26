@@ -1368,8 +1368,7 @@ array with the same shape. It is allowed for `operand` to be a scalar (rank 0).
 
 The XLA FFT operation implements the forward and inverse Fourier Transforms for
 real and complex inputs/outputs. Multidimensional FFTs on up to 3 axes are
-supported, except on TPU, where only a single axis is supported (please file a
-GitHub issue if you require higher order).
+supported.
 
 See also
 [`XlaBuilder::Fft`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).

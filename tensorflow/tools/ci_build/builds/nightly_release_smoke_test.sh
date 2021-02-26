@@ -23,7 +23,7 @@ MAC_CPU_MAX_WHL_SIZE=185M
 LINUX_CPU_MAX_WHL_SIZE=152M
 WIN_CPU_MAX_WHL_SIZE=113M
 # GPU size
-LINUX_GPU_MAX_WHL_SIZE=390M
+LINUX_GPU_MAX_WHL_SIZE=395M
 WIN_GPU_MAX_WHL_SIZE=252M
 
 function run_smoke_test() {
@@ -99,6 +99,10 @@ function test_tf_imports() {
 }
 
 function test_tf_whl_size() {
+  # First, list all wheels with their sizes:
+  echo "Found these wheels: "
+  find $WHL_NAME -type f -exec ls -lh {} \;
+  echo "===================="
   # Check CPU whl size.
   if [[ "$WHL_NAME" == *"_cpu"* ]]; then
     # Check MAC CPU whl size.

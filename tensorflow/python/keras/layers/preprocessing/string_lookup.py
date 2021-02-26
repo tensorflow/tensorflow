@@ -22,6 +22,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.layers.preprocessing import index_lookup
 from tensorflow.python.keras.layers.preprocessing import table_utils
+from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -214,15 +215,16 @@ class StringLookup(index_lookup.IndexLookup):
   vocab in this example.)
 
   >>> vocab = ["a", "b", "c", "d"]
-  >>> data = tf.constant([[1, 3, 4], [4, 5, 2]])
+  >>> data = tf.constant([[2, 4, 5], [5, 1, 3]])
   >>> layer = StringLookup(vocabulary=vocab, invert=True)
   >>> layer(data)
   <tf.Tensor: shape=(2, 3), dtype=string, numpy=
   array([[b'a', b'c', b'd'],
          [b'd', b'[UNK]', b'b']], dtype=object)>
 
-  Note that the integer 5, which is out of the vocabulary space, returns an OOV
-  token.
+  Note that the first two indices correspond to the mask and oov token by
+  default. This behavior can be disabled by setting `mask_token=None` and
+  `num_oov_indices=0`.
 
 
   **Forward and inverse lookup pairs**
@@ -233,7 +235,7 @@ class StringLookup(index_lookup.IndexLookup):
   >>> vocab = ["a", "b", "c", "d"]
   >>> data = tf.constant([["a", "c", "d"], ["d", "z", "b"]])
   >>> layer = StringLookup(vocabulary=vocab)
-  >>> i_layer = StringLookup(vocabulary=layer.get_vocabulary(), invert=True)
+  >>> i_layer = StringLookup(vocabulary=vocab, invert=True)
   >>> int_data = layer(data)
   >>> i_layer(int_data)
   <tf.Tensor: shape=(2, 3), dtype=string, numpy=
@@ -296,17 +298,8 @@ class StringLookup(index_lookup.IndexLookup):
     return dict(list(base_config.items()) + list(config.items()))
 
   def get_vocabulary(self):
-    if self._table_handler.vocab_size() == 0:
-      return []
-
-    if self.invert:
-      ids, strings = self._table_handler.data()
-    else:
-      strings, ids = self._table_handler.data()
-
-    # This is required because the MutableHashTable doesn't preserve insertion
-    # order, but we rely on the order of the array to assign indices.
-    return [x.decode(self.encoding) for _, x in sorted(zip(ids, strings))]
+    vocab = super(StringLookup, self).get_vocabulary()
+    return [compat.as_text(x, self.encoding) for x in vocab]
 
   def set_vocabulary(self, vocab, idf_weights=None):
     if isinstance(vocab, str):
