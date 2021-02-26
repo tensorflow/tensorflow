@@ -24,7 +24,7 @@ namespace tflite {
 namespace testing {
 namespace {
 
-// Hard coded dimension limit. Is there a predefined constant?
+// Maximum dimension limit (hard coded).
 constexpr int MaxDims = 254;
 
 template <typename T>
@@ -42,6 +42,7 @@ void TestExpandDims(const int* input_dims, const T* input_data,
   // Running the op will update output_dims[], so we need to save a copy first.
   // We also need to skip output_dims[0], which is the dimension size.
   int expected_out_dims[MaxDims];
+  TF_LITE_MICRO_EXPECT_LE(out_dims_size, MaxDims);
   for (int i = 0; i < out_dims_size; ++i) {
     expected_out_dims[i] = output_dims[i + 1];
   }
