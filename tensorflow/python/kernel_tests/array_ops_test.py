@@ -122,6 +122,28 @@ class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegex(ValueError, "should be a "):
       array_ops.matrix_transpose(vector)
 
+  def testNarrowMatrixTranspose(self):
+    vector = math_ops.complex(0., math_ops.range(96, dtype=dtypes.float32))
+    column_vector = array_ops.expand_dims(vector, axis=-1)
+    row_vector = array_ops.expand_dims(vector, axis=0)
+    narrow_matrix = array_ops.tile(column_vector, [1, 2]) # shape [96, 2]
+    expected_transposed = array_ops.tile(row_vector, [2, 1]) # shape [2, 96]
+    transposed = array_ops.matrix_transpose(narrow_matrix)
+
+    self.assertEqual((2, 96), transposed.get_shape())
+    self.assertAllEqual(expected_transposed, transposed)
+
+  def testNarrowMatrixConjugateTranspose(self):
+    vector = math_ops.complex(0., math_ops.range(96, dtype=dtypes.float32))
+    column_vector = array_ops.expand_dims(vector, axis=-1)
+    row_vector = -array_ops.expand_dims(vector, axis=0)
+    narrow_matrix = array_ops.tile(column_vector, [1, 2]) # shape [96, 2]
+    expected_transposed = array_ops.tile(row_vector, [2, 1]) # shape [2, 96]
+    transposed = array_ops.matrix_transpose(narrow_matrix, conjugate=True)
+
+    self.assertEqual((2, 96), transposed.get_shape())
+    self.assertAllEqual(expected_transposed, transposed)
+
 
 class BooleanMaskTest(test_util.TensorFlowTestCase):
 
