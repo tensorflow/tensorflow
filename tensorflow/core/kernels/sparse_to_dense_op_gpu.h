@@ -31,7 +31,7 @@ struct LaunchSparseToDense {
                   AsyncOpKernel *op, bool validate_indices,
                   const Index* indices, const T* values, const int num_elems,
                   const int num_values, const Index* shape, const int num_dims,
-                  const T default_value, Index dense_size, T* dense);
+                  const T default_value, int64 dense_size, T* dense);
 };
 
 }  // namespace functor

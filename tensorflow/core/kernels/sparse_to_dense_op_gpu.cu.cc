@@ -49,7 +49,7 @@ __global__ void SparseToDenseKernel(
 }
 
 template <typename T, typename Index>
-__global__ void SetDefaultValue(const T default_value, const Index dense_size,
+__global__ void SetDefaultValue(const T default_value, const int64 dense_size,
                                 T* __restrict__ dense) {
   GPU_1D_KERNEL_LOOP(thread_idx, dense_size) {
     dense[thread_idx] = default_value;
@@ -105,7 +105,7 @@ struct IndicesValidStatus {
 };
 
 template<typename T, typename Index>
-Status LaunchComputeKernels(OpKernelContext* c, const int dense_size,
+Status LaunchComputeKernels(OpKernelContext* c, const int64 dense_size,
            const T default_value, const Index* indices, const T* values,
            const int num_elems, const int num_values, const Index* shape,
            const int num_dims, T* dense) {
@@ -140,7 +140,7 @@ void LaunchSparseToDense<T, Index>::operator()(
     OpKernelContext* c, AsyncOpKernel::DoneCallback done, AsyncOpKernel* op,
     bool validate_indices, const Index* indices, const T* values,
     const int num_elems, const int num_values, const Index* shape,
-    const int num_dims, const T default_value, Index dense_size, T* dense) {
+    const int num_dims, const T default_value, int64 dense_size, T* dense) {
   auto* stream = c->op_device_context()->stream();
   const Eigen::GpuDevice& d = c->eigen_gpu_device();
 
@@ -208,6 +208,7 @@ void LaunchSparseToDense<T, Index>::operator()(
 }
 
 }  // namespace functor
+
 #define DEFINE_GPU_SPEC(T)                                \
   template struct functor::LaunchSparseToDense<T, int64>; \
   template struct functor::LaunchSparseToDense<T, int32>;

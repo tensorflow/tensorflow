@@ -45,6 +45,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+
 Status CheckSparseToDenseShapes(const Tensor& indices,
                                 const Tensor& output_shape,
                                 const Tensor& sparse_values,
@@ -85,6 +87,8 @@ Status CheckSparseToDenseShapes(const Tensor& indices,
   }
   return Status::OK();
 }
+
+} // end namespace
 
 // Operator to convert sparse representations to dense.
 template <typename T, typename Index>
@@ -221,7 +225,7 @@ class SparseToDenseGPU : public AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(c, c->allocate_output(0, output_tensor_shape, &output),
                          done);
 
-    Index dense_size = output_shape_vec.data()[0];
+    int64 dense_size = output_shape_vec.data()[0];
     for (int i = 1; i < output_shape_vec.size(); i++) {
       dense_size *= output_shape_vec.data()[i];
     }
