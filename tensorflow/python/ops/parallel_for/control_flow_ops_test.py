@@ -987,7 +987,6 @@ class TensorListTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 2)
 
-  @test_util.disable_tfrt("b/180206304")
   def test_create_inside_and_read(self):
 
     def loop_fn(i):

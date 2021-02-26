@@ -122,7 +122,7 @@ class KPLTest(test.TestCase, parameterized.TestCase):
   def define_reverse_lookup_layer(self):
     # Only needed for serving.
     label_inverse_lookup_layer = string_lookup.StringLookup(
-        num_oov_indices=1, mask_token=None, vocabulary=LABEL_VOCAB, invert=True)
+        num_oov_indices=0, mask_token=None, vocabulary=LABEL_VOCAB, invert=True)
     return label_inverse_lookup_layer
 
   @combinations.generate(

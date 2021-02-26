@@ -19,8 +19,11 @@ load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", 
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_cuda_tests_tags")
 
 package(
-    default_visibility = [":internal"],
-    licenses = ["notice"],  # Apache 2.0
+    default_visibility = [
+        ":internal",
+        "//third_party/cloud_tpu/inference_converter:__pkg__",
+    ],
+    licenses = ["notice"],
 )
 
 package_group(
@@ -479,7 +482,6 @@ cc_library(
     hdrs = ["get_compiler_ir.h"],
     visibility = [
         ":internal",
-        "//learning/brain/contrib/tpu_modeling/exp/tpu_inference_converter:__pkg__",
         "//tensorflow/core/common_runtime/eager:__pkg__",
     ],
     deps = [
@@ -510,7 +512,6 @@ cc_library(
     textual_hdrs = ["get_compiler_ir.h"],
     visibility = [
         ":internal",
-        "//learning/brain/contrib/tpu_modeling/exp/tpu_inference_converter:__pkg__",
         "//tensorflow/core/common_runtime/eager:__pkg__",
     ],
     deps = [
@@ -550,7 +551,6 @@ cc_library(
     ],
     visibility = [
         ":internal",
-        "//learning/brain/contrib/tpu_modeling/exp/tpu_inference_converter:__pkg__",
         "//tensorflow/core/common_runtime/eager:__pkg__",
     ],
     deps = [

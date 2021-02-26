@@ -1730,7 +1730,6 @@ py_test(
     tags = [
         "noasan",
         "nomsan",
-        "notsan",
     ],  # b/175904958
     deps = [
         ":multi_process_runner",

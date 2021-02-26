@@ -71,6 +71,7 @@ constexpr char kPipe[] = "|";
 constexpr char kColon[] = ":";
 
 constexpr char kTFDataResourceTag[] = "tfdata";
+constexpr char kTraceInfoUnavailable[] = "unavailable";
 
 class DatasetBase;
 class SerializationContext;

@@ -1205,6 +1205,30 @@ func @testWhileRegionSimplePassThrough(%arg0 : tensor<*xf32>, %arg1 : tensor<i32
   return %0#0 : tensor<*xf32>
 }
 
+// Explicit capture and return of extern values is removed.
+// CHECK-LABEL: testWhileRegionReturnExternValues
+func @testWhileRegionReturnExternValues(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor<*xf32> {
+  // CHECK: "tf.WhileRegion"(%arg1)
+  %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
+    {
+      // condition, check if count has reached 0
+      ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>):
+      %zero = constant dense<0> : tensor<i32>
+      %ne = "tf.NotEqual"(%carg1, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      "tf.Yield"(%ne) : (tensor<i1>) -> ()
+    },
+    {
+      // loop body
+      ^bb0(%barg0: tensor<*xf32>, %barg1: tensor<i32>):
+      %one = constant dense<1> : tensor<i32>
+      %sub = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      "tf.Yield"(%arg0, %sub) : (tensor<*xf32>, tensor<i32>) -> ()
+    }
+  ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+  // CHECK: return %arg0 : tensor<*xf32>
+  return %0#0 : tensor<*xf32>
+}
+
 // Multiple pass through values
 // CHECK-LABEL: testWhileRegionMultiplePassThrough
 func @testWhileRegionMultiplePassThrough(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>, %arg2 : tensor<*xf32>, %arg3 : tensor<i32>) -> tensor<*xf32> {

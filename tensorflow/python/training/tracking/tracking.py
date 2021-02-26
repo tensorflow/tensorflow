@@ -92,8 +92,7 @@ class AutoTrackable(base.Trackable):
     super(AutoTrackable, self).__setattr__(name, value)
 
   def __delattr__(self, name):
-    self._maybe_initialize_trackable()
-    delete_tracking(self, name)
+    self._delete_tracking(name)
     super(AutoTrackable, self).__delattr__(name)
 
   def _no_dependency(self, value):
@@ -125,18 +124,16 @@ class AutoTrackable(base.Trackable):
         functions[attribute_name] = attribute_value
     return functions
 
-
-def delete_tracking(obj, name):
-  """Removes the tracking of name from object."""
-  # pylint: disable=protected-access
-  if name in obj._unconditional_dependency_names:
-    del obj._unconditional_dependency_names[name]
-    for index, (dep_name, _) in enumerate(
-        obj._unconditional_checkpoint_dependencies):
-      if dep_name == name:
-        del obj._unconditional_checkpoint_dependencies[index]
-        break
-  # pylint: enable=protected-access
+  def _delete_tracking(self, name):
+    """Removes the tracking of name."""
+    self._maybe_initialize_trackable()
+    if name in self._unconditional_dependency_names:
+      del self._unconditional_dependency_names[name]
+      for index, (dep_name, _) in enumerate(
+          self._unconditional_checkpoint_dependencies):
+        if dep_name == name:
+          del self._unconditional_checkpoint_dependencies[index]
+          break
 
 
 class ResourceTracker(object):

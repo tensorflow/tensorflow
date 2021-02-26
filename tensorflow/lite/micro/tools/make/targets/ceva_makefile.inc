@@ -17,10 +17,9 @@ LD = ceva-elf-ld
 
 PLATFORM_ARGS += \
 $(TARGET_ARCH_DEFINES) \
-	c \
 	-fmessage-length=0 \
 	-fpermissive \
-	-Os \
+	-O4 \
 	-g3 \
 	-Wall \
 	-pedantic \

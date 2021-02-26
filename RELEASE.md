@@ -30,8 +30,9 @@
         for synchronous training workloads where example sizes vary. With strict
         round robin reads, users can guarantee that consumers get similar-sized
         examples in the same step.
-    *   tf.data service supports custom data transfer protocols (other than
-        gRPC).
+    *   tf.data service now supports optional compression. Previously data would
+        always be compressed, but now you can disable compression by passing
+        `compression=None` to `tf.data.experimental.service.distribute(...)`.
     *   `tf.data.Dataset.batch()` now supports `num_parallel_calls` and
         `deterministic` arguments. `num_parallel_calls` is used to indicate that
         multiple input batches should be computed in parallel. With
@@ -105,6 +106,9 @@
     *  Add nominal support for unsigned 32-bit integer tensor types. Note that
        very few TFLite kernels support this type natively, so its use in mobile
        ML authoring is generally discouraged.
+    *  Add support for static hash tables through
+         `TFLiteConverter.from_saved_model`.
+
 *   TF Core:
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,
         `tf.while_loop`, and compositions like `tf.foldl`) computed with

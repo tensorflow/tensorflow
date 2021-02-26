@@ -221,7 +221,6 @@ py_test(
         ":lite",
         ":lite_v2_test_util",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/lite/kernels/hashtable:pywrap_hashtable_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "@six_archive//:six",

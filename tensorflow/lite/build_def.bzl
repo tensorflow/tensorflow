@@ -487,6 +487,11 @@ def common_test_tags_for_generated_models(conversion_mode, failing):
     """
     tags = []
 
+    # Forward-compat coverage testing is largely redundant, and contributes
+    # to coverage test bloat.
+    if conversion_mode == "forward-compat":
+        tags.append("nozapfhahn")
+
     if failing:
         return ["notap", "manual"]
 

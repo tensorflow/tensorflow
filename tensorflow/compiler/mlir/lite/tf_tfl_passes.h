@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
+#include "tensorflow/lite/toco/toco_flags.pb.h"
 
 namespace tensorflow {
 
@@ -30,6 +31,7 @@ namespace tensorflow {
 // imported from saved model version one and utilized for capturing resource
 // variables.
 void AddTFToTFLConversionPasses(const toco::ModelFlags& model_flags,
+                                const toco::TocoFlags& toco_flags,
                                 const mlir::TFL::PassConfig& pass_config,
                                 mlir::OpPassManager* pass_manager,
                                 llvm::Optional<tensorflow::Session*> session);

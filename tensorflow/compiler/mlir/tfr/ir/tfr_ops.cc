@@ -610,7 +610,7 @@ Type TFRDialect::parseType(DialectAsmParser &parser) const {
   } else if (typeNameSpelling == "tensor_list") {
     return TFRTensorListType::getChecked(attrs, loc);
   } else if (typeNameSpelling == "attr") {
-    return TFRAttrType::getChecked(loc);
+    return TFRAttrType::getChecked(loc, loc.getContext());
   } else {
     parser.emitError(parser.getNameLoc(), "unknown type " + typeNameSpelling);
     return {};

@@ -60,10 +60,6 @@ limitations under the License.
 #define TFLITE_UNLIKELY(x) (x)
 #endif
 
-// TODO(b/180650471): Add back padded version of
-//  MatrixBatchVectorMultiplyAccumulate with sdot instruction.
-#define ENABLE_PADDED_DOT_PROD false
-
 namespace tflite {
 namespace tensor_utils {
 namespace {
@@ -441,9 +437,10 @@ static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
       ShuffleVectors(vectors, n_batch, m_cols, &shuffled_vectors_free);
 
   for (int row = 0; row < m_rows; row += 2) {
-    const float* channel_scales_ptr = per_channel_scale + row;
-    int32_t* row_sums_ptr = row_sums ? row_sums + row : nullptr;
     for (int batch = 0; batch < n_batch; batch += 4) {
+      const float* channel_scales_ptr = per_channel_scale + row;
+      int32_t* row_sums_ptr = row_sums ? row_sums + row : nullptr;
+
       float* result_ptr = result + (batch * m_rows) + row;
       const int8* mat_ptr0 = matrix + (row * m_cols);
       const int8* mat_ptr1 = matrix + ((row + 1) * m_cols);
@@ -543,11 +540,11 @@ static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
           "st2 {v9.s, v10.s}[3], [%[result_ptr]], %[wide_rows]\n"
           : [mat_ptr0] "+r"(mat_ptr0), [mat_ptr1] "+r"(mat_ptr1),
             [vec_ptr] "+r"(vec_ptr), [result_ptr] "+r"(result_ptr),
-            [row_sums_ptr] "+r"(row_sums_ptr)
+            [row_sums_ptr] "+r"(row_sums_ptr),
+            [channel_scales_ptr] "+r"(channel_scales_ptr)
           : [mat_ptr0_end] "r"(mat_ptr0_end),
             [scaling_factors_ptr] "r"(scaling_factors_ptr),
             [wide_rows] "r"(wide_rows),
-            [channel_scales_ptr] "r"(channel_scales_ptr),
             [batch_offsets_ptr] "r"(batch_offsets_ptr),
             [is_channel_scale_nullptr] "r"(is_channel_scale_nullptr),
             [is_row_sums_nullptr] "r"(is_row_sums_nullptr)
@@ -1057,8 +1054,7 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const int8_t* __restrict__ matrix,
       DotprodMatrixBatchFourVectorMultiplyAccumulate(
           matrix, m_rows, m_cols, vectors, scaling_factors, n_batch, result);
       return;
-    } else if (ENABLE_PADDED_DOT_PROD && n_batch >= 2 &&
-               m_rows * m_cols >= 128 * 128) {
+    } else if (n_batch >= 2 && m_rows * m_cols >= 128 * 128) {
       DotprodMatrixBatchPaddedFourVectorMultiplyAccumulate(
           matrix, m_rows, m_cols, vectors, scaling_factors, n_batch, result);
       return;
@@ -1256,8 +1252,7 @@ void NeonMatrixBatchVectorMultiplyAccumulateImpl(
           matrix, m_rows, m_cols, vectors, scaling_factors, n_batch, result,
           per_channel_scale, input_offset, row_sums);
       return;
-    } else if (ENABLE_PADDED_DOT_PROD && n_batch >= 2 &&
-               m_rows * m_cols >= 128 * 128) {
+    } else if (n_batch >= 2 && m_rows * m_cols >= 128 * 128) {
       DotprodMatrixBatchPaddedFourVectorMultiplyAccumulate(
           matrix, m_rows, m_cols, vectors, scaling_factors, n_batch, result,
           per_channel_scale, input_offset, row_sums);

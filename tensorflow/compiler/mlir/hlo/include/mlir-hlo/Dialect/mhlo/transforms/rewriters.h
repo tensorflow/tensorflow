@@ -26,11 +26,6 @@ limitations under the License.
 namespace mlir {
 class OwningRewritePatternList;
 
-// Populates a collection of rewrite patterns to realize element-wise operations
-// on ranked tensors where possible.
-void PopulateTransformUnrankedHloPatterns(MLIRContext *context,
-                                          OwningRewritePatternList *patterns);
-
 namespace mhlo {
 
 // Collection of rewrite patterns for lowering a general dot product.

@@ -91,6 +91,44 @@ cc_library(
 )
 
 cc_library(
+    name = "depthwise_conv",
+    srcs = [
+        "depthwise_conv_common.cc",
+    ] + select({
+        "//conditions:default": [
+            "depthwise_conv.cc",
+        ],
+        ":xtensa_hifimini": [
+            "xtensa/depthwise_conv.cc",
+        ],
+    }),
+    hdrs = ["depthwise_conv.h"],
+    copts = micro_copts(),
+    visibility = [
+        # Kernel variants need to be visible to the examples and benchmarks.
+        ":micro",
+    ],
+    deps = [
+        ":conv",
+        ":fixedpoint_utils",
+        ":kernel_util",
+        ":xtensa",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:common",
+        "//tensorflow/lite/kernels/internal:quantization_util",
+        "//tensorflow/lite/kernels/internal:reference_base",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels:padding",
+    ] + select({
+        "//conditions:default": [],
+        ":xtensa_hifimini": [
+            #"//third_party/xtensa/cstub64s:hifi_mini",
+        ],
+    }),
+)
+
+cc_library(
     name = "ethosu",
     srcs = [
         "ethosu.cc",
@@ -221,6 +259,7 @@ cc_library(
         "detection_postprocess.cc",
         "elementwise.cc",
         "exp.cc",
+        "elu.cc",
         "floor.cc",
         "l2norm.cc",
         "logical.cc",
@@ -251,13 +290,11 @@ cc_library(
         "zeros_like.cc",
     ] + select({
         "//conditions:default": [
-            "depthwise_conv.cc",
             "quantize.cc",
             "softmax.cc",
             "svdf.cc",
         ],
         ":xtensa_hifimini": [
-            "xtensa/depthwise_conv.cc",
             "xtensa/quantize.cc",
             "xtensa/softmax.cc",
             "xtensa/svdf.cc",
@@ -525,6 +562,21 @@ cc_test(
 )
 
 cc_test(
+    name = "elu_test",
+    srcs = [
+        "elu_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
     name = "exp_test",
     srcs = ["exp_test.cc"],
     deps = [
@@ -682,8 +734,8 @@ cc_test(
     ],
     tags = [
         "noasan",
-        "nomsan",
-    ],  # TODO(b/175133159): currently failing with asan and msan
+        "nomsan",  # TODO(b/175133159): currently failing with asan and msan
+    ],
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",

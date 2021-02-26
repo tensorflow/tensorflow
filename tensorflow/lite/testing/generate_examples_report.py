@@ -23,6 +23,7 @@ from __future__ import print_function
 
 import html
 import json
+import re
 
 FAILED = "FAILED"
 SUCCESS = "SUCCESS"
@@ -76,8 +77,8 @@ log.innerHTML = "<pre>" + data[row][col]  + "</pre>";
 }
 """)
   fp.write("var data = \n")
-  logs = json.dumps([[html.escape(x[1]["tf_log"], quote=True),
-                      html.escape(x[1]["converter_log"], quote=True)
+  logs = json.dumps([[escape_and_normalize(x[1]["tf_log"]),
+                      escape_and_normalize(x[1]["converter_log"])
                      ] for x in reports])
   fp.write(logs)
   fp.write(";</script>\n")
@@ -124,3 +125,12 @@ log.innerHTML = "<pre>" + data[row][col]  + "</pre>";
     </body>
     </html>
     """)
+
+
+def escape_and_normalize(log):
+  # These logs contain paths like /tmp/tmpgmypg3xa that are inconsistent between
+  # builds. This replaces these inconsistent paths with a consistent placeholder
+  # so the output is deterministic.
+  log = re.sub(r"/tmp/[^ ]+ ", "/NORMALIZED_TMP_FILE_PATH ", log)
+  log = re.sub(r"/build/work/[^/]+", "/NORMALIZED_BUILD_PATH", log)
+  return html.escape(log, quote=True)

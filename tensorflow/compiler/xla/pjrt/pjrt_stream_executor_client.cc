@@ -1340,7 +1340,7 @@ PjRtStreamExecutorBuffer::CopyToDeviceHelper(
       // have completed.
       tensorflow::down_cast<PjRtStreamExecutorDevice*>(device_)
           ->local_device_state()
-          ->ThenRelease(transfer_stream, src_device_buffer);
+          ->ThenRelease(transfer_stream, std::move(src_device_buffer));
     }
     return copy_event_or.status();
   }
