@@ -519,7 +519,7 @@ class BatchNormalizationBase(Layer):
 
   def _assign_moving_average(self, variable, value, momentum, inputs_size):
     with K.name_scope('AssignMovingAvg') as scope:
-      with ops.colocate_with(variable):
+      with ops._colocate_with(variable):  # pylint: disable=protected-access
         decay = ops.convert_to_tensor_v2_with_dispatch(
             1.0 - momentum, name='decay')
         if decay.dtype != variable.dtype.base_dtype:
@@ -532,7 +532,7 @@ class BatchNormalizationBase(Layer):
 
   def _assign_new_value(self, variable, value):
     with K.name_scope('AssignNewValue') as scope:
-      with ops.colocate_with(variable):
+      with ops._colocate_with(variable):  # pylint: disable=protected-access
         return state_ops.assign(variable, value, name=scope)
 
   def _fused_batch_norm(self, inputs, training):
