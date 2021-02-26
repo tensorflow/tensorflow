@@ -17,6 +17,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -109,10 +110,10 @@ namespace functor {
 
 template <typename T, typename Index>
 void LaunchSparseToDense<T, Index>::operator()(
-    OpKernelContext* c, AsyncOpKernel::DoneCallback done, bool validate_indices,
-    const Index* indices, const T* values, const int num_elems,
-    const int num_values, const Index* shape, const int num_dims,
-    const T default_value, Index dense_size, T* dense) {
+    OpKernelContext* c, AsyncOpKernel::DoneCallback done, AsyncOpKernel* op,
+    bool validate_indices, const Index* indices, const T* values,
+    const int num_elems, const int num_values, const Index* shape,
+    const int num_dims, const T default_value, Index dense_size, T* dense) {
   auto* stream = c->op_device_context()->stream();
   const Eigen::GpuDevice& d = c->eigen_gpu_device();
 
@@ -139,24 +140,30 @@ void LaunchSparseToDense<T, Index>::operator()(
         0, d.stream(), indices, num_elems, shape, num_dims, status_ptr), done);
     stream->ThenMemcpy(reinterpret_cast<int*>(&valid_status), valid_status_ptr,
                        valid_status_bytes);
-    OP_REQUIRES_OK_ASYNC(c, stream->BlockHostUntilDone(), done);
 
-    OP_REQUIRES_ASYNC(c, valid_status.valid == INT_MAX,
-                      errors::InvalidArgument(
-                          "indices[", valid_status.valid,
-                          "] is out of bounds."), done);
+    auto check_status = [op, c, &valid_status, done]() {
+      OP_REQUIRES_ASYNC(c, valid_status.valid == INT_MAX,
+                        errors::InvalidArgument(
+                            "indices[", valid_status.valid,
+                            "] is out of bounds."), done);
 
-    OP_REQUIRES_ASYNC(c, valid_status.increasing == INT_MAX,
-                      errors::InvalidArgument(
-                          "indices[", valid_status.increasing, "] is out of "
-                          "order. Many sparse ops require sorted indices.\n"
-                          "  Use `tf.sparse.reorder` to create a correctly "
-                          "ordered copy.\n\n"), done);
+      OP_REQUIRES_ASYNC(c, valid_status.increasing == INT_MAX,
+                        errors::InvalidArgument(
+                            "indices[", valid_status.increasing, "] is out of "
+                            "order. Many sparse ops require sorted indices.\n"
+                            "  Use `tf.sparse.reorder` to create a correctly "
+                            "ordered copy.\n\n"), done);
 
-    OP_REQUIRES_ASYNC(c, valid_status.different == INT_MAX,
-                      errors::InvalidArgument(
-                          "indices[", valid_status.different, "] is repeated."),
-                      done);
+      OP_REQUIRES_ASYNC(c, valid_status.different == INT_MAX,
+                        errors::InvalidArgument(
+                            "indices[", valid_status.different, "] is "
+                            "repeated."),
+                        done);
+      done();
+    };
+
+    c->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+        stream, check_status);
   }
 
   if (dense_size > 0) {

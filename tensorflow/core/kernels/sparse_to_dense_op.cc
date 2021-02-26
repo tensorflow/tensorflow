@@ -45,6 +45,47 @@ limitations under the License.
 
 namespace tensorflow {
 
+Status CheckSparseToDenseShapes(const Tensor& indices,
+                                const Tensor& output_shape,
+                                const Tensor& sparse_values,
+                                const Tensor& default_value) {
+  // sparse_indices
+  if (indices.dims() > 2) {
+    return errors::InvalidArgument(
+               "sparse_indices should be a scalar, vector, or matrix, "
+               "got shape ", indices.shape().DebugString());
+  }
+  const int64 num_elems = indices.dims() > 0 ? indices.dim_size(0) : 1;
+  const int64 num_dims = indices.dims() > 1 ? indices.dim_size(1) : 1;
+
+  // output_shape
+  if (!TensorShapeUtils::IsVector(output_shape.shape())) {
+    return errors::InvalidArgument("output_shape must be rank 1, got shape ",
+                                   output_shape.shape().DebugString());
+  }
+
+  if (output_shape.NumElements() != num_dims) {
+    return errors::InvalidArgument(
+               "output_shape has incorrect number of elements: ",
+               output_shape.NumElements(), " should be: ", num_dims);
+  }
+
+  // sparse_values
+  const int64 num_values = sparse_values.NumElements();
+  if (sparse_values.dims() != 0 &&
+      (sparse_values.dims() != 1 || num_values != num_elems)) {
+    return errors::InvalidArgument("sparse_values has incorrect shape ",
+                                   sparse_values.shape().DebugString(),
+                                   ", should be [] or [", num_elems, "]");
+  }
+
+  // default_value
+  if (!TensorShapeUtils::IsScalar(default_value.shape())) {
+    return errors::InvalidArgument("default_value should be a scalar.");
+  }
+  return Status::OK();
+}
+
 // Operator to convert sparse representations to dense.
 template <typename T, typename Index>
 class SparseToDense : public OpKernel {
@@ -55,41 +96,15 @@ class SparseToDense : public OpKernel {
   }
 
   void Compute(OpKernelContext* c) override {
-    // sparse_indices
     const Tensor& indices = c->input(0);
-    OP_REQUIRES(c, indices.dims() <= 2,
-                errors::InvalidArgument(
-                    "sparse_indices should be a scalar, vector, or matrix, "
-                    "got shape ",
-                    indices.shape().DebugString()));
+    const Tensor& output_shape = c->input(1);
+    const Tensor& sparse_values = c->input(2);
+    const Tensor& default_value = c->input(3);
+    OP_REQUIRES_OK(c, CheckSparseToDenseShapes(indices, output_shape,
+                          sparse_values, default_value));
+
     const int64 num_elems = indices.dims() > 0 ? indices.dim_size(0) : 1;
     const int64 num_dims = indices.dims() > 1 ? indices.dim_size(1) : 1;
-
-    // output_shape
-    const Tensor& output_shape = c->input(1);
-    OP_REQUIRES(
-        c, TensorShapeUtils::IsVector(output_shape.shape()),
-        errors::InvalidArgument("output_shape must be rank 1, got shape ",
-                                output_shape.shape().DebugString()));
-    OP_REQUIRES(c, output_shape.NumElements() == num_dims,
-                errors::InvalidArgument(
-                    "output_shape has incorrect number of elements: ",
-                    output_shape.NumElements(), " should be: ", num_dims));
-
-    // sparse_values
-    const Tensor& sparse_values = c->input(2);
-    const int64 num_values = sparse_values.NumElements();
-    OP_REQUIRES(c,
-                sparse_values.dims() == 0 ||
-                    (sparse_values.dims() == 1 && num_values == num_elems),
-                errors::InvalidArgument("sparse_values has incorrect shape ",
-                                        sparse_values.shape().DebugString(),
-                                        ", should be [] or [", num_elems, "]"));
-
-    // default_value
-    const Tensor& default_value = c->input(3);
-    OP_REQUIRES(c, TensorShapeUtils::IsScalar(default_value.shape()),
-                errors::InvalidArgument("default_value should be a scalar."));
 
     auto output_shape_vec = output_shape.flat<Index>();
     TensorShape output_tensor_shape;
@@ -186,44 +201,16 @@ class SparseToDenseGPU : public AsyncOpKernel {
     OP_REQUIRES_ASYNC(c, stream, errors::Internal("No GPU stream available."),
                       done);
 
-    // sparse_indices
     const Tensor& indices = c->input(0);
-    OP_REQUIRES_ASYNC(c, indices.dims() <= 2,
-                      errors::InvalidArgument(
-                          "sparse_indices should be a scalar, vector, or matrix, "
-                          "got shape ",
-                      indices.shape().DebugString()), done);
+    const Tensor& output_shape = c->input(1);
+    const Tensor& sparse_values = c->input(2);
+    const Tensor& default_value = c->input(3);
+    OP_REQUIRES_OK_ASYNC(c, CheckSparseToDenseShapes(indices, output_shape,
+                                sparse_values, default_value), done);
+
     const int64 num_elems = indices.dims() > 0 ? indices.dim_size(0) : 1;
     const int64 num_dims = indices.dims() > 1 ? indices.dim_size(1) : 1;
-
-    // output_shape
-    const Tensor& output_shape = c->input(1);
-    OP_REQUIRES_ASYNC(
-        c, TensorShapeUtils::IsVector(output_shape.shape()),
-        errors::InvalidArgument("output_shape must be rank 1, got shape ",
-                                output_shape.shape().DebugString()), done);
-    OP_REQUIRES_ASYNC(c, output_shape.NumElements() == num_dims,
-                      errors::InvalidArgument(
-                          "output_shape has incorrect number of elements: ",
-                          output_shape.NumElements(), " should be: ", num_dims),
-                      done);
-
-    // sparse_values
-    const Tensor& sparse_values = c->input(2);
     const int64 num_values = sparse_values.NumElements();
-    OP_REQUIRES_ASYNC(c,
-                      sparse_values.dims() == 0 ||
-                      (sparse_values.dims() == 1 && num_values == num_elems),
-                      errors::InvalidArgument(
-                          "sparse_values has incorrect shape ",
-                          sparse_values.shape().DebugString(),
-                          ", should be [] or [", num_elems, "]"), done);
-
-    // default_value
-    const Tensor& default_value = c->input(3);
-    OP_REQUIRES_ASYNC(c, TensorShapeUtils::IsScalar(default_value.shape()),
-                      errors::InvalidArgument(
-                          "default_value should be a scalar."), done);
 
     auto output_shape_vec = output_shape.flat<Index>();
     TensorShape output_tensor_shape;
@@ -254,7 +241,7 @@ class SparseToDenseGPU : public AsyncOpKernel {
                           "SparseToDense"), done);
 
     functor::LaunchSparseToDense<T, Index>()(
-        c, done, validate_indices_, indices.flat<Index>().data(),
+        c, done, this, validate_indices_, indices.flat<Index>().data(),
         sparse_values.flat<T>().data(), num_elems, num_values,
         static_cast<Index*>(output_shape_ptr.opaque()), num_dims,
         default_value.scalar<T>()(), dense_size, output->flat<T>().data());
