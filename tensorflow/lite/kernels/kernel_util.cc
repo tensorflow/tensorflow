@@ -234,23 +234,25 @@ TfLiteStatus PopulateConvolutionQuantizationParams(
         filter->dims->data[affine_quantization->quantized_dimension]);
   }
 
-  // Populate multiplier and shift using affine quantization.
-  const float input_scale = input->params.scale;
-  const float output_scale = output->params.scale;
-  const float* filter_scales = affine_quantization->scale->data;
-  for (int i = 0; i < num_channels; ++i) {
-    // If per-tensor quantization parameter is specified, broadcast it along the
-    // quantization dimension (channels_out).
-    const float scale = is_per_channel ? filter_scales[i] : filter_scales[0];
-    const double filter_scale = static_cast<double>(scale);
-    const double effective_output_scale = static_cast<double>(input_scale) *
-                                          filter_scale /
-                                          static_cast<double>(output_scale);
-    int32_t significand;
-    int channel_shift;
-    QuantizeMultiplier(effective_output_scale, &significand, &channel_shift);
-    per_channel_multiplier[i] = significand;
-    per_channel_shift[i] = channel_shift;
+  if (per_channel_multiplier != nullptr && per_channel_shift != nullptr) {
+    // Populate multiplier and shift using affine quantization.
+    const float input_scale = input->params.scale;
+    const float output_scale = output->params.scale;
+    const float* filter_scales = affine_quantization->scale->data;
+    for (int i = 0; i < num_channels; ++i) {
+      // If per-tensor quantization parameter is specified, broadcast it along
+      // the quantization dimension (channels_out).
+      const float scale = is_per_channel ? filter_scales[i] : filter_scales[0];
+      const double filter_scale = static_cast<double>(scale);
+      const double effective_output_scale = static_cast<double>(input_scale) *
+                                            filter_scale /
+                                            static_cast<double>(output_scale);
+      int32_t significand;
+      int channel_shift;
+      QuantizeMultiplier(effective_output_scale, &significand, &channel_shift);
+      per_channel_multiplier[i] = significand;
+      per_channel_shift[i] = channel_shift;
+    }
   }
 
   // Populate scalar quantization parameters.

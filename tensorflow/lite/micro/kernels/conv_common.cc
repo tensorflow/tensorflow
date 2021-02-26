@@ -145,32 +145,33 @@ TfLiteStatus ConvPrepare(TfLiteContext* context, TfLiteNode* node) {
   const int output_width = output->dims->data[2];
   const int output_height = output->dims->data[1];
 
-  // Dynamically allocate per-channel quantization parameters.
-  const int num_channels = filter->dims->data[kConvQuantizedDimension];
-  data->per_channel_output_multiplier =
-      static_cast<int32_t*>(context->AllocatePersistentBuffer(
-          context, num_channels * sizeof(int32_t)));
-  data->per_channel_output_shift =
-      static_cast<int32_t*>(context->AllocatePersistentBuffer(
-          context, num_channels * sizeof(int32_t)));
-
-  // All per-channel quantized tensors need valid zero point and scale arrays.
   if (input->type == kTfLiteInt8) {
+    // Dynamically allocate per-channel quantization parameters.
+    const int num_channels = filter->dims->data[kConvQuantizedDimension];
+    data->per_channel_output_multiplier =
+        static_cast<int32_t*>(context->AllocatePersistentBuffer(
+            context, num_channels * sizeof(int32_t)));
+    data->per_channel_output_shift =
+        static_cast<int32_t*>(context->AllocatePersistentBuffer(
+            context, num_channels * sizeof(int32_t)));
+
+    // All per-channel quantized tensors need valid zero point and scale arrays.
     TF_LITE_ENSURE_EQ(context, filter->quantization.type,
                       kTfLiteAffineQuantization);
-
     const auto* affine_quantization =
         static_cast<TfLiteAffineQuantization*>(filter->quantization.params);
     TFLITE_DCHECK(affine_quantization != nullptr);
     TFLITE_DCHECK(affine_quantization->scale != nullptr);
     TFLITE_DCHECK(affine_quantization->zero_point != nullptr);
-
     TF_LITE_ENSURE(context,
                    affine_quantization->scale->size == 1 ||
                        affine_quantization->scale->size ==
                            filter->dims->data[kConvQuantizedDimension]);
     TF_LITE_ENSURE_EQ(context, affine_quantization->scale->size,
                       affine_quantization->zero_point->size);
+  } else {
+    data->per_channel_output_multiplier = nullptr;
+    data->per_channel_output_shift = nullptr;
   }
 
   TF_LITE_ENSURE_STATUS(CalculateOpDataConv(

@@ -85,15 +85,21 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                       affine_quantization->zero_point->size);
   }
 
-  // Allocate memory for per-channel quantization parameters
-  const int num_channels = filter->dims->data[kDepthwiseConvQuantizedDimension];
+  if (input->type == kTfLiteInt8) {
+    // Allocate memory for per-channel quantization parameters
+    const int num_channels =
+        filter->dims->data[kDepthwiseConvQuantizedDimension];
 
-  data->reference_op_data.per_channel_output_multiplier =
-      reinterpret_cast<int32_t*>(context->AllocatePersistentBuffer(
-          context, num_channels * sizeof(int32_t)));
-  data->reference_op_data.per_channel_output_shift =
-      reinterpret_cast<int32_t*>(context->AllocatePersistentBuffer(
-          context, num_channels * sizeof(int32_t)));
+    data->reference_op_data.per_channel_output_multiplier =
+        reinterpret_cast<int32_t*>(context->AllocatePersistentBuffer(
+            context, num_channels * sizeof(int32_t)));
+    data->reference_op_data.per_channel_output_shift =
+        reinterpret_cast<int32_t*>(context->AllocatePersistentBuffer(
+            context, num_channels * sizeof(int32_t)));
+  } else {
+    data->reference_op_data.per_channel_output_multiplier = nullptr;
+    data->reference_op_data.per_channel_output_shift = nullptr;
+  }
 
   TF_LITE_ENSURE_STATUS(CalculateOpDataDepthwiseConv(
       context, node, params, input_width, input_height, filter_width,
