@@ -4,6 +4,7 @@ VERS_1.0 {
     Java_*;
     JNI_OnLoad;
     JNI_OnUnload;
+    *tensorflow*;
 
   # Hide everything else.
   local:
