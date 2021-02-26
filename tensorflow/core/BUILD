@@ -68,7 +68,6 @@ load(
     "if_ios",
     "if_libtpu",
     "if_mobile",
-    "if_not_windows",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -657,9 +656,7 @@ cc_library(
         "//tensorflow/core/kernels/linalg:linalg",
         "//tensorflow/core/kernels/image:image",
         "//tensorflow/core/kernels/sparse:kernels",
-    ] + if_not_windows([
-        "//tensorflow/core/kernels/neon:neon_depthwise_conv_op",
-    ]) + if_mkl([
+    ] + if_mkl([
         "//tensorflow/core/kernels/mkl:mkl_aggregate_ops",
         "//tensorflow/core/kernels/mkl:mkl_concat_op",
         "//tensorflow/core/kernels/mkl:mkl_dequantize_op",
