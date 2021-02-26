@@ -497,7 +497,7 @@ foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
 // such that the value operation happens before move operation.
 foreach ValueOp = [TFL_CeilOp, TFL_ExpOp, TFL_FloorOp, TFL_NegOp,
                    TFL_ReluOp, TFL_Relu1Op, TFL_Relu6Op, TFL_RoundOp,
-                   TFL_TanhOp, TFL_SqrtOp, TFL_SquareOp] in {
+                   TFL_TanhOp, TFL_SqrtOp, TFL_SquareOp, TFL_LogisticOp] in {
   foreach MoveOp = [TFL_DepthToSpaceOp, TFL_ExpandDimsOp, TFL_SqueezeOp,
                    TFL_ReshapeOp, TFL_TransposeOp] in {
     def ReorderElementwiseAndMoveOperations#ValueOp#MoveOp : Pat<

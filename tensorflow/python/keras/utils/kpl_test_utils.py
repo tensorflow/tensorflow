@@ -138,7 +138,7 @@ class DistributeKplTestUtils(test.TestCase):
     """Create string reverse lookup layer for serving."""
 
     label_inverse_lookup_layer = string_lookup.StringLookup(
-        num_oov_indices=1,
+        num_oov_indices=0,
         mask_token=None,
         vocabulary=self.LABEL_VOCAB,
         invert=True)

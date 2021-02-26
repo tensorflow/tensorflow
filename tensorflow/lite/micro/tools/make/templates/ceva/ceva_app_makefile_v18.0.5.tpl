@@ -1,5 +1,5 @@
 
-TARGET_TOOLCHAIN_ROOT := /home/yaire/CEVA-ToolBox/V18.05/BX
+TARGET_TOOLCHAIN_ROOT := /home/yaire/CEVA-ToolBox/V18.05/BX/
 
 CC = ${TARGET_TOOLCHAIN_ROOT}/cevatools/bin/clang
 CXX = ${TARGET_TOOLCHAIN_ROOT}/cevatools/bin/clang++
@@ -21,7 +21,7 @@ TOOLS_LIBS := \
 	-defsym \
 	__internal_code_size=256k \
 	-L${TARGET_TOOLCHAIN_ROOT}cevatools/lib/clang/9.0.1/cevabx1-unknown-unknown-elf/rtlv1.0.0-fp1-dpfp1/lib/ \
-	-lc++ -lc++abi -lc -lcompiler-rt
+	-lc++ -lc++abi -lc -lcompiler-rt -lCEVA_TFLM_lib
     
 
 OUT_NAME = %{EXECUTABLE}%
@@ -53,7 +53,6 @@ $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(SRCS)))
 $(OUT_NAME): $(OBJS)
 	$(LD)  -o $@ $(OBJS) $(TOOLS_OBJS) ${TOOLS_LIBS} $(LDFLAGS)
 
-%{EXTRA_APP_RULES}%
 
 
 #=================================================================

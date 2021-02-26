@@ -569,6 +569,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         if not steps_per_execution:
           steps_per_execution = kwargs.pop('experimental_steps_per_execution')
 
+      # When compiling from an already-serialized model, we do not want to
+      # reapply some processing steps (e.g. metric renaming for multi-output
+      # models, which have prefixes added for each corresponding output name).
+      from_serialized = kwargs.pop('from_serialized', False)
+
       self._validate_compile(optimizer, metrics, **kwargs)
       self._run_eagerly = run_eagerly
 
@@ -576,7 +581,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       self.compiled_loss = compile_utils.LossesContainer(
           loss, loss_weights, output_names=self.output_names)
       self.compiled_metrics = compile_utils.MetricsContainer(
-          metrics, weighted_metrics, output_names=self.output_names)
+          metrics, weighted_metrics, output_names=self.output_names,
+          from_serialized=from_serialized)
 
       self._configure_steps_per_execution(steps_per_execution or 1)
 

@@ -201,7 +201,7 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
 
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
       /*allow_partial_conversion=*/false, /*legalize_chlo=*/false));
-  pm.addNestedPass<mlir::FuncOp>(mlir::createTransformUnrankedHloPass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createTransformUnrankedHloPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createChloLegalizeToHloPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLowerComplexPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());

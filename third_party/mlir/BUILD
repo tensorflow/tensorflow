@@ -2061,6 +2061,7 @@ cc_library(
     hdrs = ["include/mlir/Conversion/GPUCommon/GPUCommonPass.h"],
     includes = ["include"],
     deps = [
+        ":Async",
         ":AsyncToLLVM",
         ":ConversionPassIncGen",
         ":GPUDialect",
@@ -4083,13 +4084,12 @@ cc_binary(
     srcs = ["tools/mlir-cuda-runner/mlir-cuda-runner.cpp"],
     deps = [
         ":Async",
-        ":AsyncToLLVM",
         ":AsyncTransforms",
+        ":ConversionPasses",
         ":ExecutionEngineUtils",
         ":GPUDialect",
         ":GPUToGPURuntimeTransforms",
         ":GPUToNVVMTransforms",
-        ":GPUToROCDLTransforms",
         ":GPUTransforms",
         ":IR",
         ":LLVMDialect",
@@ -4098,7 +4098,6 @@ cc_binary(
         ":NVVMToLLVMIRTranslation",
         ":Pass",
         ":StandardOps",
-        ":StandardToLLVM",
         ":TargetLLVMIR",
         ":TargetLLVMIRModuleTranslation",
         ":Transforms",
@@ -4206,15 +4205,34 @@ cc_binary(
 
 cc_binary(
     name = "mlir-linalg-ods-gen",
-    srcs = glob([
+    srcs = [
         "tools/mlir-linalg-ods-gen/mlir-linalg-ods-gen.cpp",
-    ]),
+    ],
     linkopts = [
         "-lm",
         "-lpthread",
     ],
     deps = [
         ":IR",
+        ":Support",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TableGen",
+        "@llvm-project//llvm:config",
+    ],
+)
+
+cc_binary(
+    name = "mlir-linalg-ods-yaml-gen",
+    srcs = [
+        "tools/mlir-linalg-ods-gen/mlir-linalg-ods-yaml-gen.cpp",
+    ],
+    linkopts = [
+        "-lm",
+        "-lpthread",
+    ],
+    deps = [
+        ":IR",
+        ":Parser",
         ":Support",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TableGen",
@@ -4525,26 +4543,43 @@ gentbl(
 )
 
 genlinalg(
-    name = "LinalgNamedStructuredOpsIncGen",
+    name = "LinalgNamedStructuredOpsTcIncGen",
     src = "include/mlir/Dialect/Linalg/IR/LinalgNamedStructuredOpsSpec.tc",
     linalg_outs = [
         (
-            "-gen-impl",
-            "include/mlir/Dialect/Linalg/IR/LinalgNamedStructuredOps.cpp.inc",
+            "-gen-impl -o=$@",
+            "include/mlir/Dialect/Linalg/IR/LinalgNamedStructuredOps.tcgen.cpp.inc",
         ),
         (
-            "-gen-ods-decl",
-            "include/mlir/Dialect/Linalg/IR/LinalgNamedStructuredOps.td",
+            "-gen-ods-decl -o=$@",
+            "include/mlir/Dialect/Linalg/IR/LinalgNamedStructuredOps.tcgen.td",
         ),
     ],
     linalggen = ":mlir-linalg-ods-gen",
+)
+
+genlinalg(
+    name = "LinalgNamedStructuredOpsYamlIncGen",
+    src = "include/mlir/Dialect/Linalg/IR/LinalgNamedStructuredOps.yaml",
+    linalg_outs = [
+        (
+            "-o-impl=$@",
+            "include/mlir/Dialect/Linalg/IR/LinalgNamedStructuredOps.yamlgen.cpp.inc",
+        ),
+        (
+            "-o-ods-decl=$@",
+            "include/mlir/Dialect/Linalg/IR/LinalgNamedStructuredOps.yamlgen.td",
+        ),
+    ],
+    linalggen = ":mlir-linalg-ods-yaml-gen",
 )
 
 filegroup(
     name = "LinalgStructuredOpsTdFiles",
     srcs = [
         "include/mlir/Dialect/Linalg/IR/LinalgInterfaces.td",
-        "include/mlir/Dialect/Linalg/IR/LinalgNamedStructuredOps.td",
+        "include/mlir/Dialect/Linalg/IR/LinalgNamedStructuredOps.tcgen.td",
+        "include/mlir/Dialect/Linalg/IR/LinalgNamedStructuredOps.yamlgen.td",
         "include/mlir/Dialect/Linalg/IR/LinalgStructuredOps.td",
         "include/mlir/Interfaces/CopyOpInterface.td",
         "include/mlir/Interfaces/ViewLikeInterface.td",
@@ -4571,7 +4606,8 @@ gentbl(
     td_file = "include/mlir/Dialect/Linalg/IR/LinalgStructuredOps.td",
     td_srcs = [
         ":LinalgStructuredOpsTdFiles",
-        "include/mlir/Dialect/Linalg/IR/LinalgNamedStructuredOps.td",
+        "include/mlir/Dialect/Linalg/IR/LinalgNamedStructuredOps.tcgen.td",
+        "include/mlir/Dialect/Linalg/IR/LinalgNamedStructuredOps.yamlgen.td",
     ],
 )
 
@@ -4580,8 +4616,8 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/Linalg/IR/LinalgBase.td",
         "include/mlir/Dialect/Linalg/IR/LinalgSparseOps.td",
-        "include/mlir/Interfaces/ViewLikeInterface.td",
         ":OpBaseTdFiles",
+        ":SideEffectTdFiles",
     ],
 )
 
@@ -4746,7 +4782,8 @@ cc_library(
         ":IR",
         ":LinalgInterfaces",
         ":LinalgInterfacesIncGen",
-        ":LinalgNamedStructuredOpsIncGen",
+        ":LinalgNamedStructuredOpsTcIncGen",
+        ":LinalgNamedStructuredOpsYamlIncGen",
         ":LinalgOpsIncGen",
         ":LinalgSparseOpsIncGen",
         ":LinalgStructuredOpsIncGen",
@@ -5275,6 +5312,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":IR",
+        ":LLVMDialect",
         ":MathDialect",
         ":Pass",
         ":SCFDialect",

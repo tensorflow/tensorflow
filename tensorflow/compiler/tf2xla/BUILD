@@ -861,6 +861,7 @@ cc_library(
     hdrs = [
         "functionalize_control_flow.h",
     ],
+    visibility = [":friends"],
     deps = [
         ":functionalize_cond",
         ":functionalize_control_flow_util",

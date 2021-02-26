@@ -556,17 +556,6 @@ OpFoldResult RealDivOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
-// ReluOp
-//===----------------------------------------------------------------------===//
-
-Optional<ContractionFusion> ReluOp::GetContractionFusion() {
-  // Only f32 is supported for fusion.
-  if (!T().isF32()) return None;
-
-  return ContractionFusion("Relu", /*additional_arguments=*/{});
-}
-
-//===----------------------------------------------------------------------===//
 // ReshapeOp
 //===----------------------------------------------------------------------===//
 

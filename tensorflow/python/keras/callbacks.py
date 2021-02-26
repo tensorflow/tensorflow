@@ -41,6 +41,7 @@ from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.distribute import distributed_file_utils
@@ -247,8 +248,8 @@ class CallbackList(object):
 
     # Performance check: Check batch hooks for slowness compared to batch time.
     # Only run check for custom callbacks (i.e. not present in this file).
-    self._check_timing = any([cbk.__class__.__name__ not in globals()
-                              for cbk in self.callbacks])
+    self._check_timing = any(
+        cbk.__class__.__name__ not in globals() for cbk in self.callbacks)
     self._num_batches_for_timing_check = 5
     self._hook_times = {}
     self._batch_start_time = None
@@ -1107,6 +1108,19 @@ class History(Callback):
   This callback is automatically applied to
   every Keras model. The `History` object
   gets returned by the `fit` method of models.
+
+  Example:
+
+  >>> model = tf.keras.models.Sequential([tf.keras.layers.Dense(10)])
+  >>> model.compile(tf.keras.optimizers.SGD(), loss='mse')
+  >>> history = model.fit(np.arange(100).reshape(5, 20), np.zeros(5),
+  ...                     epochs=10)
+  >>> print(history.params)
+  {'verbose': 1, 'epochs': 10, 'steps': 1}
+  >>> # check the keys of history object
+  >>> print(history.history.keys())
+  dict_keys(['loss'])
+
   """
 
   def __init__(self):
@@ -1207,8 +1221,9 @@ class ModelCheckpoint(Callback):
         decision to overwrite the current save file is made based on either
         the maximization or the minimization of the monitored quantity.
         For `val_acc`, this should be `max`, for `val_loss` this should be
-        `min`, etc. In `auto` mode, the direction is automatically inferred
-        from the name of the monitored quantity.
+        `min`, etc. In `auto` mode, the mode is set to `max` if the quantities
+        monitored are 'acc' or start with 'fmeasure' and are set to `min` for
+        the rest of the quantities.
       save_weights_only: if True, then only the model's weights will be saved
         (`model.save_weights(filepath)`), else the full model is saved
         (`model.save(filepath)`).
@@ -1308,14 +1323,6 @@ class ModelCheckpoint(Callback):
     # Only the chief worker writes model checkpoints, but all workers
     # restore checkpoint at on_train_begin().
     self._chief_worker_only = False
-
-  def set_model(self, model):
-    self.model = model
-    # Use name matching rather than `isinstance` to avoid circular dependencies.
-    if (not self.save_weights_only and
-        not model._is_graph_network and  # pylint: disable=protected-access
-        model.__class__.__name__ != 'Sequential'):
-      self.save_weights_only = True
 
   def on_train_begin(self, logs=None):
     if self.load_weights_on_restart:
@@ -2332,10 +2339,14 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     if self._start_batch < 0 or self._stop_batch < self._start_batch:
       raise ValueError(profile_batch_error_message)
 
+    # True when the profiler was successfully started by this callback.
+    # We track the status here to make sure callbacks do not interfere with
+    # each other. The callback will only stop the profiler it started.
+    self._profiler_started = False
     if self._start_batch > 0:
       # Warm up and improve the profiling accuracy.
-      profiler.start('')
-      profiler.stop(save=False)
+      self._start_profiler(logdir='')
+      self._stop_profiler(save=False)
     # True when a trace is running.
     self._is_tracing = False
 
@@ -2410,7 +2421,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
 
   def _start_trace(self):
     summary_ops_v2.trace_on(graph=True, profiler=False)
-    profiler.start(logdir=self._train_dir)
+    self._start_profiler(logdir=self._train_dir)
     self._is_tracing = True
 
   def _stop_trace(self, batch=None):
@@ -2421,7 +2432,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
       with summary_ops_v2.record_if(True):
         # TODO(b/126388999): Remove step info in the summary name.
         summary_ops_v2.trace_export(name='batch_%d' % batch, step=batch)
-    profiler.stop()
+    self._stop_profiler()
     self._is_tracing = False
 
   def _collect_learning_rate(self, logs):
@@ -2503,6 +2514,37 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     embeddings_ckpt = os.path.join(self._log_write_dir, 'train',
                                    'keras_embedding.ckpt-{}'.format(epoch))
     self.model.save_weights(embeddings_ckpt)
+
+  def _start_profiler(self, logdir):
+    """Starts the profiler if currently inactive.
+
+    Args:
+      logdir: Directory where profiler results will be saved.
+    """
+    if self._profiler_started:
+      return
+    try:
+      profiler.start(logdir=logdir)
+      self._profiler_started = True
+    except errors.AlreadyExistsError as e:
+      # Profiler errors should not be fatal.
+      logging.error('Failed to start profiler: %s', e.message)
+
+  def _stop_profiler(self, save=True):
+    """Stops the profiler if currently active.
+
+    Args:
+      save: Whether to save the profiler results to TensorBoard.
+    """
+    if not self._profiler_started:
+      return
+    try:
+      profiler.stop(save=save)
+    except errors.UnavailableError as e:
+      # Profiler errors should not be fatal.
+      logging.error('Failed to stop profiler: %s', e.message)
+    finally:
+      self._profiler_started = False
 
 
 @keras_export('keras.callbacks.ReduceLROnPlateau')

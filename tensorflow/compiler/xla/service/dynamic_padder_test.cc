@@ -128,7 +128,7 @@ TEST_F(DynamicPadderTest, ReduceTest) {
 
   auto reduce = builder.AddInstruction(HloInstruction::CreateReduce(
       reduce_shape, negate, init, {0, 2}, GetScalarAddComputation()));
-
+  EXPECT_FALSE(module_->is_dynamic());
   module_->AddEntryComputation(builder.Build());
 
   // Set up dynamic parameter binding.
@@ -139,6 +139,7 @@ TEST_F(DynamicPadderTest, ReduceTest) {
   TF_ASSERT_OK(RunPadder().status());
 
   ExpectPadded(reduce->operand(0));
+  EXPECT_TRUE(module_->is_dynamic());
 }
 
 TEST_F(DynamicPadderTest, DynamicLoweringTest) {

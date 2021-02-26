@@ -1304,11 +1304,6 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         var, resource_variable_ops.BaseResourceVariable)
     return var.read_value()
 
-  def _local_results(self, val):
-    if isinstance(val, values.DistributedValues):
-      return val.values
-    return (val,)
-
   def value_container(self, value):
     return value
 
@@ -1492,19 +1487,17 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
                                        ._use_spmd_for_xla_partitioning))
 
       # Remove all no ops that may have been added during 'tpu.replicate()'
+      filter_ops = lambda x: [o for o in x if not isinstance(o, ops.Operation)]
       if isinstance(result[0], list):
-        result[0] = [
-            output for output in result[0] if not isinstance(
-                output, ops.Operation)
-        ]
+        result[0] = filter_ops(result[0])
 
       # Workaround for `tpu.replicate` behaviour when single `Tensor` returned.
       if result[0] is None or isinstance(result[0], ops.Operation):
         replicate_outputs = [None] * len(replicate_outputs)
       else:
         replicate_outputs = [
-            nest.pack_sequence_as(result[0], nest.flatten(replica_output))
-            for replica_output in replicate_outputs
+            nest.pack_sequence_as(result[0], filter_ops(nest.flatten(output)))
+            for output in replicate_outputs
         ]
       return distribute_utils.regroup(replicate_outputs)
 

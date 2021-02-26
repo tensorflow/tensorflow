@@ -1562,7 +1562,7 @@ Shape GetPerGroupBaseShape(const GroupedSharding& grouped_sharding,
       continue;
     }
     int64 groups = grouped_sharding.group_dim_sizes[i];
-    result.set_dimensions(dim, result.dimensions(dim) / groups);
+    result.set_dimensions(dim, CeilOfRatio(result.dimensions(dim), groups));
   }
   return result;
 }

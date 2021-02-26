@@ -162,10 +162,10 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
       gpu_per_process: number of GPUs (0 if no GPUs) used by each process.
 
     Returns:
-     A tuple of (collective, devices, group_size) where collective is a instance
+     A tuple of (collective, devices, pid) where collective is a instance
      of `CollectiveAllReduce`, devices are a list of local devices (str)
-     attached to the current process, and group_size is the group_size of
-     collective.
+     attached to the current process, and pid is the id of this process among
+     all participant processes.
     """
 
     cluster_resolver = cluster_resolver_lib.TFConfigClusterResolver()
@@ -244,6 +244,8 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
         reduced_values = collective.reduce(options.reduce_op, per_replica_value,
                                            per_replica_value,
                                            options.communication_options)
+        if options.gpus_per_process > 1:
+          self.assertIsInstance(reduced_values, value_lib.Mirrored)
         reduced_values = self.as_list(reduced_values)
         self.assertAllEqual(devices, [v.device for v in reduced_values])
         return [ops.convert_to_tensor(v) for v in reduced_values]
@@ -290,6 +292,9 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
         reduced_values = collective.batch_reduce(options.reduce_op,
                                                  value_dst_pairs,
                                                  options.communication_options)
+        if options.gpus_per_process > 1:
+          for v in reduced_values:
+            self.assertIsInstance(v, value_lib.Mirrored)
         reduced_values = [self.as_list(v) for v in reduced_values]
         for v in reduced_values:
           self.assertAllEqual(devices, [t.device for t in v])
@@ -319,8 +324,8 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
           ],
           reduce_op=[ReduceOp.SUM, ReduceOp.MEAN],
           prefer_unique_instance_key=[True, False]))
-  def testAllReduceDense(self, num_processes, required_gpus, implementation,
-                         reduce_op, prefer_unique_instance_key):
+  def testReduceDense(self, num_processes, required_gpus, implementation,
+                      reduce_op, prefer_unique_instance_key):
     if (required_gpus == 0 and
         implementation == CommunicationImplementation.NCCL):
       self.skipTest("Skip CPU + NCCL combination")
@@ -361,8 +366,8 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
           # TODO(b/166682130): add MEAN reduce once the bug is fixed.
           reduce_op=ReduceOp.SUM,
           prefer_unique_instance_key=[True, False]))
-  def testAllReduceSparse(self, num_processes, required_gpus, implementation,
-                          reduce_op, prefer_unique_instance_key):
+  def testReduceSparse(self, num_processes, required_gpus, implementation,
+                       reduce_op, prefer_unique_instance_key):
     if (required_gpus == 0 and
         implementation == CommunicationImplementation.NCCL):
       self.skipTest("Skip CPU + NCCL combination")
@@ -410,7 +415,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(prefer_unique_instance_key=[True, False]))
-  def testAllReduceSparseVariableLength(self, prefer_unique_instance_key):
+  def testReduceSparseVariableLength(self, prefer_unique_instance_key):
     # One device per process, 2 processes, 2 replicas in total.
     inputs = [
         IndexedSlicesValue(values=[[1.]], indices=[0], dense_shape=[10, 1]),
@@ -441,9 +446,8 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
           ],
           reduce_op=[ReduceOp.SUM, ReduceOp.MEAN],
           prefer_unique_instance_key=[True, False]))
-  def testBatchAllReduceDense(self, num_processes, required_gpus,
-                              implementation, reduce_op,
-                              prefer_unique_instance_key):
+  def testBatchReduceDense(self, num_processes, required_gpus, implementation,
+                           reduce_op, prefer_unique_instance_key):
     if (required_gpus == 0 and
         implementation == CommunicationImplementation.NCCL):
       self.skipTest("Skip CPU + NCCL combination")
@@ -485,9 +489,8 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
           # TODO(b/166682130): add MEAN reduce once the bug is fixed.
           reduce_op=ReduceOp.SUM,
           prefer_unique_instance_key=[True, False]))
-  def testBatchAllReduceSparse(self, num_processes, required_gpus,
-                               implementation, reduce_op,
-                               prefer_unique_instance_key):
+  def testBatchReduceSparse(self, num_processes, required_gpus, implementation,
+                            reduce_op, prefer_unique_instance_key):
     if (required_gpus == 0 and
         implementation == CommunicationImplementation.NCCL):
       self.skipTest("Skip CPU + NCCL combination")
@@ -533,7 +536,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
       expect = [
           IndexedSlices(
               values=[[1.], [2.]], indices=[0, 1], dense_shape=[10, 1]),
-          IndexedSlicesValue(
+          IndexedSlices(
               values=[[3.], [4.]], indices=[1, 2], dense_shape=[5, 1])
       ]
     if group_size == 2:
@@ -544,7 +547,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
               dense_shape=[10, 1]),
           IndexedSlices(
               values=[[3.], [4.], [7.], [8.]],
-              indices=[1, 2, 3, 4],
+              indices=[1, 2, 0, 1],
               dense_shape=[5, 1])
       ]
     elif group_size == 4:
@@ -558,7 +561,46 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
               indices=[1, 2, 0, 1, 3, 4, 3, 4],
               dense_shape=[5, 2])
       ]
-      self.batch_reduce_and_verify(inputs, expect, options)
+    self.batch_reduce_and_verify(inputs, expect, options)
+
+  def testBatchReduceMixedDenseAndSparse(self):
+
+    options = self.RunOptions(
+        num_processes=2,
+        gpus_per_process=0,
+        reduce_op=ReduceOp.SUM,
+        mode=["func_graph"])
+
+    inputs_data = [
+        [
+            1.0, 2.0,
+            IndexedSlicesValue(
+                values=[[1.], [2.]], indices=[0, 1], dense_shape=[10, 1]),
+            IndexedSlicesValue(
+                values=[[3.], [4.]], indices=[1, 2], dense_shape=[5, 1])
+        ],
+        [
+            3.0, 4.0,
+            IndexedSlicesValue(
+                values=[[5.], [6.]], indices=[1, 2], dense_shape=[10, 1]),
+            IndexedSlicesValue(
+                values=[[7.], [8.]], indices=[0, 1], dense_shape=[5, 1])
+        ],
+    ]
+
+    expect = [
+        4.0, 6.0,
+        IndexedSlices(
+            values=[[1.], [2.], [5.], [6.]],
+            indices=[0, 1, 1, 2],
+            dense_shape=[10, 1]),
+        IndexedSlices(
+            values=[[3.], [4.], [7.], [8.]],
+            indices=[1, 2, 0, 1],
+            dense_shape=[5, 1])
+    ]
+
+    self.batch_reduce_and_verify(inputs_data, expect, options)
 
   @combinations.generate(
       combinations.combine(
@@ -571,8 +613,8 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
           ],
           reduce_op=[ReduceOp.SUM, ReduceOp.MEAN],
       ))
-  def testCollectiveAllReduce(self, num_processes, required_gpus,
-                              implementation, reduce_op):
+  def testAllReduceDense(self, num_processes, required_gpus, implementation,
+                         reduce_op):
     if (required_gpus == 0 and
         implementation == CommunicationImplementation.NCCL):
       self.skipTest("Skip CPU + NCCL combination")
@@ -620,6 +662,126 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
       elif reduce_op == ReduceOp.MEAN:
         expect = [(1.0, 2.0)] * len(devices)
       self.assertAllClose(got, expect)
+
+    get_global_mpr(num_processes).run(replica_fn)
+
+  @combinations.generate(
+      combinations.combine(
+          num_processes=[1, 2],
+          required_gpus=[0, 1, 2],
+          implementation=[
+              CommunicationImplementation.AUTO,
+              CommunicationImplementation.RING,
+              CommunicationImplementation.NCCL,
+          ],
+          reduce_op=[ReduceOp.SUM, ReduceOp.MEAN],
+      ))
+  def testAllReduceSparse(self, num_processes, required_gpus, implementation,
+                          reduce_op):
+    if (required_gpus == 0 and
+        implementation == CommunicationImplementation.NCCL):
+      self.skipTest("Skip CPU + NCCL combination")
+    if (num_processes == 2 and
+        implementation == CommunicationImplementation.NCCL):
+      self.skipTest("Skip NCCL + 2 processes combination. NCCL requires "
+                    "physical GPUs for every process.")
+
+    def replica_fn():
+      collective, devices, _ = self.make_collective(num_processes,
+                                                    required_gpus)
+      options = collective_util.Options(implementation=implementation)
+      group_size = num_processes * (required_gpus or 1)
+
+      @def_function.function
+      def collective_all_reduce():
+        results = []
+        for replica_id, device in enumerate(devices):
+          with ops.device(device):
+            value = IndexedSlices(
+                values=array_ops.identity([[1.]]),
+                indices=array_ops.identity([0]),
+                dense_shape=array_ops.identity([5, 1]))
+            results.append(
+                collective._all_reduce(reduce_op, value, replica_id, options))
+        return results
+
+      got = collective_all_reduce()
+      if reduce_op == ReduceOp.SUM:
+        expect = [IndexedSlices([[1. * group_size]], [0], [5, 1])
+                 ] * len(devices)
+      elif reduce_op == ReduceOp.MEAN:
+        expect = [IndexedSlices([[1.]], [0], [5, 1])] * len(devices)
+      self.assertAllClose(
+          nest.map_structure(ops.convert_to_tensor, got),
+          nest.map_structure(ops.convert_to_tensor, expect))
+
+      @def_function.function
+      def collective_batch_all_reduce():
+        results = []
+        for replica_id, device in enumerate(devices):
+          with ops.device(device):
+            value = (IndexedSlices(
+                array_ops.identity([[1.]]), array_ops.identity([0]),
+                array_ops.identity([5, 1])),
+                     IndexedSlices(
+                         array_ops.identity([[3.]]), array_ops.identity([2]),
+                         array_ops.identity([5, 1])))
+            results.append(
+                collective._all_reduce(reduce_op, value, replica_id, options))
+        return results
+
+      got = collective_batch_all_reduce()
+      if reduce_op == ReduceOp.SUM:
+        expect = [(IndexedSlices([[1. * group_size]], [0], [5, 1]),
+                   IndexedSlices([[3. * group_size]], [2], [5, 1]))
+                 ] * len(devices)
+      elif reduce_op == ReduceOp.MEAN:
+        expect = [(IndexedSlices([[1.]], [0], [5, 1]),
+                   IndexedSlices([[3.]], [2], [5, 1]))] * len(devices)
+      self.assertAllClose(
+          nest.map_structure(ops.convert_to_tensor, got),
+          nest.map_structure(ops.convert_to_tensor, expect))
+
+    get_global_mpr(num_processes).run(replica_fn)
+
+  @combinations.generate(
+      combinations.combine(
+          num_processes=2,
+          required_gpus=0,
+          implementation=CommunicationImplementation.AUTO,
+          reduce_op=ReduceOp.SUM))
+  def testAllReduceMixedDenseAndSparse(self, num_processes, required_gpus,
+                                       implementation, reduce_op):
+
+    def replica_fn():
+      collective, devices, _ = self.make_collective(num_processes,
+                                                    required_gpus)
+      options = collective_util.Options(implementation=implementation)
+      group_size = num_processes * (required_gpus or 1)
+
+      @def_function.function
+      def collective_batch_all_reduce():
+        results = []
+        for replica_id, device in enumerate(devices):
+          with ops.device(device):
+            value = (IndexedSlices(
+                array_ops.identity([[1.]]), array_ops.identity([0]),
+                array_ops.identity([5, 1])), array_ops.identity(1.0),
+                     IndexedSlices(
+                         array_ops.identity([[3.]]), array_ops.identity([2]),
+                         array_ops.identity([5, 1])), array_ops.identity(2.0))
+            results.append(
+                collective._all_reduce(reduce_op, value, replica_id, options))
+        return results
+
+      got = collective_batch_all_reduce()
+      expect = [
+          (IndexedSlices([[1. * group_size]], [0], [5, 1]), 1.0 * group_size,
+           IndexedSlices([[3. * group_size]], [2], [5, 1]), 2.0 * group_size)
+      ] * len(devices)
+      self.assertAllClose(
+          nest.map_structure(ops.convert_to_tensor, got),
+          nest.map_structure(ops.convert_to_tensor, expect))
 
     get_global_mpr(num_processes).run(replica_fn)
 

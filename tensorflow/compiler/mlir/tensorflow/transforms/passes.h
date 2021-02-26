@@ -179,12 +179,6 @@ void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList* patterns,
 // future these fusions may be codegen'd automatically.
 std::unique_ptr<OperationPass<FuncOp>> CreateFusedKernelMatcherPass();
 
-// Fuses operations defining `ContractionFusableInterface` interface into the
-// contraction operations (MatMul, Conv2D, etc...). This is a more general
-// version of `CreateFusedKernelMatcherPass` that relies on codegen to compose
-// contraction fusions together.
-std::unique_ptr<OperationPass<FuncOp>> CreateContractionFusionPass();
-
 // Creates function pass to select device index/fold tf.DeviceIndex.
 std::unique_ptr<OperationPass<FuncOp>> CreateDeviceIndexSelectorPass();
 

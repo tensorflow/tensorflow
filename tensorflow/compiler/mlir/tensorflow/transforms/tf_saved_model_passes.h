@@ -55,6 +55,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLiftVariablesPass(
 std::unique_ptr<OperationPass<FuncOp>> CreateDedupBoundInputBindingPass();
 
 }  // namespace tf_saved_model
+
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_TF_SAVED_MODEL_PASSES_H_

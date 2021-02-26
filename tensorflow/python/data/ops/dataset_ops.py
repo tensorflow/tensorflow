@@ -835,10 +835,9 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       output_signature = nest.map_structure_up_to(output_types,
                                                   tensor_spec.TensorSpec,
                                                   output_shapes, output_types)
-    if all([
+    if all(
         isinstance(x, tensor_spec.TensorSpec)
-        for x in nest.flatten(output_signature)
-    ]):
+        for x in nest.flatten(output_signature)):
       output_types = nest.pack_sequence_as(
           output_signature, [x.dtype for x in nest.flatten(output_signature)])
       output_shapes = nest.pack_sequence_as(

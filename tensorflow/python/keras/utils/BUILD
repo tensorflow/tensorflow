@@ -52,7 +52,12 @@ py_library(
     name = "control_flow_util",
     srcs = ["control_flow_util.py"],
     srcs_version = "PY3",
-    deps = [],
+    deps = [
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:variables",
+    ],
 )
 
 py_library(
@@ -106,9 +111,7 @@ py_library(
     deps = [
         ":object_identity",
         "//tensorflow/python:composite_tensor",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:smart_cond",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",

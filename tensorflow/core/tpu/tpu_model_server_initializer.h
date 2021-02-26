@@ -18,15 +18,12 @@ limitations under the License.
 
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/libtftpu.h"
+#include "tensorflow/core/tpu/tpu_api_dlsym_initializer.h"
 #include "tensorflow/core/tpu/tpu_ops_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 
-
 namespace tensorflow {
 namespace tpu {
-
-Status InitializeTpuModelServer(void* library_handle);
-
 }  // namespace tpu
 }  // namespace tensorflow
 

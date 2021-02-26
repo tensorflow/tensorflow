@@ -1,5 +1,7 @@
 """TensorFlow Lite Build Configurations for iOS"""
 
+load("//tensorflow:tensorflow.bzl", "clean_dep")
+
 # Placeholder for Google-internal load statements.
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 
@@ -56,12 +58,14 @@ def tflite_ios_framework(
         framework_target,
         allowlist_symbols_file,
     ]
+    clean_dep_extract_object_files_main = clean_dep("//tensorflow/lite/ios:extract_object_files_main")
+    clean_dep_hide_symbols_with_allowlist = clean_dep("//tensorflow/lite/ios:hide_symbols_with_allowlist")
     cmd = ("INPUT_FRAMEWORK=\"$(location " + framework_target + ")\" " +
            "BUNDLE_NAME=\"" + bundle_name + "\" " +
            "ALLOWLIST_FILE_PATH=\"$(location " + allowlist_symbols_file + ")\" " +
-           "EXTRACT_SCRIPT_PATH=\"$(location //tensorflow/lite/ios:extract_object_files_main)\" " +
+           "EXTRACT_SCRIPT_PATH=\"$(location " + clean_dep_extract_object_files_main + ")\" " +
            "OUTPUT=\"$(OUTS)\" " +
-           "\"$(location //tensorflow/lite/ios:hide_symbols_with_allowlist)\"")
+           "\"$(location " + clean_dep_hide_symbols_with_allowlist + ")\"")
 
     native.genrule(
         name = name,
@@ -69,8 +73,8 @@ def tflite_ios_framework(
         outs = [name + ".zip"],
         cmd = cmd,
         tools = [
-            "//tensorflow/lite/ios:extract_object_files_main",
-            "//tensorflow/lite/ios:hide_symbols_with_allowlist",
+            clean_dep_extract_object_files_main,
+            clean_dep_hide_symbols_with_allowlist,
         ],
     )
 

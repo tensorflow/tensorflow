@@ -51,7 +51,7 @@ struct ConvertConstantLikeOp : public OpConversionPattern<ConstantLikeOp> {
       ConversionPatternRewriter &rewriter) const override {
     auto result_ty = op.getType().cast<ShapedType>();
 
-    // Unranked uses are not supported.  Consider `transform-unranked-hlo`.
+    // Unranked uses are not supported.  Consider `mhlo-transform-unranked-hlo`.
     if (!result_ty.hasRank()) return failure();
 
     // Lower to MHLO constant if statically shaped.
