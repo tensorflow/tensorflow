@@ -313,16 +313,17 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
       shape_from_key = reader.get_variable_to_shape_map()
       return sorted(shape_from_key.keys())
 
-    model = keras.models.Sequential()
-    model.add(keras.layers.Dense(1))
-    model.compile('adam', loss='mse')
-    x, y = np.ones((10, 10)), np.ones((10, 1))
-    model.train_on_batch(x, y)
-
     path = os.path.join(self.get_temp_dir(), 'no_optimizer')
-    model.save(path, save_format='tf', include_optimizer=False)
-    variables = get_variables(path)
+    x, y = np.ones((10, 10)), np.ones((10, 1))
 
+    with self.cached_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(1))
+      model.compile('adam', loss='mse')
+      model.train_on_batch(x, y)
+      model.save(path, save_format='tf', include_optimizer=False)
+
+    variables = get_variables(path)
     for v in variables:
       self.assertNotIn('optimizer', v)
 
