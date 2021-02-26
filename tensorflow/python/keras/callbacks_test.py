@@ -283,11 +283,13 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       model.fit(dataset, epochs=2, steps_per_epoch=10)
       self.assertRegex(printed.contents(), expected_log)
 
+  @keras_parameterized.run_all_keras_modes
   def test_trivial_backup_restore(self):
-    model = keras.Sequential([keras.layers.Dense(1)])
-    model.compile('sgd', 'mse')
-    cbk = BackupAndRestore(self.get_temp_dir())
-    model.fit(np.ones((10, 1)), np.ones((10, 1)), epochs=0, callbacks=[cbk])
+    if testing_utils.should_run_eagerly():
+      model = keras.Sequential([keras.layers.Dense(1)])
+      model.compile('sgd', 'mse')
+      cbk = BackupAndRestore(self.get_temp_dir())
+      model.fit(np.ones((10, 1)), np.ones((10, 1)), epochs=0, callbacks=[cbk])
 
   @keras_parameterized.run_all_keras_modes
   def test_callback_warning(self):
