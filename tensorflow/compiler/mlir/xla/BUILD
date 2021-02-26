@@ -29,7 +29,7 @@ package_group(
 )
 
 gentbl(
-    name = "legalize_tf_patterns_inc_gen",
+    name = "xla_legalize_tf_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         ("-gen-rewriters", "transforms/generated_legalize_tf.inc"),
@@ -45,22 +45,6 @@ gentbl(
         "@llvm-project//mlir:StdOpsTdFiles",
         "@llvm-project//mlir:TensorOpsTdFiles",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
-    ],
-)
-
-gentbl(
-    name = "xla_legalize_tf_passes_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
-    tbl_outs = [
-        ("-gen-pass-decls -name XLA", "transforms/xla_legalize_tf_passes.h.inc"),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "transforms/xla_legalize_tf_passes.td",
-    td_relative_includes = [
-        "../hlo/include",
-    ],
-    td_srcs = [
-        "@llvm-project//mlir:PassBaseTdFiles",
     ],
 )
 
@@ -88,8 +72,8 @@ gentbl(
 cc_library(
     name = "xla_passes",
     srcs = [
+        "transforms/passes_detail.h",
         "transforms/prepare_for_export.cc",
-        "transforms/xla_passes_detail.h",
     ],
     hdrs = [
         "transforms/passes.h",
@@ -112,25 +96,19 @@ cc_library(
         "transforms/legalize_tf.cc",
         "transforms/legalize_tf_communication.cc",
         "transforms/legalize_tf_control_flow.cc",
-        "transforms/legalize_tf_types.cc",
-        "transforms/xla_legalize_tf_passes_detail.h",
     ],
     hdrs = [
         "transforms/passes.h",
     ],
     deps = [
         ":attribute_importer",
-        ":legalize_tf_patterns_inc_gen",
         ":type_to_shape",
-        ":xla_legalize_tf_passes_inc_gen",
         ":xla_legalize_tf_with_tf2xla",
-        ":xla_passes",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:chlo_legalize_to_hlo",
         "//tensorflow/compiler/mlir/hlo:convert_op_folder",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:padding",
