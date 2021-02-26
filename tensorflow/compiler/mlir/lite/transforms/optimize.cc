@@ -245,7 +245,7 @@ bool CanOptimizeIdentitySliceOp(Value input, Attribute begin, Attribute size) {
 
   // Checks if `begin` is all 0s, and `size[i]` is equal to either -1 or
   // `input.shape[i]`.
-  for (int64_t i = 0; i < rank; ++i) {
+  for (uint64_t i = 0; i < rank; ++i) {
     if (begin_attr.getValue<APInt>({i}).getSExtValue() != 0) return false;
     int64_t si = size_attr.getValue<APInt>({i}).getSExtValue();
     if (si != -1 && si != input_ty.getDimSize(i)) return false;
