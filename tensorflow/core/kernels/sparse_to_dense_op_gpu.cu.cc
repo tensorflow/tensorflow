@@ -37,7 +37,7 @@ __global__ void SparseToDenseKernel(
     const Index* __restrict__ dims, const int ndims, T* __restrict__ dense) {
   GPU_1D_KERNEL_LOOP(thread_idx, nnz) {
     eigen_assert(ndims >= 1);
-    Index output_idx = indices[thread_idx * ndims + ndims - 1];
+    int64 output_idx = indices[thread_idx * ndims + ndims - 1];
     Index strides = 1;
     for (int i = ndims - 2; i >= 0; i--) {
       strides *= dims[i + 1];
