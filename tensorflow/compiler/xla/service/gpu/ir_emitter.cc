@@ -299,6 +299,7 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
           (f64_atomic_add_supported && element_type == F64);
       if (atomic_add_supported) {
         AtomicRMW(llvm::AtomicRMWInst::FAdd, output_address, source,
+                  llvm::MaybeAlign(),
                   llvm::AtomicOrdering::SequentiallyConsistent);
         return true;
       }
@@ -307,6 +308,7 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
     if (is_atomic_integral) {
       // integral + integral
       AtomicRMW(llvm::AtomicRMWInst::Add, output_address, source,
+                llvm::MaybeAlign(),
                 llvm::AtomicOrdering::SequentiallyConsistent);
       return true;
     }
@@ -318,7 +320,7 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
     auto opcode = primitive_util::IsSignedIntegralType(element_type)
                       ? llvm::AtomicRMWInst::Max
                       : llvm::AtomicRMWInst::UMax;
-    AtomicRMW(opcode, output_address, source,
+    AtomicRMW(opcode, output_address, source, llvm::MaybeAlign(),
               llvm::AtomicOrdering::SequentiallyConsistent);
     return true;
   }
@@ -328,7 +330,7 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
     auto opcode = primitive_util::IsSignedIntegralType(element_type)
                       ? llvm::AtomicRMWInst::Min
                       : llvm::AtomicRMWInst::UMin;
-    AtomicRMW(opcode, output_address, source,
+    AtomicRMW(opcode, output_address, source, llvm::MaybeAlign(),
               llvm::AtomicOrdering::SequentiallyConsistent);
     return true;
   }
@@ -476,10 +478,10 @@ Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
   // Emit code to perform the atomicCAS operation
   // (cas_old_output, success) = atomicCAS(memory_address, cas_old_output,
   //                                       cas_new_output);
-  llvm::Value* ret_value =
-      AtomicCmpXchg(atomic_memory_address, cas_old_output, cas_new_output,
-                    llvm::AtomicOrdering::SequentiallyConsistent,
-                    llvm::AtomicOrdering::SequentiallyConsistent);
+  llvm::Value* ret_value = AtomicCmpXchg(
+      atomic_memory_address, cas_old_output, cas_new_output, llvm::MaybeAlign(),
+      llvm::AtomicOrdering::SequentiallyConsistent,
+      llvm::AtomicOrdering::SequentiallyConsistent);
 
   // Extract the memory value returned from atomicCAS and store it as
   // cas_old_output.

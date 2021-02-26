@@ -202,6 +202,15 @@ config_setting(
 )
 
 config_setting(
+    name = "msvc_cl_debug",
+    values = {
+        "compiler": "msvc-cl",
+        "compilation_mode": "dbg",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "no_tensorflow_py_deps",
     define_values = {"no_tensorflow_py_deps": "true"},
     visibility = ["//visibility:public"],
@@ -934,6 +943,11 @@ tf_cc_shared_object(
             "-z defs",
             "-Wl,--version-script,$(location //tensorflow:tf_version_script.lds)",
         ],
+    }) + select({
+        "//tensorflow:msvc_cl_debug": [
+            "/DEBUG:FASTLINK",
+        ],
+        "//conditions:default": [],
     }),
     per_os_targets = True,
     soversion = VERSION,

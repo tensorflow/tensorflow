@@ -3959,7 +3959,9 @@ def TFL_UnidirectionalSequenceLSTMOp :
            TFL_OperandHasRank<15, 1>,          // output_gate_bias
            TFL_OperandIsNoneOrHasRank<16, 2>,  // projection_weights
            TFL_OperandIsNoneOrHasRank<17, 1>,  // projection_bias
-           TFL_StatefulOp]> {
+           TFL_StatefulOp,
+           DeclareOpInterfaceMethods<InferTypeOpInterface>
+          ]> {
   let summary = "Unidirectional sequence lstm operator";
 
   let description = [{
@@ -4043,6 +4045,9 @@ def TFL_UnidirectionalSequenceLSTMOp :
   let extraClassDeclaration = [{
     // StatefulOpInterface:
     std::vector<int> GetStatefulOperands() { return {18, 19}; }
+
+    // Compatiable return types check
+    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r);
   }];
 }
 

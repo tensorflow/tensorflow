@@ -188,7 +188,6 @@ py_library(
         ":subscribe",
         ":summary",
         ":tensor_array_ops",
-        ":tensor_forest_ops",
         ":test_ops",  # TODO: Break testing code out into separate rule.
         ":tf_cluster",
         ":tf_item",
@@ -2510,14 +2509,6 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
-    name = "tensor_forest_ops_gen",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/core:tensor_forest_ops_op_lib",
-    ],
-)
-
-tf_gen_op_wrapper_private_py(
     name = "summary_ops_gen",
     visibility = ["//tensorflow:__subpackages__"],
     deps = ["//tensorflow/core:summary_ops_op_lib"],
@@ -2931,19 +2922,6 @@ py_library(
         ":boosted_trees_ops_gen",
         ":framework",
         ":ops",
-        ":training",
-        "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_py",
-    ],
-)
-
-py_library(
-    name = "tensor_forest_ops",
-    srcs = ["ops/tensor_forest_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":framework",
-        ":ops",
-        ":tensor_forest_ops_gen",
         ":training",
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_py",
     ],

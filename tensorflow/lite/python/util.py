@@ -839,8 +839,9 @@ def _remove_redundant_quantize_ops(model):
       # This is a requantize op, so write down its input tensor index.
       if input_type != dtypes.float32 and output_type != dtypes.float32:
         redundant_quant_tensors[op.inputs[0]] = op
-    if op.opcodeIndex in dequant_opcode_idxs and \
-        op.outputs[0] in subgraph.outputs:
+    elif (op.opcodeIndex in dequant_opcode_idxs and
+          op.outputs[0] in subgraph.outputs):
+      # Mark quant-dequant op pairs right before outputs to be removed.
       output_dequant_tensors[op.inputs[0]] = op
 
   # Remove all the quant ops which produce the redundant quant tensors.
@@ -852,12 +853,13 @@ def _remove_redundant_quantize_ops(model):
       requantize_op.inputs[0] = op.inputs[0]
       operators.remove(op)
 
-  # Remove all the quant ops which connect to the output dequant op.
+  # Remove all the quant/dequant op pairs right before the outputs.
   for op in all_quant_ops:
     output_tensor_idx = op.outputs[0]
     if output_tensor_idx in output_dequant_tensors:
       dequant_op = output_dequant_tensors[output_tensor_idx]
-      subgraph.outputs[subgraph.outputs == dequant_op.outputs[0]] = op.inputs[0]
+      output_idx = subgraph.outputs.index(dequant_op.outputs[0])
+      subgraph.outputs[output_idx] = op.inputs[0]
       operators.remove(op)
       operators.remove(dequant_op)
 
@@ -865,7 +867,7 @@ def _remove_redundant_quantize_ops(model):
 def modify_model_io_type(
     model, inference_input_type=dtypes.float32,
     inference_output_type=dtypes.float32):
-  """Modify the input/output type of a tflite model.
+  """Modifies the input/output type of a tflite model.
 
   Args:
     model: A tflite model.
@@ -877,6 +879,7 @@ def modify_model_io_type(
       (default tf.float32. If model output is int8 dequantized, it must be in
       {tf.float32, tf.int8,tf.uint8}, else if model output is int16 dequantized,
       it must be in {tf.float32, tf.int16}, else it must be tf.float32)
+
   Returns:
     A tflite model with modified input/output type.
 

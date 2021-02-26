@@ -860,7 +860,8 @@ llvm::SmallSet<int, 4> GetTensorListArgumentsFromWhileOp(TF::WhileOp op) {
 
 // Changes the function type of `cond_func` and `body_func` for the given While
 // op.
-LogicalResult UpdateFunctionTypes(TF::WhileOp op,
+LogicalResult UpdateFunctionTypes(ConversionPatternRewriter &rewriter,
+                                  TF::WhileOp op,
                                   llvm::SmallSet<int, 4> tensor_list_args) {
   int func_index = 0;
   for (FuncOp func : {op.cond_function(), op.body_function()}) {
@@ -906,13 +907,18 @@ LogicalResult UpdateFunctionTypes(TF::WhileOp op,
     // Change `func`'s argument type to `unranked_argument_types`. If it
     // return types contain a `DT_VARIANT`, change it to the unranked type
     // derived from the corresponding argument.
-    func.setType(FunctionType::get(op.getContext(), updated_argument_types,
-                                   updated_result_types));
-
-    // Change the argument type for the first block.
-    llvm::for_each(func.getArguments(), [&](BlockArgument &arg) {
-      arg.setType(updated_argument_types[arg.getArgNumber()]);
+    rewriter.updateRootInPlace(func, [&] {
+      func.setType(FunctionType::get(op.getContext(), updated_argument_types,
+                                     updated_result_types));
     });
+    Region &entry = func.getRegion();
+    TypeConverter::SignatureConversion signature_conversion(
+        entry.getNumArguments());
+    for (auto arg : entry.getArguments()) {
+      signature_conversion.addInputs(
+          arg.getArgNumber(), updated_argument_types[arg.getArgNumber()]);
+    }
+    rewriter.applySignatureConversion(&entry, signature_conversion);
   }
   return success();
 }
@@ -944,7 +950,7 @@ struct ConvertWhile : public OpConversionPattern<TF::WhileOp> {
     auto converted = rewriter.create<TF::WhileOp>(op.getLoc(), result_types,
                                                   operands, op.getAttrs());
     converted.removeAttr("T");
-    (void)UpdateFunctionTypes(converted, tensor_list_args);
+    (void)UpdateFunctionTypes(rewriter, converted, tensor_list_args);
 
     rewriter.replaceOp(op, converted.getResults());
     return success();
