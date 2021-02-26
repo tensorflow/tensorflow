@@ -24,7 +24,7 @@ namespace tpu {
 class TPUOrdinalSelectorInterface {
  public:
   virtual ~TPUOrdinalSelectorInterface() = default;
-  virtual int64 GetOrdinal(int64_t* req_id) = 0;
+  virtual int64 GetOrdinal(absl::optional<uint64> key, int64_t* req_id) = 0;
   virtual void DequeueFromCoreSelector(int32_t device_ordinal,
                                        int64_t req_id) = 0;
 };
