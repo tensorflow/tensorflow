@@ -86,6 +86,8 @@ class SparseTensorDenseMatMulTest(test.TestCase):
           self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-4)
         elif x.dtype == np.float64:
           self.assertAllClose(np_ans, out, rtol=1e-6, atol=1e-6)
+        elif x.dtype == np.float16:
+          self.assertAllClose(np_ans, out, rtol=1e-3, atol=1e-3)
         else:
           self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-4)
 
@@ -100,6 +102,7 @@ class SparseTensorDenseMatMulTest(test.TestCase):
   def testBasic(self):
     np.random.seed(127)  # Repeatable results
     self._testBasic(np.int32)
+    self._testBasic(np.float16)
     self._testBasic(np.float32)
     self._testBasic(np.float64)
     self._testBasic(np.complex64)
