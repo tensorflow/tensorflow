@@ -46,8 +46,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/verify_suitable_for_graph_export.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -74,9 +76,6 @@ using stream_executor::port::StatusOr;
 
 namespace {
 
-constexpr char kInvalidExecutorGraphMsg[] =
-    "Functions must be of a single Graph with single op Islands: ";
-
 constexpr char kDeviceAttr[] = "tf.device";
 constexpr char kResourceArgUniqueIdAttr[] = "tf._resource_arg_unique_id";
 
@@ -90,52 +89,6 @@ class LegalizedOpOrValLocNameMapper : public OpOrArgLocNameMapper {
     return name;
   }
 };
-
-// Checks functions in module are of single tf_executor.graph and each
-// tf_executor.island in tf_executor.graph only has a single op.
-Status HasSingleGraphSingleOpIslandsFunctions(mlir::ModuleOp module) {
-  Status status = Status::OK();
-  module.walk([&](mlir::FuncOp function) {
-    if (!llvm::hasSingleElement(function)) {
-      status = errors::FailedPrecondition(
-          kInvalidExecutorGraphMsg,
-          "only single block functions are supported.");
-      return mlir::WalkResult::interrupt();
-    }
-
-    auto block = function.front().without_terminator();
-    auto graph = llvm::dyn_cast<mlir::tf_executor::GraphOp>(block.begin());
-    if (!graph) {
-      status = errors::FailedPrecondition(
-          kInvalidExecutorGraphMsg,
-          "first op in function is not a tf_executor.graph.");
-      return mlir::WalkResult::interrupt();
-    }
-
-    if (!hasSingleElement(block)) {
-      status = errors::FailedPrecondition(
-          kInvalidExecutorGraphMsg,
-          "function does not only contain a single tf_executor.graph.");
-      return mlir::WalkResult::interrupt();
-    }
-
-    for (Operation& op : graph.GetBody()) {
-      auto island = llvm::dyn_cast<mlir::tf_executor::IslandOp>(op);
-      if (!island) continue;
-
-      if (!island.WrapsSingleOp()) {
-        status = errors::FailedPrecondition(
-            kInvalidExecutorGraphMsg,
-            "tf_executor.island must perfectly wrap a single op.");
-        return mlir::WalkResult::interrupt();
-      }
-    }
-
-    return mlir::WalkResult::advance();
-  });
-
-  return status;
-}
 
 // Finds first inner op if `op` is a tf_executor.island. Otherwise `op` is
 // returned.
@@ -744,8 +697,10 @@ Status ConvertMlirToGraph(mlir::ModuleOp module,
                           std::unique_ptr<Graph>* graph,
                           FunctionLibraryDefinition* flib_def,
                           absl::flat_hash_set<Node*>* control_ret_nodes) {
-  TF_RETURN_IF_ERROR(HasSingleGraphSingleOpIslandsFunctions(module));
-  return Exporter::Convert(module, configs, graph, flib_def, control_ret_nodes);
+  mlir::StatusScopedDiagnosticHandler sh(module.getContext());
+  if (failed(VerifyExportSuitable(module))) return sh.ConsumeStatus();
+  return sh.Combine(
+      Exporter::Convert(module, configs, graph, flib_def, control_ret_nodes));
 }
 
 Status ConvertMlirToGraph(mlir::ModuleOp module,

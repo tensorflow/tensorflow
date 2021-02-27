@@ -207,6 +207,11 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateConstantOpDeviceAssignmentPass();
 // to TensorFlow Graph.
 void AddGraphExportLoweringPasses(OpPassManager& pm);
 
+// Returns pass that verifies whether all functions in module are of single
+// tf_executor.graph and each tf_executor.island in tf_executor.graph only has a
+// single op.
+std::unique_ptr<OperationPass<ModuleOp>> CreateVerifySuitableForExportPass();
+
 }  // namespace TF
 
 namespace tf_executor {

@@ -165,6 +165,7 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
   add_pass(TFDevice::CreateLaunchToDeviceAttributePass());
   pm.addNestedPass<FuncOp>(TFTPU::CreateTPUDevicePropagationPass());
   pm.addPass(createSymbolDCEPass());
+  pm.addPass(CreateVerifySuitableForExportPass());
 }
 
 tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
