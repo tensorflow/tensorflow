@@ -19,7 +19,7 @@ def if_mkldnn_openmp(if_true, if_false = []):
     oneDNN open source library only with openmp
 
     Returns a select statement which evaluates to if_true if we're building
-    with oneDNN open source library only with openmp. Otherwise, the
+    with oneDNN open source library only with OpenMP. Otherwise, the
     select statement evaluates to if_false.
 
     """
