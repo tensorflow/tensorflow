@@ -381,7 +381,7 @@ message ExecutionOptions {
   // works on TPU.
   bool deduplicate_hlo = 12;
 
-  reserved 13;  // Was broadcast_replicated_parameters_via_collectives = 13;
+  reserved 13;  // Was broadcast_replicated_parameters_via_collectives
 }
 
 message GetDeviceHandlesRequest {
