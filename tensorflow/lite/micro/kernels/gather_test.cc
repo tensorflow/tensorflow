@@ -24,27 +24,17 @@ namespace tflite {
 namespace testing {
 namespace {
 
-// Hard coded dimension limit. Is there a predefined constant?
-constexpr int MaxDims = 254;
-
 template <typename T>
 void TestGather(const int* input_dims, const T* input_data,
                     const int* positions_dims, const int32_t* positions_data,
-                    const int* output_dims, const T* expected_output_data,
-                    T* output_data) {
+                    const int* expected_out_dims, const int* output_dims,
+                    const T* expected_output_data, T* output_data) {
   TfLiteIntArray* in_dims = IntArrayFromInts(input_dims);
   TfLiteIntArray* pos_dims = IntArrayFromInts(positions_dims);
   TfLiteIntArray* out_dims = IntArrayFromInts(output_dims);
   const int in_dims_size = in_dims->size;
   const int out_dims_size = out_dims->size;
   const int output_size = ElementCount(*out_dims);
-
-  // Running the op will update output_dims[], so we need to save a copy first.
-  // We also need to skip output_dims[0], which is the dimension size.
-  int expected_out_dims[MaxDims];
-  for (int i = 0; i < out_dims_size; ++i) {
-    expected_out_dims[i] = output_dims[i + 1];
-  }
 
   constexpr int inputs_size = 2;
   constexpr int outputs_size = 1;
