@@ -893,7 +893,7 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
         name = 'learning_rate'
       if name in self._optimizer._hyper:
         return self._optimizer._get_hyper(name)
-      elif hasattr(self._optimizer,"_optimizer"):
+      elif hasattr(self._optimizer, "_optimizer"):
         if name in self._optimizer._optimizer._hyper:
           return self._optimizer._optimizer._get_hyper(name)
       raise e
