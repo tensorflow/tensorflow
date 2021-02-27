@@ -890,9 +890,12 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
 
       # Delegate hyperparameter accesses to inner optimizer.
       if name == 'lr':
-        name = 'learning_rate'
+        name = 'learning_rate'        
       if name in self._optimizer._hyper:
         return self._optimizer._get_hyper(name)
+      elif hasattr(self._optimizer,"_optimizer"):
+        if name in self._optimizer._optimizer._hyper:
+          return self._optimizer._optimizer._get_hyper(name)
       raise e
 
   def __dir__(self):
