@@ -30,311 +30,348 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 
+// Parallel two-sided Jacobi symmetric eigendecomposition.
+//
+// The implementation follows the approach described in:
+// Brent, Richard P., and Franklin T. Luk. "The solution of singular-value and
+// symmetric eigenvalue problems on multiprocessor arrays." SIAM Journal on
+// Scientific and Statistical Computing 6.1 (1985): 69-84.
+//
+// Where the Brent/Luk paper uses "processors", we use "vector elements".
 namespace xla {
 
 namespace {
 
-// Jacobi rotation (also known as Givens rotation):
+// A 2x2 symmetric Eigendecomposition of a matrix A.
+// If
 // G = [[ c, s],
 //      [-s, c]]
 // matmul(G_T, G) = I
-struct JacobiRotation {
-  XlaOp c;          // cosine.
-  XlaOp s;          // sine.
+// and
+// G @ [[rt1, 0  ],  @ G.T = A
+//      [  0, rt2]]
+struct Eigh2x2 {
+  // Eigenvalues
+  XlaOp rt1;
+  XlaOp rt2;
+  // First row of Eigenvector matrix.
+  XlaOp c;  // cosine.
+  XlaOp s;  // sine.
 };
 
-// JacobiUpdate holds the intermediate orthogonal matrix, Jacobi-rotated matrix.
-struct JacobiUpdate {
-  XlaOp v;
-  XlaOp w;
-};
+// sqrt(x**2 + y**2), calculated avoiding overflow.
+XlaOp Hypot(XlaOp x, XlaOp y) {
+  x = Abs(x);
+  y = Abs(y);
+  auto xy_min = Min(x, y);
+  auto xy_max = Max(x, y);
+  auto out = xy_max * Sqrt(ScalarLike(x, 1) + Square(xy_min / xy_max));
+  return Select(Eq(xy_min, xy_max), xy_min * ScalarLike(xy_min, std::sqrt(2.)),
+                out);
+}
+
+// Given an n-by-n symmetric A and integers p and q that satisfy 0 <= p < q < n,
+// a Jacobi rotation computes a rotation matrix G = [[c, s], [-s, c]], such that
+//   G_T * A[[p, q], [p, q]] * G
+// is diagonalized. We do this by computing a 2x2 eigendecomposition.
+//
+// In this parallel Jacobi algorithm, we simultaneously compute Jacobi rotations
+// for all of the matrix diagonal elements at the same time. The matrix diagonal
+// elements correspond to different rows and columns of the original matrix and
+// their rotations do not interfere and hence can be computed in parallel.
+//
+// The algorithm is based on slaev2 from LAPACK, modified to allow for
+// vectorization.
+// In addition, slaev2 always returns the largest eigenvalue as rt1, which has
+// the effect of swapping eigenvalues around in the Jacob algorithm. This does
+// not converge when used in a parallel Jacobi algorithm, so we modify the
+// algorithm to maintain the following symmetry property:
+// slaev2(a, b, c) has the opposite Eigenvalue order from slaev2(c, b, a)
+
+// def symmetric_eigendecomposition_2x2(a, b, c):
+//   # Input matrix [[a, b], [b, c]].
+//   ac_sum = a + c
+//   ac_diff = a - c
+//   two_b = 2*b
+//
+//   rt = hypot(ac_diff, two_b)
+//
+//   which_max_abs = np.abs(a) > np.abs(c)
+//   ac_max = np.where(which_max_abs, a, c)
+//   ac_min = np.where(which_max_abs, c, a)
+//   rt1 = np.float32(0.5)*(ac_sum + np.where(ac_sum < 0, -rt, rt))
+//   rt2 = np.where(ac_sum != 0, (ac_max / rt1)*ac_min - (b/rt1)*b,
+//                  -np.float32(0.5)*rt)
+//
+//
+//   # Modification: don't sort the Eigenvalues.
+//   rt1, rt2 = (np.where(which_max_abs, rt1, rt2),
+//               np.where(which_max_abs, rt2, rt1))
+//
+//   # Compute eigenvectors
+//   cs = ac_diff + np.where(ac_diff >= 0, rt, -rt)
+//
+//   ct = -two_b / cs
+//   tn = -cs / two_b
+//
+//   cosine = np.where(two_b != 0, np.float32(1) / np.sqrt(1 + tn*tn),
+//                  np.float32(1))
+//   sine = np.where(two_b != 0, tn * cosine, np.float32(0))
+//
+//   tmp = 1 / np.sqrt(1 + ct*ct)
+//   cosine = np.where(np.abs(cs) > np.abs(two_b), ct*tmp, cosine)
+//   sine = np.where(np.abs(cs) > np.abs(two_b), tmp, sine)
+//   same_sign = (ac_sum >= 0) == (ac_diff >= 0)
+//   # Modification: use Eigenvalues corresponding to the Eigenvectors above.
+//   same_sign = (same_sign == which_max_abs)
+//   cosine, sine = (np.where(same_sign, -sine, cosine),
+//                   np.where(same_sign, cosine, sine))
+//   return rt1, rt2, cosine, sine
+Eigh2x2 SymmetricEigenDecomposition2x2(XlaOp w_tl, XlaOp w_tr, XlaOp w_br) {
+  auto a = GetMatrixDiagonal(w_tl);
+  auto b = GetMatrixDiagonal(w_tr);
+  auto c = GetMatrixDiagonal(w_br);
+  auto zero = ScalarLike(w_tl, 0.0);
+  auto half = ScalarLike(w_tl, 0.5);
+  auto neg_half = ScalarLike(w_tl, -0.5);
+  auto one = ScalarLike(w_tl, 1.0);
+  auto two = ScalarLike(w_tl, 2.0);
+
+  auto ac_sum = a + c;
+  auto ac_diff = a - c;
+  auto two_b = two * b;
+  auto rt = Hypot(ac_diff, two_b);
+
+  // Compute eigenvalues
+  auto which_max_abs = Gt(Abs(a), Abs(c));
+  auto ac_max = Select(which_max_abs, a, c);
+  auto ac_min = Select(which_max_abs, c, a);
+  auto rt1 = half * (ac_sum + Select(Lt(ac_sum, zero), -rt, rt));
+  auto rt2 = Select(Ne(ac_sum, zero), (ac_max / rt1) * ac_min - (b / rt1) * b,
+                    neg_half * rt);
+  std::tie(rt1, rt2) = std::make_tuple(Select(which_max_abs, rt1, rt2),
+                                       Select(which_max_abs, rt2, rt1));
+
+  // Compute eigenvectors
+  auto cs = ac_diff + Select(Ge(ac_diff, zero), rt, -rt);
+  auto ct = -two_b / cs;
+  auto tn = -cs / two_b;
+
+  auto cosine = Select(Ne(two_b, zero), Rsqrt(one + Square(tn)), one);
+  auto sine = Select(Ne(two_b, zero), tn * cosine, zero);
+
+  auto tmp = Rsqrt(one + Square(ct));
+  auto abs_cs_larger = Gt(Abs(cs), Abs(two_b));
+  cosine = Select(abs_cs_larger, ct * tmp, cosine);
+  sine = Select(abs_cs_larger, tmp, sine);
+  auto same_sign = Eq(Ge(ac_sum, zero), Ge(ac_diff, zero));
+  same_sign = Eq(same_sign, which_max_abs);
+  std::tie(cosine, sine) = std::make_tuple(Select(same_sign, -sine, cosine),
+                                           Select(same_sign, cosine, sine));
+
+  // Negate 'sine' because we are returning the first row of the rotation matrix
+  // not the first eigenvector.
+  return {rt1, rt2, cosine, -sine};
+}
+
+// tl, tr, bl, br = (
+//   tl * c[:, None] - bl * s[:, None],
+//   tr * c[:, None] - br * s[:, None],
+//   tl * s[:, None] + bl * c[:, None],
+//   tr * s[:, None] + br * c[:, None],
+// )
+void ApplyJacobiRotationOverRows(Eigh2x2 rotation, XlaOp& tl, XlaOp& tr,
+                                 XlaOp& bl, XlaOp& br) {
+  Shape shape = tl.builder()->GetShape(tl).ValueOrDie();
+  std::vector<int64> broadcast_dims(shape.dimensions().size() - 1);
+  absl::c_iota(broadcast_dims, 0);
+  auto c = BroadcastInDim(rotation.c, shape.dimensions(), broadcast_dims);
+  auto s = BroadcastInDim(rotation.s, shape.dimensions(), broadcast_dims);
+
+  std::tie(tl, tr, bl, br) = std::make_tuple(tl * c - bl * s, tr * c - br * s,
+                                             tl * s + bl * c, tr * s + br * c);
+}
+
+// tl, tr, bl, br = (
+//   tl * c[None, :] - tr * s[None, :],
+//   tl * s[None, :] + tr * c[None, :],
+//   bl * c[None, :] - br * s[None, :],
+//   bl * s[None, :] + br * c[None, :],
+// )
+void ApplyJacobiRotationOverCols(Eigh2x2 rotation, XlaOp& tl, XlaOp& tr,
+                                 XlaOp& bl, XlaOp& br) {
+  Shape shape = tl.builder()->GetShape(tl).ValueOrDie();
+  std::vector<int64> broadcast_dims(shape.dimensions().size() - 1);
+  absl::c_iota(broadcast_dims, 0);
+  broadcast_dims.back() = shape.dimensions().size() - 1;
+  auto c = BroadcastInDim(rotation.c, shape.dimensions(), broadcast_dims);
+  auto s = BroadcastInDim(rotation.s, shape.dimensions(), broadcast_dims);
+
+  std::tie(tl, tr, bl, br) = std::make_tuple(tl * c - tr * s, tl * s + tr * c,
+                                             bl * c - br * s, bl * s + br * c);
+}
+
+// def permute_rows_in_col(top, bottom):
+//   top_out = np.zeros_like(l)
+//   top_out[0] = top[0]
+//   top_out[1] = bottom[0]
+//   top_out[2:] = top[1:-1]
+//   bottom_out = np.zeros_like(r)
+//   bottom_out[:-1] = bottom[1:]
+//   bottom_out[-1] = top[-1]
+//   return top_out, bottom_out
+void PermuteRowsInColumn(XlaOp& top, XlaOp& bottom) {
+  XlaBuilder* builder = top.builder();
+  Shape shape = builder->GetShape(top).ValueOrDie();
+  int64 k = ShapeUtil::GetDimension(shape, -1);
+  if (k <= 1) {
+    return;
+  }
+  int ndim = shape.dimensions_size();
+  std::tie(top, bottom) =
+      std::make_tuple(ConcatInDim(builder,
+                                  {SliceInMinorDims(top, {0, 0}, {1, k}),
+                                   SliceInMinorDims(bottom, {0, 0}, {1, k}),
+                                   SliceInMinorDims(top, {1, 0}, {k - 1, k})},
+                                  ndim - 2),
+                      ConcatInDim(builder,
+                                  {SliceInMinorDims(bottom, {1, 0}, {k, k}),
+                                   SliceInMinorDims(top, {k - 1, 0}, {k, k})},
+                                  ndim - 2));
+}
+
+void PermuteColumnsInRow(XlaOp& left, XlaOp& right) {
+  XlaBuilder* builder = left.builder();
+  Shape shape = builder->GetShape(left).ValueOrDie();
+  int64 k = ShapeUtil::GetDimension(shape, -1);
+  if (k <= 1) {
+    return;
+  }
+  int ndim = shape.dimensions_size();
+  std::tie(left, right) =
+      std::make_tuple(ConcatInDim(builder,
+                                  {SliceInMinorDims(left, {0}, {1}),
+                                   SliceInMinorDims(right, {0}, {1}),
+                                   SliceInMinorDims(left, {1}, {k - 1})},
+                                  ndim - 1),
+                      ConcatInDim(builder,
+                                  {SliceInMinorDims(right, {1}, {k}),
+                                   SliceInMinorDims(left, {k - 1}, {k})},
+                                  ndim - 1));
+}
+
+// Performs one round of parallel Jacobi rotations; n-1 rounds make a sweep.
+// After each rotation, we permute the rows and columns of the quadrants of the
+// matrix. The effect of the permutations is that all pairs of rows end up
+// on the diagonal of the quadrants after n-1 rounds. The permutations are an
+// implicit way of computing a tournament for n players such that each player
+// plays every other player exactly once in n - 1 rounds. See the Brent/Luk
+// paper for more details.
+void ApplyRotations(int64 n, XlaOp& w_tl, XlaOp& w_tr, XlaOp& w_bl, XlaOp& w_br,
+                    XlaOp& v_tl, XlaOp& v_tr, XlaOp& v_bl, XlaOp& v_br) {
+  Eigh2x2 rotation = SymmetricEigenDecomposition2x2(w_tl, w_tr, w_br);
+
+  ApplyJacobiRotationOverRows(rotation, w_tl, w_tr, w_bl, w_br);
+  ApplyJacobiRotationOverCols(rotation, w_tl, w_tr, w_bl, w_br);
+  w_tl = SetMatrixDiagonal(w_tl, rotation.rt1);
+  w_tr = SetMatrixDiagonal(w_tr, ZerosLike(rotation.rt1));
+  w_bl = SetMatrixDiagonal(w_bl, ZerosLike(rotation.rt1));
+  w_br = SetMatrixDiagonal(w_br, rotation.rt2);
+
+  PermuteColumnsInRow(w_tl, w_tr);
+  PermuteColumnsInRow(w_bl, w_br);
+  PermuteRowsInColumn(w_tl, w_bl);
+  PermuteRowsInColumn(w_tr, w_br);
+
+  // Apply the rotations to the eigenvector matrix.
+  // TODO(phawkins): we could omit this if we aren't interested in computing the
+  // eigenvectors.
+  ApplyJacobiRotationOverRows(rotation, v_tl, v_tr, v_bl, v_br);
+  PermuteRowsInColumn(v_tl, v_bl);
+  PermuteRowsInColumn(v_tr, v_br);
+}
 
 struct FrobeniusNorms {
   XlaOp off_diagonal_norm;
   XlaOp total_norm;
 };
 
-// Given an n-by-n symmetric A and integers p and q that satisfy 0 <= p < q < n,
-// it computes a rotation matrix G = [[c, s], [-s, c]], such that
-//                        G_T * A[[p, q], [p, q]] * G
-// is diagonalized.
-//
-//  def sym_schur2x2(A, p, q):
-//      if np.abs(A[p, q]) > 1e-6:
-//          tau = (A[q, q] - A[p, p]) / (2 * A[p, q])
-//          if tau >= 0:
-//              t = 1.0 / (tau + np.sqrt(1 + tau ** 2))
-//          else:
-//              t = -1.0 / (-tau + np.sqrt(1 + tau ** 2))
-//          c = 1.0 / np.sqrt(1.0 + t ** 2)
-//          s = t * c
-//      else:
-//          c = 1.0
-//          s = 0.0
-//      return c, s
-StatusOr<JacobiRotation> SymmetricShurDecomposition2x2(XlaOp a, XlaOp p,
-                                                       XlaOp q, XlaOp tol) {
-  XlaBuilder* builder = a.builder();
-  TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-
-  auto zero = ScalarLike(a, 0.0);
-  auto one = ScalarLike(a, 1.0);
-  auto two = ScalarLike(a, 2.0);
-
-  auto pqs = DynamicSliceInMinorDims(a, {p, q}, {1, 1});
-
-  auto ps = DynamicSliceInMinorDims(a, {p, p}, {1, 1});
-  auto qs = DynamicSliceInMinorDims(a, {q, q}, {1, 1});
-
-  auto tau = (qs - ps) / (pqs * two);
-  auto t_pos = one / (tau + Sqrt(one + Square(tau)));
-  auto t_neg = -one / (-tau + Sqrt(one + Square(tau)));
-  auto t = Select(Ge(tau, zero), t_pos, t_neg);
-
-  auto c_temp = Rsqrt(one + Square(t));
-  auto s_temp = t * c_temp;
-
-  auto c = Select(Ge(Abs(pqs), tol), c_temp, ZerosLike(c_temp) + one);
-  auto s = Select(Ge(Abs(pqs), tol), s_temp, ZerosLike(s_temp));
-  // Renormalize c and s to compensate for low precision arithmetic, this step
-  // is redundant if high precision float is used, like float64.
-  auto rnorm = Rsqrt(Square(c) + Square(s));
-
-  JacobiRotation schur;
-
-  schur.c = c * rnorm;
-  schur.s = s * rnorm;
-
-  return schur;
-}
-
-StatusOr<JacobiUpdate> Update(JacobiUpdate jacobi_update, XlaOp p, XlaOp q,
-                              XlaOp tol, int64 n) {
-  XlaBuilder* builder = jacobi_update.w.builder();
-  TF_ASSIGN_OR_RETURN(JacobiRotation schur, SymmetricShurDecomposition2x2(
-                                                jacobi_update.w, p, q, tol));
-
-  TF_ASSIGN_OR_RETURN(Shape w_shape, builder->GetShape(jacobi_update.w));
-  const std::vector<int64> batch_dims(w_shape.dimensions().begin(),
-                                      w_shape.dimensions().end() - 2);
-  const int64 num_dims = w_shape.rank();
-
-  auto zero = ScalarLike(p, 0);
-
-  XlaOp c = schur.c;
-  XlaOp s = schur.s;
-
-  auto slice_p = DynamicSliceInMinorDims(jacobi_update.w, {p, zero}, {1, n});
-  auto slice_q = DynamicSliceInMinorDims(jacobi_update.w, {q, zero}, {1, n});
-
-  auto slice_p_new = c * slice_p - s * slice_q;
-  auto slice_q_new = s * slice_p + c * slice_q;
-
-  jacobi_update.w =
-      DynamicUpdateSliceInMinorDims(jacobi_update.w, slice_p_new, {p, zero});
-  jacobi_update.w =
-      DynamicUpdateSliceInMinorDims(jacobi_update.w, slice_q_new, {q, zero});
-
-  slice_p = DynamicSliceInMinorDims(jacobi_update.w, {zero, p}, {n, 1});
-  slice_q = DynamicSliceInMinorDims(jacobi_update.w, {zero, q}, {n, 1});
-
-  slice_p_new = c * slice_p - s * slice_q;
-  slice_q_new = s * slice_p + c * slice_q;
-
-  jacobi_update.w =
-      DynamicUpdateSliceInMinorDims(jacobi_update.w, slice_p_new, {zero, p});
-  jacobi_update.w =
-      DynamicUpdateSliceInMinorDims(jacobi_update.w, slice_q_new, {zero, q});
-
-  // Zero out a_{pq} explicitly.
-  std::vector<int64> pq_dims(batch_dims.begin(), batch_dims.end());
-  pq_dims.push_back(1);
-  pq_dims.push_back(1);
-  auto pq_zero = ScalarLike(jacobi_update.w, 0.0);
-  auto pq_zeros = Broadcast(pq_zero, pq_dims);
-  jacobi_update.w =
-      DynamicUpdateSliceInMinorDims(jacobi_update.w, pq_zeros, {p, q});
-  jacobi_update.w =
-      DynamicUpdateSliceInMinorDims(jacobi_update.w, pq_zeros, {q, p});
-
-  slice_p = DynamicSliceInMinorDims(jacobi_update.v, {zero, p}, {n, 1});
-  slice_q = DynamicSliceInMinorDims(jacobi_update.v, {zero, q}, {n, 1});
-
-  std::vector<int64> broadcast_dims(batch_dims.size());
-  std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
-  broadcast_dims.push_back(num_dims - 1);
-
-  // Renormalize the p-th and q-th columns. This step is redundant if high
-  // precision floats are used, like 64-bit float. But for 32-bit float, it
-  // becomes necessary. This step will not increase the overall complexity.
-  slice_p_new = c * slice_p - s * slice_q;
-  slice_p_new = Mul(
-      slice_p_new,
-      Rsqrt(Reduce(Square(slice_p_new), pq_zero,
-                   CreateScalarAddComputation(w_shape.element_type(), builder),
-                   {num_dims - 2})),
-      broadcast_dims);
-  slice_q_new = s * slice_p + c * slice_q;
-  slice_q_new = Mul(
-      slice_q_new,
-      Rsqrt(Reduce(Square(slice_q_new), pq_zero,
-                   CreateScalarAddComputation(w_shape.element_type(), builder),
-                   {num_dims - 2})),
-      broadcast_dims);
-
-  jacobi_update.v =
-      DynamicUpdateSliceInMinorDims(jacobi_update.v, slice_p_new, {zero, p});
-  jacobi_update.v =
-      DynamicUpdateSliceInMinorDims(jacobi_update.v, slice_q_new, {zero, q});
-
-  return jacobi_update;
-}
-
-StatusOr<FrobeniusNorms> ComputeFrobeniusNorms(XlaOp w) {
-  XlaBuilder* builder = w.builder();
-  TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(w));
+StatusOr<FrobeniusNorms> ComputeFrobeniusNorms(XlaOp w_tl, XlaOp w_tr,
+                                               XlaOp w_bl, XlaOp w_br) {
+  XlaBuilder* builder = w_tl.builder();
+  TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(w_tl));
   const int64 num_dims = shape.rank();
   auto frobenius_norm =
-      Sqrt(Reduce(Square(w), ScalarLike(w, 0.0),
+      Sqrt(Reduce(Square(w_tl) + Square(w_tr) + Square(w_bl) + Square(w_br),
+                  ScalarLike(w_tl, 0.0),
                   CreateScalarAddComputation(shape.element_type(), builder),
                   {num_dims - 2, num_dims - 1}));
-  auto diag = GetMatrixDiagonal(w);
   auto diag_square =
-      Reduce(Square(diag), ScalarLike(w, 0.0),
+      Reduce(Square(GetMatrixDiagonal(w_tl)) + Square(GetMatrixDiagonal(w_br)),
+             ScalarLike(w_tl, 0.0),
              CreateScalarAddComputation(shape.element_type(), builder),
              {num_dims - 2});
 
   FrobeniusNorms frobenius_norms;
 
   frobenius_norms.off_diagonal_norm =
-      Sqrt(Max(Square(frobenius_norm) - diag_square, ScalarLike(w, 0.0)));
+      Sqrt(Max(Square(frobenius_norm) - diag_square, ScalarLike(w_tl, 0.0)));
   frobenius_norms.total_norm = frobenius_norm;
 
   return frobenius_norms;
 }
 
-StatusOr<std::vector<XlaOp>> WhileLoopFn(
-    absl::Span<const XlaOp> initial_values,  //
-    int matrix_dimension,                    //
-    int max_sweep_updates,                   //
-    PrimitiveType index_type,                //
-    absl::string_view name,                  //
-    XlaBuilder* builder) {
+StatusOr<std::vector<XlaOp>> Sweeps(absl::Span<const XlaOp> initial_values,
+                                    int64 n, int max_iters,
+                                    PrimitiveType index_type,
+                                    XlaBuilder* builder) {
   auto while_cond_fn = [&](absl::Span<const XlaOp> values,
                            XlaBuilder* cond_builder) -> StatusOr<XlaOp> {
-    auto k = values[0];
-    auto max_sweeps = ScalarLike(k, max_sweep_updates);
-    auto sweep_update_cond = Gt(max_sweeps, k);
+    auto iter_cond = Lt(values[0], ScalarLike(values[0], max_iters));
 
-    TF_ASSIGN_OR_RETURN(auto norms, ComputeFrobeniusNorms(values[2]));
-    auto tol = norms.total_norm * values[3];
+    XlaOp w_tl, w_tr, w_bl, w_br;
+    std::tie(w_tl, w_tr, w_bl, w_br) =
+        std::make_tuple(values[2], values[3], values[4], values[5]);
+    TF_ASSIGN_OR_RETURN(auto norms,
+                        ComputeFrobeniusNorms(w_tl, w_tr, w_bl, w_br));
+    auto tol = norms.total_norm * values[1];
     auto tol_cond = ReduceAll(Lt(tol, norms.off_diagonal_norm),
                               xla::ConstantR0<bool>(cond_builder, false),
                               CreateScalarOrComputation(PRED, cond_builder));
 
-    return And(sweep_update_cond, tol_cond);
+    return And(iter_cond, tol_cond);
   };
 
   auto while_body_fn =
       [&](absl::Span<const XlaOp> values,
           XlaBuilder* body_builder) -> StatusOr<std::vector<XlaOp>> {
-    auto while_cond_fn_inner =
-        [&](absl::Span<const XlaOp> values_inner,
-            XlaBuilder* inner_cond_builder) -> StatusOr<XlaOp> {
-      auto p = values_inner[0];
-      return Lt(p, ScalarLike(p, matrix_dimension - 1));
-    };
-
-    auto while_body_fn_inner =
-        [&](absl::Span<const XlaOp> values_inner,
-            XlaBuilder* inner_body_builder) -> StatusOr<std::vector<XlaOp>> {
-      auto while_cond_fn_innermost =
-          [&](absl::Span<const XlaOp> values_innermost,
-              XlaBuilder* innermost_cond_builder) -> StatusOr<XlaOp> {
-        auto q = values_innermost[1];
-        return Lt(q, ScalarLike(q, matrix_dimension));
-      };
-      auto while_body_fn_innermost =
-          [&](absl::Span<const XlaOp> values_innermost,
-              XlaBuilder* innermost_body_builder)
-          -> StatusOr<std::vector<XlaOp>> {
-        auto p = values_innermost[0];
-        auto q = values_innermost[1];
-
-        JacobiUpdate jacobi_update;
-        jacobi_update.v = values_innermost[2];
-        jacobi_update.w = values_innermost[3];
-
-        auto tol = values_innermost[4];
-
-        TF_ASSIGN_OR_RETURN(jacobi_update,
-                            Update(jacobi_update, p, q, tol, matrix_dimension));
-
-        std::vector<XlaOp> updated_values_innermost;
-        updated_values_innermost.reserve(values_innermost.size());
-
-        updated_values_innermost.push_back(p);
-        updated_values_innermost.push_back(q + ScalarLike(q, 1));
-        updated_values_innermost.push_back(jacobi_update.v);
-        updated_values_innermost.push_back(jacobi_update.w);
-        updated_values_innermost.push_back(tol);
-
-        return updated_values_innermost;
-      };
-
-      std::vector<XlaOp> values_innermost(5);
-      auto p = values_inner[0];
-      auto q = p + ScalarLike(p, 1);
-      values_innermost[0] = p;                // index p.
-      values_innermost[1] = q;                // index q.
-      values_innermost[2] = values_inner[1];  // v.
-      values_innermost[3] = values_inner[2];  // w.
-      values_innermost[4] = values_inner[3];  // tol.
-      TF_ASSIGN_OR_RETURN(
-          values_innermost,
-          WhileLoopHelper(while_cond_fn_innermost, while_body_fn_innermost,
-                          values_innermost, absl::StrCat(name, "-Innermost"),
-                          inner_body_builder));
-
-      std::vector<XlaOp> updated_values_inner;
-      updated_values_inner.reserve(values_inner.size());
-
-      updated_values_inner.push_back(p + ScalarLike(p, 1));
-      updated_values_inner.push_back(values_innermost[2]);
-      updated_values_inner.push_back(values_innermost[3]);
-      updated_values_inner.push_back(values_innermost[4]);
-      return updated_values_inner;
-    };
-    // Indexes.
-    XlaOp k = values[0];
-
-    std::vector<XlaOp> values_inner(4);
-    values_inner[0] = ScalarLike(k, 0);  // index p.
-    values_inner[1] = values[1];         // v.
-    values_inner[2] = values[2];         // w.
-    values_inner[3] = values[3];         // tol.
+    std::vector<XlaOp> sweep_values(values.begin() + 1, values.end());
     TF_ASSIGN_OR_RETURN(
-        values_inner,
-        WhileLoopHelper(while_cond_fn_inner, while_body_fn_inner, values_inner,
-                        absl::StrCat(name, "-Inner"), body_builder));
-
-    std::vector<XlaOp> updated_values;
-    updated_values.reserve(values_inner.size());
-
-    updated_values.push_back(k + ScalarLike(k, 1));
-    updated_values.push_back(values_inner[1]);
-    updated_values.push_back(values_inner[2]);
-    updated_values.push_back(values_inner[3]);
-
-    return updated_values;
+        sweep_values,
+        ForEachIndex(
+            n - 1, S32,
+            [&](XlaOp iter, absl::Span<const XlaOp> values,
+                XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
+              XlaOp tol, w_tl, w_tr, w_bl, w_br, v_tl, v_tr, v_bl, v_br;
+              std::tie(tol, w_tl, w_tr, w_bl, w_br, v_tl, v_tr, v_bl, v_br) =
+                  std::make_tuple(values[0], values[1], values[2], values[3],
+                                  values[4], values[5], values[6], values[7],
+                                  values[8]);
+              ApplyRotations(n, w_tl, w_tr, w_bl, w_br, v_tl, v_tr, v_bl, v_br);
+              return std::vector<XlaOp>{tol,  w_tl, w_tr, w_bl, w_br,
+                                        v_tl, v_tr, v_bl, v_br};
+            },
+            sweep_values, "ApplyRotations", body_builder));
+    std::vector<XlaOp> output(values.size());
+    output[0] = values[0] + ScalarLike(values[0], 1);
+    std::copy(sweep_values.begin(), sweep_values.end(), output.begin() + 1);
+    return output;
   };
-  std::vector<XlaOp> values;
-  TF_ASSIGN_OR_RETURN(values, WhileLoopHelper(while_cond_fn, while_body_fn,
-                                              initial_values, name, builder));
-
-  return values;
+  return WhileLoopHelper(while_cond_fn, while_body_fn, initial_values,
+                         "EighJacobiSweeps", builder);
 }
 
 StatusOr<SelfAdjointEigResult> SortByEigenvalues(SelfAdjointEigResult result) {
@@ -360,36 +397,59 @@ StatusOr<SelfAdjointEigResult> SortByEigenvalues(SelfAdjointEigResult result) {
 
 }  // namespace
 
-// This is the cyclic Jacobi iteration. Please note that the eigenvalues are
-// possibly not ordered.
+// This is the cyclic Jacobi iteration.
 //
-//  def jacobi(A):
-//      n, _ = A.shape
-//      V = np.eye(n)
-//      frobenius_norm = np.linalg.norm(A)
-//      diag_norm = np.linalg.norm(np.diag(A))
-//      off_diag_norm = np.sqrt(
-//          frobenius_norm - diag_norm) * np.sqrt(frobenius_norm + diag_norm)
-//      while off_diag_norm > 1e-6 * frobenius_norm:
-//          for p in range(n - 1):
-//              for q in range(p + 1, n):
-//                  c, s = sym_schur2x2(A, p, q)
-//                  A[[p, q], :] = np.matmul(np.array([[c, -s], [s, c]]),
-//                                           A[[p, q], :])
-//                  A[:, [p, q]] = np.matmul(A[:, [p, q]],
-//                                           np.array([[c, s], [-s, c]]))
-//                  V[:, [p, q]] = np.matmul(V[:, [p, q]],
-//                                               np.array([[c, s], [-s, c]]))
-//          frobenius_norm = np.linalg.norm(A)
-//          diag_norm = np.linalg.norm(np.diag(A))
-//          off_diag_norm = np.sqrt(
-//              frobenius_norm - diag_norm) * np.sqrt(
-//                  frobenius_norm + diag_norm)
+// def jacobi(A):
+//   n, _ = A.shape
+//   tl = A[:n // 2, :n // 2]
+//   bl = A[n // 2:, :n // 2]
+//   tr = A[:n // 2, n // 2:]
+//   br = A[n // 2:, n // 2:]
+//   v_tl = np.eye(n // 2, dtype=A.dtype)
+//   v_tr = np.zeros((n // 2, n // 2), A.dtype)
+//   v_bl = np.zeros((n // 2, n // 2), A.dtype)
+//   v_br = np.eye(n // 2, dtype=A.dtype)
+//   frobenius_norm = np.sqrt(np.sum(np.square(tl) + np.square(tr) +
+//                            np.square(bl) + np.square(br)))
+//   diag_norm = np.sqrt(np.sum(np.square(np.diag(tl)) +
+//                              np.square(np.diag(br))))
+//    off_diag_norm = np.sqrt(frobenius_norm - diag_norm) * np.sqrt(
+//            frobenius_norm + diag_norm)
+//   while off_diag_norm > 1e-6 * frobenius_norm:
+//     for i in range(n - 1):
+//       c, s = sym_schur2x2(tl, tr, br)
+//        tl, tr, bl, br = (
+//          tl * c[:, None] - bl * s[:, None],
+//          tr * c[:, None] - br * s[:, None],
+//          tl * s[:, None] + bl * c[:, None],
+//          tr * s[:, None] + br * c[:, None],
+//        )
+//        tl, tr, bl, br = (
+//          tl * c[None, :] - tr * s[None, :],
+//          tl * s[None, :] + tr * c[None, :],
+//          bl * c[None, :] - br * s[None, :],
+//          bl * s[None, :] + br * c[None, :],
+//        )
+//        tl, bl = permute_rows_in_col(tl, bl)
+//        tr, br = permute_rows_in_col(tr, br)
+//        tl, tr = permute_cols_in_row(tl, tr)
+//        bl, br = permute_cols_in_row(bl, br)
+//        v_tl, v_tr, v_bl, v_br = (
+//          v_tl * c[:, None] - v_bl * s[:, None],
+//          v_tr * c[:, None] - v_br * s[:, None],
+//          v_tl * s[:, None] + v_bl * c[:, None],
+//          v_tr * s[:, None] + v_br * c[:, None],
+//        )
+//        v_tl, v_bl = permute_rovs_in_col(v_tl, v_bl)
+//        v_tr, v_br = permute_rovs_in_col(v_tr, v_br)
 //
-//      return A, V
-//
-// TODO(kuny): Implement parallel order Jacobi.
-//
+//     frobenius_norm = np.sqrt(np.sum(np.square(tl) + np.square(tr) +
+//                              np.square(bl) + np.square(br)))
+//     diag_norm = np.sqrt(np.sum(np.square(np.diag(tl)) +
+//                         np.square(np.diag(br))))
+//     off_diag_norm = np.sqrt(frobenius_norm - diag_norm) * np.sqrt(
+//             frobenius_norm + diag_norm)
+//   return A, V
 SelfAdjointEigResult SelfAdjointEig(XlaOp a, bool lower, int64 max_iter,
                                     float epsilon) {
   XlaBuilder* builder = a.builder();
@@ -421,8 +481,8 @@ SelfAdjointEigResult SelfAdjointEig(XlaOp a, bool lower, int64 max_iter,
 
   if (m != n) {
     return return_error(InvalidArgument(
-        "Arguments to Eigen decomposition must be square matrices: got shape "
-        "(%d, %d).",
+        "Arguments to symmetric eigendecomposition must be square matrices: "
+        "got shape (%d, %d).",
         m, n));
   }
 
@@ -432,33 +492,84 @@ SelfAdjointEigResult SelfAdjointEig(XlaOp a, bool lower, int64 max_iter,
     batch_dims[i] = ShapeUtil::GetDimension(a_shape, i);
   }
 
+  if (m <= 1) {
+    SelfAdjointEigResult result;
+    result.v = FullLike(a, 1);
+    result.w = GetMatrixDiagonal(a);
+    return result;
+  }
+
   auto tol = ScalarLike(a, epsilon);
 
-  auto v_init = Broadcast(IdentityMatrix(builder, type, m, m), batch_dims);
-  auto w_init = Triangle(a, lower);
-  w_init = w_init + TransposeInMinorDims(w_init) - w_init * v_init;
+  auto eye = Broadcast(IdentityMatrix(builder, type, m, m), batch_dims);
+  a = Triangle(a, lower);
+  a = a + TransposeInMinorDims(a) - a * eye;
 
-  auto output_with_status = WhileLoopFn(
+  const int64 k = CeilOfRatio(n, int64{2});
+  // tl = A[:n // 2, :n // 2]
+  // bl = A[n // 2:, :n // 2]
+  // tr = A[:n // 2, n // 2:]
+  // br = A[n // 2:, n // 2:]
+  auto tl = SliceInMinorDims(a, {0, 0}, {k, k});
+  auto bl = SliceInMinorDims(a, {k, 0}, {n, k});
+  auto tr = SliceInMinorDims(a, {0, k}, {k, n});
+  auto br = SliceInMinorDims(a, {k, k}, {n, n});
+  if (n % 2) {
+    auto zero = Zero(builder, type);
+    tr = PadInDim(tr, zero, num_dims - 1, /*pad_lo=*/0, /*pad_hi=*/1);
+    bl = PadInDim(bl, zero, num_dims - 2, /*pad_lo=*/0, /*pad_hi=*/1);
+    PaddingConfig config = MakeNoPaddingConfig(num_dims);
+    config.mutable_dimensions(num_dims - 2)->set_edge_padding_high(1);
+    config.mutable_dimensions(num_dims - 1)->set_edge_padding_high(1);
+    br = Pad(br, zero, config);
+  }
+  // v_tl = np.eye(n // 2, dtype=A.dtype)
+  // v_tr = np.zeros((n // 2, n // 2), A.dtype)
+  // v_bl = np.zeros((n // 2, n // 2), A.dtype)
+  // v_br = np.eye(n // 2, dtype=A.dtype)
+  auto v_tl = Broadcast(IdentityMatrix(builder, type, k, k), batch_dims);
+  auto v_br = v_tl;
+  auto v_tr = ZerosLike(v_tl);
+  auto v_bl = v_tr;
+
+  auto output_with_status = Sweeps(
       {
-          Zero(builder, S32),  // k
-          v_init,              // v
-          w_init,              // w
-          tol,                 //
-      },                       //
-      n,                       //
-      max_iter,                //
-      S32,                     //
-      "CyclicJacobi",          //
-      builder);
+          Zero(builder, S32),
+          tol,
+          tl,
+          tr,
+          bl,
+          br,
+          v_tl,
+          v_tr,
+          v_bl,
+          v_br,
+      },
+      k * 2, max_iter, S32, builder);
   if (!output_with_status.ok()) {
     return return_error(output_with_status.status());
   }
 
   auto output = output_with_status.ValueOrDie();
+  std::tie(tl, tr, bl, br) = {output[2], output[3], output[4], output[5]};
+  std::tie(v_tl, v_tr, v_bl, v_br) = {output[6], output[7], output[8],
+                                      output[9]};
 
   SelfAdjointEigResult result;
-  result.v = output[1];
-  result.w = GetMatrixDiagonal(output[2]);
+  auto w = ConcatInDim(builder,
+                       {ConcatInDim(builder, {tl, tr}, num_dims - 1),
+                        ConcatInDim(builder, {bl, br}, num_dims - 1)},
+                       num_dims - 2);
+  auto v = ConcatInDim(builder,
+                       {ConcatInDim(builder, {v_tl, v_tr}, num_dims - 1),
+                        ConcatInDim(builder, {v_bl, v_br}, num_dims - 1)},
+                       num_dims - 2);
+  if (n % 2) {
+    w = SliceInMinorDims(w, {0, 0}, {n, n});
+    v = SliceInMinorDims(v, {0, 0}, {n, n});
+  }
+  result.v = TransposeInMinorDims(v);
+  result.w = GetMatrixDiagonal(w);
 
   auto result_or = SortByEigenvalues(result);
   if (!result_or.ok()) {
