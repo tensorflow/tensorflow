@@ -455,7 +455,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
                   for d in self._devices))
       return input_lib.InputWorkers(self._input_workers_devices)
     else:
-      if not options.experimental_prefetch_to_device:
+      if not options.experimental_fetch_to_device:
         return input_lib.InputWorkers([
             (host_device, (host_device,) * len(compute_devices))
             for host_device, compute_devices in self._input_workers_devices

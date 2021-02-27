@@ -1467,12 +1467,12 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
           input_options=[
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
-                  experimental_prefetch_to_device=True,
+                  experimental_fetch_to_device=True,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_WORKER),
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
-                  experimental_prefetch_to_device=True,
+                  experimental_fetch_to_device=True,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_REPLICA),
           ],
@@ -1509,7 +1509,7 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
           input_options=[
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
-                  experimental_prefetch_to_device=False,
+                  experimental_fetch_to_device=False,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_WORKER)
           ],
@@ -1541,12 +1541,12 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
           input_options=[
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=True,
-                  experimental_prefetch_to_device=False,
+                  experimental_fetch_to_device=False,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_WORKER),
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=True,
-                  experimental_prefetch_to_device=True,
+                  experimental_fetch_to_device=True,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_REPLICA)
           ],
@@ -1572,11 +1572,11 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
           input_options=[
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
-                  experimental_prefetch_to_device=False,
+                  experimental_fetch_to_device=False,
                   experimental_per_replica_buffer_size=2),
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
-                  experimental_prefetch_to_device=True,
+                  experimental_fetch_to_device=True,
                   experimental_per_replica_buffer_size=2),
           ],
           mode=["eager"],
@@ -1605,12 +1605,12 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
           input_options=[
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
-                  experimental_prefetch_to_device=False,
+                  experimental_fetch_to_device=False,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_WORKER),
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
-                  experimental_prefetch_to_device=True,
+                  experimental_fetch_to_device=True,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_WORKER),
           ],
@@ -1641,17 +1641,17 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
           input_options=[
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=True,
-                  experimental_prefetch_to_device=False,
+                  experimental_fetch_to_device=False,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_REPLICA),
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
-                  experimental_prefetch_to_device=False,
+                  experimental_fetch_to_device=False,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_REPLICA),
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
-                  experimental_prefetch_to_device=True,
+                  experimental_fetch_to_device=True,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_REPLICA),
           ],

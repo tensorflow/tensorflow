@@ -622,12 +622,11 @@ class RunOptions(
 @tf_export("distribute.InputOptions", v1=[])
 class InputOptions(
     collections.namedtuple("InputOptions", [
-        # TODO(b/180518705): Rename `experimental_prefetch_to_device` to
-        # `experimental_fetch_to_device` to better reflect its functionality.
-        "experimental_prefetch_to_device",
+        "experimental_fetch_to_device",
         "experimental_replication_mode",
         "experimental_place_dataset_on_device",
         "experimental_per_replica_buffer_size",
+        "experimental_prefetch_to_device",  # Deprecated
     ])):
   """Run options for `experimental_distribute_dataset(s_from_function)`.
 
@@ -652,11 +651,12 @@ class InputOptions(
   ```
 
   Attributes:
-    experimental_prefetch_to_device: Boolean. Defaults to True. If True, dataset
+    experimental_fetch_to_device: Boolean. If True, dataset
       elements will be prefetched to accelerator device memory. When False,
       dataset elements are prefetched to host device memory. Must be False when
-      using TPUEmbedding API. experimental_prefetch_to_device can only be used
-      with experimental_replication_mode=PER_WORKER
+      using TPUEmbedding API. experimental_fetch_to_device can only be used
+      with experimental_replication_mode=PER_WORKER. Default behavior is same as
+      setting it to True.
     experimental_replication_mode: Replication mode for the input function.
       Currently, the InputReplicationMode.PER_REPLICA is only supported with
       tf.distribute.MirroredStrategy.
@@ -670,19 +670,26 @@ class InputOptions(
       prefetch buffer size in the replica device memory. Users can set it
       to 0 to completely disable prefetching behavior, or a number greater than
       1 to enable larger buffer size. Note that this option is still
-      valid with `experimental_prefetch_to_device=False`.
+      valid with `experimental_fetch_to_device=False`.
   """
 
   def __new__(cls,
-              experimental_prefetch_to_device=True,
+              experimental_fetch_to_device=None,
               experimental_replication_mode=InputReplicationMode.PER_WORKER,
               experimental_place_dataset_on_device=False,
-              experimental_per_replica_buffer_size=1):
+              experimental_per_replica_buffer_size=1,
+              experimental_prefetch_to_device=True):
+    if experimental_fetch_to_device is None:
+      # TODO(b/180133992): Remove `experimental_prefetch_to_device` after
+      # replacing all its usages with `experimental_fetch_to_device`.
+      experimental_fetch_to_device = experimental_prefetch_to_device
+
     return super(InputOptions,
-                 cls).__new__(cls, experimental_prefetch_to_device,
+                 cls).__new__(cls, experimental_fetch_to_device,
                               experimental_replication_mode,
                               experimental_place_dataset_on_device,
-                              experimental_per_replica_buffer_size)
+                              experimental_per_replica_buffer_size,
+                              experimental_prefetch_to_device)
 
 # ------------------------------------------------------------------------------
 # Base classes for all distribution strategies.

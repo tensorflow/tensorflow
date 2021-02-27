@@ -163,8 +163,7 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
 
     dist = strategy.experimental_distribute_dataset(
         dataset,
-        options=distribute_lib.InputOptions(
-            experimental_prefetch_to_device=False))
+        options=distribute_lib.InputOptions(experimental_fetch_to_device=False))
     dist_iter = iter(dist)
 
     @def_function.function
@@ -446,8 +445,7 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
     input_fn = self._create_dense_input_fn(strategy)
     dist = strategy.distribute_datasets_from_function(
         input_fn,
-        options=distribute_lib.InputOptions(
-            experimental_prefetch_to_device=False))
+        options=distribute_lib.InputOptions(experimental_fetch_to_device=False))
     dist_iter = iter(dist)
 
     @def_function.function
@@ -497,10 +495,12 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
       dataset = self._create_sparse_dataset(strategy)
     else:
       dataset = self._create_ragged_dataset(strategy)
-    data = next(iter(strategy.experimental_distribute_dataset(
-        dataset,
-        options=distribute_lib.InputOptions(
-            experimental_prefetch_to_device=False))))
+    data = next(
+        iter(
+            strategy.experimental_distribute_dataset(
+                dataset,
+                options=distribute_lib.InputOptions(
+                    experimental_fetch_to_device=False))))
 
     @def_function.function
     def embedding_and_set_gradients(data):
