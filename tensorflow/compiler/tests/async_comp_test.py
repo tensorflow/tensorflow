@@ -20,22 +20,13 @@ from __future__ import print_function
 
 import os
 
-import numpy as np
-
-from tensorflow.compiler.tests import test_utils
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session as session_lib
-from tensorflow.python.compiler.xla import jit
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 
 def RunMetadataLabels(run_metadata):
@@ -85,14 +76,15 @@ class AsyncCompilationTest(test.TestCase):
 
       # Execute the session until after asynchronous compilation is finished
       # and the compiled cluster has been executed once.
-      while (not hasXlaRunOp) :
-          sess.run(
-              y,
-              feed_dict={x: [0.] * 60},
-              run_metadata=run_metadata,
-              options=config_pb2.RunOptions(
-                  trace_level=config_pb2.RunOptions.FULL_TRACE))
-          hasXlaRunOp = MetadataHasXlaRunOp(run_metadata)
+      while (not hasXlaRunOp):
+        run_metadata = config_pb2.RunMetadata()
+        sess.run(
+            y,
+            feed_dict={x: [0.] * 60},
+            run_metadata=run_metadata,
+            options=config_pb2.RunOptions(
+                trace_level=config_pb2.RunOptions.FULL_TRACE))
+        hasXlaRunOp = MetadataHasXlaRunOp(run_metadata)
 
 if __name__ == "__main__":
   os.environ["TF_XLA_FLAGS"] = ("--tf_xla_async_compilation=true " +

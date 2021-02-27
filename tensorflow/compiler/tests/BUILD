@@ -1662,11 +1662,8 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework",
-        "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_ops",
         "//tensorflow/python/compiler/xla:compiler_py",
     ],
 )
