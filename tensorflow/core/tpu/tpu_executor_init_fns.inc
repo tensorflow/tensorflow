@@ -49,6 +49,8 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
   TFTPU_SET_FN(executor_fn, TpuExecutor_BlockUntilDoneOrFailed);
   TFTPU_SET_FN(executor_fn, TpuExecutor_SyncAndForgetFailedStreams);
   TFTPU_SET_FN(executor_fn, TpuExecutor_SynchronizeAllActivity);
+  TFTPU_SET_FN(executor_fn, TpuExecutor_UnloadAllPrograms);
+  TFTPU_SET_FN(executor_fn, TpuExecutor_EnqueueCompactionOnStreamForHbm);
 
   TFTPU_SET_FN(executor_fn, TpuStream_New);
   TFTPU_SET_FN(executor_fn, TpuStream_Free);

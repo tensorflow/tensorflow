@@ -25,7 +25,6 @@ from six.moves import range
 import tensorflow as tf
 
 from tensorflow.lite.python import util
-from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import dtypes
@@ -39,38 +38,6 @@ from tensorflow.python.platform import test
 
 # TODO(nupurgarg): Add test for Grappler and frozen graph related functions.
 class UtilTest(test_util.TensorFlowTestCase):
-
-  def testConvertDtype(self):
-    self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.float32), _types_pb2.FLOAT)
-    self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.float16), _types_pb2.FLOAT16)
-    self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.int32), _types_pb2.INT32)
-    self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.uint32), _types_pb2.UINT32)
-    self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.uint8),
-        _types_pb2.QUANTIZED_UINT8)
-    self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.int64), _types_pb2.INT64)
-    self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.string), _types_pb2.STRING)
-    self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.bool), _types_pb2.BOOL)
-    self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.int16),
-        _types_pb2.QUANTIZED_INT16)
-    self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.complex64),
-        _types_pb2.COMPLEX64)
-    self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.int8), _types_pb2.INT8)
-    self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.float64), _types_pb2.FLOAT64)
-    self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.complex128),
-        _types_pb2.COMPLEX128)
 
   def testConvertEnumToDtype(self):
     self.assertEqual(

@@ -113,6 +113,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/saver.pb.h"
 #include "tensorflow/core/protobuf/struct.pb.h"
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
+#include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
@@ -1984,8 +1985,28 @@ Status ImporterBase::ConvertNode(const Node& node) {
   }
 
   const auto& node_def = node.def();
+  // NodeDef can contain partial TF device names. In such cases, canonicalize
+  // it. Note that in current TF, placer will place full device name to each
+  // node.
+  DeviceNameUtils::ParsedName parsed_name;
+  if (!DeviceNameUtils::ParseFullName(node_def.device(), &parsed_name)) {
+    return errors::InvalidArgument(
+        "Op ", op_name, " has invalid device name: ", node_def.device());
+  }
+  // Keep the parsed name untouched if the device name is empty.
+  if (!node_def.device().empty()) {
+    if (!parsed_name.has_type) {
+      parsed_name.type = "CPU";
+      parsed_name.has_type = true;
+    }
+    if (!parsed_name.has_id) {
+      parsed_name.id = 0;
+      parsed_name.has_id = true;
+    }
+  }
   result.attributes.push_back(builder_.getNamedAttr(
-      "device", builder_.getStringAttr(std::string(node_def.device()))));
+      "device", builder_.getStringAttr(
+                    DeviceNameUtils::ParsedNameToString(parsed_name))));
 
   // Map user function calls to LegacyCall ops and add the user function name
   // as an attribute.
@@ -3592,7 +3613,7 @@ Status SavedModelSignatureDefImporterLite::ConvertInitializer(
   mlir::SymbolTable sub_symbol_table(*sub_module);
 
   auto init_func_op = sub_symbol_table.lookup<mlir::FuncOp>(target_node_name);
-  init_func_op.removeAttr("tf.entry_function");
+  init_func_op->removeAttr("tf.entry_function");
 
   mlir::OpBuilder builder(module_->getBodyRegion());
 
@@ -3820,7 +3841,7 @@ class SavedModelSignatureDefImporter {
     (*module)->setAttr("tf_saved_model.under_construction",
                        builder.getUnitAttr());
     TF_RETURN_IF_ERROR(LiftVariables(bundle, *module));
-    module->removeAttr("tf_saved_model.under_construction");
+    (*module)->removeAttr("tf_saved_model.under_construction");
 
     return module;
   }

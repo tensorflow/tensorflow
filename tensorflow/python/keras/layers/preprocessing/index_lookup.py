@@ -120,16 +120,12 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     # If max_tokens is set, the value must be greater than 1 - otherwise we
     # are creating a 0-element vocab, which doesn't make sense.
     if max_tokens is not None and max_tokens <= 1:
-      raise ValueError("If set, max_tokens must be greater than 1. "
-                       "You passed %s" % (max_tokens,))
+      raise ValueError("If set, `max_tokens` must be greater than 1. "
+                       "You passed {}".format(max_tokens))
 
     if num_oov_indices < 0:
-      raise ValueError(
-          "num_oov_indices must be greater than or equal to 0. You passed %s" %
-          (num_oov_indices,))
-
-    if invert and num_oov_indices != 1:
-      raise ValueError("`num_oov_tokens` must be 1 when `invert` is True.")
+      raise ValueError("`num_oov_indices` must be greater than or equal to 0. "
+                       "You passed {}".format(num_oov_indices))
 
     # 'output_mode' must be one of (INT, BINARY, COUNT, TFIDF)
     layer_utils.validate_string_arg(
@@ -147,6 +143,9 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     self.sparse = sparse
     self.pad_to_max_tokens = pad_to_max_tokens
     self._called = False
+    self._num_special_tokens = self.num_oov_indices
+    if self.mask_token is not None:
+      self._num_special_tokens += 1
 
     # If there is only one OOV bucket, we can determine the OOV value (either 0
     # or 1 depending on whether 0 is reserved) and set that as the default
@@ -160,14 +159,13 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       self._oov_value = -1
 
     if max_tokens is not None:
-      num_mask_tokens = (0 if mask_token is None else 1)
-      vocab_size = max_tokens - (num_oov_indices + num_mask_tokens)
+      available_vocab_size = max_tokens - self._num_special_tokens
     else:
-      vocab_size = None
+      available_vocab_size = None
 
     super(IndexLookup, self).__init__(
         combiner=_IndexLookupCombiner(
-            vocab_size=vocab_size,
+            vocab_size=available_vocab_size,
             mask_value=mask_token,
             oov_value=oov_token,
             compute_idf=(output_mode == TFIDF)),
@@ -179,17 +177,17 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       self._key_dtype = dtypes.int64
       self._value_dtype = self.dtype
       oov_value = self.oov_token
+      oov_indices = None
     else:
       self._key_dtype = self.dtype
       self._value_dtype = dtypes.int64
       oov_value = self._oov_value
-
-    if self.num_oov_indices <= 1:
-      oov_indices = None
-    else:
-      oov_start = 1 if mask_token is not None else 0
-      oov_end = oov_start + num_oov_indices
-      oov_indices = list(range(oov_start, oov_end))
+      if self.num_oov_indices <= 1:
+        oov_indices = None
+      else:
+        oov_start = 1 if mask_token is not None else 0
+        oov_end = oov_start + num_oov_indices
+        oov_indices = list(range(oov_start, oov_end))
 
     if vocabulary is not None and isinstance(vocabulary,
                                              lookup_ops.TextFileInitializer):
@@ -201,7 +199,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
           oov_tokens=oov_indices,
           use_v1_apis=self._use_v1_apis())
       self.max_tokens = (
-          self._table_handler.vocab_size() + self.num_oov_indices +
+          self._table_handler.table_size() + self.num_oov_indices +
           (0 if mask_token is None else 1))
     else:
       self._table = lookup_ops.MutableHashTable(
@@ -273,7 +271,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     super(IndexLookup, self).adapt(data, reset_state)
 
   def get_vocabulary(self):
-    if self._table_handler.vocab_size() == 0:
+    if self.vocab_size() == 0:
       return []
 
     keys, values = self._table_handler.data()
@@ -281,12 +279,18 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     # order, but we rely on the order of the array to assign indices.
     if self.invert:
       # If we are inverting, the vocabulary is in the values instead of keys.
-      return [x for _, x in sorted(zip(keys, values))]
+      tokens = [x for _, x in sorted(zip(keys, values))]
     else:
-      return [x for _, x in sorted(zip(values, keys))]
+      tokens = [x for _, x in sorted(zip(values, keys))]
+    # OOV values are not actually in the vocab, we need to add them in manually.
+    if self.num_oov_indices > 0:
+      oov_start_index = 1 if self.mask_token is not None else 0
+      oov_values = [self.oov_token] * self.num_oov_indices
+      tokens[oov_start_index:oov_start_index] = oov_values
+    return tokens
 
   def vocab_size(self):
-    return int(self._table_handler.vocab_size())
+    return int(self._table_handler.table_size()) + self.num_oov_indices
 
   def get_config(self):
     config = {
@@ -307,166 +311,6 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     # nothing in this layer that can be trained - we only use the weight
     # abstraction for ease of saving!) we return 0.
     return 0
-
-  def _set_forward_vocabulary(self, vocab, idf_weights=None):
-    """Sets vocabulary data for this layer when inverse is False."""
-    table_utils.validate_vocabulary_is_unique(vocab)
-
-    should_have_mask = self.mask_token is not None
-    has_mask = vocab[0] == self.mask_token
-    oov_start = 1 if should_have_mask else 0
-
-    should_have_oov = (self.num_oov_indices > 0) and not self.invert
-    if should_have_oov:
-      oov_end = oov_start + self.num_oov_indices
-      expected_oov = [self.oov_token] * self.num_oov_indices
-      has_oov = vocab[oov_start:oov_end] == expected_oov
-      # If we get a numpy array, then has_oov may end up being a numpy array
-      # instead of a bool. Fix this by collapsing the variable if it's not bool.
-      if not isinstance(has_oov, bool):
-        has_oov = any(has_oov)
-    else:
-      has_oov = False
-
-    if all([should_have_mask, has_mask, should_have_oov]) and not has_oov:
-      raise ValueError("Invalid vocabulary format. The layer was created with "
-                       "`mask_token=%s` and `oov_token=%s`. These tokens should"
-                       " be included in the provided vocabulary. "
-                       "The passed vocabulary has the correct mask token `%s` "
-                       "at index 0, but does not have the OOV token `%s` in "
-                       "indices [%s:%s]. Instead, we found `%s`. Was this "
-                       "vocabulary generated by a layer with incompatible "
-                       "settings?" %
-                       (self.mask_token, self.oov_token,
-                        self.mask_token, self.oov_token, oov_start, oov_end,
-                        vocab[oov_start:oov_end]))
-
-    if all([should_have_oov, has_oov, should_have_mask]) and not has_mask:
-      raise ValueError(
-          "Invalid vocabulary format. The layer was created with "
-          "`mask_token=%s` and `oov_token=%s`. These tokens should "
-          "be included in the provided vocabulary. "
-          "The passed vocabulary has the correct OOV token `%s` at "
-          "indices [%s:%s], but does not have the mask token `%s` in "
-          "index 0. Instead, we found `%s`. Was this vocabulary "
-          "generated by a layer with incompatible settings?" %
-          (self.mask_token, self.oov_token, self.oov_token,
-           oov_start, oov_end, self.mask_token, vocab[0]))
-
-    special_tokens = [] if self.mask_token is None else [self.mask_token]
-    special_tokens.extend([self.oov_token] * self.num_oov_indices)
-
-    insert_special_tokens = special_tokens and not has_oov and not has_mask
-    num_special_tokens = len(special_tokens)
-    tokens = vocab if insert_special_tokens else vocab[num_special_tokens:]
-    if self.mask_token in tokens:
-      raise ValueError("Reserved mask token %s was found in the passed "
-                       "vocabulary at index %s. Please either remove the "
-                       "reserved token from the vocabulary or change the "
-                       "mask token for this layer." %
-                       (self.mask_token, tokens.index(self.mask_token)))
-    if self.oov_token in tokens:
-      raise ValueError("Reserved OOV token %s was found in the passed "
-                       "vocabulary at index %s. Please either remove the "
-                       "reserved token from the vocabulary or change the "
-                       "OOV token for this layer." %
-                       (self.oov_token, tokens.index(self.oov_token)))
-
-    total_vocab_size = len(tokens) + num_special_tokens
-    if self.max_tokens is not None and total_vocab_size > self.max_tokens:
-      raise ValueError(
-          "Attempted to set a vocabulary larger than the maximum vocab size. "
-          "Passed vocab size is %s, max vocab size is %s." %
-          (total_vocab_size, self.max_tokens))
-
-    self._table_handler.clear()
-    if insert_special_tokens:
-      start_index = num_special_tokens
-      values = np.arange(start_index, len(tokens) + start_index, dtype=np.int64)
-      self._table_handler.insert(tokens, values)
-      special_token_values = np.arange(num_special_tokens, dtype=np.int64)
-      self._table_handler.insert(special_tokens, special_token_values)
-    else:
-      values = np.arange(len(vocab), dtype=np.int64)
-      self._table_handler.insert(vocab, values)
-
-    if self.output_mode == TFIDF:
-      if idf_weights is None:
-        raise ValueError("idf_weights must be set if output_mode is TFIDF")
-      if len(vocab) != len(idf_weights):
-        raise ValueError("idf_weights must be the same length as vocab. "
-                         "len(idf_weights) is %s, len(vocab) is %s" %
-                         (len(vocab), len(idf_weights)))
-      idf_weights = self._convert_to_ndarray(idf_weights)
-      if idf_weights.ndim != 1:
-        raise ValueError(
-            "TF-IDF data must be a 1-index array, but received {}".format(
-                type(idf_weights)))
-
-      # If we inserted special tokens into the vocab, we need to pad the front
-      # of idf_weights. We don't have real document frequencies for these tokens
-      # so we will use an average of all idf_weights passed in as a reasonable
-      # default.
-      if insert_special_tokens:
-        front_padding = num_special_tokens
-        front_padding_value = np.average(idf_weights)
-      else:
-        front_padding = 0
-        front_padding_value = 0
-      # If pad_to_max_tokens is true, and max_tokens is greater than our total
-      # vocab size, we need to pad the back of idf_weights with zeros as well.
-      back_padding_value = 0
-      if self.pad_to_max_tokens and self.max_tokens is not None:
-        back_padding = self.max_tokens - total_vocab_size
-      else:
-        back_padding = 0
-      idf_weights = np.pad(
-          idf_weights, (front_padding, back_padding),
-          "constant",
-          constant_values=(front_padding_value, back_padding_value))
-      K.set_value(self.tf_idf_weights, idf_weights)
-
-    return total_vocab_size
-
-  def _set_inverse_vocabulary(self, vocab):
-    """Sets vocabulary data for this layer when inverse is True."""
-    table_utils.validate_vocabulary_is_unique(vocab)
-
-    should_have_mask = self.mask_token is not None
-    has_mask = vocab[0] == self.mask_token
-
-    insert_special_tokens = should_have_mask and not has_mask
-    special_tokens = [] if self.mask_token is None else [self.mask_token]
-
-    num_special_tokens = len(special_tokens)
-    tokens = vocab if insert_special_tokens else vocab[num_special_tokens:]
-    if self.mask_token in tokens:
-      raise ValueError("Reserved mask token %s was found in the passed "
-                       "vocabulary at index %s. Please either remove the "
-                       "reserved token from the vocabulary or change the "
-                       "mask token for this layer." %
-                       (self.mask_token, tokens.index(self.mask_token)))
-
-    if insert_special_tokens:
-      total_vocab_size = len(vocab) + num_special_tokens
-    else:
-      total_vocab_size = len(vocab)
-    if self.max_tokens is not None and total_vocab_size > self.max_tokens:
-      raise ValueError(
-          "Attempted to set a vocabulary larger than the maximum vocab size. "
-          "Passed vocab size is %s, max vocab size is %s." %
-          (total_vocab_size, self.max_tokens))
-
-    start_index = num_special_tokens if insert_special_tokens else 0
-    values = np.arange(start_index, len(vocab) + start_index, dtype=np.int64)
-
-    self._table_handler.clear()
-    self._table_handler.insert(values, vocab)
-
-    if insert_special_tokens and num_special_tokens > 0:
-      special_token_values = np.arange(num_special_tokens, dtype=np.int64)
-      self._table_handler.insert(special_token_values, special_tokens)
-    return total_vocab_size
 
   def set_vocabulary(self, vocab, idf_weights=None):
     """Sets vocabulary (and optionally document frequency) data for this layer.
@@ -491,25 +335,152 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
         called.
     """
     if self.output_mode != TFIDF and idf_weights is not None:
-      raise ValueError("idf_weights should only be set if output_mode is "
-                       "TFIDF. output_mode is %s." % self.output_mode)
+      raise ValueError("`idf_weights` should only be set if output_mode is "
+                       "TFIDF. output_mode is {}.".format(self.output_mode))
 
     if (self.output_mode in [BINARY, COUNT, TFIDF] and self._called and
         not self.pad_to_max_tokens):
-      raise RuntimeError(("When using {mode} mode and pad_to_max_tokens is "
-                          "False, the vocabulary cannot be changed after the "
-                          "layer is called.").format(mode=self.output_mode))
+      raise RuntimeError("When using {} mode and `pad_to_max_tokens` is "
+                         "False, the vocabulary cannot be changed after the "
+                         "layer is called.".format(self.output_mode))
 
-    if self.invert:
-      vocab_size = self._set_inverse_vocabulary(vocab)
+    should_have_mask = self.mask_token is not None
+    has_mask = vocab[0] == self.mask_token
+    oov_start = 1 if should_have_mask else 0
+
+    should_have_oov = (self.num_oov_indices > 0)
+    if should_have_oov:
+      oov_end = oov_start + self.num_oov_indices
+      expected_oov = [self.oov_token] * self.num_oov_indices
+      has_oov = vocab[oov_start:oov_end] == expected_oov
+      # If we get a numpy array, then has_oov may end up being a numpy array
+      # instead of a bool. Fix this by collapsing the variable if it's not bool.
+      if not isinstance(has_oov, bool):
+        has_oov = any(has_oov)
     else:
-      vocab_size = self._set_forward_vocabulary(vocab, idf_weights=idf_weights)
-    # TODO(mattdangerw): we should not overwrite the init arg here. We currently
+      has_oov = False
+
+    if all([should_have_mask, has_mask, should_have_oov]) and not has_oov:
+      raise ValueError(
+          "Invalid vocabulary format. The layer was created with "
+          "`mask_token={mask}` and `oov_token={oov}`. These tokens should be "
+          "included in the provided vocabulary. The passed vocabulary has the "
+          "correct mask token `{mask}` at index 0, but does not have the OOV "
+          "token `{oov}` in indices [{start}:{end}]. Instead, we found "
+          "`{found}`. Was this vocabulary generated by a layer with "
+          "incompatible settings?".format(
+              mask=self.mask_token,
+              oov=self.oov_token,
+              start=oov_start,
+              end=oov_end,
+              found=vocab[oov_start:oov_end]))
+
+    if all([should_have_oov, has_oov, should_have_mask]) and not has_mask:
+      raise ValueError(
+          "Invalid vocabulary format. The layer was created with "
+          "`mask_token={mask}` and `oov_token={oov}`. These tokens should be "
+          "included in the provided vocabulary. The passed vocabulary has the "
+          "correct OOV token `{oov}` at indices [{start}:{end}], but does not "
+          "have the mask token `{mask}` in index 0. Instead, we found "
+          "`{found}`. Was this vocabulary generated by a layer with "
+          "incompatible settings?".format(
+              mask=self.mask_token,
+              oov=self.oov_token,
+              start=oov_start,
+              end=oov_end,
+              found=vocab[0]))
+
+    found_special_tokens = has_oov or has_mask
+
+    if found_special_tokens:
+      tokens = vocab[self._num_special_tokens:]
+    else:
+      tokens = vocab
+
+    repeated_tokens = table_utils.find_repeated_tokens(tokens)
+    if repeated_tokens:
+      raise ValueError("The passed vocabulary has at least one repeated "
+                       "term. Please uniquify your dataset. The repeated terms "
+                       "are {}".format(repeated_tokens))
+
+    if self.mask_token in tokens:
+      raise ValueError("Reserved mask token {} was found in the passed "
+                       "vocabulary at index {}. Please either remove the "
+                       "reserved token from the vocabulary or change the "
+                       "mask token for this layer.".format(
+                           self.mask_token, tokens.index(self.mask_token)))
+    if self.oov_token in tokens:
+      raise ValueError("Reserved OOV token {} was found in the passed "
+                       "vocabulary at index {}. Please either remove the "
+                       "reserved token from the vocabulary or change the "
+                       "OOV token for this layer.".format(
+                           self.oov_token, tokens.index(self.oov_token)))
+
+    total_vocab_size = len(tokens) + self._num_special_tokens
+    if self.max_tokens is not None and total_vocab_size > self.max_tokens:
+      raise ValueError(
+          "Attempted to set a vocabulary larger than the maximum vocab size. "
+          "Passed vocab size is {}, max vocab size is {}.".format(
+              total_vocab_size, self.max_tokens))
+
+    if self.output_mode == TFIDF:
+      if idf_weights is None:
+        raise ValueError("`idf_weights` must be set if output_mode is TFIDF")
+      if len(vocab) != len(idf_weights):
+        raise ValueError("`idf_weights` must be the same length as vocab. "
+                         "len(idf_weights) is {}, len(vocab) is {}".format(
+                             len(vocab), len(idf_weights)))
+      idf_weights = self._convert_to_ndarray(idf_weights)
+      if idf_weights.ndim != 1:
+        raise ValueError(
+            "TF-IDF data must be a 1-index array, but received {}".format(
+                type(idf_weights)))
+
+    # We add the non-special vocab tokens and optionally the mask_token to our
+    # hash table. OOV tokens are handled with the hash table default value and
+    # not added directly.
+    self._table_handler.clear()
+    start_index = self._num_special_tokens
+    indices = np.arange(start_index, len(tokens) + start_index, dtype=np.int64)
+    if self.invert:
+      self._table_handler.insert(indices, tokens)
+      if self.mask_token is not None:
+        self._table_handler.insert([0], [self.mask_token])
+    else:
+      self._table_handler.insert(tokens, indices)
+      if self.mask_token is not None:
+        self._table_handler.insert([self.mask_token], [0])
+
+    if self.output_mode == TFIDF:
+      # If the passed vocabulary has no special tokens, we need to pad the front
+      # of idf_weights. We don't have real document frequencies for these tokens
+      # so we will use an average of all idf_weights passed in as a reasonable
+      # default.
+      if found_special_tokens:
+        front_padding = 0
+        front_padding_value = 0
+      else:
+        front_padding = self._num_special_tokens
+        front_padding_value = np.average(idf_weights)
+      # If pad_to_max_tokens is true, and max_tokens is greater than our total
+      # vocab size, we need to pad the back of idf_weights with zeros as well.
+      back_padding_value = 0
+      if self.pad_to_max_tokens and self.max_tokens is not None:
+        back_padding = self.max_tokens - front_padding - len(idf_weights)
+      else:
+        back_padding = 0
+      idf_weights = np.pad(
+          idf_weights, (front_padding, back_padding),
+          "constant",
+          constant_values=(front_padding_value, back_padding_value))
+      K.set_value(self.tf_idf_weights, idf_weights)
+
+    # TODO(mattdangerw): we should not overwrite max_tokens. We currently
     # need to persist our vocab size in the config, and not our weights, to
     # force a static shape for our output. This could be avoided if the
     # underlying bincount ops set the shape of their output tensors.
     if not self.pad_to_max_tokens or self.max_tokens is None:
-      self.max_tokens = vocab_size
+      self.max_tokens = total_vocab_size
 
   def _set_state_variables(self, updates):
     if not self.built:

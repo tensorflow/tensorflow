@@ -678,4 +678,34 @@ def HLOClient_BroadcastCompareOp : HLOClient_BroadcastBinaryElementwiseOp<
       "StringAttr":$comparison_direction, CArg<"StringAttr", "{}">:$compare_type)>];
 }
 
+//===----------------------------------------------------------------------===//
+// Broadcasting select op
+//===----------------------------------------------------------------------===//
+
+def HLOClient_BroadcastSelectOp : HLOClient_Op<
+    "broadcast_select",
+    [NoSideEffect, DeclareOpInterfaceMethods<InferShapedTypeOpInterface>]> {
+  string summary = "Select operator (with optional numpy-style broadcasting)";
+
+  string description = [{
+    Constructs an output array from elements of two input arrays, based on the
+    values of a predicate array.
+
+    See https://www.tensorflow.org/xla/operation_semantics#select
+  }];
+
+  let arguments = (ins
+    HLO_PredTensor:$pred,
+    HLO_Tensor:$on_true,
+    HLO_Tensor:$on_false
+  );
+
+  let results = (outs HLO_Tensor);
+
+  let assemblyFormat = [{
+    $pred `,` $on_true `,` $on_false attr-dict `:`
+    `(` type($pred) `,` type($on_true) `,` type($on_false) `)` `->` type(results)
+  }];
+}
+
 #endif  // CHLO_OPS

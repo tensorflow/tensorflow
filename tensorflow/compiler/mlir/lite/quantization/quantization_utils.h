@@ -403,10 +403,10 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
     QType new_qtype;
     if (auto uqtype = qtype.template dyn_cast<quant::UniformQuantizedType>()) {
       new_qtype = quant::UniformQuantizedType::getChecked(
-          flags, qtype.getStorageType(), qtype.getExpressedType(),
+          op.getLoc(), flags, qtype.getStorageType(), qtype.getExpressedType(),
           uqtype.getScale(), uqtype.getZeroPoint() - offset,
           uqtype.getStorageTypeMin() - offset,
-          uqtype.getStorageTypeMax() - offset, op.getLoc());
+          uqtype.getStorageTypeMax() - offset);
     } else if (auto aqtype = qtype.template dyn_cast<
                              quant::UniformQuantizedPerAxisType>()) {
       auto zero_points = aqtype.getZeroPoints();
@@ -416,10 +416,10 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
         new_zero_points[i] -= offset;
       }
       new_qtype = quant::UniformQuantizedPerAxisType::getChecked(
-          flags, qtype.getStorageType(), qtype.getExpressedType(),
+          op.getLoc(), flags, qtype.getStorageType(), qtype.getExpressedType(),
           aqtype.getScales(), new_zero_points, aqtype.getQuantizedDimension(),
           aqtype.getStorageTypeMin() - offset,
-          aqtype.getStorageTypeMax() - offset, op.getLoc());
+          aqtype.getStorageTypeMax() - offset);
     } else {
       return failure();
     }

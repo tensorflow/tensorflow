@@ -804,9 +804,12 @@ Status XlaCompiler::CompileFunction(
   }
 
   VLOG(1) << "====================================================";
-  MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
-      *graph, config_proto,
-      /*uses_uninitialized_resource_args=*/AnyUninitializedResourceArg(args));
+  MlirBridgeRolloutPolicy policy = MlirBridgeRolloutPolicy::kDisabledByUser;
+  if (options.is_entry_computation) {
+    policy = GetMlirBridgeRolloutPolicy(
+        *graph, config_proto,
+        /*uses_uninitialized_resource_args=*/AnyUninitializedResourceArg(args));
+  }
   if (policy == MlirBridgeRolloutPolicy::kEnabledByUser) {
     VLOG(1) << "Using MLIR bridge";
     GraphDebugInfo debug_info;
@@ -1232,14 +1235,27 @@ Status ValidateGraph(const Graph* graph,
 
   auto maybe_error = [&](const Node* node, const Status& s) -> Status {
     if (!s.ok()) {
-      return errors::InvalidArgument(absl::StrCat(
+      std::string errmsg = absl::StrCat(
           "Detected unsupported operations when trying to compile graph ", name,
           " on ", device_type.type_string(), ": ", node->def().op(), " (",
-          s.error_message(), ")", FormatNodeForError(*node),
-          "One approach is to outside compile the unsupported ops to run on "
-          "CPUs by enabling soft placement "
-          "`tf.config.set_soft_device_placement(True)`."
-          " This has a potential performance penalty."));
+          s.error_message(), ")", FormatNodeForError(*node));
+      if (absl::StrContains(device_type.type_string(), "TPU")) {
+        absl::StrAppend(&errmsg,
+                        "\nOne approach is to outside compile the unsupported "
+                        "ops to run on CPUs by enabling soft placement "
+                        "`tf.config.set_soft_device_placement(True)`."
+                        " This has a potential performance penalty.\n");
+      }
+      if (std::shared_ptr<AbstractStackTrace> stack_trace =
+              node->GetStackTrace()) {
+        absl::StrAppend(
+            &errmsg, "\nThe op is created at: \n",
+            stack_trace->ToString({/*show_line_contents =*/true,
+                                   /*filter_common_prefix =*/true,
+                                   /*drop_internal_frames =*/true}));
+      }
+
+      return errors::InvalidArgument(errmsg);
     }
     return Status::OK();
   };

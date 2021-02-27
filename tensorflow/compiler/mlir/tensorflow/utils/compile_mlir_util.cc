@@ -279,17 +279,30 @@ void CreateConvertMlirToXlaHloPipeline(
     mlir::OpPassManager& pm, llvm::StringRef device_type,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes) {
+  // Note that the region-based control-flow produced here still contains
+  // function call ops which get inlined by the subsequent inliner pass.
   pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
+  pm.addPass(mlir::createInlinerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::TF::CreateDropWhileShapeInvariantPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   // The SCCP pass performs constant propagation across the IR, which, for
   // example, propagates constant arguments into callee functions.
+  // TOOD(hinsu): Investigate if we really need SCCP pass before shape inference
+  // and can do with just one pass after the shape inference.
   pm.addPass(mlir::createSCCPPass());
   // Guarantee all functions have one use, which enables shape inference.
   pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
   // Run shape inference pass before tensorlist decomposition to get buffer
   // shape of uninitialized TensorLists.
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+
+  // Run SCCP pass again as the availability of shapes may open up new
+  // opportunities for constant propagation. Note that the shape inference pass
+  // doesn't materialize new constants even if those are computed internally for
+  // the purpose of shape inference. These constants might be required by the
+  // legalization passes.
+  pm.addPass(mlir::createSCCPPass());
+
   pm.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
   pm.addPass(mlir::TF::CreateStackOpsDecompositionPass());
   pm.addPass(mlir::TF::CreateTensorArrayOpsDecompositionPass());
@@ -362,7 +375,7 @@ Status LegalizeToHlo(mlir::ModuleOp module_op, llvm::StringRef device_type,
 
   if (failed(tf2xla.run(module_op))) {
     return error_handler.Combine(
-        errors::InvalidArgument("TF to XLA legalization failed"));
+        errors::InvalidArgument("TF to XLA legalization failed: "));
   }
 
   if (VLOG_IS_ON(1))

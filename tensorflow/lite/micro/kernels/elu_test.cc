@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <limits>
 #include <type_traits>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
@@ -25,20 +24,16 @@ namespace tflite {
 namespace testing {
 namespace {
 
-#ifdef notdef
-BaseActivationsOpModel(BuiltinOperator type, TensorData input) {
-  input_ = AddInput(input);
-  if (input.type == TensorType_UINT8) {
-    output_ = AddOutput({input.type, {}, 0, 0, 1. / 256});
-  } else if (input.type == TensorType_INT8) {
-    output_ = AddOutput({input.type, {}, 0, 0, 1. / 256, -128});
-  } else {
-    output_ = AddOutput({input.type, {}});
-  }
-  SetBuiltinOp(type, BuiltinOptions_NONE, 0);
-  BuildInterpreter({GetShape(input_)});
-}
-#endif  // notdef
+// min/max are used to compute scale, zero-point
+template <typename T>
+struct TestEluParams {
+  // quantization parameters
+  float data_min;   // input and output data minimum value
+  float data_max;   // input and output data maximum value
+  T* input_data;    // quantized input storage
+  T* output_data;   // quantized output storage
+  float tolerance;  // output vs expected value tolerance
+};
 
 // Our fixed-point math function implementations have roughly 12 bits of
 // accuracy, when specialized to 16-bit fixed-point arithmetic.
@@ -56,53 +51,120 @@ BaseActivationsOpModel(BuiltinOperator type, TensorData input) {
 // has signed fixed-point arithmetic (SQRDMULH)).  As the width of [-1, 1]
 // is 2, our representable values are often diluted by a factor of 2, whence
 // the factor of 2 below.
-const float kQuantizedTolerance = 2 * (1. / 256);
-const float kQuantizedToleranceInt16 = 2 * (1. / 4096);
+constexpr float kQuantizedTolerance = 2 * (1. / 256);
 
-TF_LITE_MICRO_TESTS_BEGIN
+void ExecuteEluTest(TfLiteTensor* tensors, int tensors_count) {
+  constexpr int kInputArrayData[] = {1, 0};
+  TfLiteIntArray* inputs_array = IntArrayFromInts(kInputArrayData);
+  constexpr int kOutputArrayData[] = {1, 1};
+  TfLiteIntArray* outputs_array = IntArrayFromInts(kOutputArrayData);
 
-TF_LITE_MICRO_TEST(FloatActivationsOpTestElu) {
-#ifdef notdef
-  FloatActivationsOpModel m(BuiltinOperator_ELU,
-                            /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}});
-  m.SetInput({
-      0, -6, 2, -4,     //
-      3, -2, 10, -0.1,  //
-  });
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
-                                 0.0, -0.997521, 2.0, -0.981684,    //
-                                 3.0, -0.864665, 10.0, -0.0951626,  //
-                             })));
-#endif  // notdef
+  const TfLiteRegistration registration = tflite::Register_ELU();
+  micro::KernelRunner runner(registration, tensors, tensors_count, inputs_array,
+                             outputs_array, nullptr);
+
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 }
 
-TF_LITE_MICRO_TEST(QuantizedActivationsOpTestEluInt8) {
-#ifdef notdef
-  const float kMin = -1;
-  const float kMax = 127.f / 128.f;
-  QuantizedActivationsOpModel model(
-      BuiltinOperator_ELU,
-      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
-      /*output=*/{TensorType_INT8, {1, 2, 4, 1}, 8 * kMin, 8 * kMax});
+template <typename T>
+void TestElu(const int* input_dims_data, const T* input_data,
+             const int* expected_dims, const T* expected_data, T* output_data) {
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(expected_dims);
+  const int output_count = ElementCount(*output_dims);
 
-  model.SetInput<int8_t>({
-      0, -6, 2, -4,    //
-      3, -2, 6, -0.1,  //
-  });
+  TfLiteTensor tensors[] = {
+      CreateTensor(input_data, input_dims),
+      CreateTensor(output_data, output_dims),
+  };
+  constexpr int tensors_count = std::extent<decltype(tensors)>::value;
+  ExecuteEluTest(tensors, tensors_count);
 
-  model.Invoke();
-  EXPECT_THAT(model.GetDequantizedOutput<int8_t>(),
-              ElementsAreArray(ArrayFloatNear(
-                  {
-                      0, -1.0, 2.0, -1,          //
-                      3.0, -0.875, 6.0, -0.125,  //
-                  },
-                  kQuantizedTolerance)));
-#endif  // notdef
+  constexpr float kTolerance = 1e-5;
+  for (int i = 0; i < output_count; i++) {
+    TF_LITE_MICRO_EXPECT_NEAR(expected_data[i], output_data[i], kTolerance);
+  }
 }
 
-TF_LITE_MICRO_TESTS_END
+template <typename T>
+void TestEluQuantized(const TestEluParams<T>& params,
+                      const int* input_dims_data, const float* input_data,
+                      const int* expected_dims, const float* expected_data,
+                      float* output_data) {
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(expected_dims);
+  const int output_count = ElementCount(*output_dims);
+
+  const float scale = ScaleFromMinMax<T>(params.data_min, params.data_max);
+  const int zero_point =
+      ZeroPointFromMinMax<T>(params.data_min, params.data_max);
+
+  TfLiteTensor tensors[] = {
+      CreateQuantizedTensor(input_data, params.input_data, input_dims, scale,
+                            zero_point),
+      CreateQuantizedTensor(params.output_data, output_dims, scale, zero_point),
+  };
+  constexpr int kTensorsCount = std::extent<decltype(tensors)>::value;
+
+  ExecuteEluTest(tensors, kTensorsCount);
+
+  Dequantize(params.output_data, output_count, scale, zero_point, output_data);
+  const float kTolerance = params.tolerance;
+  for (int i = 0; i < output_count; i++) {
+    TF_LITE_MICRO_EXPECT_NEAR(expected_data[i], output_data[i], kTolerance);
+  }
+}
 
 }  // namespace
 }  // namespace testing
 }  // namespace tflite
+
+TF_LITE_MICRO_TESTS_BEGIN
+
+TF_LITE_MICRO_TEST(FloatActivationsOpTestElu) {
+  constexpr int kDims[] = {4, 1, 2, 4, 1};
+  constexpr float kInput[] = {
+      0, -6, 2,  -4,    //
+      3, -2, 10, -0.1,  //
+  };
+  constexpr float kExpect[] = {
+      0.0, -0.997521, 2.0,  -0.981684,   //
+      3.0, -0.864665, 10.0, -0.0951626,  //
+  };
+  constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
+  float output_data[kOutputCount];
+
+  tflite::testing::TestElu(kDims, kInput, kDims, kExpect, output_data);
+}
+
+TF_LITE_MICRO_TEST(QuantizedActivationsOpTestEluInt8) {
+  constexpr int kDims[] = {4, 1, 2, 4, 1};
+  constexpr float kInput[] = {
+      0, -6, 2, -4,    //
+      3, -2, 6, -0.1,  //
+  };
+  constexpr float kExpect[] = {
+      0,   -1.0,   2.0, -1,      //
+      3.0, -0.875, 6.0, -0.125,  //
+  };
+  constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
+  float output_data[kOutputCount];
+
+  // setup quantization storage and parameters
+  int8_t q_output_data[kOutputCount];
+  int8_t q_input_data[kOutputCount];
+  constexpr float kMin = -1;
+  constexpr float kMax = 127.f / 128.f;
+  tflite::testing::TestEluParams<int8_t> params = {};
+  params.data_min = 8 * kMin;
+  params.data_max = 8 * kMax;
+  params.input_data = q_input_data;
+  params.output_data = q_output_data;
+  params.tolerance = tflite::testing::kQuantizedTolerance;
+
+  tflite::testing::TestEluQuantized(params, kDims, kInput, kDims, kExpect,
+                                    output_data);
+}
+
+TF_LITE_MICRO_TESTS_END

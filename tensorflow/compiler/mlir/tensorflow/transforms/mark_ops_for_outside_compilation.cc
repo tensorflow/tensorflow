@@ -78,7 +78,11 @@ void AddSupportedOpsUsingFolding(MLIRContext* context,
       OperationName(TF::ConcatOffsetOp::getOperationName(), context),
       OperationName(TF::EmptyOp::getOperationName(), context),
       OperationName(TF::ListDiffOp::getOperationName(), context),
+      OperationName(TF::RankOp::getOperationName(), context),
       OperationName(TF::RangeOp::getOperationName(), context),
+      OperationName(TF::ShapeOp::getOperationName(), context),
+      OperationName(TF::ShapeNOp::getOperationName(), context),
+      OperationName(TF::SizeOp::getOperationName(), context),
   };
 
   supported_ops->insert(allowlist_ops.begin(), allowlist_ops.end());
@@ -299,6 +303,30 @@ LogicalResult MarkUncompilableOps(
   return success();
 }
 
+// Check for uncompilable ops that are in `tf_dialect` and are not already
+// marked for outside compilation.
+bool ContainsUncompilableOps(const Dialect* tf_dialect, Block* block,
+                             llvm::DenseSet<OperationName>& supported_ops) {
+  int uncompilable_op_count = 0;
+  // Check if op or any parent is already marked for outside compilation.
+  block->walk([&](Operation* op) {
+    Operation* iter_op = op;
+    while (iter_op && !llvm::isa<tf_device::ClusterOp>(iter_op)) {
+      if (iter_op->hasAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
+        return;
+      }
+      iter_op = iter_op->getParentOp();
+    }
+
+    if (!IsSupportedOp(*op, supported_ops, tf_dialect)) {
+      op->emitOpError() << "isn't compilable for TPU device. enable "
+                           "soft_device_placement option to run on CPU";
+      ++uncompilable_op_count;
+    }
+  });
+  return uncompilable_op_count > 0;
+}
+
 // Unmarks outside compilation for any op that has parents already
 // marked for outside compilation since the child will be extracted
 // anyways.
@@ -353,6 +381,10 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
     if ((soft_placement_attr && soft_placement_attr.getValue())) {
       if (failed(MarkUncompilableOps(tf_dialect, &cluster.GetBody(),
                                      supported_ops)))
+        return WalkResult::interrupt();
+    } else {
+      if (ContainsUncompilableOps(tf_dialect, &cluster.GetBody(),
+                                  supported_ops))
         return WalkResult::interrupt();
     }
     MarkVariantInputsOutputs(cluster);

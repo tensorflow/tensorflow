@@ -458,10 +458,12 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
     mid_level_api.build(self.batch_size)
     dataset = self._create_sparse_dataset(strategy)
-    data = next(iter(strategy.experimental_distribute_dataset(
-        dataset,
-        options=distribute_lib.InputOptions(
-            experimental_prefetch_to_device=False))))
+    data = next(
+        iter(
+            strategy.experimental_distribute_dataset(
+                dataset,
+                options=distribute_lib.InputOptions(
+                    experimental_fetch_to_device=False))))
 
     @def_function.function
     def embedding_and_set_gradients(data):
@@ -549,8 +551,7 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
     input_fn = self._create_dense_input_fn(strategy, include_weights=True)
     dist = strategy.distribute_datasets_from_function(
         input_fn,
-        options=distribute_lib.InputOptions(
-            experimental_prefetch_to_device=False))
+        options=distribute_lib.InputOptions(experimental_fetch_to_device=False))
     dist_iter = iter(dist)
 
     @def_function.function
@@ -570,14 +571,16 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
 
     sparse = self._create_sparse_dataset(strategy)
     ragged = self._create_ragged_dataset(strategy, include_weights=True)
-    sparse_iter = iter(strategy.experimental_distribute_dataset(
-        sparse,
-        options=distribute_lib.InputOptions(
-            experimental_prefetch_to_device=False)))
-    ragged_iter = iter(strategy.experimental_distribute_dataset(
-        ragged,
-        options=distribute_lib.InputOptions(
-            experimental_prefetch_to_device=False)))
+    sparse_iter = iter(
+        strategy.experimental_distribute_dataset(
+            sparse,
+            options=distribute_lib.InputOptions(
+                experimental_fetch_to_device=False)))
+    ragged_iter = iter(
+        strategy.experimental_distribute_dataset(
+            ragged,
+            options=distribute_lib.InputOptions(
+                experimental_fetch_to_device=False)))
 
     @def_function.function
     def test_fn():
@@ -598,14 +601,16 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
 
     sparse = self._create_sparse_dataset(strategy, include_weights=True)
     ragged = self._create_ragged_dataset(strategy)
-    sparse_iter = iter(strategy.experimental_distribute_dataset(
-        sparse,
-        options=distribute_lib.InputOptions(
-            experimental_prefetch_to_device=False)))
-    ragged_iter = iter(strategy.experimental_distribute_dataset(
-        ragged,
-        options=distribute_lib.InputOptions(
-            experimental_prefetch_to_device=False)))
+    sparse_iter = iter(
+        strategy.experimental_distribute_dataset(
+            sparse,
+            options=distribute_lib.InputOptions(
+                experimental_fetch_to_device=False)))
+    ragged_iter = iter(
+        strategy.experimental_distribute_dataset(
+            ragged,
+            options=distribute_lib.InputOptions(
+                experimental_fetch_to_device=False)))
 
     @def_function.function
     def test_fn():
@@ -626,14 +631,16 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
 
     sparse = self._create_sparse_dataset(strategy)
     ragged = self._create_ragged_dataset(strategy)
-    sparse_iter = iter(strategy.experimental_distribute_dataset(
-        sparse,
-        options=distribute_lib.InputOptions(
-            experimental_prefetch_to_device=False)))
-    ragged_iter = iter(strategy.experimental_distribute_dataset(
-        ragged,
-        options=distribute_lib.InputOptions(
-            experimental_prefetch_to_device=False)))
+    sparse_iter = iter(
+        strategy.experimental_distribute_dataset(
+            sparse,
+            options=distribute_lib.InputOptions(
+                experimental_fetch_to_device=False)))
+    ragged_iter = iter(
+        strategy.experimental_distribute_dataset(
+            ragged,
+            options=distribute_lib.InputOptions(
+                experimental_fetch_to_device=False)))
 
     @def_function.function
     def test_fn():
@@ -654,10 +661,11 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
 
     sparse = self._create_sparse_dataset(strategy)
-    sparse_iter = iter(strategy.experimental_distribute_dataset(
-        sparse,
-        options=distribute_lib.InputOptions(
-            experimental_prefetch_to_device=False)))
+    sparse_iter = iter(
+        strategy.experimental_distribute_dataset(
+            sparse,
+            options=distribute_lib.InputOptions(
+                experimental_fetch_to_device=False)))
 
     @def_function.function
     def test_fn():
@@ -677,10 +685,11 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
 
     sparse = self._create_sparse_dataset(strategy, include_weights=True)
-    sparse_iter = iter(strategy.experimental_distribute_dataset(
-        sparse,
-        options=distribute_lib.InputOptions(
-            experimental_prefetch_to_device=False)))
+    sparse_iter = iter(
+        strategy.experimental_distribute_dataset(
+            sparse,
+            options=distribute_lib.InputOptions(
+                experimental_fetch_to_device=False)))
 
     @def_function.function
     def test_fn():
@@ -701,14 +710,16 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
 
     sparse = self._create_sparse_dataset(strategy)
     ragged = self._create_ragged_dataset(strategy)
-    sparse_iter = iter(strategy.experimental_distribute_dataset(
-        sparse,
-        options=distribute_lib.InputOptions(
-            experimental_prefetch_to_device=False)))
-    ragged_iter = iter(strategy.experimental_distribute_dataset(
-        ragged,
-        options=distribute_lib.InputOptions(
-            experimental_prefetch_to_device=False)))
+    sparse_iter = iter(
+        strategy.experimental_distribute_dataset(
+            sparse,
+            options=distribute_lib.InputOptions(
+                experimental_fetch_to_device=False)))
+    ragged_iter = iter(
+        strategy.experimental_distribute_dataset(
+            ragged,
+            options=distribute_lib.InputOptions(
+                experimental_fetch_to_device=False)))
 
     @def_function.function
     def test_fn():
@@ -735,10 +746,11 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
 
     sparse = self._create_sparse_dataset(strategy)
-    sparse_iter = iter(strategy.experimental_distribute_dataset(
-        sparse,
-        options=distribute_lib.InputOptions(
-            experimental_prefetch_to_device=False)))
+    sparse_iter = iter(
+        strategy.experimental_distribute_dataset(
+            sparse,
+            options=distribute_lib.InputOptions(
+                experimental_fetch_to_device=False)))
 
     @def_function.function
     def test_fn():
@@ -827,10 +839,11 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
                                             weight=weight)
       mid_level_api.build(self.batch_size)
 
-    dataset_iter = iter(strategy.experimental_distribute_dataset(
-        dataset,
-        options=distribute_lib.InputOptions(
-            experimental_prefetch_to_device=False)))
+    dataset_iter = iter(
+        strategy.experimental_distribute_dataset(
+            dataset,
+            options=distribute_lib.InputOptions(
+                experimental_fetch_to_device=False)))
 
     @def_function.function
     def enqueue_and_get(features, weights):
@@ -869,10 +882,11 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
     mid_level_api.build(self.batch_size)
     dataset = self._create_sparse_dataset(strategy)
-    dataset_iter = iter(strategy.experimental_distribute_dataset(
-        dataset,
-        options=distribute_lib.InputOptions(
-            experimental_prefetch_to_device=False)))
+    dataset_iter = iter(
+        strategy.experimental_distribute_dataset(
+            dataset,
+            options=distribute_lib.InputOptions(
+                experimental_fetch_to_device=False)))
 
     @def_function.function
     def enqueue_with_outside_compilation(data):
@@ -906,10 +920,11 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
 
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
     dataset = self._create_sparse_dataset(strategy)
-    dataset_iter = iter(strategy.experimental_distribute_dataset(
-        dataset,
-        options=distribute_lib.InputOptions(
-            experimental_prefetch_to_device=False)))
+    dataset_iter = iter(
+        strategy.experimental_distribute_dataset(
+            dataset,
+            options=distribute_lib.InputOptions(
+                experimental_fetch_to_device=False)))
 
     # This is one way to force the enqueue in some control flow. @tf.functions
     # aren't inlined in the calling tf.function. An alternative would be to
@@ -934,10 +949,11 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
     mid_level_api.build(self.batch_size)
     dataset = self._create_sparse_dataset(strategy)
-    dataset_iter = iter(strategy.experimental_distribute_dataset(
-        dataset,
-        options=distribute_lib.InputOptions(
-            experimental_prefetch_to_device=False)))
+    dataset_iter = iter(
+        strategy.experimental_distribute_dataset(
+            dataset,
+            options=distribute_lib.InputOptions(
+                experimental_fetch_to_device=False)))
 
     @def_function.function
     def enqueue_with_outside_compilation():
@@ -957,10 +973,11 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
     mid_level_api.build(self.batch_size)
     dataset = self._create_sparse_dataset(strategy)
-    dataset_iter = iter(strategy.experimental_distribute_dataset(
-        dataset,
-        options=distribute_lib.InputOptions(
-            experimental_prefetch_to_device=False)))
+    dataset_iter = iter(
+        strategy.experimental_distribute_dataset(
+            dataset,
+            options=distribute_lib.InputOptions(
+                experimental_fetch_to_device=False)))
 
     @def_function.function
     def enqueue_with_no_gradient_apply(data):
@@ -1162,8 +1179,7 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
 
     dist = strategy.distribute_datasets_from_function(
         input_fn,
-        options=distribute_lib.InputOptions(
-            experimental_prefetch_to_device=False))
+        options=distribute_lib.InputOptions(experimental_fetch_to_device=False))
     dist_iter = iter(dist)
 
     @def_function.function

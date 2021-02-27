@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/mkl_threadpool.h"
-#include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 

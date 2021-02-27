@@ -92,12 +92,6 @@ class ExecutableBuildOptions {
   bool deduplicate_hlo() const { return deduplicate_hlo_; }
   ExecutableBuildOptions& set_deduplicate_hlo(bool deduplicate_hlo);
 
-  bool broadcast_replicated_params() const {
-    return broadcast_replicated_params_;
-  }
-  ExecutableBuildOptions& set_broadcast_replicated_params(
-      bool broadcast_replicated_params);
-
   // If set, this specifies a static device assignment for the computation.
   // Otherwise, the computation will be compiled generically and can be run with
   // any device assignment compatible with the computation's replica and

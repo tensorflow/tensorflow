@@ -1361,6 +1361,14 @@ def mean_absolute_percentage_error(y_true, y_pred):
   return 100. * K.mean(diff, axis=-1)
 
 
+@dispatch.dispatch_for_types(mean_absolute_percentage_error,
+                             ragged_tensor.RaggedTensor)
+def _ragged_tensor_mape(y_true, y_pred):
+  """ Support RaggedTensors."""
+  return _ragged_tensor_apply_loss(mean_absolute_percentage_error, y_true,
+                                   y_pred)
+
+
 @keras_export('keras.metrics.mean_squared_logarithmic_error',
               'keras.metrics.msle', 'keras.metrics.MSLE',
               'keras.losses.mean_squared_logarithmic_error',
@@ -1396,6 +1404,14 @@ def mean_squared_logarithmic_error(y_true, y_pred):
   first_log = math_ops.log(K.maximum(y_pred, K.epsilon()) + 1.)
   second_log = math_ops.log(K.maximum(y_true, K.epsilon()) + 1.)
   return K.mean(math_ops.squared_difference(first_log, second_log), axis=-1)
+
+
+@dispatch.dispatch_for_types(mean_squared_logarithmic_error,
+                             ragged_tensor.RaggedTensor)
+def _ragged_tensor_msle(y_true, y_pred):
+  """ Implements support for handling RaggedTensors."""
+  return _ragged_tensor_apply_loss(mean_squared_logarithmic_error, y_true,
+                                   y_pred)
 
 
 def _maybe_convert_labels(y_true):

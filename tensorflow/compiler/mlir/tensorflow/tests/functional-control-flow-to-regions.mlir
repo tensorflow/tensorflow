@@ -213,11 +213,11 @@ func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
   } : (tensor<*xf32>) -> (tensor<*xf32>)
 
   // CHECK: [[Result0:%.*]] = "tf.WhileRegion"
-  // CHECK: [[ResultCast0:%.*]] = "tf.Cast"
-  // CHECK: [[Result1:%.*]] = call @testWhileCond([[ResultCast0]])
+  // CHECK: ^bb0(%[[CARG0:.*]]: tensor<4xf32>
+  // CHECK: [[Result1:%.*]] = call @testWhileCond(%[[CARG0]])
   // CHECK: "tf.Yield"([[Result1]])
-  // CHECK: [[ResultCast1:%.*]] = "tf.Cast"
-  // CHECK: [[Result2:%.*]] = call @testWhileBody([[ResultCast1]])
+  // CHECK: ^bb0(%[[BARG0:.*]]: tensor<4xf32>
+  // CHECK: [[Result2:%.*]] = call @testWhileBody(%[[BARG0]])
   // CHECK: "tf.Yield"([[Result2]])
   // CHECK: return [[Result0]]
   return %1 : tensor<*xf32>

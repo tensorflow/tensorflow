@@ -499,7 +499,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       auto result = dataset()->traceme_metadata_;
       result.push_back(std::make_pair(
           "parallelism",
-          strings::Printf("%lld", static_cast<long long>(parallelism))));
+          parallelism == -1
+              ? kTraceInfoUnavailable
+              : strings::Printf("%lld", static_cast<long long>(parallelism))));
       return result;
     }
 

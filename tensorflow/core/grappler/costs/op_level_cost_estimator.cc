@@ -582,6 +582,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
   elementwise_ops_.emplace("Prod", EIGEN_COST(scalar_product_op<float>));
   elementwise_ops_.emplace("QuantizeAndDequantizeV2",
                            quantize_and_dequantize_v2_cost);
+  elementwise_ops_.emplace("QuantizeAndDequantizeV4",
+                           quantize_and_dequantize_v2_cost);
   elementwise_ops_.emplace("QuantizedSigmoid",
                            EIGEN_COST(scalar_logistic_op<float>));
   elementwise_ops_.emplace("QuantizeV2", quantize_v2_cost);

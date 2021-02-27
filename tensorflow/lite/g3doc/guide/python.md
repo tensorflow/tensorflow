@@ -29,29 +29,35 @@ Note: If you need access to other Python APIs, such as the
 
 ## Install TensorFlow Lite for Python
 
-To install the TensorFlow Lite runtime package, run this command:
+If you're running Debian Linux or a derivative of Debian (including Raspberry Pi
+OS), you should install from our Debian package repo. This requires that you add
+a new repo list and key to your system and then install as follows:
+
+<pre class="devsite-terminal">
+echo "deb https://packages.cloud.google.com/apt coral-edgetpu-stable main" | sudo tee /etc/apt/sources.list.d/coral-edgetpu.list
+<code class="devsite-terminal"
+>curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+</code><code class="devsite-terminal"
+>sudo apt-get update
+</code><code class="devsite-terminal"
+>sudo apt-get install python3-tflite-runtime</code>
+</pre>
+
+For all other systems, you can install with pip:
 
 <pre class="devsite-terminal devsite-click-to-copy">
 pip3 install --extra-index-url https://google-coral.github.io/py-repo/ tflite_runtime
 </pre>
 
-If you're on a Raspberry Pi, this command might fail due to a known issue with
-the `extra-index-url` option
-([#4011](https://github.com/raspberrypi/linux/issues/4011)). So we suggest you
-specify one of the
-[`tflite_runtime` wheels](https://github.com/google-coral/pycoral/releases/)
-that matches your system. For example, if you're running Raspberry Pi OS 10
-(which has Python 3.7), instead use this command:
+If you'd like to manually install a Python wheel, you can select one from
+[all `tflite_runtime` wheels](https://github.com/google-coral/pycoral/releases/).
 
-<pre class="devsite-terminal devsite-click-to-copy">
-pip3 install https://github.com/google-coral/pycoral/releases/download/release-frogfish/tflite_runtime-2.5.0-cp37-cp37m-linux_armv7l.whl
-</pre>
-
-Note: If you're on Debian Linux and using TensorFlow Lite with a Coral ML
-accelerator, using pip to install `tflite_runtime` may not be compatible with
-other Coral libraries. To ensure all your libraries are compatible, instead
-install `tflite_runtime` as a
-[Debian package from Coral](https://coral.ai/software/#debian-packages).
+Note: If you're on Debian Linux and you install the `tflite_runtime` using pip,
+it can cause runtime failures when using other software that you installed as
+Debian packages and that depends on TF Lite (such as
+[Coral libraries](https://coral.ai/software/)). You can fix it if you uninstall
+`tflite_runtime` with pip and then reinstall it with the `apt-get` commands
+above.
 
 ## Run an inference using tflite_runtime
 

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dataset_store.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_state.h"
+#include "tensorflow/core/data/service/task_remover.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -143,6 +144,8 @@ class DataServiceDispatcherImpl {
                         GetOrCreateJobResponse* response);
   Status ReleaseJobClient(const ReleaseJobClientRequest* request,
                           ReleaseJobClientResponse* response);
+  Status MaybeRemoveTask(const MaybeRemoveTaskRequest* request,
+                         MaybeRemoveTaskResponse* response);
   Status ClientHeartbeat(const ClientHeartbeatRequest* request,
                          ClientHeartbeatResponse* response);
   Status GetWorkers(const GetWorkersRequest* request,
@@ -178,6 +181,20 @@ class DataServiceDispatcherImpl {
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Creates tasks for the specified worker, one task for every unfinished job.
   Status CreateTasksForWorker(const std::string& worker_address);
+  // Finds tasks that should be deleted from a worker, updating the heartbeat
+  // response.
+  Status FindTasksToDelete(
+      const absl::flat_hash_set<int64>& current_tasks,
+      const std::vector<std::shared_ptr<const DispatcherState::Task>>
+          assigned_tasks,
+      WorkerHeartbeatResponse* response);
+  // Finds new tasks that should be assigned to a worker and adds them to
+  // the heartbeat response.
+  Status FindNewTasks(
+      const std::string& worker_address,
+      const absl::flat_hash_set<int64>& current_tasks,
+      std::vector<std::shared_ptr<const DispatcherState::Task>>& assigned_tasks,
+      WorkerHeartbeatResponse* response);
   // Acquires a job client id to read from the given job and sets
   // `job_client_id`.
   Status AcquireJobClientId(
@@ -191,16 +208,22 @@ class DataServiceDispatcherImpl {
       std::vector<std::shared_ptr<const DispatcherState::Task>>& tasks)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  // Creates a new task for a job. The created task may be either pending or
+  // active.
+  Status CreateTask(std::shared_ptr<const DispatcherState::Job> job,
+                    const std::string& worker_address,
+                    std::shared_ptr<const DispatcherState::Task>& task)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Creates a pending task for a round robin job. All consumers need to agree
   // on which round to add the task in before the pending task can be promoted
   // to a regular task.
   Status CreatePendingTask(std::shared_ptr<const DispatcherState::Job> job,
                            const std::string& worker_address)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Creates a new task for a job, storing the created task in `task`.
-  Status CreateTask(std::shared_ptr<const DispatcherState::Job> job,
-                    const std::string& worker_address,
-                    std::shared_ptr<const DispatcherState::Task>& task);
+  // Creates a new active task for a job, storing the created task in `task`.
+  Status CreateActiveTask(std::shared_ptr<const DispatcherState::Job> job,
+                          const std::string& worker_address,
+                          std::shared_ptr<const DispatcherState::Task>& task);
   // Assigns the list of tasks to the workers indicated by their
   // `worker_address` fields.
   Status AssignTasks(
@@ -259,6 +282,9 @@ class DataServiceDispatcherImpl {
   // Mapping from round robin job id to the round the job is currently on. This
   // is based on the data provided by client heartbeats, and may be stale.
   absl::flat_hash_map<int64, int64> round_robin_rounds_ TF_GUARDED_BY(mu_);
+  // Map from task id to a TaskRemover which determines when to remove the task.
+  absl::flat_hash_map<int64, std::shared_ptr<TaskRemover>> remove_task_requests_
+      TF_GUARDED_BY(mu_);
 
   absl::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);

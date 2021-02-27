@@ -231,7 +231,7 @@ void MarkGlobalTensorsImmutable(
     auto global_tensor = kv.first;
     const auto& global_tensor_uses = kv.second;
     if (IsImmutable(global_tensor, global_tensor_uses, resource_analyzer)) {
-      global_tensor.removeAttr("is_mutable");
+      global_tensor->removeAttr("is_mutable");
     }
   }
 }
