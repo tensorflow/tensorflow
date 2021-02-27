@@ -26,12 +26,14 @@ from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import mirrored_run
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
+from tensorflow.python.distribute import values_util
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
@@ -772,6 +774,19 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
             fn(v, *distribute_utils.select_replica(i, args),
                **distribute_utils.select_replica(i, kwargs)))
     return distribute_utils.update_regroup(self, updates, group)
+
+  def _replica_ctx_update(self, var, fn, args, kwargs):
+    replica_context = distribution_strategy_context.get_replica_context()
+    assert replica_context
+    replica_id = values_util.get_current_replica_id_as_int()
+    name = "update_%d" % replica_id
+
+    if isinstance(var, values.DistributedVariable):
+      var = var._get_replica(replica_id)  # pylint: disable=protected-access
+
+    with ops.device(var.device), ops.name_scope(name):
+      result = fn(var, *args, **kwargs)
+    return result
 
   def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
     assert isinstance(colocate_with, tuple)
