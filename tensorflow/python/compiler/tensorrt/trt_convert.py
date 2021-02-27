@@ -114,6 +114,19 @@ class TrtPrecisionMode(object):
 # so it can produce reasonable performance results with the default.
 DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = 1 << 30
 
+PROFILE_STRATEGY_RANGE = "Range"
+PROFILE_STRATEGY_OPTIMAL = "Optimal"
+PROFILE_STRATEGY_RANGE_OPTIMAL = "Range+Optimal"
+PROFILE_STRATEGY_IMPLICIT_BATCH_MODE_COMPATIBLE = "ImplicitBatchModeCompatible"
+
+
+def supported_profile_strategies():
+  return [
+      PROFILE_STRATEGY_RANGE, PROFILE_STRATEGY_OPTIMAL,
+      PROFILE_STRATEGY_RANGE_OPTIMAL,
+      PROFILE_STRATEGY_IMPLICIT_BATCH_MODE_COMPATIBLE
+  ]
+
 
 @tf_export("experimental.tensorrt.ConversionParams", v1=[])
 class TrtConversionParams(
@@ -234,7 +247,8 @@ def _get_tensorrt_rewriter_config(conversion_params,
                                   max_batch_size=None,
                                   is_v2=False,
                                   disable_non_trt_optimizers=False,
-                                  use_implicit_batch=True):
+                                  use_implicit_batch=True,
+                                  profile_strategy=PROFILE_STRATEGY_RANGE):
   """Returns a RewriterConfig proto for TRT transformation.
 
   Args:
@@ -244,6 +258,7 @@ def _get_tensorrt_rewriter_config(conversion_params,
     is_v2: whether we're getting a RewriterConfig for TF 2.0.
     disable_non_trt_optimizers: Turn off all default Grappler optimizers.
     use_implicit_batch: Whether to use implicit batch or explicit batch.
+    profile_strategy: dynamic shape optimization profile strategy.
 
   Returns:
     A RewriterConfig proto which sets a TensorRTOptimizer to run Grappler.
@@ -301,6 +316,8 @@ def _get_tensorrt_rewriter_config(conversion_params,
   if max_batch_size is not None:
     optimizer.parameter_map["max_batch_size"].i = max_batch_size
   optimizer.parameter_map["use_implicit_batch"].b = use_implicit_batch
+  if not use_implicit_batch:
+    optimizer.parameter_map["profile_strategy"].s = _to_bytes(profile_strategy)
 
   # Disabling optimizers should happen after defining the TF-TRT grappler pass
   # otherwise the template can overwrite the disablement.
@@ -921,12 +938,35 @@ class TrtGraphConverterV2(object):
      # Save the TRT engine and the engines.
      converter.save(output_saved_model_dir)
      ```
+  4. To use dynamic shape, we need to call the build method with an input
+     function to generate profiles. This step is similar to the INT8 calibration
+     step described above. The converter also needs to be created with
+     use_dynamic_shape=True and one of the following profile_strategies for
+     creating profiles based on the inputs produced by the input function:
+     * `Range`: create one profile that works for inputs with dimension values
+       in the range of [min_dims, max_dims] where min_dims and max_dims are
+       derived from the provided inputs.
+     * `Optimal`: create one profile for each input. The profile only works for
+       inputs with the same dimensions as the input it is created for. The GPU
+       engine will be run with optimal performance with such inputs.
+     * `Range+Optimal`: create the profiles for both `Range` and `Optimal`.
+     * `ImplicitBatchModeCompatible`: create the profiles that will produce the
+       same GPU engines as the implicit_batch_mode would produce.
   """
+
+  def _verify_profile_strategy(self, strategy):
+    supported_strategies = [s.lower() for s in supported_profile_strategies()]
+    if strategy.lower() not in supported_strategies:
+      raise ValueError(
+          ("profile_strategy '{}' is not supported. It should be one of {}"
+          ).format(strategy, supported_profile_strategies()))
 
   def __init__(self,
                input_saved_model_dir=None,
                input_saved_model_tags=None,
                input_saved_model_signature_key=None,
+               use_dynamic_shape=None,
+               dynamic_shape_profile_strategy=None,
                conversion_params=None):
     """Initialize the converter.
 
@@ -936,6 +976,11 @@ class TrtGraphConverterV2(object):
       input_saved_model_tags: list of tags to load the SavedModel.
       input_saved_model_signature_key: the key of the signature to optimize the
         graph for.
+      use_dynamic_shape: whether to enable dynamic shape support. None is
+        equivalent to False in the current implementation.
+      dynamic_shape_profile_strategy: one of the strings in
+        supported_profile_strategies(). None is equivalent to Range in the
+        current implementation.
       conversion_params: a TrtConversionParams instance.
 
     Raises:
@@ -962,6 +1007,18 @@ class TrtGraphConverterV2(object):
 
     self._converted = False
     self._build_called_once = False
+
+    if use_dynamic_shape is None:
+      self._use_dynamic_shape = False
+    else:
+      self._use_dynamic_shape = use_dynamic_shape
+
+    if self._use_dynamic_shape:
+      if dynamic_shape_profile_strategy is None:
+        self._profile_strategy = PROFILE_STRATEGY_RANGE
+      else:
+        self._verify_profile_strategy(dynamic_shape_profile_strategy)
+        self._profile_strategy = dynamic_shape_profile_strategy
 
     # Fields to support TF-TRT testing and shouldn't be used for other purpose.
     self._test_only_disable_non_trt_optimizers = False

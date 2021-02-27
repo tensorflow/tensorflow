@@ -140,7 +140,11 @@
         `max_batch_size`. Previously, we issued a warning when the value of
         `rewriter_config_template` is not None. We issued an error when the
         value of `is_dynamic_op` is not True. We didn't use the value for
-        `max_batch_size` for building TensorRT engines.
+        `max_batch_size` for building TensorRT engines. Add parameters
+         `use_dynamic_shape` to enable dynamic shape support. The default is to
+         disable dynamic shape support. Add `dynamic_shape_profile_strategy`
+         for selecting a dynamic shape profile strategy. The default is profile
+         strategy is `Range`.
     *   Issue a warning when function get_tensorrt_rewriter_config is used.
 
 *   TF XLA
