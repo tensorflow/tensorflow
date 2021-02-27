@@ -43,21 +43,12 @@ def unpack_model(packed_keras_model):
   b = BytesIO(packed_keras_model)
   with tarfile.open(fileobj=b, mode="r") as archive:
     for fname in archive.getnames():
-      dest = os.path.join(temp_dir, fname)
-      gfile.makedirs(os.path.dirname(dest))
-      with gfile.GFile(dest, "wb") as f:
+      dest_path = os.path.join(temp_dir, fname)
+      gfile.makedirs(os.path.dirname(dest_path))
+      with gfile.GFile(dest_path, "wb") as f:
         f.write(archive.extractfile(fname).read())
   model = load_model(temp_dir)
-  # delete file by file because gfile.rmtree is not implemented for ram://
-  for _, _, filenames in gfile.walk(temp_dir):
-    for filename in filenames:
-      # Currently, gfile.walk returns
-      # the entire path for the ram:// filesystem
-      # this is inconsistent with the behavior of
-      # os.walk and gfile.walk on non-ram
-      # filesystems
-      dest_path = filename
-      gfile.remove(dest_path)
+  gfile.rmtree(temp_dir)
   return model
 
 
@@ -75,19 +66,13 @@ def pack_model(model):
   model.save(temp_dir)
   b = BytesIO()
   with tarfile.open(fileobj=b, mode="w") as archive:
-    for _, _, filenames in gfile.walk(temp_dir):
+    for root, _, filenames in gfile.walk(temp_dir):
       for filename in filenames:
-        # Currently, gfile.walk returns
-        # the entire path for the ram:// filesystem
-        # this is inconsistent with the behavior of
-        # os.walk and gfile.walk on non-ram
-        # filesystems
-        dest_path = filename
+        dest_path = os.path.join(root, filename)
         with gfile.GFile(dest_path, "rb") as f:
           info = tarfile.TarInfo(name=os.path.relpath(dest_path, temp_dir))
           info.size = f.size()
           archive.addfile(tarinfo=info, fileobj=f)
-        # delete file by file because gfile.rmtree is not implemented for ram://
-        gfile.remove(dest_path)
+  gfile.rmtree(temp_dir)
   b.seek(0)
   return unpack_model, (np.asarray(memoryview(b.read())), )
