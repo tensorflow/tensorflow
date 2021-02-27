@@ -32,10 +32,11 @@ TfLiteStatus ExpandTensorDim(TfLiteContext* context,
   const TfLiteIntArray* input_dims = input->dims;
   TfLiteIntArray* output_dims = output->dims;
   if (axis < 0) {
-    axis = output_dims->size + axis;
+    axis = input_dims->size + 1 + axis;
   }
   TF_LITE_ENSURE(context, axis <= input_dims->size);
 
+  output_dims->size = input_dims->size + 1;
   for (int32_t i = 0; i < output_dims->size; ++i) {
     if (i < axis) {
       output_dims->data[i] = input_dims->data[i];
