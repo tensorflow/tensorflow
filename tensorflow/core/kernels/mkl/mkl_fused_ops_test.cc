@@ -1318,7 +1318,7 @@ TEST_F(MklFusedMatMulCacheTest, WeightCached) {
     test::ExpectTensorNear<float>(expected, output_new, 1e-5);
   }
 }
-#endif  // !ENABLE_ONEDNN_OPENMP
+#endif  // ENABLE_ONEDNN_OPENMP
 
 class BiasCacheTest : public OpsTestBase {
  public:
