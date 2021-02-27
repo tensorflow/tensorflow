@@ -116,6 +116,10 @@ Status EagerExecutor::SyncExecute(EagerNode* node) {
   // Inline execution in sync mode.
   s = node->Run();
   tensorflow::mutex_lock l(node_queue_mutex_);
+  if (!s.ok()) {
+    status_ = s;
+    ok_ = false;
+  }
   NotifyWaiters(id);
   return s;
 }
