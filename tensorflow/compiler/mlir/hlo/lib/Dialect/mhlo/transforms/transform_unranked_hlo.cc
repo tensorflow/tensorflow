@@ -126,7 +126,7 @@ struct ElementwiseOpConversion : public OpRewritePattern<OpTy> {
     Type flatResultTy =
         RankedTensorType::get({ShapedType::kDynamicSize}, resultElementTy);
     Value flatResult =
-        rewriter.create<OpTy>(loc, flatResultTy, flatOperands, op.getAttrs());
+        rewriter.create<OpTy>(loc, flatResultTy, flatOperands, op->getAttrs());
 
     // Restore original shape.
     rewriter.replaceOpWithNewOp<mhlo::DynamicReshapeOp>(op, op.getType(),
@@ -192,7 +192,7 @@ struct ConvertUnrankedScalarDynamicBroadcastBinaryOp
                                        rhs_is_scalar ? rhs : reshaped};
     Value computed = rewriter.create<ChloOpTy>(
         loc, TypeRange{RankedTensorType::get({-1}, result_element_type)},
-        new_operands, op.getAttrs());
+        new_operands, op->getAttrs());
 
     // Reshape the result back into an unranked tensor.
     rewriter.replaceOpWithNewOp<mhlo::DynamicReshapeOp>(op, result_type,
@@ -278,7 +278,7 @@ struct ConvertUnrankedDynamicBroadcastOpHelper {
     auto result_type =
         RankedTensorType::get(dynamic_dimensions, result_element_type);
     Value result = if_builder.create<ChloOpTy>(
-        loc, ArrayRef<Type>{result_type}, reshaped_operands, op.getAttrs());
+        loc, ArrayRef<Type>{result_type}, reshaped_operands, op->getAttrs());
     Value reshaped_result = if_builder.create<tensor::CastOp>(
         loc, UnrankedTensorType::get(result_element_type), result);
     if_builder.create<scf::YieldOp>(loc, reshaped_result);
@@ -386,7 +386,7 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
         loc, RankedTensorType::get({}, lhs_type.getElementType()), lhs);
     Value if_lhs_scalar_result = if_lhs_scalar_builder.create<ChloOpTy>(
         loc, ArrayRef<Type>{result_type}, ArrayRef<Value>{reshaped_lhs, rhs},
-        op.getAttrs());
+        op->getAttrs());
     Value extended_if_lhs_scalar_result =
         extendToBroadcastShape(if_lhs_scalar_builder, loc, if_lhs_scalar_result,
                                shape_of_lhs, shape_of_rhs);
@@ -409,7 +409,7 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
         loc, RankedTensorType::get({}, rhs_type.getElementType()), rhs);
     Value if_rhs_scalar_result = if_rhs_scalar_builder.create<ChloOpTy>(
         loc, ArrayRef<Type>{result_type}, ArrayRef<Value>{lhs, reshaped_rhs},
-        op.getAttrs());
+        op->getAttrs());
     Value extended_if_rhs_scalar_result =
         extendToBroadcastShape(if_rhs_scalar_builder, loc, if_rhs_scalar_result,
                                shape_of_lhs, shape_of_rhs);

@@ -413,7 +413,7 @@ void Print(ReplicateOp op, OpAsmPrinter* p) {
   // Skip derived `operand_segment_sizes` attribute as custom print format of
   // operands holds enough information to calculate these variadic operand list
   // lengths.
-  p->printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/ArrayRef<StringRef>{
+  p->printOptionalAttrDict(op->getAttrs(), /*elidedAttrs=*/ArrayRef<StringRef>{
                                kOperandSegmentSizesAttr});
   p->printRegion(op.body(), /*printEntryBlockArgs=*/false);
 }
