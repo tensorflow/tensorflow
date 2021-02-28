@@ -239,7 +239,6 @@ py_library(
         "//tensorflow/python/util:_pywrap_nest",
         "//tensorflow/python/util:_pywrap_stat_summarizer",
         "//tensorflow/python/util:_pywrap_tfprof",
-        "//tensorflow/python/util:_pywrap_transform_graph",
         "//tensorflow/python/util:_pywrap_util_port",
         "//third_party/py/numpy",
     ],
@@ -764,7 +763,6 @@ py_library(
         "//tensorflow/python/util:_pywrap_checkpoint_reader",
         "//tensorflow/python/util:_pywrap_stat_summarizer",
         "//tensorflow/python/util:_pywrap_tfprof",
-        "//tensorflow/python/util:_pywrap_transform_graph",
         "//tensorflow/python/util:_pywrap_util_port",
         ":_pywrap_utils",
         ":composite_tensor",
@@ -5261,7 +5259,6 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/core/profiler/internal/cpu:python_tracer",
-        "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/lite/toco/python:toco_python_api",
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//tensorflow/core/util/tensor_bundle",
@@ -5344,7 +5341,6 @@ filegroup(
         ":tf_session_helper",  # tf_session
         "//tensorflow/python/eager:pywrap_tfe_lib",  # pywrap_tfe_lib
         "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
-        "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
     ] + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile
         "//tensorflow/compiler/xla:status_macros",  # tfcompile
