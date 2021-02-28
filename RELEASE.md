@@ -119,6 +119,10 @@
       `tf.config.experimental.get_memory_usage` in favor of this new function.
     *   Extended `tf.config.experimental.enable_tensor_float_32_execution` to
         control Tensor-Float-32 evaluation in RNNs.
+    *   Added a 'experimental_payloads' field to tf.errors.OpError and
+        its subclasses to support more detailed error reporting.
+        This is inspired from Abseil Status payloads:
+        https://github.com/abseil/abseil-cpp/blob/master/absl/status/status.h
 
 *   `tf.summary`:
   *   New `tf.summary.graph` allows manual write of TensorFlow graph

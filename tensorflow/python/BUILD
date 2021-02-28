@@ -765,6 +765,7 @@ py_library(
         "//tensorflow/python/util:_pywrap_tfprof",
         "//tensorflow/python/util:_pywrap_util_port",
         ":_pywrap_utils",
+        ":_errors_test_helper",
         ":composite_tensor",
         ":config",
         ":convert_to_constants",
@@ -1924,6 +1925,7 @@ tf_py_test(
     main = "framework/errors_test.py",
     python_version = "PY3",
     deps = [
+        ":_errors_test_helper",
         ":client_testlib",
         ":errors",
         "//tensorflow/core:protos_all_py",
@@ -5115,6 +5117,17 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_proto",
         "//tensorflow/python/lib/core:pybind11_status",
         "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_errors_test_helper",
+    srcs = ["framework/errors_test_helper.cc"],
+    module_name = "_errors_test_helper",
+    deps = [
+        "//tensorflow/core/platform:status",
+        "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
     ],
 )
