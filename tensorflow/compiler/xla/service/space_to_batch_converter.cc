@@ -2264,6 +2264,17 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
   bool activations_locally_space_to_batched = false;
   bool kernel_locally_space_to_batched = false;
   std::vector<int64> permute_dims_kernel, permute_dims;
+
+  if (old_to_new_instrs_.contains(activations_old)) {
+    activations_new = old_to_new_instrs_[activations_old];
+    permute_dims = instr_to_dim_permute_map_[activations_new];
+  }
+
+  if (old_to_new_instrs_.contains(kernel_old)) {
+    kernel_new = old_to_new_instrs_[kernel_old];
+    permute_dims_kernel = instr_to_dim_permute_map_[kernel_new];
+  }
+
   // If activations were no space-to-batched, we space-to-batch them below.
   if (!old_to_new_instrs_.contains(activations_old)) {
     kernel_new = old_to_new_instrs_[kernel_old];
@@ -2288,13 +2299,13 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
                    /*high_padding=*/pad_size, /*low_padding=*/0,
                    needed_spatial_size, kNumSplits, /*is_backprop=*/true));
 
-    old_to_new_instrs_[activations_old] = retval.first;
+    activations_new = retval.first;
 
     std::vector<int64> reversed_transpose_dims(retval.second.size());
     for (int64 i = 0; i < retval.second.size(); ++i) {
       reversed_transpose_dims[i] = ReverseDimLookUp(retval.second, i);
     }
-    instr_to_dim_permute_map_[retval.first] = reversed_transpose_dims;
+    permute_dims = reversed_transpose_dims;
 
     VLOG(3) << "New Activations " << retval.first->ToString();
 
@@ -2324,28 +2335,24 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
                                 needed_spatial_size, kNumSplits,
                                 /*is_backprop=*/true, /*is_rhs=*/true));
 
-    old_to_new_instrs_[kernel_old] = retval.first;
+    kernel_new = retval.first;
 
     std::vector<int64> reversed_transpose_dims(retval.second.size());
     for (int64 i = 0; i < retval.second.size(); ++i) {
       reversed_transpose_dims[i] = ReverseDimLookUp(retval.second, i);
     }
-    instr_to_dim_permute_map_[retval.first] = reversed_transpose_dims;
+    permute_dims_kernel = reversed_transpose_dims;
 
     VLOG(3) << "New kernel " << retval.first->ToString();
 
     kernel_locally_space_to_batched = true;
   }
 
-  CHECK(old_to_new_instrs_.contains(activations_old));
-  CHECK(old_to_new_instrs_.contains(kernel_old));
-  activations_new = old_to_new_instrs_[activations_old];
-  kernel_new = old_to_new_instrs_[kernel_old];
+  CHECK_NE(activations_new, nullptr);
+  CHECK_NE(kernel_new, nullptr);
+
   const int64 new_spatial_dimension =
       activations_new->shape().dimensions_size();
-
-  permute_dims = instr_to_dim_permute_map_[activations_new];
-  permute_dims_kernel = instr_to_dim_permute_map_[kernel_new];
 
   auto permuted_conv_dims_numbers = original_conv_dims;
 
