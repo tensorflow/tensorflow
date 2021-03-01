@@ -248,10 +248,10 @@ class UniqueOpGPU : public AsyncOpKernel {
     const T* input_ptr = input.flat<T>().data();
     OP_REQUIRES_OK_ASYNC(
         context,
-        (GpuRadixSort(context, input_size, /*keys_in = */ input_ptr,
-                      /*keys_out = */ sorted_input_ptr,
-                      /*indices_in = */ static_cast<const TIndex*>(nullptr),
-                      /*indices_out = */ sorted_input_inds_ptr)),
+        (GpuRadixSort(context, input_size, /*keys_in=*/input_ptr,
+                      /*keys_out=*/sorted_input_ptr,
+                      /*indices_in=*/static_cast<const TIndex*>(nullptr),
+                      /*indices_out=*/sorted_input_inds_ptr)),
         done);
 
     // Create a fancy input iterator to indicate segment boundaries.
@@ -273,7 +273,7 @@ class UniqueOpGPU : public AsyncOpKernel {
 
     // Copy the last element of sorted_input_unique_ids back to the host to
     // obtain uniq_size.
-    ScratchSpace<TIndex> last_idx_host(context, 1, /* on_host */ true);
+    ScratchSpace<TIndex> last_idx_host(context, 1, /*on_host=*/true);
     if (input_size > 0) {
       OP_REQUIRES_ASYNC(
           context,
@@ -338,12 +338,11 @@ class UniqueOpGPU : public AsyncOpKernel {
       OP_REQUIRES_OK_ASYNC(
           context,
           (GpuRadixSort(context, uniq_size,
-                        /*keys_in = */ unique_input_inds_ptr,
-                        /*keys_out = */ sorted_unique_input_inds_ptr,
-                        /*indices_in = */ static_cast<const TIndex*>(nullptr),
-                        /*indices_out = */ sorted_unique_perm_ptr,
-                        /*begin_bit = */ 0,
-                        /*end_bit = */ Log2Ceiling(input_size))),
+                        /*keys_in=*/unique_input_inds_ptr,
+                        /*keys_out=*/sorted_unique_input_inds_ptr,
+                        /*indices_in=*/static_cast<const TIndex*>(nullptr),
+                        /*indices_out=*/sorted_unique_perm_ptr,
+                        /*num_bits=*/Log2Ceiling(input_size))),
           done);
 
       // Free temporary tensor that is no longer needed.
