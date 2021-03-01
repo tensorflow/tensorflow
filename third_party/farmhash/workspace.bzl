@@ -2,7 +2,7 @@
 
 load("//third_party:repo.bzl", "tf_http_archive")
 
-def repo(name):
+def repo():
     """Imports farmhash."""
 
     # Attention: tools parse and update these lines.
@@ -10,7 +10,7 @@ def repo(name):
     FARMHASH_SHA256 = "6560547c63e4af82b0f202cb710ceabb3f21347a4b996db565a411da5b17aba0"
 
     tf_http_archive(
-        name = name,
+        name = "farmhash_archive",
         build_file = "//third_party/farmhash:farmhash.BUILD",
         sha256 = FARMHASH_SHA256,
         strip_prefix = "farmhash-{commit}".format(commit = FARMHASH_COMMIT),
