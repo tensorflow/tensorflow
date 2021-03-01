@@ -208,20 +208,33 @@ class UniqueOpGPU : public AsyncOpKernel {
     int64 input_size = input.NumElements();
 
     // The algorithm implemented here is as follows:
+    // input = [3, 5, 3, 4, 1, 4, 9, 8, 6, 3, 5, 7, 8, 8, 4, 6, 4, 2, 5, 6]
     // 1) Sort the input to group equal values together in segments.
     //      sorted_input, sorted_input_inds = sort(input)
+    // sorted_input:
+    //   [1, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 6, 6, 6, 7, 8, 8, 8, 9]
+    // sorted_input_inds:
+    //   [4, 17, 0, 2, 9, 3, 5, 14, 16, 1, 10, 18, 8, 15, 19, 11, 7, 12, 13, 6]
     // 2) Identify the boundaries between segments and use prefix sum to
     //    compute the unique ID for each sorted value.
     //      sorted_input_unique_ids = prefix_sum(indicator(sorted_input))
+    // indicator(sorted_input):
+    //   [0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1]
+    // sorted_input_unique_ids:
+    //   [0, 1, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 7, 7, 7, 8]
     // 3) Extract the input index of the first occurrence of each unique value.
     //    If counts are required, also extract the end index of each segment.
     //      unique_input_inds[sorted_input_unique_ids] =
     //          sorted_input_inds (@ indicator)
     //      segment_ends[sorted_input_unique_ids[i] - 1] = i (@ indicator)
+    // unique_input_inds: [4, 17, 0, 3, 1, 8, 11, 7, 6]
+    // segment_ends: [1, 2, 5, 9, 12, 15, 16, 19, 20]
     // 4) Sort the extracted unique input indices to put them in order of
     //    first appearance.
     //      sorted_unique_input_inds, sorted_unique_perm =
     //          sort(unique_input_inds)
+    // sorted_unique_input_inds: [0, 1, 3, 4, 6, 7, 8, 11, 17]
+    // sorted_unique_perm: [2, 4, 3, 0, 8, 7, 5, 6, 1]
     // 5) Gather the sorted unique input values to produce output, and invert
     //    the second sort permutation to produce an inverse ID mapping. If
     //    counts are required, also take the adjacent difference between
@@ -229,10 +242,14 @@ class UniqueOpGPU : public AsyncOpKernel {
     //      output = input[sorted_unique_input_inds]
     //      inv_sorted_unique_perm[sorted_unique_perm[i]] = i
     //      counts = adjacent_difference(segment_ends)
+    // output: [3, 5, 4, 1, 9, 8, 6, 7, 2]
+    // inv_sorted_unique_perm: [3, 8, 0, 2, 1, 6, 7, 5, 4]
+    // counts: [3, 3, 4, 1, 1, 3, 3, 1, 1]
     // 6) Look up unique IDs via the inverse ID mapping and scatter them using
     //    the original sort permutation to produce the indices output.
     //      idx[sorted_input_inds] =
     //          inv_sorted_unique_perm[sorted_input_unique_ids]
+    // idx: [0, 1, 0, 2, 3, 2, 4, 5, 6, 0, 1, 7, 5, 5, 2, 6, 2, 8, 1, 6]
 
     Tensor sorted_input_inds;
     TIndex* sorted_input_inds_ptr = nullptr;
