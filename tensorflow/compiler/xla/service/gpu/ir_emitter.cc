@@ -353,7 +353,7 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
 //     the new value is copied to old_output, and steps 2. and 3. are repeated
 //     until atomicCAS succeeds.
 //
-// On AMD GPUs, atomicCAS can only operate on 32 bit and 64 bit integers. If
+// On Nvidia GPUs, atomicCAS can only operate on 32 bit and 64 bit integers. If
 // the element type of the binary operation is 32 bits or 64 bits, the integer
 // type of the same size is used for the atomicCAS operation. On the other hand,
 // if the element type is smaller than 32 bits, int32 is used for the atomicCAS
