@@ -537,20 +537,17 @@ XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64 max_iter, float tol) {
   std::tie(v_tl, v_tr, v_bl, v_br) =
       std::make_tuple(output[6], output[7], output[8], output[9]);
 
-    auto w = ConcatInDim(builder,
-                         {ConcatInDim(builder, {tl, tr}, num_dims - 1),
-                          ConcatInDim(builder, {bl, br}, num_dims - 1)},
-                         num_dims - 2);
-    auto v = ConcatInDim(builder,
-                         {ConcatInDim(builder, {v_tl, v_tr}, num_dims - 1),
-                          ConcatInDim(builder, {v_bl, v_br}, num_dims - 1)},
-                         num_dims - 2);
-    if (n % 2) {
-      w = SliceInMinorDims(w, {0, 0}, {n, n});
-      v = SliceInMinorDims(v, {0, 0}, {n, n});
-    }
+  auto w = ConcatInDim(builder, {GetMatrixDiagonal(tl), GetMatrixDiagonal(br)},
+                       num_dims - 2);
+  auto v = ConcatInDim(builder,
+                       {ConcatInDim(builder, {v_tl, v_tr}, num_dims - 1),
+                        ConcatInDim(builder, {v_bl, v_br}, num_dims - 1)},
+                       num_dims - 2);
+  if (n % 2) {
+    w = SliceInMinorDims(w, {0}, {n});
+    v = SliceInMinorDims(v, {0, 0}, {n, n});
+  }
     v = TransposeInMinorDims(v);
-    w = GetMatrixDiagonal(w);
 
     TF_ASSIGN_OR_RETURN(std::tie(v, w), SortByEigenvalues(v, w));
     return Tuple(builder, {v, w});
