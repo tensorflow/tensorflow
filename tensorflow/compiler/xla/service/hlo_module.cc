@@ -295,6 +295,7 @@ HloModuleProto HloModule::ToProto() const {
       prefetch->add_index(index);
     }
   }
+  proto.set_is_dynamic(is_dynamic_);
   return proto;
 }
 
@@ -428,6 +429,8 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
         ShapeIndex(prefetch.index().begin(), prefetch.index().end()));
   }
 
+  module->set_is_dynamic(proto.is_dynamic());
+
   return std::move(module);
 }
 
@@ -447,8 +450,6 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
     module_config.set_use_spmd_partitioning(
         execution_options->use_spmd_partitioning());
     module_config.set_deduplicate_hlo(execution_options->deduplicate_hlo());
-    module_config.set_broadcast_replicated_params(
-        execution_options->broadcast_replicated_parameters_via_collectives());
     if (execution_options->has_device_assignment()) {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<DeviceAssignment> device_assignment,
                           DeviceAssignment::Deserialize(
@@ -712,7 +713,7 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
   auto cloned_computation = entry_computation_->Clone(suffix, &context);
   module->AddEntryComputation(std::move(cloned_computation));
   module->input_output_alias_config() = input_output_alias_config();
-
+  module->set_is_dynamic(is_dynamic());
   if (has_schedule() && schedule().Verify().ok()) {
     HloSchedule clone_schedule(module.get());
     for (HloComputation* computation : computations()) {

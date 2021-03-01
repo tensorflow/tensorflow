@@ -42,4 +42,8 @@ message WorkerConfig {
   int64 dispatcher_timeout_ms = 6;
   // The protocol for the worker to use when transferring data to clients.
   string data_transfer_protocol = 7;
+  // When shutting down a worker, how long to wait for the gRPC server to
+  // process the final requests. This is used to achieve clean shutdown in unit
+  // tests.
+  int64 shutdown_quiet_period_ms = 9;
 }

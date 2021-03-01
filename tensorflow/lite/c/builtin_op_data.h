@@ -488,6 +488,12 @@ typedef struct {
   int init_subgraph_index;
 } TfLiteCallOnceParams;
 
+typedef struct {
+  int table_id;
+  TfLiteType key_dtype;
+  TfLiteType value_dtype;
+} TfLiteHashtableParams;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

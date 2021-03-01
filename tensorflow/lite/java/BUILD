@@ -452,7 +452,6 @@ alias(
 cc_library(
     name = "tensorflowlite_native",
     srcs = ["libtensorflowlite_jni.so"],
-    visibility = ["//visibility:private"],
 )
 
 cc_library(

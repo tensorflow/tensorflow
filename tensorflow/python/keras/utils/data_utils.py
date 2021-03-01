@@ -695,8 +695,6 @@ class SequenceEnqueuer(object):
 class OrderedEnqueuer(SequenceEnqueuer):
   """Builds a Enqueuer from a Sequence.
 
-  Used in `fit_generator`, `evaluate_generator`, `predict_generator`.
-
   Args:
       sequence: A `tf.keras.utils.data_utils.Sequence` object.
       use_multiprocessing: use multiprocessing if True, otherwise threading
@@ -833,20 +831,17 @@ class GeneratorEnqueuer(SequenceEnqueuer):
   The provided generator can be finite in which case the class will throw
   a `StopIteration` exception.
 
-  Used in `fit_generator`, `evaluate_generator`, `predict_generator`.
-
   Args:
       generator: a generator function which yields data
       use_multiprocessing: use multiprocessing if True, otherwise threading
-      wait_time: time to sleep in-between calls to `put()`
       random_seed: Initial seed for workers,
           will be incremented by one for each worker.
   """
 
-  def __init__(self, sequence,
+  def __init__(self, generator,
                use_multiprocessing=False,
                random_seed=None):
-    super(GeneratorEnqueuer, self).__init__(sequence, use_multiprocessing)
+    super(GeneratorEnqueuer, self).__init__(generator, use_multiprocessing)
     self.random_seed = random_seed
 
   def _get_executor_init(self, workers):

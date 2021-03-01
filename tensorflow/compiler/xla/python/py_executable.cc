@@ -114,8 +114,9 @@ PyExecutable::ExecuteOnLocalDevices(
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
   {
     py::gil_scoped_release gil_release;
-    std::vector<std::vector<PjRtBuffer*>> arg_buffers(args.size());
-    for (int computation = 0; computation < args.size(); ++computation) {
+    const int num_devices = args.size();
+    std::vector<std::vector<PjRtBuffer*>> arg_buffers(num_devices);
+    for (int computation = 0; computation < num_devices; ++computation) {
       arg_buffers[computation].resize(args[computation].size());
       absl::c_transform(args[computation], arg_buffers[computation].begin(),
                         [](PyBuffer* buf) { return buf->buffer(); });
@@ -157,8 +158,9 @@ PyExecutable::ExecuteShardedOnLocalDevices(
       }
     }
     std::vector<std::vector<PjRtBuffer*>> arg_buffers(num_computations);
+    const int num_args = args.size();
     for (int computation = 0; computation < num_computations; ++computation) {
-      arg_buffers[computation].resize(args.size());
+      arg_buffers[computation].resize(num_args);
       absl::c_transform(args, arg_buffers[computation].begin(),
                         [&](const std::vector<PyBuffer*>& arg) {
                           return arg[computation]->buffer();

@@ -81,6 +81,9 @@ class ConvertTFDilatedConvOp : public OpRewritePattern<Conv2dOpTy> {
 template <typename Conv2dOpTy>
 LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     Conv2dOpTy op, PatternRewriter& rewriter) const {
+  if (!op.getResult().hasOneUse()) {
+    return failure();
+  }
   // Make sure Conv2D has 'VALID' padding.
   if (op->template getAttrOfType<StringAttr>("padding").getValue() != "VALID") {
     return failure();
@@ -120,6 +123,10 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     }
     expand_op = llvm::cast<TF::ExpandDimsOp>(prev_op);
     squeeze_op = llvm::cast<TF::SqueezeOp>(next_op);
+    if (!expand_op.getResult().hasOneUse() ||
+        !squeeze_op.getResult().hasOneUse()) {
+      return failure();
+    }
 
     // Make sure that the axis in `expand_op` is constant.
     if (auto const_op =
@@ -161,6 +168,9 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
   if (!llvm::isa<TF::SpaceToBatchNDOp>(prev_op)) return failure();
   // TODO(b/149936532): Check `padding` input, currently ignored.
   TF::SpaceToBatchNDOp stb_op = llvm::cast<TF::SpaceToBatchNDOp>(prev_op);
+  if (!stb_op.getResult().hasOneUse()) {
+    return failure();
+  }
 
   // Pad op.
   TF::PadOp pad_op;
@@ -169,6 +179,9 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
   // with non-trivial consequences.
   if (llvm::isa<TF::PadOp>(next_op)) {
     pad_op = llvm::cast<TF::PadOp>(next_op);
+    if (!pad_op.getResult().hasOneUse()) {
+      return failure();
+    }
     next_op = next_op->getNextNode();
     if (!next_op) return failure();
   }
@@ -180,6 +193,9 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
   if (llvm::isa<TF::BiasAddOp>(next_op)) {
     // Must be BiasAdd + BatchToSpaceND.
     biasadd_op = llvm::cast<TF::BiasAddOp>(next_op);
+    if (!biasadd_op.getResult().hasOneUse()) {
+      return failure();
+    }
     next_op = next_op->getNextNode();
     if (!next_op || !llvm::isa<TF::BatchToSpaceNDOp>(next_op)) return failure();
     bts_op = llvm::cast<TF::BatchToSpaceNDOp>(next_op);
@@ -188,6 +204,9 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     bts_op = llvm::cast<TF::BatchToSpaceNDOp>(next_op);
     next_op = next_op->getNextNode();
     if (next_op && llvm::isa<TF::BiasAddOp>(next_op)) {
+      if (!bts_op.getResult().hasOneUse()) {
+        return failure();
+      }
       biasadd_op = llvm::cast<TF::BiasAddOp>(next_op);
       final_op_is_bts = false;
     }

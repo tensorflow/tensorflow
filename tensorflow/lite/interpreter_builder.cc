@@ -765,6 +765,9 @@ TfLiteStatus InterpreterBuilder::operator()(
       }
     }
     modified_subgraph->SetVariables(std::move(variables));
+    if (subgraph->name()) {
+      modified_subgraph->SetName(subgraph->name()->c_str());
+    }
   }
 
   if (ParseSignatureDefs(model_->signature_defs(), interpreter->get()) !=

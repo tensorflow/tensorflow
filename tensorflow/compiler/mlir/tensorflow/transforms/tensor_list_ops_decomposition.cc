@@ -208,7 +208,7 @@ LogicalResult HandleWhileOp(
   }
   auto new_while =
       builder.create<TF::WhileOp>(while_op.getLoc(), body.getType().getInputs(),
-                                  new_while_operands, while_op.getAttrs());
+                                  new_while_operands, while_op->getAttrs());
   for (const auto& entry : output_buffer_to_size) {
     (*buffer_to_size)[new_while.getResult(std::get<0>(entry))] = {
         new_while.getResult(std::get<1>(entry)), std::get<2>(entry)};
@@ -268,7 +268,7 @@ LogicalResult HandleCaseOrIfOp(
   FuncOp first_branch = branches.front();
   auto new_op = OpBuilder(op).create<CaseOrIfOp>(
       op.getLoc(), first_branch.getType().getResults(), new_operands,
-      op.getAttrs());
+      op->getAttrs());
   for (const auto& entry : output_buffer_to_size) {
     (*buffer_to_size)[new_op.getResult(std::get<0>(entry))] = {
         new_op.getResult(std::get<1>(entry)), std::get<2>(entry)};
@@ -329,7 +329,7 @@ LogicalResult HandleWhileRegionOp(
   }
   auto new_while = builder.create<TF::WhileRegionOp>(
       while_op.getLoc(), body_region.front().getTerminator()->getOperandTypes(),
-      new_while_operands, while_op.getAttrs());
+      new_while_operands, while_op->getAttrs());
   new_while.body().takeBody(body_region);
   new_while.cond().takeBody(cond_region);
   for (const auto& entry : output_buffer_to_size) {
@@ -369,7 +369,7 @@ LogicalResult HandleIfRegionOp(
   // Recreate the op.
   auto new_op = OpBuilder(if_op).create<TF::IfRegionOp>(
       if_op.getLoc(), then_branch.front().getTerminator()->getOperandTypes(),
-      if_op.getOperand(), if_op.getAttrs());
+      if_op.getOperand(), if_op->getAttrs());
   for (const auto& entry : output_buffer_to_size) {
     (*buffer_to_size)[new_op.getResult(std::get<0>(entry))] = {
         new_op.getResult(std::get<1>(entry)), std::get<2>(entry)};
@@ -415,7 +415,7 @@ LogicalResult HandleCaseRegionOp(
   auto new_op = OpBuilder(case_op).create<TF::CaseRegionOp>(
       case_op.getLoc(),
       first_branch->front().getTerminator()->getOperandTypes(),
-      case_op.getOperand(), case_op.getAttrs(), case_op.getNumRegions());
+      case_op.getOperand(), case_op->getAttrs(), case_op.getNumRegions());
   for (const auto& entry : output_buffer_to_size) {
     (*buffer_to_size)[new_op.getResult(std::get<0>(entry))] = {
         new_op.getResult(std::get<1>(entry)), std::get<2>(entry)};
@@ -456,7 +456,7 @@ LogicalResult HandlePartitionedCallOp(
     OpBuilder builder(call);
     auto new_call = builder.create<CallOp>(
         call.getLoc(), info.decomposed_callee.getType().getResults(),
-        new_operands, call.getAttrs());
+        new_operands, call->getAttrs());
     new_call->setAttr(
         "f", builder.getSymbolRefAttr(
                  const_cast<FuncOp&>(info.decomposed_callee).getName()));

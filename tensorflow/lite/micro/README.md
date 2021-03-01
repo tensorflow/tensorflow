@@ -36,6 +36,7 @@ Linux      | [![Status](https://storage.googleapis.com/tensorflow-kokoro-build-b
 ## Community Supported Builds
 Build Type | Status      | Artifacts
 ---------- | ----------- | ---------
+Arduino    | [![Status](https://github.com/antmicro/tensorflow-arduino-examples/actions/workflows/test_examples.yml/badge.svg)](https://github.com/antmicro/tensorflow-arduino-examples/actions/workflows/test_examples.yml) |
 Xtensa     | [![Status](https://github.com/advaitjain/tensorflow/blob/local-continuous-builds/tensorflow/lite/micro/docs/local_continuous_builds/xtensa-build-status.svg)](https://github.com/advaitjain/tensorflow/tree/local-continuous-builds/tensorflow/lite/micro/docs/local_continuous_builds/xtensa.md) |
 
 
@@ -65,6 +66,7 @@ project, we have additional documentation in the [docs](docs/) folder.
 *   [Benchmarks](benchmarks/README.md)
 *   [Profiling](docs/profiling.md)
 *   [Memory Management](docs/memory_management.md)
+*   [Optimized Kernel Implementations](docs/optimized_kernel_implementations.md)
 *   [New Platform Support](docs/new_platform_support.md)
 *   [Software Emulation with Renode](docs/renode.md)
 *   [Pre-allocated tensors](docs/preallocated_tensors.md)

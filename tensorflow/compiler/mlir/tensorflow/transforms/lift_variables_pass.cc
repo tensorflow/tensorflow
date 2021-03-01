@@ -17,6 +17,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lift_variables.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 #include "tensorflow/core/public/session.h"
 
 namespace mlir {
@@ -27,7 +28,7 @@ namespace {
 // of function. Also it converts resource arguments from function types to the
 // corresponding saved model arguments accordingly.
 class LiftVariablesPass
-    : public PassWrapper<LiftVariablesPass, OperationPass<ModuleOp>> {
+    : public tf_saved_model::SavedModelLiftVariablePassBase<LiftVariablesPass> {
  public:
   explicit LiftVariablesPass(tensorflow::Session* session)
       : session_(session) {}

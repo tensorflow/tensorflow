@@ -45,6 +45,9 @@ enum TensorType : byte {
   FLOAT64 = 10,
   COMPLEX128 = 11,
   UINT64 = 12,
+  // Experimental: Resource and variant types are experimental, that are subject
+  // to change. Do not implement custom kernels using resource & variant types
+  // now.
   RESOURCE = 13,
   VARIANT = 14,
   UINT32 = 15,
@@ -364,6 +367,10 @@ enum BuiltinOperator : int32 {
   IMAG=133,
   REAL=134,
   COMPLEX_ABS=135,
+  HASHTABLE = 136,
+  HASHTABLE_FIND = 137,
+  HASHTABLE_IMPORT = 138,
+  HASHTABLE_SIZE = 139
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -475,6 +482,10 @@ union BuiltinOptions {
   BroadcastToOptions,
   Rfft2dOptions,
   Conv3DOptions,
+  HashtableOptions,
+  HashtableFindOptions,
+  HashtableImportOptions,
+  HashtableSizeOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -1026,6 +1037,23 @@ table BroadcastToOptions {
 }
 
 table Rfft2dOptions {
+}
+
+table HashtableOptions {
+  // The identity of hash tables. This identity will be used across different
+  // subgraphs in the same interpreter instance.
+  table_id:int;
+  key_dtype:TensorType;
+  value_dtype:TensorType;
+}
+
+table HashtableFindOptions {
+}
+
+table HashtableImportOptions {
+}
+
+table HashtableSizeOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

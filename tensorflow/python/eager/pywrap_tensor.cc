@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/python/lib/core/numpy.h"
 #include "tensorflow/python/lib/core/py_exception_registry.h"
 #include "tensorflow/python/lib/core/py_seq_tensor.h"
+#include "tensorflow/python/lib/core/pybind11_status.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
 
 // forward declare
@@ -186,13 +187,9 @@ int ConvertDeviceName(PyObject* obj, const char** dst) {
   return 1;
 }
 
-void RaiseExceptionTypeFromTFStatus(TF_Status* status) {
-  TF_Code code = TF_GetCode(status);
-  PyObject* exception = tensorflow::PyExceptionRegistry::Lookup(code);
-  PyErr_SetObject(exception,
-                  pybind11::make_tuple(pybind11::none(), pybind11::none(),
-                                       TF_Message(status))
-                      .ptr());
+void RaiseExceptionTypeFromTFStatus(TF_Status* tf_status) {
+  auto status = tensorflow::StatusFromTF_Status(tf_status);
+  SetRegisteredErrFromStatus(status);
 }
 
 }  // namespace

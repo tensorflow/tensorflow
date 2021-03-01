@@ -685,9 +685,11 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK-SAME: tensor<!tf.variant<tensor<16x1xf32>>>
     %tl_0 = "tf.EmptyTensorList"(%elem_shape, %size) : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
     %tl_1 = "tf.TensorListPushBack"(%tl_0, %elem) : (tensor<!tf.variant<tensor<?x1xf32>>>, tensor<16x1xf32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
-    %shape = "tf.TensorListElementShape"(%tl_1) : (tensor<!tf.variant<tensor<?x1xf32>>>) -> tensor<?xi32>
-    // CHECK: "tf._SomeOtherOp"(%[[ELEMENT_SHAPE]])
-    "tf._SomeOtherOp"(%shape) : (tensor<?xi32>) -> ()
+    %shape_32 = "tf.TensorListElementShape"(%tl_1) : (tensor<!tf.variant<tensor<?x1xf32>>>) -> tensor<?xi32>
+    %shape_64 = "tf.TensorListElementShape"(%tl_1) : (tensor<!tf.variant<tensor<?x1xf32>>>) -> tensor<?xi64>
+    // CHECK: %[[CAST:.*]] = "tf.Cast"(%[[ELEMENT_SHAPE]]){{.*}}: (tensor<2xi32>) -> tensor<2xi64>
+    // CHECK: "tf._SomeOtherOp"(%[[ELEMENT_SHAPE]], %[[CAST]])
+    "tf._SomeOtherOp"(%shape_32, %shape_64) : (tensor<?xi32>, tensor<?xi64>) -> ()
     return
   }
 
