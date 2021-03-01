@@ -1662,7 +1662,7 @@ mlir::Location ImporterBase::GetLocation(const Node& node) {
 
     // If there are no locations in the stack trace, fall back to just a
     // NameLoc with no child.
-    if (locations.empty()) return mlir::NameLoc::get(name_loc_id, context_);
+    if (locations.empty()) return mlir::NameLoc::get(name_loc_id);
 
     // Use the front FileLineColLoc to generate a NameLoc.
     mlir::Location node_name_loc =
