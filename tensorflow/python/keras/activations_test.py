@@ -31,10 +31,10 @@ from tensorflow.python.ops import nn_ops as nn
 from tensorflow.python.platform import test
 
 
-def _ref_softmax(values, axis=-1):
-  m = np.max(values, axis=axis, keepdims=True)
+def _ref_softmax(values):
+  m = np.max(values, axis=-1, keepdims=True)
   e = np.exp(values - m)
-  return e / np.sum(e, axis=axis, keepdims=True)
+  return e / np.sum(e, axis=-1, keepdims=True)
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -87,7 +87,7 @@ class KerasActivationsTest(test.TestCase, parameterized.TestCase):
     f = backend.function([x], [activations.softmax(x, axis=-1)])
     test_values = np.random.random(shape)
     result = f([test_values])[0]
-    expected = _ref_softmax(test_values, axis=-1)
+    expected = _ref_softmax(test_values)
     self.assertAllClose(result, expected, rtol=1e-05)
 
   def test_selu(self):
