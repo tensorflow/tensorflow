@@ -3170,31 +3170,31 @@ struct RnnDoFP32ComputationFP16Input {
 
 namespace {
 #if CUDNN_VERSION >= 8100
-bool isNonDeterministic(cudnnBackendDescriptor_t engine_config) {
+bool IsNonDeterministic(cudnnBackendDescriptor_t engine_config) {
   return cudnn_frontend::hasNumericalNote<
              CUDNN_NUMERICAL_NOTE_NONDETERMINISTIC>(engine_config);
 }
 
-bool isWinograd(cudnnBackendDescriptor_t engine_config) {
+bool IsWinograd(cudnnBackendDescriptor_t engine_config) {
   return cudnn_frontend::hasNumericalNote<
              CUDNN_NUMERICAL_NOTE_WINOGRAD>(engine_config);
 }
 
-bool isDownConvertingInputs(cudnnBackendDescriptor_t engine_config) {
+bool IsDownConvertingInputs(cudnnBackendDescriptor_t engine_config) {
   if (CudnnEnvVar<WinogradNonfused>::IsEnabled()) {
     return cudnn_frontend::hasNumericalNote<
                CUDNN_NUMERICAL_NOTE_DOWN_CONVERT_INPUTS>(engine_config);
   } else {
-    return isWinograd(engine_config) ||
+    return IsWinograd(engine_config) ||
            cudnn_frontend::hasNumericalNote<
                CUDNN_NUMERICAL_NOTE_DOWN_CONVERT_INPUTS>(engine_config);
   }
 }
 
-bool isNonDeterministicOrIsDownConverting(
+bool IsNonDeterministicOrIsDownConverting(
          cudnnBackendDescriptor_t engine_config) {
-  return isNonDeterministic(engine_config) ||
-         isDownConvertingInputs(engine_config);
+  return IsNonDeterministic(engine_config) ||
+         IsDownConvertingInputs(engine_config);
 }
 
 #endif // CUDNN_VERSION >= 8100
@@ -3665,14 +3665,14 @@ port::Status CudnnSupport::DoConvolve(
     cudnn_frontend::EngineConfigList filtered_configs;
     if (RequireCudnnDeterminism()) {
       cudnn_frontend::filter(engine_config, filtered_configs,
-                             isNonDeterministicOrIsDownConverting);
+                             IsNonDeterministicOrIsDownConverting);
       cudnn_frontend::filter(fallback_list, filtered_configs,
-                             isNonDeterministicOrIsDownConverting);
+                             IsNonDeterministicOrIsDownConverting);
     } else {
       cudnn_frontend::filter(engine_config, filtered_configs,
-                             isDownConvertingInputs);
+                             IsDownConvertingInputs);
       cudnn_frontend::filter(fallback_list, filtered_configs,
-                             isDownConvertingInputs);
+                             IsDownConvertingInputs);
     }
     for (int i = 0; i < filtered_configs.size(); i++) {
       auto plan = cudnn_frontend::ExecutionPlanBuilder()
@@ -3939,14 +3939,14 @@ bool CudnnSupport::GetConvolveExecutionPlans(
   cudnn_frontend::EngineConfigList filtered_configs;
   if (RequireCudnnDeterminism()) {
     cudnn_frontend::filter(heur_configs, filtered_configs,
-                           isNonDeterministicOrIsDownConverting);
+                           IsNonDeterministicOrIsDownConverting);
     cudnn_frontend::filter(fallback_configs, filtered_configs,
-                           isNonDeterministicOrIsDownConverting);
+                           IsNonDeterministicOrIsDownConverting);
   } else {
     cudnn_frontend::filter(heur_configs, filtered_configs,
-                           isDownConvertingInputs);
+                           IsDownConvertingInputs);
     cudnn_frontend::filter(fallback_configs, filtered_configs,
-                           isDownConvertingInputs);
+                           IsDownConvertingInputs);
   }
 
   VLOG(4) << "\nFiltered engine configs size: " << filtered_configs.size();

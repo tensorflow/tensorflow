@@ -779,7 +779,7 @@ class AlgorithmDesc {
   AlgorithmProto proto_;
 };
 
-// Collects parameters for DNN execution plans
+// Collects parameters for DNN execution plans.
 class ExecutionPlanDesc {
  public:
   typedef std::string Index;

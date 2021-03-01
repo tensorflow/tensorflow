@@ -482,21 +482,21 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
         se::dnn::ConvolutionKind::BACKWARD_DATA, se::dnn::ToDataType<T>::value,
         in_backprop_ptr, filter_ptr, out_backprop_ptr, input_desc, filter_desc,
         output_desc, conv_desc, stream->parent(), results);
-    int idx_, idx_no_scratch_;
+    int idx, idx_no_scratch;
     OP_REQUIRES_OK(ctx,
-        BestCudnnConvExecutionPlan(results, &idx_, &idx_no_scratch_));
+        BestCudnnConvExecutionPlan(results, &idx, &idx_no_scratch));
     exec_plan_config.set_plan(
-        ExecutionPlanDesc(exec_plans[idx_]->getTag(),
-                          exec_plans[idx_]->get_raw_desc()));
-    exec_plan_config.set_scratch_size(exec_plans[idx_]->getWorkspaceSize());
-    if (idx_no_scratch_ != -1) {
+        ExecutionPlanDesc(exec_plans[idx]->getTag(),
+                          exec_plans[idx]->get_raw_desc()));
+    exec_plan_config.set_scratch_size(exec_plans[idx]->getWorkspaceSize());
+    if (idx_no_scratch != -1) {
       exec_plan_config.set_plan_no_scratch(
-          ExecutionPlanDesc(exec_plans[idx_no_scratch_]->getTag(),
-                            exec_plans[idx_no_scratch_]->get_raw_desc()));
+          ExecutionPlanDesc(exec_plans[idx_no_scratch]->getTag(),
+                            exec_plans[idx_no_scratch]->get_raw_desc()));
     }
-    selected_exec_plans.push_back(std::move(exec_plans[idx_]));
-    if (idx_no_scratch_ != idx_ and idx_no_scratch_ != -1) {
-      selected_exec_plans.push_back(std::move(exec_plans[idx_no_scratch_]));
+    selected_exec_plans.push_back(std::move(exec_plans[idx]));
+    if (idx_no_scratch != idx and idx_no_scratch != -1) {
+      selected_exec_plans.push_back(std::move(exec_plans[idx_no_scratch]));
     }
     AutoTuneConvBwdData::GetInstance()->Insert(conv_parameters,
                                                selected_exec_plans);
