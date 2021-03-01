@@ -27,6 +27,13 @@ limitations under the License.
 
 namespace jax {
 
+void SetEnableX64(absl::optional<bool> jax_enable_x64_);
+// absl::nullopt means not set, in which case, we should use the Python value of
+// the flag `jax_enable_x64`. The first time (within each thread) a jitted
+// function is being called, the value is set to the FLAG value and should not
+// be nullopt afterwards.
+absl::optional<bool> GetEnableX64();
+
 // Describes the abstract shape and dtype of an argument.
 struct ArgSignature {
   ArgSignature(xla::PrimitiveType dtype, absl::Span<const xla::int64> shape,
@@ -86,6 +93,7 @@ struct CallSignature {
   // arguments (sorted by keyword name).
   std::vector<ArgSignature> dynamic_args_signatures;
   xla::PjRtDevice* device;
+  bool jax_enable_x64;
 
   bool operator==(const CallSignature& other) const;
   bool operator!=(const CallSignature& other) const {
