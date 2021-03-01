@@ -115,12 +115,6 @@ struct OptimizationProfileConfig {
   }
 };
 
-// Optimization profile generation strategies.
-enum class ProfileStrategy {
-  kImplicitBatchModeCompatible,
-  kOptimal,
-};
-
 // Manages Optimization profiles during TRT Engine construction.
 //
 // An optimization profile describes a range of dimensions for each TRT network
