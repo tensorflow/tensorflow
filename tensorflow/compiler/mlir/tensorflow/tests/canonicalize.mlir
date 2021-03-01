@@ -1643,3 +1643,13 @@ func @testFoldStridedSliceShapeWithEmptySlice(%arg0: tensor<?x1x2x3xf32>) -> (te
   // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
   // CHECK: return %[[CST]]
 }
+
+// CHECK-LABEL: testFoldEnsureShapeOp
+func @testFoldEnsureShapeOp(%arg0: tensor<10x20xf32>) -> (tensor<10x20xf32>, tensor<20x10xf32>) {
+  %0 = "tf.EnsureShape"(%arg0) {shape = #tf.shape<10x20>} : (tensor<10x20xf32>) -> tensor<10x20xf32>
+  // Failing case which should not be folded.
+  // CHECK: %[[NF:.*]] = "tf.EnsureShape"(%arg0) {shape = #tf.shape<20x10>}
+  %1 = "tf.EnsureShape"(%arg0) {shape = #tf.shape<20x10>} : (tensor<10x20xf32>) -> tensor<20x10xf32>
+  // CHECK: return %arg0, %[[NF]]
+  return %0, %1: tensor<10x20xf32>, tensor<20x10xf32>
+}

@@ -2093,6 +2093,19 @@ static LogicalResult Verify(EmptyTensorListOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// EnsureShapeOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult EnsureShapeOp::fold(llvm::ArrayRef<mlir::Attribute>) {
+  ShapedType type = input().getType().dyn_cast<ShapedType>();
+  if (!type || !type.hasRank()) return {};
+  // If shape attribute equals input operand's type's shape, fold it to input.
+  if (type.getShape() == shape()) return input();
+  // Else retain to enable failing dynamically.
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // EqualOp
 //===----------------------------------------------------------------------===//
 
