@@ -150,7 +150,6 @@ tf_kernel_library(
         "//tensorflow/compiler/jit:xla_activity_listener",
         "//tensorflow/compiler/jit:xla_activity_proto_cc",
         "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",

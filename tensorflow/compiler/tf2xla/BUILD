@@ -1125,18 +1125,6 @@ tf_cuda_cc_test(
 )
 
 cc_library(
-    name = "mlir_xla_op_kernel",
-    srcs = ["mlir_xla_op_kernel.cc"],
-    hdrs = ["mlir_xla_op_kernel.h"],
-    deps = [
-        ":xla_compiler",
-        "//tensorflow/compiler/jit:xla_compilation_cache",
-        "//tensorflow/compiler/mlir:array_container_utils",
-        "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
-    ],
-)
-
-cc_library(
     name = "resource_util",
     srcs = ["resource_util.cc"],
     hdrs = ["resource_util.h"],
