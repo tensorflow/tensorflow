@@ -580,7 +580,6 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       self.assertEqual(inner_retracings, 1)
 
-  @test_util.disable_mlir_bridge('b/180951174')
   def testUpdateVariable(self):
     with ops.device('device:{}:0'.format(self.device)):
 
