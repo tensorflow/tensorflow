@@ -368,6 +368,29 @@ def tanh(x):
   return nn.tanh(x)
 
 
+@keras_export('keras.activations.tanhexp')
+@dispatch.add_dispatch_support
+def tanhexp(x):
+  """TanhExponential activation function, `tanhexp(x) = x * tanh(exp(x))`.
+  TanhExponential activation function which returns `x * tanh(exp(x))`.
+  It is a smooth, non-monotonic function with high convergence speed and with good accuracy
+  that consistently matches or outperforms ReLU on lightweight (or) mobile neural networks.
+  Example Usage:
+  >>> a = tf.constant([-20, -1.0, 0.0, 1.0, 20], dtype = tf.float32)
+  >>> b = tf.keras.activations.tanhexp(a)
+  >>> b.numpy()
+  array([-4.1223073e-08, -3.5213549e-01,  0.0000000e+00,  9.9132891e-01,
+            2.0000000e+01], dtype=float32)
+  Args:
+      x: Input tensor.
+  Returns:
+      The TanhExp activation applied to `x` (see reference paper for details).
+  Reference:
+    - [arXiv:2003.09855v2 [cs.LG] 9 Sep 2020](https://arxiv.org/pdf/2003.09855.pdf)
+  """
+  return nn.tanhexp(x)
+
+
 @keras_export('keras.activations.sigmoid')
 @dispatch.add_dispatch_support
 def sigmoid(x):
