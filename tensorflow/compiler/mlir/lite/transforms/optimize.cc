@@ -1117,6 +1117,43 @@ struct RemoveReshapeBeforeFullyConnected
   }
 };
 
+// Convert Pack to Reshape when there is only one operand to be packed.
+// For example
+//
+//   // %input : tensor<2x3xf32>
+//   %0 = tfl.pack(%input) {axis = 0, values_count = 1}
+//
+// can be canonicalized to
+//
+//   %shape = constant dense<[1, 2, 3]> : tensor<3xi32>
+//   %0 = tfl.reshape(%input, %shape)
+struct ConvertPackToReshape : public OpRewritePattern<TFL::PackOp> {
+  using OpRewritePattern<TFL::PackOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::PackOp pack_op,
+                                PatternRewriter &rewriter) const override {
+    // Check if there is only one operand to be packed.
+    if (pack_op.values_count() != 1) {
+      return failure();
+    }
+
+    // Check if input and output are static.
+    auto input_ty = pack_op.getOperand(0).getType().cast<ShapedType>();
+    auto output_ty = pack_op.output().getType().cast<ShapedType>();
+    if (!input_ty.hasStaticShape() || !output_ty.hasStaticShape()) {
+      return failure();
+    }
+
+    // Create constant shape for reshape.
+    DenseElementsAttr shape_attr = GetShape(pack_op.output());
+    auto shape = rewriter.create<TFL::ConstOp>(pack_op.getLoc(), shape_attr);
+
+    rewriter.replaceOpWithNewOp<TFL::ReshapeOp>(pack_op, output_ty,
+                                                pack_op.getOperand(0), shape);
+    return success();
+  }
+};
+
 using FuseBinaryOpToFollowingFullyConnected =
     FuseBinaryOpToFollowingAffineOp<FullyConnectedOp>;
 using FuseBinaryOpToFollowingDepthwiseConv2D =
@@ -1161,7 +1198,7 @@ void OptimizePass::runOnFunction() {
       FuseBinaryOpToFollowingDepthwiseConv2D,
       FuseBinaryOpToFollowingFullyConnected, FuseConv2DAndMulWithQDQs,
       FuseDepthwiseConv2DAndMulWithQDQs, ConvertTrivialTransposeOpToReshapeOp,
-      RemoveReshapeBeforeFullyConnected>(ctx);
+      RemoveReshapeBeforeFullyConnected, ConvertPackToReshape>(ctx);
   if (enable_canonicalization_)
     AddCanonicalizationPatterns(ctx, &phase_2_patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
