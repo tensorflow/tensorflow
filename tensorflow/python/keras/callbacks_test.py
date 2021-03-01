@@ -751,6 +751,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         test_samples=TEST_SAMPLES,
         input_shape=(INPUT_DIM,),
         num_classes=NUM_CLASSES)
+    y_train = np_utils.to_categorical(y_train, num_classes=NUM_CLASSES)
 
     model.fit(
         x_train,
@@ -760,7 +761,6 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         verbose=0)
     # Check that the filepath is a SavedModel directory.
     self.assertIn('saved_model.pb', os.listdir(filepath))
-    os.remove(filepath)
 
   def _get_dummy_resource_for_model_checkpoint_testing(self):
 

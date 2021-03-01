@@ -1012,27 +1012,28 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
     e.g. "head_0_accuracy" should not become "head_0_head_0_accuracy" after
     saving and loading a model.
     """
-    input_ = keras.Input((4,))
-    model = keras.Model(
-        input_,
-        [keras.layers.Softmax(name='head_0')(keras.layers.Dense(3)(input_)),
-         keras.layers.Softmax(name='head_1')(keras.layers.Dense(5)(input_))])
-    metric = keras.metrics.BinaryAccuracy()
-    model.compile(optimizer='rmsprop',
-                  loss='mse',
-                  metrics={'head_0': [metric, 'accuracy']})
+    with self.cached_session():
+      input_ = keras.Input((4,))
+      model = keras.Model(
+          input_,
+          [keras.layers.Softmax(name='head_0')(keras.layers.Dense(3)(input_)),
+           keras.layers.Softmax(name='head_1')(keras.layers.Dense(5)(input_))])
+      metric = keras.metrics.BinaryAccuracy()
+      model.compile(optimizer='rmsprop',
+                    loss='mse',
+                    metrics={'head_0': [metric, 'accuracy']})
 
-    # Run one iteration.
-    x = np.random.rand(2, 4)
-    y = {'head_0': np.random.randint(2, size=(2, 3)),
-         'head_1': np.random.randint(2, size=(2, 5))}
-    model.fit(x, y, verbose=0)
+      # Run one iteration.
+      x = np.random.rand(2, 4)
+      y = {'head_0': np.random.randint(2, size=(2, 3)),
+           'head_1': np.random.randint(2, size=(2, 5))}
+      model.fit(x, y, verbose=0)
 
-    # Save and reload.
-    save_format = testing_utils.get_save_format()
-    saved_model_dir = self._save_model_dir()
-    keras.models.save_model(model, saved_model_dir, save_format=save_format)
-    loaded = keras.models.load_model(saved_model_dir)
+      # Save and reload.
+      save_format = testing_utils.get_save_format()
+      saved_model_dir = self._save_model_dir()
+      keras.models.save_model(model, saved_model_dir, save_format=save_format)
+      loaded = keras.models.load_model(saved_model_dir)
 
     # Make sure the metrics names from the model before saving match the loaded
     # model.
