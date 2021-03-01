@@ -708,4 +708,49 @@ def HLOClient_BroadcastSelectOp : HLOClient_Op<
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// Helper ops
+//===----------------------------------------------------------------------===//
+
+def HLOClient_MinimumBroadcastShapesOp :
+    HLOClient_Op<"minimum_broadcast_shapes", [NoSideEffect]> {
+  string summary = "Minimizes the rank of two or more shapes to be broadcasted";
+
+  string description = [{
+    Given two or more 1D tensors representing shapes, returns one 1D tensor for
+    each operand, where operand `i` corresponds to output `i`.
+
+    The returned tensors have the property that they specify a shape which is a
+    reshape of the corresponding input shape, and the broadcasted output shape
+    (using shape::BroadcastOp) of the returned shapes is a reshape of the
+    broadcasted output shape of the input shapes. Among all possibilities with
+    this property, the one is chosen which minimizes the rank of each returned
+    shape.
+
+    The general idea of this op is that it can be used for ops which have a
+    broadcasting semantic to operate on shapes with a possibly smaller rank
+    while preserving equivalence of the computed values. After computing the
+    result of the op using reshaped operands, the result can be reshaped to the
+    result that would have been originally computed.
+
+    Here is an example with two input shapes:
+
+    ```mlir
+    chlo.minimum_broadcast_shapes [1, 2, 3, 1, 2, 1],
+                                     [1, 1, 1, 2, 3] -> [6, 2, 1], [2, 3]
+    ```
+
+    The broadcasted output shape of the operands is [1, 2, 3, 1, 2, 3], the
+    broadcasted output shape of the outputs is [6, 2, 3]. These two shapes are
+    reshapes of each other, and also each output is a reshape of the
+    corresponding input.
+  }];
+
+  let arguments = (ins Variadic<1DTensorOf<[Index]>>:$shapes);
+  let results = (outs Variadic<1DTensorOf<[Index]>>:$results);
+
+  let assemblyFormat = "$shapes attr-dict `:` type($shapes) `->` type($results)";
+
+}
+
 #endif  // CHLO_OPS

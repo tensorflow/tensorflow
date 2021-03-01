@@ -4625,7 +4625,7 @@ class ConvertInfeedDequeueTupleOp
                                   /*layout=*/layout);
 
     // TODO(b/171212005): Reenable layout.
-    data_and_token.removeAttr("layout");
+    data_and_token->removeAttr("layout");
 
     if (op._XlaSharding().hasValue()) {
       // _XlaSharding attribute in TF is a serialized string of the OpSharding

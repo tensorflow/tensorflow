@@ -696,7 +696,7 @@ class KerasObjectLoader(object):
       model.__init__(inputs, outputs, name=config['name'])
       functional_lib.connect_ancillary_layers(model, created_layers)
 
-    # Set model dtype and trainable status.
+    # Set model dtype.
     _set_network_attributes_from_metadata(model)
 
     # Unblock models that are dependent on this model.
@@ -1161,7 +1161,7 @@ def _set_network_attributes_from_metadata(revived_obj):
     metadata = revived_obj._serialized_attributes['metadata']
     if metadata.get('dtype') is not None:
       revived_obj._set_dtype_policy(metadata['dtype'])
-    revived_obj.trainable = metadata['trainable']
+    revived_obj._trainable = metadata['trainable']
     # pylint:enable=protected-access
 
 

@@ -1476,9 +1476,14 @@ struct NormalConvOpOnTensorsConversion
 
     // The output shape is N spatial_dims F.
     SmallVector<Value, 8> dyn_sizes;
-    for (int64_t i = 0, e = rank - 1; i < e; ++i) {
-      if (!result_type.isDynamicDim(i)) continue;
-      dyn_sizes.push_back(rewriter.create<DimOp>(loc, input, i));
+    if (result_type.isDynamicDim(0)) {
+      dyn_sizes.push_back(rewriter.create<DimOp>(loc, input, 0));
+    }
+    for (int64_t i = 1, e = rank - 1; i < e; ++i) {
+      if (result_type.isDynamicDim(i)) {
+        return rewriter.notifyMatchFailure(
+            op, "expected output spatial dims to be static shapes");
+      }
     }
     if (result_type.isDynamicDim(rank - 1)) {
       dyn_sizes.push_back(rewriter.create<DimOp>(loc, filter, rank - 1));

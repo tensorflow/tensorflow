@@ -155,11 +155,11 @@ def get_distributed_datasets_from_function(dataset_fn,
 
   if (options is not None and
       options.experimental_replication_mode == InputReplicationMode.PER_REPLICA
-      and options.experimental_prefetch_to_device and
+      and options.experimental_fetch_to_device and
       options.experimental_place_dataset_on_device):
     raise ValueError(
         "`experimental_place_dataset_on_device` can not be set to True "
-        "when experimental_prefetch_to_device is True and "
+        "when experimental_fetch_to_device is True and "
         "replication mode is set to `PER_REPLICA`")
 
   if tf2.enabled():
@@ -1588,7 +1588,7 @@ class _SingleWorkerDatasetIteratorBase(object):
     """
     if (self._options and self._options.experimental_replication_mode ==
         InputReplicationMode.PER_REPLICA and
-        not self._options.experimental_prefetch_to_device):
+        not self._options.experimental_fetch_to_device):
       return [data_list]
     else:
       return data_list
@@ -2028,7 +2028,7 @@ def _should_use_multi_device_iterator(options):
       options.experimental_replication_mode == InputReplicationMode.PER_WORKER
       or
       (options.experimental_replication_mode == InputReplicationMode.PER_REPLICA
-       and options.experimental_prefetch_to_device)):
+       and options.experimental_fetch_to_device)):
     return True
   return False
 

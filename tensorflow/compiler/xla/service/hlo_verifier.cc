@@ -382,18 +382,44 @@ Status ShapeVerifier::HandleReplicaId(HloInstruction* hlo) {
 
 namespace {
 
-Status CheckDuplicatedSourceOrTarget(HloInstruction* hlo) {
+Status CheckDuplicatedSourceOrTarget(HloInstruction* hlo,
+                                     CollectiveOpGroupMode group_mode) {
   // A source or target cannot appear twice in the collective-permute's
-  // source-target pairs.
+  // source-target pairs. Also, based on the group formation mode, check if the
+  // source and target IDs are within expected range.
+
+  // Note: for collective-permute, only kCrossReplica and kCrossPartition modes
+  // are valid.
+  const HloModuleConfig& config = hlo->GetModule()->config();
+  const int64 limit = group_mode == CollectiveOpGroupMode::kCrossReplica
+                          ? config.replica_count()
+                          : config.num_partitions();
+
   absl::flat_hash_set<int64> seen_sources;
   absl::flat_hash_set<int64> seen_targets;
   for (const auto& p : hlo->source_target_pairs()) {
+    TF_RET_CHECK(p.first >= 0)
+        << "Source " << p.first
+        << " in the instruction's source-target pair must be >= 0 : "
+        << hlo->ToString();
+    TF_RET_CHECK(limit == 1 || p.first < limit)
+        << "Source " << p.first
+        << " in the instruction's source-target pair must be < " << limit
+        << " : " << hlo->ToString();
     if (!seen_sources.insert(p.first).second) {
       return InternalError(
           "Source %d appears more than once in instruction's source-target "
           "pairs: %s",
           p.first, hlo->ToString());
     }
+    TF_RET_CHECK(p.second >= 0)
+        << "Target " << p.second
+        << " in the instruction's source-target pair must be >= 0 : "
+        << hlo->ToString();
+    TF_RET_CHECK(limit == 1 || p.second < limit)
+        << "Target " << p.second
+        << " in the instruction's source-target pair must be < " << limit
+        << " : " << hlo->ToString();
     if (!seen_targets.insert(p.second).second) {
       return InternalError(
           "Target %d appears more than once in instruction's source-target "
@@ -407,13 +433,21 @@ Status CheckDuplicatedSourceOrTarget(HloInstruction* hlo) {
 }  // namespace
 
 Status ShapeVerifier::HandleCollectivePermute(HloInstruction* hlo) {
-  TF_RETURN_IF_ERROR(CheckDuplicatedSourceOrTarget(hlo));
+  TF_ASSIGN_OR_RETURN(
+      CollectiveOpGroupMode group_mode,
+      GetCollectiveOpGroupMode(hlo->channel_id().has_value(),
+                               /*use_global_device_ids=*/absl::nullopt));
+  TF_RETURN_IF_ERROR(CheckDuplicatedSourceOrTarget(hlo, group_mode));
   return CheckShape(hlo, ShapeInference::InferCollectivePermuteShape(
                              hlo->operand(0)->shape()));
 }
 
 Status ShapeVerifier::HandleCollectivePermuteStart(HloInstruction* hlo) {
-  TF_RETURN_IF_ERROR(CheckDuplicatedSourceOrTarget(hlo));
+  TF_ASSIGN_OR_RETURN(
+      CollectiveOpGroupMode group_mode,
+      GetCollectiveOpGroupMode(hlo->channel_id().has_value(),
+                               /*use_global_device_ids=*/absl::nullopt));
+  TF_RETURN_IF_ERROR(CheckDuplicatedSourceOrTarget(hlo, group_mode));
   return CheckShape(
       hlo, ShapeUtil::MakeTupleShape(
                {hlo->operand(0)->shape(), hlo->operand(0)->shape(),

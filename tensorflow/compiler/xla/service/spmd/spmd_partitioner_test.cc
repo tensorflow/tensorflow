@@ -2925,6 +2925,49 @@ ENTRY entry {
   EXPECT_THAT(root, AllOf(op::Reshape(param0), op::Shape("f32[19,38,4,81]")));
 }
 
+TEST_F(SpmdPartitioningTest, ReshapeWithReshard) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[38,38,324] parameter(0), sharding={devices=[2,1,1]0,1}
+  ROOT %reshape = f32[38,38,4,81] reshape(%param0),
+    sharding={devices=[1,2,1,1]0,1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  auto input_reshard =
+      op::Reshape(op::Transpose(op::AllToAll(op::Reshape(op::Parameter(0)))));
+  EXPECT_THAT(root,
+              AllOf(op::Reshape(input_reshard), op::Shape("f32[38,19,4,81]")));
+}
+
+TEST_F(SpmdPartitioningTest, ReshapeWithReshard2) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[38,38,324] parameter(0), sharding={devices=[2,1,1]0,1}
+  ROOT %reshape = f32[38,38,2,162] reshape(%param0),
+    sharding={devices=[1,1,1,2]0,1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  auto local_reshape =
+      AllOf(op::Reshape(op::Parameter(0)), op::Shape("f32[19,38,2,162]"));
+  EXPECT_THAT(root, AllOf(op::Shape("f32[38,38,2,81]"),
+                          op::Reshape(op::Transpose(
+                              op::AllToAll(op::Reshape(local_reshape))))));
+}
+
 TEST_F(SpmdPartitioningTest, PartialReplicateShardableReshape) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -2947,35 +2990,6 @@ ENTRY entry {
                                       op::Constant(), op::Constant())),
             op::Shape("f32[19,38,324]"));
   EXPECT_THAT(root, AllOf(op::Reshape(param0), op::Shape("f32[19,38,4,81]")));
-}
-
-TEST_F(SpmdPartitioningTest, NonShardableReshape) {
-  absl::string_view hlo_string = R"(
-HloModule module
-
-ENTRY entry {
-  %param0 = f32[38,38,324] parameter(0)
-  %param0.copy = f32[38,38,324] copy(%param0), sharding={devices=[1,1,2]0,1}
-  ROOT %transpose = f32[38,38,4,81] reshape(%param0.copy),
-    sharding={devices=[1,1,1,2]0,1}
-})";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/2));
-  VLOG(1) << module->ToString();
-
-  auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(
-      root,
-      AllOf(op::DynamicSlice(
-                AllOf(op::Pad(
-                          AllOf(op::Reshape(AllOf(op::AllReduce(),
-                                                  op::Shape("f32[38,38,324]"))),
-                                op::Shape("f32[38,38,4,81]")),
-                          op::Constant()),
-                      op::Shape("f32[38,38,4,82]")),
-                op::Constant(), op::Constant(), op::Constant(), op::Reshape()),
-            op::Shape("f32[38,38,4,41]")));
 }
 
 TEST_F(SpmdPartitioningTest, ReshapeMergeDimsWithHaloExchange) {
@@ -7317,6 +7331,34 @@ ENTRY entry {
   auto op1 = op::Shape("f32[4,2,4,4]");
   auto op2 = op::Shape("f32[2,4,4]");
   EXPECT_THAT(dot_op, op::Dot(op1, op2));
+}
+
+TEST_F(SpmdPartitioningTest, PartitionDotGroupOnBatchContractingReshard) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[32,32,24,4096] parameter(0),
+    sharding={devices=[2,1,1,2]0,1,2,3}
+  %rhs = f32[32,4096,1024] parameter(1),
+    sharding={devices=[2,2,1]0,1,2,3}
+  ROOT %dot = f32[32,32,24,1024] dot(%lhs, %rhs),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={3}, rhs_contracting_dims={1},
+    sharding={devices=[1,2,1,2]0,1,2,3}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  auto dot = AllOf(op::Shape("f32[16,32,24,1024]"),
+                   op::Dot(op::Parameter(0), op::Parameter(1)));
+  auto reduce_scatter = AllOf(op::Shape("f32[16,32,24,512]"),
+                              op::DynamicSlice(op::AllReduce(dot), _, _, _, _));
+  EXPECT_THAT(root, AllOf(op::Reshape(op::Transpose(
+                              op::AllToAll(op::Reshape(reduce_scatter)))),
+                          op::Shape("f32[32,16,24,512]")));
 }
 
 }  // namespace

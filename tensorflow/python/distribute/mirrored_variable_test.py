@@ -39,6 +39,9 @@ from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.saved_model import load
+from tensorflow.python.saved_model import save
+from tensorflow.python.training.tracking import util as tracking_util
 
 
 def _replica_id():
@@ -589,6 +592,29 @@ class MirroredVariableCreationTest(test.TestCase):
           1.0, synchronization=variable_scope.VariableSynchronization.ON_READ)
       self.assertIs(distribution, mirrored.distribute_strategy)
       self.assertIs(distribution, sync_on_read.distribute_strategy)
+
+  def testInitializer(self, distribution, mode):
+    if mode == "graph":
+      self.skipTest("Skip graph mode")
+
+    temp_dir = self.get_temp_dir()
+
+    class Model(tracking_util.Checkpoint):
+
+      def __init__(self):
+        self._v = variables.Variable(1.0)
+
+    with distribution.scope():
+      m = Model()
+    save.save(m, temp_dir)
+
+    g = ops.Graph()
+    with g.as_default():
+      with distribution.scope():
+        load.load(temp_dir)
+
+      for v in ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES):
+        self.assertIsNotNone(v.initializer)
 
 
 if __name__ == "__main__":
