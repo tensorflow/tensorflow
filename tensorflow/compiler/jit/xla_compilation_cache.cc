@@ -213,9 +213,7 @@ static bool ShouldBeMegamorphic(int64 compile_count, int64 execution_count) {
          execution_count < kMinExecutionsPerCompile * compile_count;
 }
 
-// Creates a simple graph using the specified op as the only op apart from the
-// arg and retval nodes.
-static xla::StatusOr<std::unique_ptr<Graph>> CreateGraph(
+xla::StatusOr<std::unique_ptr<Graph>> CreateGraph(
     const NodeDef& node_def, absl::Span<const XlaCompiler::Argument> args,
     absl::Span<const DataType> result_types) {
   // TODO(b/74182462): We implement this by creating a new dummy Graph including
