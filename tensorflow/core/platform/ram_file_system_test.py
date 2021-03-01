@@ -29,6 +29,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import core as core_layers
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.module import module
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import gfile
@@ -39,6 +40,20 @@ from tensorflow.python.training import training_util
 
 
 class RamFilesystemTest(test_util.TensorFlowTestCase):
+
+  def test_create_and_delete_directory(self):
+    file_io.create_dir_v2('ram://testdirectory')
+    file_io.delete_recursively_v2('ram://testdirectory')
+
+  def test_create_and_delete_directory_tree_recursive(self):
+    file_io.create_dir_v2('ram://testdirectory')
+    file_io.create_dir_v2('ram://testdirectory/subdir1')
+    file_io.create_dir_v2('ram://testdirectory/subdir2')
+    file_io.create_dir_v2('ram://testdirectory/subdir1/subdir3')
+    with gfile.GFile('ram://testdirectory/subdir1/subdir3/a.txt', 'w') as f:
+      f.write('Hello, world.')
+    file_io.delete_recursively_v2('ram://testdirectory')
+    self.assertEqual(gfile.Glob('ram://testdirectory/*'), [])
 
   def test_write_file(self):
     with gfile.GFile('ram://a.txt', 'w') as f:
@@ -66,7 +81,7 @@ class RamFilesystemTest(test_util.TensorFlowTestCase):
       with gfile.GFile('ram://c/b/%d.txt' % i, 'w') as f:
         f.write('')
 
-    matches = ['ram://a/b/%d.txt' % i for i in range(10)]
+    matches = ['%d.txt' % i for i in range(10)]
     self.assertEqual(gfile.ListDirectory('ram://a/b/'), matches)
 
   def test_glob(self):

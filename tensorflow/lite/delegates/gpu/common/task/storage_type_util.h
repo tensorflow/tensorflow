@@ -19,23 +19,25 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_linear_desc.h"
 
 namespace tflite {
 namespace gpu {
 
-bool CanCreateTensorWithShape(const GpuInfo& gpu_info, const BHWDC& shape,
-                              const TensorDescriptor& descriptor);
+absl::Status CanCreateTensorWithShape(const GpuInfo& gpu_info,
+                                      const BHWDC& shape,
+                                      const TensorDescriptor& descriptor);
 
-bool CanCreateTensorWithShape(const GpuInfo& gpu_info, const BHWC& shape,
-                              const TensorDescriptor& descriptor);
+absl::Status CanCreateTensorWithShape(const GpuInfo& gpu_info,
+                                      const BHWC& shape,
+                                      const TensorDescriptor& descriptor);
 
-TensorStorageType SelectBestStorageType(const GpuInfo& gpu_info,
-                                        const BHWC& shape,
-                                        const TensorStorageType& desired,
-                                        const DataType& data_type,
-                                        const Layout& layout);
+absl::Status SelectBestStorageType(const GpuInfo& gpu_info, const BHWC& shape,
+                                   TensorStorageType desired,
+                                   DataType data_type, Layout layout,
+                                   TensorStorageType* result);
 
 LinearStorageType DeduceLinearStorageType(
     TensorStorageType tensor_storage_type);

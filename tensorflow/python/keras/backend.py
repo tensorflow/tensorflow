@@ -3195,8 +3195,11 @@ def resize_images(x, height_factor, width_factor, data_format,
   else:
     raise ValueError('Invalid `data_format` argument: %s' % (data_format,))
 
-  original_shape = int_shape(x)
-  new_shape = array_ops.shape(x)[rows:cols + 1]
+  new_shape = x.shape[rows:cols + 1]
+  if new_shape.is_fully_defined():
+    new_shape = constant_op.constant(new_shape.as_list(), dtype='int32')
+  else:
+    new_shape = array_ops.shape_v2(x)[rows:cols + 1]
   new_shape *= constant_op.constant(
       np.array([height_factor, width_factor], dtype='int32'))
 
@@ -3214,21 +3217,6 @@ def resize_images(x, height_factor, width_factor, data_format,
   if data_format == 'channels_first':
     x = permute_dimensions(x, [0, 3, 1, 2])
 
-  if original_shape[rows] is None:
-    new_height = None
-  else:
-    new_height = original_shape[rows] * height_factor
-
-  if original_shape[cols] is None:
-    new_width = None
-  else:
-    new_width = original_shape[cols] * width_factor
-
-  if data_format == 'channels_first':
-    output_shape = (None, None, new_height, new_width)
-  else:
-    output_shape = (None, new_height, new_width, None)
-  x.set_shape(output_shape)
   return x
 
 
@@ -6546,10 +6534,16 @@ def configure_and_create_distributed_session(distribution_strategy):
     _create_session(distribution_strategy)
 
 
+def _is_tpu_strategy_class(clz):
+  is_tpu_strat = lambda k: k.__name__.startswith('TPUStrategy')
+  if is_tpu_strat(clz):
+    return True
+  return py_any(map(_is_tpu_strategy_class, clz.__bases__))
+
+
 def is_tpu_strategy(strategy):
-  """We're executing TPU Strategy."""
-  return (strategy is not None and
-          strategy.__class__.__name__.startswith('TPUStrategy'))
+  """Returns whether input is a TPUStrategy instance or subclass instance."""
+  return _is_tpu_strategy_class(strategy.__class__)
 
 
 def cast_variables_to_tensor(tensors):

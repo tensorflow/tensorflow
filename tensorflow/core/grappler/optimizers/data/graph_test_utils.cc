@@ -37,6 +37,20 @@ NodeDef MakeBatchV2Node(StringPiece name, StringPiece input_node_name,
        {"output_types", gtl::ArraySlice<DataType>{}}});
 }
 
+NodeDef MakeParallelBatchNode(StringPiece name, StringPiece input_node_name,
+                              StringPiece batch_size_node_name,
+                              StringPiece num_parallel_calls_node_name,
+                              StringPiece drop_remainder_node_name,
+                              StringPiece deterministic) {
+  return test::function::NDef(
+      name, "ParallelBatchDataset",
+      {string(input_node_name), string(batch_size_node_name),
+       string(num_parallel_calls_node_name), string(drop_remainder_node_name)},
+      {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
+       {"output_types", gtl::ArraySlice<DataType>{}},
+       {"deterministic", string(deterministic)}});
+}
+
 NodeDef MakeCacheV2Node(StringPiece name, StringPiece input_node_name,
                         StringPiece filename_node_name,
                         StringPiece cache_node_name) {
@@ -107,6 +121,26 @@ NodeDef MakeParallelInterleaveV2Node(StringPiece name,
       });
 }
 
+NodeDef MakeParallelInterleaveV4Node(StringPiece name,
+                                     StringPiece input_node_name,
+                                     StringPiece cycle_length_node_name,
+                                     StringPiece block_length_node_name,
+                                     StringPiece num_parallel_calls_node_name,
+                                     StringPiece function_name,
+                                     StringPiece deterministic) {
+  return test::function::NDef(
+      name, "ParallelInterleaveDatasetV4",
+      {string(input_node_name), string(cycle_length_node_name),
+       string(block_length_node_name), string(num_parallel_calls_node_name)},
+      {
+          {"f", FunctionDefHelper::FunctionRef(string(function_name))},
+          {"Targuments", {}},
+          {"output_shapes", gtl::ArraySlice<TensorShape>{}},
+          {"output_types", gtl::ArraySlice<DataType>{}},
+          {"deterministic", string(deterministic)},
+      });
+}
+
 NodeDef MakeParallelMapNode(StringPiece name, StringPiece input_node_name,
                             StringPiece num_parallel_calls_node_name,
                             StringPiece function_name, bool sloppy) {
@@ -119,6 +153,22 @@ NodeDef MakeParallelMapNode(StringPiece name, StringPiece input_node_name,
           {"output_shapes", gtl::ArraySlice<TensorShape>{}},
           {"output_types", gtl::ArraySlice<DataType>{}},
           {"sloppy", sloppy},
+      });
+}
+
+NodeDef MakeParallelMapV2Node(StringPiece name, StringPiece input_node_name,
+                              StringPiece num_parallel_calls_node_name,
+                              StringPiece function_name,
+                              StringPiece deterministic) {
+  return test::function::NDef(
+      name, "ParallelMapDatasetV2",
+      {string(input_node_name), string(num_parallel_calls_node_name)},
+      {
+          {"f", FunctionDefHelper::FunctionRef(string(function_name))},
+          {"Targuments", {}},
+          {"output_shapes", gtl::ArraySlice<TensorShape>{}},
+          {"output_types", gtl::ArraySlice<DataType>{}},
+          {"deterministic", string(deterministic)},
       });
 }
 

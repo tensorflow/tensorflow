@@ -19,10 +19,6 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if !defined(INTEL_MKL_DNN_ONLY)
-#include "mkl_trans.h"
-#endif
-
 #include "mkldnn.hpp"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
@@ -49,62 +45,6 @@ namespace tensorflow {
 // REQUIRES: perm is a permutation.
 
 namespace {
-#if !defined(INTEL_MKL_DNN_ONLY)
-template <typename T>
-Status MKLTranspose2D(const char trans, const Tensor& in, Tensor* out);
-
-// Documentation here: https://software.intel.com/en-us/node/520863
-// Parameters: (ordering:row-major, operation:transpose, num_rows, num_cols,
-//              alpha (for scaling), array, dist_bet_adjacent_cols/rows
-//              (source), array, dist_bet_adjacent_cols/rows (dest))
-
-#define INSTANTIATE(T, PREFIX)                                                \
-  template <>                                                                 \
-  Status MKLTranspose2D<T>(const char trans, const Tensor& in, Tensor* out) { \
-    mkl_##PREFIX##omatcopy('R', trans, in.dim_size(0), in.dim_size(1), 1,     \
-                           in.flat<T>().data(), in.dim_size(1),               \
-                           out->flat<T>().data(), in.dim_size(0));            \
-    return Status::OK();                                                      \
-  }
-
-INSTANTIATE(float, s)
-INSTANTIATE(double, d)
-
-#undef INSTANTIATE
-
-template <>
-Status MKLTranspose2D<complex64>(const char trans, const Tensor& in,
-                                 Tensor* out) {
-  const MKL_Complex8 alpha = {1.0f, 0.0f};
-  mkl_comatcopy(
-      'R', trans, in.dim_size(0), in.dim_size(1), alpha,
-      reinterpret_cast<const MKL_Complex8*>(in.flat<complex64>().data()),
-      in.dim_size(1),
-      reinterpret_cast<MKL_Complex8*>(
-          const_cast<complex64*>(out->flat<complex64>().data())),
-      in.dim_size(0));
-  return Status::OK();
-}
-
-template <>
-Status MKLTranspose2D<complex128>(const char trans, const Tensor& in,
-                                  Tensor* out) {
-  const MKL_Complex16 alpha = {1.0, 0.0};
-  mkl_zomatcopy(
-      'R', trans, in.dim_size(0), in.dim_size(1), alpha,
-      reinterpret_cast<const MKL_Complex16*>(in.flat<complex128>().data()),
-      in.dim_size(1),
-      reinterpret_cast<MKL_Complex16*>(
-          const_cast<complex128*>(out->flat<complex128>().data())),
-      in.dim_size(0));
-  return Status::OK();
-}
-
-static const char kMKLTranspose = 'T';
-static const char kMKLConjugateTranspose = 'C';
-
-#endif  // if !defined(INTEL_MKL_DNN_ONLY)
-
 // MKL-DNN based Transpose implementation
 template <typename T>
 Status MKLTransposeND(OpKernelContext* ctx, const Tensor& in, Tensor* out,
@@ -167,26 +107,6 @@ Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
 Status MklTransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
                                       gtl::ArraySlice<int32> perm,
                                       Tensor* out) {
-#if !defined(INTEL_MKL_DNN_ONLY)
-  if (in.dims() == 2) {
-    if (perm[0] == 0 && perm[1] == 1) {
-      return Status::OK();
-    }
-    switch (in.dtype()) {
-      case DT_FLOAT:
-        return MKLTranspose2D<float>(kMKLTranspose, in, out);
-      case DT_DOUBLE:
-        return MKLTranspose2D<double>(kMKLTranspose, in, out);
-      case DT_COMPLEX64:
-        return MKLTranspose2D<complex64>(kMKLTranspose, in, out);
-      case DT_COMPLEX128:
-        return MKLTranspose2D<complex128>(kMKLTranspose, in, out);
-      default:
-        break;
-    }
-  }
-#endif
-
   // MKL-DNN has limit on the maximum number of dimensions in a tensor.
   // Fallback to Eigen for not supported cases.
   if (in.dims() <= MKLDNN_MAX_NDIMS) {
@@ -213,27 +133,6 @@ Status MklConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
                                                const Tensor& in,
                                                gtl::ArraySlice<int32> perm,
                                                Tensor* out) {
-#if !defined(INTEL_MKL_DNN_ONLY)
-  if (in.dims() == 2 && perm[0] == 1 && perm[1] == 0) {
-    // TODO(rmlarsen): By setting lda and ldb, we could use the MKL kernels
-    // for any transpose that can be reduced to swapping the last two
-    // dimensions in a rank-3 tensor. We can even run each outer dimension in
-    // a separate thread.
-    switch (in.dtype()) {
-      case DT_FLOAT:
-        return MKLTranspose2D<float>(kMKLTranspose, in, out);
-      case DT_DOUBLE:
-        return MKLTranspose2D<double>(kMKLTranspose, in, out);
-      case DT_COMPLEX64:
-        return MKLTranspose2D<complex64>(kMKLConjugateTranspose, in, out);
-      case DT_COMPLEX128:
-        return MKLTranspose2D<complex128>(kMKLConjugateTranspose, in, out);
-      default:
-        break;
-    }
-  }
-#endif
-
   // MKL-DNN has limit on the maximum number of dimensions in a tensor.
   // Fallback to Eigen for not supported cases.
   if (in.dims() <= MKLDNN_MAX_NDIMS) {

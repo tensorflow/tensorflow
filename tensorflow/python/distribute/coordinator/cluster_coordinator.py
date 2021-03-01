@@ -622,6 +622,7 @@ class WorkerPreemptionHandler(object):
     self._cluster_update_lock = threading.Lock()
     self._cluster_due_for_update_or_finish = threading.Event()
     self._worker_up_cond = threading.Condition(self._cluster_update_lock)
+    self._error_from_recovery = None
     self._should_preemption_thread_run = True
     self._preemption_handler_thread = threading.Thread(
         target=self._preemption_handler,
@@ -680,6 +681,14 @@ class WorkerPreemptionHandler(object):
       with self._cluster_update_lock:
         self._cluster_due_for_update_or_finish.set()
         self._worker_up_cond.wait(_WORKER_MAXIMUM_RECOVERY_SEC)
+        if self._error_from_recovery:
+          # TODO(yuefengz): there is only one worker that will get this error.
+          # Ideally we shuold let all workers notified by `_worker_up_cond` get
+          # this error.
+          try:
+            raise self._error_from_recovery
+          finally:
+            self._error_from_recovery = None
         logging.info("Worker %s has been recovered.", worker_device_name)
 
       if on_recovery_fn:
@@ -717,7 +726,15 @@ class WorkerPreemptionHandler(object):
           if self._should_preemption_thread_run:
             self._cluster_due_for_update_or_finish.clear()
         except Exception as e:  # pylint: disable=broad-except
-          self._validate_preemption_failure(e)
+          try:
+            self._validate_preemption_failure(e)
+          except Exception as e:  # pylint: disable=broad-except
+            # In this case, a parameter server fails. So we raise this error to
+            # the caller of `wait_on_failure`.
+            self._error_from_recovery = e
+            self._worker_up_cond.notify_all()
+            if self._should_preemption_thread_run:
+              self._cluster_due_for_update_or_finish.clear()
           # NOTE: Since the first RPC (GetStatus) of update_server_def is
           # currently blocking by default, error should only happen if:
           # (1) More workers failed while waiting for the previous workers to

@@ -1920,6 +1920,9 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
       }
     }
   }
+  if (changed == true) {
+    module->set_is_dynamic(true);
+  }
 
   // There are ops that only support dynamic lowering and ops that only support
   // static lowering, add dynamic<->static tensor conversion around the boundary

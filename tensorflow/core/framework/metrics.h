@@ -84,6 +84,9 @@ void RecordTFDataIteratorLifetime(uint64 duration_us);
 // The `name` argument identifies the optimization (e.g. "noop_elimination").
 void RecordTFDataOptimization(const string& name, int64 num_changes);
 
+// Records that a tf.data service worker has been created.
+void RecordTFDataServiceWorkerCreated();
+
 // Records the file name read by a tf.data Dataset.
 //
 // The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").

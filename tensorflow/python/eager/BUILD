@@ -66,6 +66,7 @@ cc_library(
         "//tensorflow/python:ndarray_tensor_bridge",
         "//tensorflow/python:numpy_lib",
         "//tensorflow/python:py_exception_registry",
+        "//tensorflow/python:pybind11_status",
         "//tensorflow/python/lib/core:py_seq_tensor",
         "//tensorflow/python/lib/core:py_util",
         "//tensorflow/python/lib/core:safe_ptr",

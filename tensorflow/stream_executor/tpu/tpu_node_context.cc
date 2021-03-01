@@ -85,5 +85,9 @@ stream_executor::StreamExecutor* TpuNodeContext::stream_executor() const {
   return backend()->stream_executor(device_ordinal_).ValueOrDie();
 }
 
+bool TpuNodeContext::CompactionSupported(int device_ordinal) const {
+  return tpu::OpsApiFn()->TpuNodeContext_CompactionSupportedFn(device_ordinal);
+}
+
 }  // namespace tpu
 }  // namespace tensorflow

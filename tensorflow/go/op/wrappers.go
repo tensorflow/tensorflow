@@ -3764,123 +3764,6 @@ func BoostedTreesEnsembleResourceHandleOp(scope *Scope, optional ...BoostedTrees
 	return op.Output(0)
 }
 
-// Deserializes a proto into the tree handle
-//
-// Arguments:
-//	tree_handle: Handle to the tree resource to be restored.
-//	tree_config: Serialied proto string of the boosted_trees.Tree proto.
-//
-// Returns the created operation.
-func TensorForestTreeDeserialize(scope *Scope, tree_handle tf.Output, tree_config tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorForestTreeDeserialize",
-		Input: []tf.Input{
-			tree_handle, tree_config,
-		},
-	}
-	return scope.AddOperation(opspec)
-}
-
-// Serializes the tree handle to a proto
-//
-// Arguments:
-//	tree_handle: Handle to the tree resource to be serialized.
-//
-// Returns Serialied proto string of the tree resource.
-func TensorForestTreeSerialize(scope *Scope, tree_handle tf.Output) (tree_config tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorForestTreeSerialize",
-		Input: []tf.Input{
-			tree_handle,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Creates a tree resource and returns a handle to it.
-//
-// Arguments:
-//	tree_handle: Handle to the tree resource to be created.
-//	tree_config: Serialized proto string of the boosted_trees.Tree.
-//
-// Returns the created operation.
-func TensorForestCreateTreeVariable(scope *Scope, tree_handle tf.Output, tree_config tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorForestCreateTreeVariable",
-		Input: []tf.Input{
-			tree_handle, tree_config,
-		},
-	}
-	return scope.AddOperation(opspec)
-}
-
-// Checks whether a tree has been initialized.
-//
-// Arguments:
-//	tree_handle: Handle to the tree.
-//
-// Returns Whether the tree is initialized.
-func TensorForestTreeIsInitializedOp(scope *Scope, tree_handle tf.Output) (is_initialized tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorForestTreeIsInitializedOp",
-		Input: []tf.Input{
-			tree_handle,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// TensorForestTreeResourceHandleOpAttr is an optional argument to TensorForestTreeResourceHandleOp.
-type TensorForestTreeResourceHandleOpAttr func(optionalAttr)
-
-// TensorForestTreeResourceHandleOpContainer sets the optional container attribute to value.
-// If not specified, defaults to ""
-func TensorForestTreeResourceHandleOpContainer(value string) TensorForestTreeResourceHandleOpAttr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// TensorForestTreeResourceHandleOpSharedName sets the optional shared_name attribute to value.
-// If not specified, defaults to ""
-func TensorForestTreeResourceHandleOpSharedName(value string) TensorForestTreeResourceHandleOpAttr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// Creates a handle to a TensorForestTreeResource
-func TensorForestTreeResourceHandleOp(scope *Scope, optional ...TensorForestTreeResourceHandleOpAttr) (resource tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorForestTreeResourceHandleOp",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // AllCandidateSamplerAttr is an optional argument to AllCandidateSampler.
 type AllCandidateSamplerAttr func(optionalAttr)
 
@@ -9914,30 +9797,6 @@ func DecodeProtoV2(scope *Scope, bytes tf.Output, message_type string, field_nam
 	return sizes, values
 }
 
-// Output the logits for the given input data
-//
-// Arguments:
-//	tree_handle: Handle to the tree resource.
-//	dense_features: Rank 2 dense features tensor.
-//	logits_dimension: Scalar, dimension of the logits.
-//
-// Returns The logits predictions from the tree for each instance in the batch.
-func TensorForestTreePredict(scope *Scope, tree_handle tf.Output, dense_features tf.Output, logits_dimension int64) (logits tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"logits_dimension": logits_dimension}
-	opspec := tf.OpSpec{
-		Type: "TensorForestTreePredict",
-		Input: []tf.Input{
-			tree_handle, dense_features,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // EncodeProtoAttr is an optional argument to EncodeProto.
 type EncodeProtoAttr func(optionalAttr)
 
@@ -14988,6 +14847,38 @@ func DebugNumericSummaryV2(scope *Scope, input tf.Output, optional ...DebugNumer
 		Type: "DebugNumericSummaryV2",
 		Input: []tf.Input{
 			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Wraps the XLA ConvGeneralDilated operator, documented at
+//
+//  https://www.tensorflow.org/performance/xla/operation_semantics#conv_convolution
+// .
+//
+// Arguments:
+//	lhs: the input tensor
+//	rhs: the kernel tensor
+//	window_strides: the inter-window strides
+//	padding: the padding to apply at the start and end of each input dimensions
+//	lhs_dilation: dilation to apply between input elements
+//	rhs_dilation: dilation to apply between kernel elements
+//	feature_group_count: number of feature groups for grouped convolution.
+//	dimension_numbers: a serialized xla::ConvolutionDimensionNumbers proto.
+//	precision_config: a serialized xla::PrecisionConfig proto.
+//	preferred_element_type: The type of the tensor.
+func XlaConvV2(scope *Scope, lhs tf.Output, rhs tf.Output, window_strides tf.Output, padding tf.Output, lhs_dilation tf.Output, rhs_dilation tf.Output, feature_group_count tf.Output, dimension_numbers string, precision_config string, preferred_element_type tf.DataType) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dimension_numbers": dimension_numbers, "precision_config": precision_config, "preferred_element_type": preferred_element_type}
+	opspec := tf.OpSpec{
+		Type: "XlaConvV2",
+		Input: []tf.Input{
+			lhs, rhs, window_strides, padding, lhs_dilation, rhs_dilation, feature_group_count,
 		},
 		Attrs: attrs,
 	}
@@ -22117,6 +22008,33 @@ func ComplexAbs(scope *Scope, x tf.Output, optional ...ComplexAbsAttr) (y tf.Out
 		Type: "ComplexAbs",
 		Input: []tf.Input{
 			x,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Wraps the XLA DotGeneral operator, documented at
+//
+//  https://www.tensorflow.org/performance/xla/operation_semantics#dotgeneral
+// .
+//
+// Arguments:
+//	lhs: the LHS tensor
+//	rhs: the RHS tensor
+//	dimension_numbers: a serialized xla::DotDimensionNumbers proto.
+//	precision_config: a serialized xla::PrecisionConfig proto.
+//	preferred_element_type: The type of the tensor.
+func XlaDotV2(scope *Scope, lhs tf.Output, rhs tf.Output, dimension_numbers string, precision_config string, preferred_element_type tf.DataType) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dimension_numbers": dimension_numbers, "precision_config": precision_config, "preferred_element_type": preferred_element_type}
+	opspec := tf.OpSpec{
+		Type: "XlaDotV2",
+		Input: []tf.Input{
+			lhs, rhs,
 		},
 		Attrs: attrs,
 	}
@@ -32626,26 +32544,6 @@ func DeserializeManySparse(scope *Scope, serialized_sparse tf.Output, dtype tf.D
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// Get the number of nodes in a tree
-//
-// Arguments:
-//	tree_handle: Handle to the tree resource.
-//
-// Returns The size of the tree.
-func TensorForestTreeSize(scope *Scope, tree_handle tf.Output) (tree_size tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorForestTreeSize",
-		Input: []tf.Input{
-			tree_handle,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // Subtracts sparse updates from the variable referenced by `resource`.

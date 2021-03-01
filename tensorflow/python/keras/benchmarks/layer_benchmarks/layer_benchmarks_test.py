@@ -36,7 +36,7 @@ def _get_metadata(name):
 
 
 def _get_layer_args(layer_cls, layer_args):
-  # To make benchmark parameters be compatible with GPU platform.
+  # To make benchmark parameters compatible with GPU platform.
   if layer_cls is tf.keras.layers.Bidirectional:
     return {"layer": tf.keras.layers.LSTM(1)}
   return layer_args

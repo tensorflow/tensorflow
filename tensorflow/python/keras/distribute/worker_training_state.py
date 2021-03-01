@@ -21,6 +21,7 @@ import os
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.distribute import distributed_file_utils
 from tensorflow.python.keras.utils import mode_keys
@@ -114,7 +115,10 @@ class WorkerTrainingState(object):
     successfully finishes.
     """
     if self.write_checkpoint_manager is self.read_checkpoint_manager:
-      file_io.delete_recursively_v2(self.write_checkpoint_manager.directory)
+      try:
+        file_io.delete_recursively_v2(self.write_checkpoint_manager.directory)
+      except errors.NotFoundError:
+        pass
 
   def maybe_load_initial_epoch_from_ckpt(self, initial_epoch, mode):
     """Maybe load initial epoch from ckpt considering possible worker recovery.

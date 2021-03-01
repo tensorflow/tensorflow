@@ -213,7 +213,7 @@ LogicalResult Verify(GraphOp graph) {
 void Print(GraphOp graph, OpAsmPrinter &p) {
   p << graph.getOperationName();
   p.printRegion(graph.getOperation()->getRegion(0));
-  p.printOptionalAttrDict(graph.getAttrs());
+  p.printOptionalAttrDict(graph->getAttrs());
 }
 
 ParseResult ParseGraphOp(OpAsmParser &parser, OperationState &result) {
@@ -321,7 +321,7 @@ void Print(IslandOp op, OpAsmPrinter &p) {
   // Check if we can print the short "wraps" form: that is if the island
   // contains a single operation and the result of this operation are perfectly
   // forwarded to the yield.
-  if (op.getAttrs().empty() && op.WrapsSingleOp()) {
+  if (op->getAttrs().empty() && op.WrapsSingleOp()) {
     Operation &wrapped_op = op.GetBody().front();
     YieldOp yield_op = op.GetYield();
     // The "wraps" syntax only encodes a single location.
@@ -335,7 +335,7 @@ void Print(IslandOp op, OpAsmPrinter &p) {
     }
   }
   p.printRegion(op.getOperation()->getRegion(0));
-  p.printOptionalAttrDict(op.getAttrs());
+  p.printOptionalAttrDict(op->getAttrs());
 }
 
 ParseResult ParseIslandOp(OpAsmParser &parser, OperationState &result) {
@@ -449,7 +449,7 @@ void Print(SwitchOp switch_op, OpAsmPrinter &p) {
   } else {
     p << switch_op.getType(0);
   }
-  p.printOptionalAttrDict(switch_op.getAttrs());
+  p.printOptionalAttrDict(switch_op->getAttrs());
 }
 
 }  // anonymous namespace
@@ -525,7 +525,7 @@ void Print(SwitchNOp switchn, OpAsmPrinter &p) {
     p << ")";
   }
   p << " : " << switchn.getType(0);
-  p.printOptionalAttrDict(switchn.getAttrs(), {"num_outs"});
+  p.printOptionalAttrDict(switchn->getAttrs(), {"num_outs"});
 }
 
 ParseResult ParseSwitchNOp(OpAsmParser &parser, OperationState &result) {
@@ -655,7 +655,7 @@ void Print(MergeOp merge, OpAsmPrinter &p) {
     p << output_type;
   }
 
-  p.printOptionalAttrDict(merge.getAttrs());
+  p.printOptionalAttrDict(merge->getAttrs());
 }
 
 ParseResult ParseMergeOp(OpAsmParser &parser, OperationState &result) {
@@ -723,7 +723,7 @@ void Print(EnterOp enter, OpAsmPrinter &p) {
     p << enter.getType(0);
   }
 
-  p.printOptionalAttrDict(enter.getAttrs(),
+  p.printOptionalAttrDict(enter->getAttrs(),
                           {"frame_name", "parallel_iterations", "is_constant"});
 }
 
@@ -843,7 +843,7 @@ void Print(ExitOp exit, OpAsmPrinter &p) {
   p << exit.getOperationName() << ' ';
   p.printOperands(exit.getOperands());
   p << " : " << exit.getType(0);
-  p.printOptionalAttrDict(exit.getAttrs());
+  p.printOptionalAttrDict(exit->getAttrs());
 }
 
 ParseResult ParseExitOp(OpAsmParser &parser, OperationState &result) {
@@ -887,7 +887,7 @@ void Print(LoopCondOp loop_cond, OpAsmPrinter &p) {
     p << " : " << loop_cond.input().getType();
   }
 
-  p.printOptionalAttrDict(loop_cond.getAttrs());
+  p.printOptionalAttrDict(loop_cond->getAttrs());
 }
 
 ParseResult ParseLoopCondOp(OpAsmParser &parser, OperationState &result) {

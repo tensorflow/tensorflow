@@ -293,7 +293,19 @@ class LossesContainer(Container):
 class MetricsContainer(Container):
   """A container class for metrics passed to `Model.compile`."""
 
-  def __init__(self, metrics=None, weighted_metrics=None, output_names=None):
+  def __init__(self, metrics=None, weighted_metrics=None, output_names=None,
+               from_serialized=False):
+    """Initializes a container for metrics.
+
+    Arguments:
+      metrics: see the `metrics` argument from `tf.keras.Model.compile`.
+      weighted_metrics: see the `weighted_metrics` argument from
+        `tf.keras.Model.compile`.
+      output_names: A list of strings of names of outputs for the model.
+      from_serialized: Whether the model being compiled is from a serialized
+        model.  Used to avoid redundantly applying pre-processing renaming
+        steps.
+    """
     super(MetricsContainer, self).__init__(output_names=output_names)
 
     # Keep user-supplied values untouched for recompiling and serialization.
@@ -303,6 +315,8 @@ class MetricsContainer(Container):
     self._metrics = metrics
     self._weighted_metrics = weighted_metrics
     self._built = False
+
+    self._from_serialized = from_serialized
 
   @property
   def metrics(self):
@@ -357,7 +371,11 @@ class MetricsContainer(Container):
         y_pred, self._weighted_metrics, check_types=False)
 
     # Assumes metrics, weighted_metrics have been flattened up to outputs.
-    self._set_metric_names()
+    #
+    # If we are loading a model that has been already serialized, we do not
+    # want to re-apply any pre-processing metric renaming steps.
+    if not self._from_serialized:
+      self._set_metric_names()
     self._create_ordered_metrics()
     self._built = True
 

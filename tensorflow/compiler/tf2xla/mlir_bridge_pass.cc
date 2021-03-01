@@ -110,13 +110,14 @@ namespace {
 
 // Log just once by default (on default log level), and let the user adjust
 // the log level for more detailed logging.
-void LogAtLeastOnce(const std::string& log_message) {
-  if (VLOG_IS_ON(1)) {
-    VLOG(1) << log_message;
-  } else {
-    LOG_FIRST_N(INFO, 1) << log_message;
+#define LOG_AT_LEAST_ONCE(log_message)     \
+  {                                        \
+    if (VLOG_IS_ON(1)) {                   \
+      VLOG(1) << log_message;              \
+    } else {                               \
+      LOG_FIRST_N(INFO, 1) << log_message; \
+    }                                      \
   }
-}
 
 }  // namespace
 
@@ -132,18 +133,19 @@ Status MlirBridgePass::Run(const ConfigProto& config_proto,
   // based on the devices in the module.
   if (GetPassState(/*device_set=*/nullptr, config_proto, graph) ==
       MlirOptimizationPassState::Disabled) {
-    LogAtLeastOnce("Skipping MLIR TPU Bridge, session flag not enabled");
+    LOG_AT_LEAST_ONCE("Skipping MLIR TPU Bridge, session flag not enabled");
     mlir_bridge_gauge_v2->GetCell()->Set(false);
     return Status::OK();
   }
 
   // Skip MLIR TPU Bridge if no TPU devices or TPU ops found.
   if (!HasTPUDevicesAndOps(module)) {
-    LogAtLeastOnce("Skipping MLIR TPU Bridge, no TPU devices or TPU ops found");
+    LOG_AT_LEAST_ONCE(
+        "Skipping MLIR TPU Bridge, no TPU devices or TPU ops found");
     return Status::OK();
   }
 
-  LogAtLeastOnce("Running MLIR TPU Bridge");
+  LOG_AT_LEAST_ONCE("Running MLIR TPU Bridge");
 
   mlir_bridge_gauge_v2->GetCell()->Set(true);
   TF_RETURN_IF_ERROR(
@@ -176,7 +178,7 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
   // based on the devices in the module.
   if (!IsEnabled(/*device_set=*/nullptr, options.session_options->config,
                  **options.graph)) {
-    LogAtLeastOnce(
+    LOG_AT_LEAST_ONCE(
         "Skipping MLIR TPU Bridge V1 Compat, session flag not enabled");
     mlir_bridge_gauge_v1->GetCell()->Set(false);
     return Status::OK();
@@ -184,12 +186,12 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
 
   // Skip MLIR TPU Bridge if no TPU devices or TPU ops found.
   if (!HasTPUDevicesAndOps(module)) {
-    LogAtLeastOnce(
+    LOG_AT_LEAST_ONCE(
         "Skipping MLIR TPU Bridge V1 Compat, no TPU devices or TPU ops found");
     return Status::OK();
   }
 
-  LogAtLeastOnce("Running MLIR TPU Bridge V1 Compat");
+  LOG_AT_LEAST_ONCE("Running MLIR TPU Bridge V1 Compat");
 
   mlir_bridge_gauge_v1->GetCell()->Set(true);
   TF_RETURN_IF_ERROR(

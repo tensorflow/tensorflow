@@ -21,10 +21,10 @@ import time
 
 import numpy as np
 
-from tensorflow.python.eager import context
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.eager import context
 from tensorflow.python.platform import test
 
 
@@ -45,6 +45,9 @@ class DatasetBenchmarkBase(test.Benchmark):
     Returns:
       A float, representing the median time (with respect to `iters`)
       it takes for the iterable to be executed `iters` num of times.
+
+    Raises:
+      RuntimeError: When executed in graph mode.
     """
 
     deltas = []
@@ -86,6 +89,9 @@ class DatasetBenchmarkBase(test.Benchmark):
     Returns:
       A float, representing the median time (with respect to `iters`)
       it takes for the iterable to be executed `iters` num of times.
+
+    Raises:
+      RuntimeError: When executed in eager mode.
     """
 
     deltas = []
@@ -171,9 +177,9 @@ class DatasetBenchmarkBase(test.Benchmark):
     dataset = dataset.with_options(options)
 
     # NOTE: We use `dataset.skip()` to perform the iterations in C++, avoiding
-    # the overhead of having to execute a TensorFlow op for each step of the input
-    # pipeline. Note that this relies on the underlying implementation of `skip`
-    # to execute upstream computation. If it is optimized in the future,
+    # the overhead of having to execute a TensorFlow op for each step of the
+    # input pipeline. Note that this relies on the underlying implementation of
+    # `skip` to execute upstream computation. If it is optimized in the future,
     # we will have to change this code.
     dataset = dataset.skip(num_elements - 1)
 
@@ -233,12 +239,14 @@ class DatasetBenchmarkBase(test.Benchmark):
         warmup=warmup,
         apply_default_optimizations=apply_default_optimizations,
         session_config=session_config)
-    if context.executing_eagerly():
-      name = "{}.eager".format(name)
-    else:
-      name = "{}.graph".format(name)
     if extras is None:
       extras = {}
+    if context.executing_eagerly():
+      name = "{}.eager".format(name)
+      extras["implementation"] = "eager"
+    else:
+      name = "{}.graph".format(name)
+      extras["implementation"] = "graph"
     extras["num_elements"] = num_elements
     self.report_benchmark(
         wall_time=wall_time, iters=iters, name=name, extras=extras)

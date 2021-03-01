@@ -19,9 +19,11 @@ limitations under the License.
 #include "grpcpp/security/credentials.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
+#include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
+#include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/platform/errors.h"
 
@@ -195,6 +197,25 @@ Status DataServiceDispatcherClient::ReleaseJobClient(int64 job_client_id) {
   return Status::OK();
 }
 
+Status DataServiceDispatcherClient::MaybeRemoveTask(int64 task_id,
+                                                    int64 consumer_index,
+                                                    int64 round,
+                                                    bool& removed) {
+  TF_RETURN_IF_ERROR(EnsureInitialized());
+  MaybeRemoveTaskRequest req;
+  req.set_task_id(task_id);
+  req.set_consumer_index(consumer_index);
+  req.set_round(round);
+  MaybeRemoveTaskResponse resp;
+  grpc::ClientContext client_ctx;
+  grpc::Status status = stub_->MaybeRemoveTask(&client_ctx, req, &resp);
+  if (!status.ok()) {
+    return grpc_util::WrapError("Failed to call MaybeRemoveTask", status);
+  }
+  removed = resp.removed();
+  return Status::OK();
+}
+
 Status DataServiceDispatcherClient::ClientHeartbeat(
     ClientHeartbeatRequest& req, ClientHeartbeatResponse& resp) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
@@ -272,7 +293,7 @@ class GrpcDataTransferClient : public DataTransferClient {
   }
 
   Status GetElement(const GetElementRequest& req,
-                    GetElementResponse& resp) override {
+                    GetElementResult& result) override {
     {
       mutex_lock l(mu_);
       if (cancelled_) {
@@ -284,7 +305,28 @@ class GrpcDataTransferClient : public DataTransferClient {
       mutex_lock l(mu_);
       active_contexts_.insert(&ctx);
     }
+    GetElementResponse resp;
     grpc::Status s = stub_->GetElement(&ctx, req, &resp);
+    result.end_of_sequence = resp.end_of_sequence();
+    result.skip = resp.skip_task();
+    switch (resp.element_case()) {
+      case GetElementResponse::kCompressed: {
+        Tensor tensor(DT_VARIANT, TensorShape{});
+        tensor.scalar<Variant>()() = std::move(resp.compressed());
+        result.components.push_back(tensor);
+        break;
+      }
+      case GetElementResponse::kUncompressed:
+        for (const auto& component : resp.uncompressed().components()) {
+          result.components.emplace_back();
+          if (!result.components.back().FromProto(component)) {
+            return errors::Internal("Failed to parse tensor.");
+          }
+        }
+        break;
+      case GetElementResponse::ELEMENT_NOT_SET:
+        break;
+    }
     {
       mutex_lock l(mu_);
       active_contexts_.erase(&ctx);
@@ -333,9 +375,9 @@ class GrpcTransferClientRegistrar {
 static GrpcTransferClientRegistrar registrar;
 
 Status DataServiceWorkerClient::GetElement(const GetElementRequest& req,
-                                           GetElementResponse& resp) {
+                                           GetElementResult& result) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
-  return client_->GetElement(req, resp);
+  return client_->GetElement(req, result);
 }
 
 Status DataServiceWorkerClient::EnsureInitialized() {

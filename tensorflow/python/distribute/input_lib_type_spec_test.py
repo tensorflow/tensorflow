@@ -268,15 +268,15 @@ class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
           ],
           enable_get_next_as_optional=[True, False],
           experimental_place_dataset_on_device=[True, False],
-          experimental_prefetch_to_device=[True, False],
+          experimental_fetch_to_device=[True, False],
       ))
   def testFromFunctionInputSignatureForPerReplicaValuesWithOptions(
       self, distribution, enable_get_next_as_optional,
-      experimental_place_dataset_on_device, experimental_prefetch_to_device):
+      experimental_place_dataset_on_device, experimental_fetch_to_device):
 
-    if experimental_place_dataset_on_device and experimental_prefetch_to_device:
+    if experimental_place_dataset_on_device and experimental_fetch_to_device:
       self.skipTest("Setting experimental_place_dataset_on_device and "
-                    "experimental_prefetch_to_device to `True` is not "
+                    "experimental_fetch_to_device to `True` is not "
                     "allowed when using "
                     "distribute_lib.InputReplicationMode.PER_REPLICA.")
 
@@ -294,9 +294,9 @@ class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
               input_context.get_per_replica_batch_size(4))
 
     options = distribute_lib.InputOptions(
-        experimental_place_dataset_on_device=
-        experimental_place_dataset_on_device,
-        experimental_prefetch_to_device=experimental_prefetch_to_device,
+        experimental_place_dataset_on_device=(
+            experimental_place_dataset_on_device),
+        experimental_fetch_to_device=experimental_fetch_to_device,
         experimental_replication_mode=(
             distribute_lib.InputReplicationMode.PER_REPLICA))
 
@@ -424,8 +424,7 @@ class RaggedTensorDistributedIteratorTest(test.TestCase,
                   (tpu_strategy.TPUStrategyV2, tpu_strategy.TPUStrategy)):
       # TPUStrategy does not support distributed datasets with device prefetch
       # when using sparse or ragged tensors.
-      options = distribute_lib.InputOptions(
-          experimental_prefetch_to_device=False)
+      options = distribute_lib.InputOptions(experimental_fetch_to_device=False)
     else:
       options = None
 
@@ -486,8 +485,7 @@ class RaggedTensorDistributedIteratorTest(test.TestCase,
                   (tpu_strategy.TPUStrategyV2, tpu_strategy.TPUStrategy)):
       # TPUStrategy does not support distributed datasets with device prefetch
       # when using sparse or ragged tensors.
-      options = distribute_lib.InputOptions(
-          experimental_prefetch_to_device=False)
+      options = distribute_lib.InputOptions(experimental_fetch_to_device=False)
     else:
       options = None
 

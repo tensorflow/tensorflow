@@ -177,6 +177,7 @@ tf_py_test(
 tf_py_test(
     name = "data_service_ops_ft_test",
     srcs = ["data_service_ops_ft_test.py"],
+    shard_count = 10,
     srcs_version = "PY3",
     deps = [
         ":data_service_test_base",

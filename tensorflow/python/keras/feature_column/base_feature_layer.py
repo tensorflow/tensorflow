@@ -21,6 +21,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
 
 from tensorflow.python.feature_column import feature_column_v2
 from tensorflow.python.keras.engine.base_layer import Layer
@@ -75,8 +76,7 @@ class _BaseFeaturesLayer(Layer):
       with variable_scope.variable_scope(
           self.name, partitioner=self._partitioner):
         with variable_scope.variable_scope(
-            feature_column_v2._sanitize_column_name_for_variable_scope(  # pylint: disable=protected-access
-                column.name)):
+            _sanitize_column_name_for_variable_scope(column.name)):
           column.create_state(self._state_manager)
     super(_BaseFeaturesLayer, self).build(None)
 
@@ -142,3 +142,9 @@ class _BaseFeaturesLayer(Layer):
         config['partitioner'], custom_objects)
 
     return cls(**config_cp)
+
+
+def _sanitize_column_name_for_variable_scope(name):
+  """Sanitizes user-provided feature names for use as variable scopes."""
+  invalid_char = re.compile('[^A-Za-z0-9_.\\-]')
+  return invalid_char.sub('_', name)

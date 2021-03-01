@@ -91,7 +91,7 @@ class TpuStrategyTest(tf.test.TestCase):
     # Only needed for serving.
     label_inverse_lookup_layer = (
         tf.keras.layers.experimental.preprocessing.StringLookup(
-            num_oov_indices=1,
+            num_oov_indices=0,
             mask_token=None,
             vocabulary=LABEL_VOCAB,
             invert=True))

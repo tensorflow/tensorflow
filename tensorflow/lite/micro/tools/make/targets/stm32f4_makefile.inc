@@ -10,8 +10,6 @@ ifneq ($(DOWNLOAD_RESULT), SUCCESS)
   $(error Something went wrong with the GCC download: $(DOWNLOAD_RESULT))
 endif
 
-$(eval $(call add_third_party_download,$(STM32_BARE_LIB_URL),$(STM32_BARE_LIB_MD5),stm32_bare_lib,))
-
 DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/renode_download.sh ${MAKEFILE_DIR}/downloads)
 ifneq ($(DOWNLOAD_RESULT), SUCCESS)
   $(error Something went wrong with the renode download: $(DOWNLOAD_RESULT))
@@ -20,6 +18,11 @@ endif
 DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/ext_libs/cmsis_download.sh ${MAKEFILE_DIR}/downloads)
 ifneq ($(DOWNLOAD_RESULT), SUCCESS)
   $(error Something went wrong with the CMSIS download: $(DOWNLOAD_RESULT))
+endif
+
+DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/ext_libs/stm32_bare_lib_download.sh ${MAKEFILE_DIR}/downloads)
+ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+  $(error Something went wrong with the STM32 Bare Lib download: $(DOWNLOAD_RESULT))
 endif
 
 # TODO(b/161478030): change -Wno-vla to -Wvla and remove -Wno-shadow once

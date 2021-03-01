@@ -53,14 +53,14 @@ bool TryAcquireTpuLock() {
       // This lock is held until the process exits intentionally. The underlying
       // TPU device will be held on until it quits.
       if (lockf(fd, F_TLOCK, 0) != 0) {
-        LOG(ERROR) << "libtpu.so already in used by another process. Not "
-                      "attempting to load libtpu.so in this process.";
+        LOG(INFO) << "libtpu.so already in used by another process. Not "
+                     "attempting to load libtpu.so in this process.";
         should_load_library = false;
       } else {
         should_load_library = true;
       }
     } else {
-      LOG(INFO) << "TPU_HOST_BOUNDS is set, allowing multiple libtpu.so loads.";
+      VLOG(1) << "TPU_HOST_BOUNDS is set, allowing multiple libtpu.so loads.";
       should_load_library = true;
     }
   }

@@ -160,6 +160,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":backend",
+        "//tensorflow/python:errors",
         "//tensorflow/python/keras/distribute:distributed_file_utils",
         "//tensorflow/python/keras/distribute:worker_training_state",
         "//tensorflow/python/keras/protobuf:projector_config_proto_py",
@@ -192,6 +193,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":backend",
+        "//tensorflow/python:errors",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/profiler:profiler_v2",
     ],
@@ -242,7 +244,6 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":backend",
-        "//tensorflow/python/keras/utils:control_flow_util",
         "//tensorflow/python/keras/utils:engine_utils",
     ],
 )
@@ -578,6 +579,7 @@ tf_py_test(
     ],
     deps = [
         ":keras",
+        "//tensorflow/python/profiler:profiler_v2",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",

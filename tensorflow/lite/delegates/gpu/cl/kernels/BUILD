@@ -170,10 +170,9 @@ cc_test(
     name = "convolution_transposed_3x3_test",
     srcs = ["convolution_transposed_3x3_test.cc"],
     linkstatic = True,
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "linux",
         "local",
-        "no_mac",  # TODO(b/171880729)
     ],
     deps = [
         ":cl_test",
@@ -205,10 +204,9 @@ cc_test(
     name = "convolution_transposed_4x4_test",
     srcs = ["convolution_transposed_4x4_test.cc"],
     linkstatic = True,
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "linux",
         "local",
-        "no_mac",  # TODO(b/171880729)
     ],
     deps = [
         ":cl_test",

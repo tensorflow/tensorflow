@@ -25,6 +25,32 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+# Export a few files for use on Android.
+exports_files([
+    "batch_dataset_op.cc",
+    "batch_dataset_op.h",
+    "captured_function.cc",
+    "captured_function.h",
+    "dataset_utils.cc",
+    "dataset_utils.h",
+    "iterator_ops.cc",
+    "iterator_ops.h",
+    "map_dataset_op.cc",
+    "map_dataset_op.h",
+    "model_dataset_op.cc",
+    "model_dataset_op.h",
+    "name_utils.cc",
+    "name_utils.h",
+    "optimize_dataset_op.cc",
+    "optimize_dataset_op.h",
+    "optional_ops.cc",
+    "optional_ops.h",
+    "stats_utils.cc",
+    "stats_utils.h",
+    "unbounded_thread_pool.cc",
+    "unbounded_thread_pool.h",
+])
+
 tf_kernel_library(
     name = "batch_dataset_op",
     srcs = ["batch_dataset_op.cc"],

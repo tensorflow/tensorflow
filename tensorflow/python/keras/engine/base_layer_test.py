@@ -699,10 +699,11 @@ class BaseLayerTest(keras_parameterized.TestCase):
     self.assertEqual([None, 3], layer._build_input_shape.as_list())
 
   @combinations.generate(combinations.combine(mode=['eager']))
-  def custom_layer_training_arg(self):
+  def test_custom_layer_training_arg(self):
     class CustomLayerNoTrainingArg(base_layer.Layer):
 
       def __init__(self, nested_layer=None):
+        super(CustomLayerNoTrainingArg, self).__init__()
         self._nested_layer = nested_layer or array_ops.identity
 
       def call(self, inputs):
@@ -711,6 +712,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
     class CustomLayerDefaultTrainingMissing(base_layer.Layer):
 
       def __init__(self, nested_layer=None):
+        super(CustomLayerDefaultTrainingMissing, self).__init__()
         self._nested_layer = nested_layer or array_ops.identity
 
       def call(self, inputs, training):
@@ -722,6 +724,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
     class CustomLayerDefaultTrainingNone(base_layer.Layer):
 
       def __init__(self, nested_layer=None):
+        super(CustomLayerDefaultTrainingNone, self).__init__()
         self._nested_layer = nested_layer or array_ops.identity
 
       def call(self, inputs, training=None):
@@ -733,6 +736,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
     class CustomLayerDefaultTrainingFalse(base_layer.Layer):
 
       def __init__(self, nested_layer=None):
+        super(CustomLayerDefaultTrainingFalse, self).__init__()
         self._nested_layer = nested_layer or array_ops.identity
 
       def call(self, inputs, training=False):
@@ -744,6 +748,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
     class CustomLayerDefaultTrainingTrue(base_layer.Layer):
 
       def __init__(self, nested_layer=None):
+        super(CustomLayerDefaultTrainingTrue, self).__init__()
         self._nested_layer = nested_layer or array_ops.identity
 
       def call(self, inputs, training=True):
@@ -782,14 +787,14 @@ class BaseLayerTest(keras_parameterized.TestCase):
     # nested layers, respecting whatever mode the outer layer was run with.
     layer = CustomLayerDefaultTrainingTrue(CustomLayerDefaultTrainingFalse())
     # No outer value passed: use local defaults
-    self.assertAllEqual(layer(x), x * 0.25)  # Use local default False
+    self.assertAllEqual(layer(x), x)  # Use outer default True
     # Outer value passed: override local defaults
     self.assertAllEqual(layer(x, training=False), x * 0.25)
     self.assertAllEqual(layer(x, training=True), x)
 
     layer = CustomLayerDefaultTrainingFalse(CustomLayerDefaultTrainingTrue())
     # No outer value passed: use local defaults
-    self.assertAllEqual(layer(x), x)  # Use local default True
+    self.assertAllEqual(layer(x), x * 0.25)  # Use outer default False
     # Outer value passed: override local defaults
     self.assertAllEqual(layer(x, training=False), x * 0.25)
     self.assertAllEqual(layer(x, training=True), x)
@@ -804,8 +809,8 @@ class BaseLayerTest(keras_parameterized.TestCase):
     self.assertAllEqual(layer(x, training=True), x)
 
     layer = CustomLayerDefaultTrainingNone(CustomLayerDefaultTrainingTrue())
-    self.assertAllEqual(layer(x), x)  # Use local default True
-    self.assertAllEqual(layer(x, training=False), x * 0.5)
+    self.assertAllEqual(layer(x), x * 0.5)  # Nested use local default True
+    self.assertAllEqual(layer(x, training=False), x * 0.25)
     self.assertAllEqual(layer(x, training=True), x)
 
   def test_activity_regularizer_string(self):
