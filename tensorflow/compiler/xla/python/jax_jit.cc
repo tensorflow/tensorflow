@@ -110,11 +110,22 @@ void CallSignature::DecRef() const {
 
 namespace {
 
-thread_local bool disable_jit;
-void SetDisableJit(bool disable_jit_) { disable_jit = disable_jit_; }
-bool GetDisableJit() { return disable_jit; }
+// TODO(jblespiau): We can remove the callbacks and maintain the flag value in
+// C++.
+ABSL_CONST_INIT thread_local bool disable_jit_thread_local = false;
+void SetDisableJit(bool disable_jit_) {
+  disable_jit_thread_local = disable_jit_;
+}
+bool GetDisableJit() { return disable_jit_thread_local; }
 
+ABSL_CONST_INIT thread_local absl::optional<bool> jax_enable_x64_thread_local =
+    absl::nullopt;
 }  // namespace
+
+void SetEnableX64(absl::optional<bool> jax_enable_x64_) {
+  jax_enable_x64_thread_local = jax_enable_x64_;
+}
+absl::optional<bool> GetEnableX64() { return jax_enable_x64_thread_local; }
 
 std::string CallSignature::DebugString() const {
   std::vector<std::string> static_args_str;
@@ -887,17 +898,17 @@ class CompiledFunction {
   // `CompiledFunction` is being instantiated from Python, the clients are not
   // yet available (done after GoogleInit). They will be during the first call
   // to `Call`.
-  // A function taking no arguments and returning the default device and whether
-  // jax.jit has been committed to it.
+  // `get_jax_enable_x64_` will be used only if the thread-local value is unset.
   const py::function get_jax_enable_x64_;
   const py::function get_jax_disable_jit_;
+  // A function taking no arguments and returning the default device and whether
+  // jax.jit has been committed to it.
   const py::function get_device_;
 
   // The writing of the following is protected by the mutex.
   absl::Mutex mu_;
   // The value of the Python flag. The value will be computed only during the
   // first object call, because GoogleInit must have been executed.
-  absl::optional<bool> jax_enable_x64_ = absl::nullopt;
   absl::optional<bool> jax_disable_jit_ = absl::nullopt;
 
   // The logic if the following:
@@ -1115,7 +1126,9 @@ py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
       absl::MutexLock lock1(&mu_);
       py::gil_scoped_acquire gil_aquire;
 
-      jax_enable_x64_ = py::cast<bool>(get_jax_enable_x64_());
+      if (GetEnableX64() == absl::nullopt) {
+        SetEnableX64(py::cast<bool>(get_jax_enable_x64_()));
+      }
       jax_disable_jit_ = py::cast<bool>(get_jax_disable_jit_());
       if (!default_device_) {
         py::object device_and_is_committed = get_device_();
@@ -1139,6 +1152,7 @@ py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
     }
   }
   CHECK(default_device_);
+  CHECK(GetEnableX64() != absl::nullopt);
   if (JitIsDisabled()) {
     return fun_(*args, **kwargs);
   }
@@ -1147,10 +1161,12 @@ py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
     return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
   }
 
+  bool jax_enable_x64 = GetEnableX64().value();
+  arguments.signature.jax_enable_x64 = jax_enable_x64;
   // The C++ jit do not support Tracers arguments inputs yet. The Python-based
   // jit function will be called if any of the dynamic arguments is unsupported.
-  if (!ConvertArgsToBuffers(jax_enable_x64_.value(), *default_pyclient_,
-                            default_device_, is_committed_, arguments)
+  if (!ConvertArgsToBuffers(jax_enable_x64, *default_pyclient_, default_device_,
+                            is_committed_, arguments)
            .ok()) {
     return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
   }
@@ -1217,6 +1233,10 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
 
   jitlib.def("set_disable_jit", &SetDisableJit);
   jitlib.def("get_disable_jit", &GetDisableJit);
+
+  jitlib.def("set_enable_x64", &SetEnableX64);
+  jitlib.def("get_enable_x64", &GetEnableX64);
+
   jitlib.def(
       "jit",
       [](py::function fun, py::function cache_miss, py::function get_device,

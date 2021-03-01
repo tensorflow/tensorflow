@@ -888,6 +888,11 @@ def HLO_ConcatenateOp : HLO_Op<"concatenate",
   let hasCanonicalizer = 1;
   let hasFolder = 1;
 
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r) {
+      return succeeded(mlir::verifyCompatibleShapes(l, r));
+    }
+  }];
 }
 
 def HLO_CollectivePermuteOp: HLO_Op<"collective_permute",

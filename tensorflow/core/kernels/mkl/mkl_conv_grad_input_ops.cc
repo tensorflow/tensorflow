@@ -482,7 +482,9 @@ class MklConvCustomBackpropInputOp
       }
 
       std::shared_ptr<stream> bwd_cpu_stream;
-      bwd_cpu_stream.reset(CreateStream(context, conv_bwd_input->GetEngine()));
+      MklDnnThreadPool eigen_tp(context);
+      bwd_cpu_stream.reset(
+          CreateStream(&eigen_tp, conv_bwd_input->GetEngine()));
       // Execute conv bwd input primitive.
       conv_bwd_input->Execute(diff_src_data, filter_data, diff_dst_data,
                               bwd_cpu_stream);

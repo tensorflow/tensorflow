@@ -2587,7 +2587,7 @@ class ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
                              TF::FusedBatchNormV3Op::getOperationName(),
                              tf_fused_batch_norm_op.getOperands(),
                              new_result_types,
-                             tf_fused_batch_norm_op.getAttrs());
+                             tf_fused_batch_norm_op->getAttrs());
     Operation *tf_fused_batch_norm_op_v3 = rewriter.createOperation(new_state);
 
     rewriter.replaceOp(tf_fused_batch_norm_op,
@@ -3029,9 +3029,9 @@ struct WhileRegionEliminatePassThrough
     }
 
     // Create the new while operation.
-    auto new_while_op =
-        rewriter.create<WhileRegionOp>(while_op.getLoc(), new_result_types,
-                                       new_while_operands, while_op.getAttrs());
+    auto new_while_op = rewriter.create<WhileRegionOp>(
+        while_op.getLoc(), new_result_types, new_while_operands,
+        while_op->getAttrs());
 
     // Move region bodies to the new while.
     rewriter.inlineRegionBefore(while_op.cond(), new_while_op.cond(),

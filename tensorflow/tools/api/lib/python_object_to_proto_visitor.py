@@ -102,6 +102,8 @@ _NORMALIZE_TYPE[(
 _NORMALIZE_TYPE['typing.Generic'] = "<class 'typing.Generic'>"
 # TODO(mdan): Remove once the golden files are generated in Python 3.7.
 _NORMALIZE_TYPE["<class 'typing._GenericAlias'>"] = 'typing.Union'
+# TODO(mdan): Remove once the golden files are generated in Python 3.9.
+_NORMALIZE_TYPE["<class 'typing._UnionGenericAlias'>"] = 'typing.Union'
 
 
 if sys.version_info.major == 3 and sys.version_info.minor >= 8:

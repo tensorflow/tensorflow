@@ -298,7 +298,8 @@ class MklSoftmaxOp : public OpKernel {
       const T* src_data = src_tensor.flat<T>().data();
       T* dst_data = reinterpret_cast<T*>(output_tensor->flat<T>().data());
       std::shared_ptr<stream> fwd_cpu_stream;
-      fwd_cpu_stream.reset(CreateStream(context, softmax_fwd->GetEngine()));
+      MklDnnThreadPool eigen_tp(context);
+      fwd_cpu_stream.reset(CreateStream(&eigen_tp, softmax_fwd->GetEngine()));
       softmax_fwd->Execute(src_data, dst_data, fwd_cpu_stream);
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +

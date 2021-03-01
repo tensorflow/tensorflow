@@ -964,6 +964,7 @@ cc_library(
         "transforms/tpu_space_to_depth_pass.cc",
         "transforms/tpu_update_embedding_enqueue_op_inputs.cc",
         "transforms/tpu_variable_runtime_reformatting.cc",
+        "transforms/verify_suitable_for_graph_export_pass.cc",
         "translate/breakup-islands.cc",
         "translate/tf_executor_to_functional.cc",
         "translate/tf_functional_to_executor.cc",
@@ -1010,6 +1011,7 @@ cc_library(
         ":translate_utils",
         ":unroll_batch_matmul_pass",
         ":verification_utils",
+        ":verify_suitable_for_graph_export",
         ":visitor_util",
         ":xla_sharding_util",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
@@ -1151,6 +1153,7 @@ cc_library(
         ":tf_saved_model_passes",
         ":translate_utils",
         ":upgrade_graph",
+        ":verify_suitable_for_graph_export",
         "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/cc/saved_model:constants",
         "//tensorflow/cc/saved_model:loader_lite",
@@ -2102,6 +2105,17 @@ cc_library(
     srcs = ["utils/verification_utils.cc"],
     hdrs = ["utils/verification_utils.h"],
     deps = [
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "verify_suitable_for_graph_export",
+    srcs = ["utils/verify_suitable_for_graph_export.cc"],
+    hdrs = ["utils/verify_suitable_for_graph_export.h"],
+    deps = [
+        ":tensorflow",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],

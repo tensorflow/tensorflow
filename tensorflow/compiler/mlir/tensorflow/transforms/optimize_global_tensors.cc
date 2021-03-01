@@ -68,7 +68,7 @@ class ResourceAnalyzer {
  public:
   explicit ResourceAnalyzer(ModuleOp module) {
     for (auto func : module.getOps<FuncOp>()) {
-      (void)AnalyzeFunc(func);
+      (void)AnalyzeRegion(func.getRegion());
     }
   }
 
@@ -82,18 +82,18 @@ class ResourceAnalyzer {
   }
 
  private:
-  // Analyze the specified func for resource mutating operations, namely
+  // Analyze the specified region for resource mutating operations, namely
   // TF::AssignVariableOp, if so, set the resource associated as "potentially
-  // written". Do this recursively across the chain of funcs via call or control
-  // flow ops.
+  // written". Do this recursively across the chain of regions via call or
+  // control flow ops.
   // TODO(ashwinm): Move to iterative traversal.
-  LogicalResult AnalyzeFunc(FuncOp func) {
+  LogicalResult AnalyzeRegion(Region& region) {
     // Avoid infinite recursion.
-    if (!discovered_.insert(func).second) {
+    if (!discovered_.insert(&region).second) {
       return success();
     }
 
-    func.walk([&](Operation* op) {
+    region.walk([&](Operation* op) {
       if (isa<TF::ReadVariableOp, ReturnOp>(op)) {
         return;
       }
@@ -103,21 +103,38 @@ class ResourceAnalyzer {
       }
       if (auto call = dyn_cast<CallOpInterface>(op)) {
         if (auto func = dyn_cast<FuncOp>(call.resolveCallable())) {
-          PropagatePotentiallyWrittenUpFromCallee(func, call.getArgOperands());
+          PropagatePotentiallyWrittenUpFromCallee(func.getRegion(),
+                                                  call.getArgOperands());
         }
         return;
       }
       if (auto if_op = dyn_cast<TF::IfOp>(op)) {
         for (auto callee : {if_op.then_function(), if_op.else_function()}) {
-          PropagatePotentiallyWrittenUpFromCallee(callee, if_op.input());
+          PropagatePotentiallyWrittenUpFromCallee(callee.getRegion(),
+                                                  if_op.input());
         }
+        return;
+      }
+      if (auto if_op = dyn_cast<TF::IfRegionOp>(op)) {
+        PropagatePotentiallyWrittenUpFromCallee(if_op.then_branch(),
+                                                if_op.getODSOperands(1));
+        PropagatePotentiallyWrittenUpFromCallee(if_op.else_branch(),
+                                                if_op.getODSOperands(1));
         return;
       }
       if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
         for (auto callee :
              {while_op.cond_function(), while_op.body_function()}) {
-          PropagatePotentiallyWrittenUpFromCallee(callee, while_op.input());
+          PropagatePotentiallyWrittenUpFromCallee(callee.getRegion(),
+                                                  while_op.input());
         }
+        return;
+      }
+      if (auto while_op = dyn_cast<TF::WhileRegionOp>(op)) {
+        PropagatePotentiallyWrittenUpFromCallee(while_op.cond(),
+                                                while_op.input());
+        PropagatePotentiallyWrittenUpFromCallee(while_op.body(),
+                                                while_op.input());
         return;
       }
       // For all other ops, we assume it mutates all resources it uses, so
@@ -144,14 +161,14 @@ class ResourceAnalyzer {
     });
   }
 
-  // Given a FuncOp associated with the callee and operands from the
+  // Given a Region associated with the callee and operands from the
   // corresponding callOp, propagate the potentially written decision to the
-  // callOp's operands, if the corresponding func's arguments are potentially
+  // callOp's operands, if the corresponding region's arguments are potentially
   // written resources.
   void PropagatePotentiallyWrittenUpFromCallee(
-      FuncOp func, Operation::operand_range propagate_to) {
-    (void)AnalyzeFunc(func);
-    for (auto t : llvm::zip(func.getArguments(), propagate_to)) {
+      Region& region, Operation::operand_range propagate_to) {
+    (void)AnalyzeRegion(region);
+    for (auto t : llvm::zip(region.getArguments(), propagate_to)) {
       if (!IsResource(std::get<0>(t))) {
         continue;
       }
@@ -172,8 +189,8 @@ class ResourceAnalyzer {
   // Value: Information we know about that Value.
   // Note that these Value's are in general in different functions.
   DenseMap<Value, ResourceInfo> resource_infos_;
-  // The set of func's we already discovered.
-  DenseSet<FuncOp> discovered_;
+  // The set of regions we already discovered.
+  DenseSet<Region*> discovered_;
 };
 
 bool IsImmutable(GlobalTensorOp global_tensor,

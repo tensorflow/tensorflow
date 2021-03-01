@@ -517,14 +517,16 @@ class HloDynamicBroadcastInDimConverter
     auto shape_type = shape.getType().cast<RankedTensorType>();
     int64_t result_rank = shape_type.getDimSize(0);
 
+    auto result_type = op.getType().dyn_cast<RankedTensorType>();
+    if (!result_type) return failure();
+
     SmallVector<Value, 2> dyn_dims;
     Location loc = op.getLoc();
     for (int i = 0; i < result_rank; ++i) {
+      if (!result_type.isDynamicDim(i)) continue;
       Value index = rewriter.create<ConstantIndexOp>(loc, i);
       dyn_dims.push_back(rewriter.create<tensor::ExtractOp>(loc, shape, index));
     }
-    auto result_type = op.getType().dyn_cast<RankedTensorType>();
-    if (!result_type) return failure();
 
     int64_t nloops = result_type.getRank();
     Value init = rewriter.create<linalg::InitTensorOp>(

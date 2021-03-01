@@ -548,10 +548,14 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_kernel_library(
     name = "reshape_util",
     srcs = ["reshape_util.cc"],
     hdrs = ["reshape_util.h"],
+    gpu_srcs = [
+        "reshape_util_gpu.cu.cc",
+        "reshape_util.h",
+    ],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

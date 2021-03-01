@@ -43,6 +43,11 @@ namespace TF {
 // ops.
 std::unique_ptr<OperationPass<FuncOp>> CreateDropWhileShapeInvariantPass();
 
+// Creates a pass that drops `shape_invariant` attribute from While/WhileRegion
+// ops within device cluster.
+std::unique_ptr<OperationPass<FuncOp>>
+CreateDropWhileShapeInvariantInDeviceClusterPass();
+
 // Transforms functional control flow operations in the TensorFlow dialect to
 // MLIR Control Flow Graph (CFG) form.
 std::unique_ptr<OperationPass<FuncOp>> CreateTFFunctionalControlFlowToCFG();
@@ -206,6 +211,11 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateConstantOpDeviceAssignmentPass();
 // Populates the supplied passmanager with the passes required to export
 // to TensorFlow Graph.
 void AddGraphExportLoweringPasses(OpPassManager& pm);
+
+// Returns pass that verifies whether all functions in module are of single
+// tf_executor.graph and each tf_executor.island in tf_executor.graph only has a
+// single op.
+std::unique_ptr<OperationPass<ModuleOp>> CreateVerifySuitableForExportPass();
 
 }  // namespace TF
 
