@@ -84,6 +84,8 @@ struct CompilationCacheKeyResult {
 
 typedef struct XLA_TpuNodeContext XLA_TpuNodeContext;
 
+typedef struct TfTpu_OrdinalSelector TfTpuOrdinalSelector;
+
 // Compiles Mlir or TF function computation by lowering into HLO IR and returns
 // `count` number of TPU programs ready for execution.
 // The API allocates the `XLA_TpuProgram*[]` array `tpu_programs` and creates
@@ -150,6 +152,20 @@ TFTPU_CAPI_EXPORT void TpuMeshState_Free(XLA_TpuMeshState* mesh_state);
 // Returns a pointer to an opaque mesh data structure used internally.
 TFTPU_CAPI_EXPORT void* TpuMeshState_MeshCommonState(
     XLA_TpuMeshState* mesh_state);
+
+TFTPU_CAPI_EXPORT void TfTpuOrdinalSelector_Create(
+    TfTpuOrdinalSelector** ordinal_selector, int num_cores_per_replica);
+
+TFTPU_CAPI_EXPORT void TfTpuOrdinalSelector_Destroy(
+    TfTpuOrdinalSelector* ordinal_selector);
+
+TFTPU_CAPI_EXPORT void TfTpuOrdinalSelector_GetOrdinal(
+    TfTpuOrdinalSelector* ordinal_selector, absl::optional<uint64> key,
+    int64_t* req_id, int64* ordinal);
+
+TFTPU_CAPI_EXPORT void TfTpuOrdinalSelector_DequeueFromCoreSelector(
+    TfTpuOrdinalSelector* ordinal_selector, int32_t device_ordinal,
+    int64_t req_id);
 
 typedef struct TpuExecutable_LoadProgramAndEnqueueToStream_Params {
   int32_t struct_size;
@@ -500,6 +516,11 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuNodeContext_CompactionSupported);
 
   TFTPU_ADD_FN_IN_STRUCT(TfTpu_InitializeTpuModelServer);
+
+  TFTPU_ADD_FN_IN_STRUCT(TfTpuOrdinalSelector_Create);
+  TFTPU_ADD_FN_IN_STRUCT(TfTpuOrdinalSelector_Destroy);
+  TFTPU_ADD_FN_IN_STRUCT(TfTpuOrdinalSelector_GetOrdinal);
+  TFTPU_ADD_FN_IN_STRUCT(TfTpuOrdinalSelector_DequeueFromCoreSelector);
 };
 
 }  // extern "C"
