@@ -472,7 +472,6 @@ xla_test(
         "gpu",
     ],
     real_hardware_only = True,
-    shard_count = 10,
     tags = ["optonly"],
     deps = [
         ":arithmetic",

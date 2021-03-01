@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/dynamic_padder.h"
+#include "tensorflow/compiler/xla/service/eigh_expander.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/gpu/alias_passthrough_params.h"
@@ -191,8 +192,10 @@ Status GpuCompiler::OptimizeHloModule(
     pipeline.AddPass<ZeroSizedHloElimination>();
 
     pipeline.AddPass<GpuScatterExpander>();
-    // TODO(phawkins): replace QR decompositions with calls to cuSOLVER.
+    // TODO(phawkins): replace QR and Eigh decompositions with calls to
+    // cuSOLVER.
     pipeline.AddPass<QrExpander>();
+    pipeline.AddPass<EighExpander>();
 
     pipeline.AddPass<DynamicIndexSplitter>();
 
