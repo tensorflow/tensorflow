@@ -9354,6 +9354,8 @@ This is the opposite of `unpack`.
     return Verify(*this);
   }];
 
+  let hasCanonicalizer = 1;
+
   let hasFolder = 1;
 }
 

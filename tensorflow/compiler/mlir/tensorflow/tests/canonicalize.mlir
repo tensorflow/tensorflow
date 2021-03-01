@@ -1653,3 +1653,29 @@ func @testFoldEnsureShapeOp(%arg0: tensor<10x20xf32>) -> (tensor<10x20xf32>, ten
   // CHECK: return %arg0, %[[NF]]
   return %0, %1: tensor<10x20xf32>, tensor<20x10xf32>
 }
+
+// CHECK-LABEL: testConvertPackToReshapeAxis0
+func @testConvertPackToReshapeAxis0(%arg0: tensor<2x3xf32>) -> tensor<1x2x3xf32> {
+  %0 = "tf.Pack"(%arg0) {axis = 0 : i64} : (tensor<2x3xf32>) -> tensor<1x2x3xf32>
+  return %0 : tensor<1x2x3xf32>
+  // CHECK: %[[SHAPE:.*]] = "tf.Const"() {value = dense<[1, 2, 3]> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[SHAPE]]) : (tensor<2x3xf32>, tensor<3xi64>) -> tensor<1x2x3xf32>
+  // CHECK: return %[[RESHAPE]] : tensor<1x2x3xf32>
+}
+
+// CHECK-LABEL: testConvertPackToReshapeAxis1
+func @testConvertPackToReshapeAxis1(%arg0: tensor<2x3xf32>) -> tensor<2x1x3xf32> {
+  %0 = "tf.Pack"(%arg0) {axis = 1 : i64} : (tensor<2x3xf32>) -> tensor<2x1x3xf32>
+  return %0 : tensor<2x1x3xf32>
+  // CHECK: %[[SHAPE:.*]] = "tf.Const"() {value = dense<[2, 1, 3]> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[SHAPE]]) : (tensor<2x3xf32>, tensor<3xi64>) -> tensor<2x1x3xf32>
+  // CHECK: return %[[RESHAPE]] : tensor<2x1x3xf32>
+}
+
+// CHECK-LABEL: testDontConvertPackToReshapeDynamicShape
+func @testDontConvertPackToReshapeDynamicShape(%arg0: tensor<2x?xf32>) -> tensor<1x2x?xf32> {
+  %0 = "tf.Pack"(%arg0) {axis = 0 : i64} : (tensor<2x?xf32>) -> tensor<1x2x?xf32>
+  return %0 : tensor<1x2x?xf32>
+  // CHECK: %[[PACK:.*]] = "tf.Pack"(%arg0) {axis = 0 : i64} : (tensor<2x?xf32>) -> tensor<1x2x?xf32>
+  // CHECK: return %[[PACK]] : tensor<1x2x?xf32>
+}

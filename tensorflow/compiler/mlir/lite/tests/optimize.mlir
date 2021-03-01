@@ -1871,29 +1871,3 @@ func @DontFuseAddWithConvActivationFunc(%arg0: tensor<1x3x1x1xf32>) -> tensor<1x
   // CHECK: %[[CONV:.*]] = "tfl.conv_2d"(%[[ADD]], %[[CST_2]], %[[CST_1]]) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x3x1x1xf32>, tensor<3x2x1x1xf32>, tensor<3xf32>) -> tensor<1x2x1x3xf32>
   // CHECK: return %[[CONV]]
 }
-
-// CHECK-LABEL: ConvertPackToReshapeAxis0
-func @ConvertPackToReshapeAxis0(%arg0: tensor<2x3xf32>) -> tensor<1x2x3xf32> {
-  %0 = "tfl.pack"(%arg0) {axis = 0 : i32, values_count = 1 : i32} : (tensor<2x3xf32>) -> tensor<1x2x3xf32>
-  return %0 : tensor<1x2x3xf32>
-  // CHECK: %[[CST:.*]] = constant dense<[1, 2, 3]> : tensor<3xi32>
-  // CHECK: %[[RESHAPE:.*]] = "tfl.reshape"(%arg0, %[[CST]]) : (tensor<2x3xf32>, tensor<3xi32>) -> tensor<1x2x3xf32>
-  // CHECK: return %[[RESHAPE]] : tensor<1x2x3xf32>
-}
-
-// CHECK-LABEL: ConvertPackToReshapeAxis1
-func @ConvertPackToReshapeAxis1(%arg0: tensor<2x3xf32>) -> tensor<2x1x3xf32> {
-  %0 = "tfl.pack"(%arg0) {axis = 1 : i32, values_count = 1 : i32} : (tensor<2x3xf32>) -> tensor<2x1x3xf32>
-  return %0 : tensor<2x1x3xf32>
-  // CHECK: %[[CST:.*]] = constant dense<[2, 1, 3]> : tensor<3xi32>
-  // CHECK: %[[RESHAPE:.*]] = "tfl.reshape"(%arg0, %[[CST]]) : (tensor<2x3xf32>, tensor<3xi32>) -> tensor<2x1x3xf32>
-  // CHECK: return %[[RESHAPE]] : tensor<2x1x3xf32>
-}
-
-// CHECK-LABEL: DontConvertPackToReshape
-func @DontConvertPackToReshape(%arg0: tensor<2x?xf32>) -> tensor<1x2x?xf32> {
-  %0 = "tfl.pack"(%arg0) {axis = 0 : i32, values_count = 1 : i32} : (tensor<2x?xf32>) -> tensor<1x2x?xf32>
-  return %0 : tensor<1x2x?xf32>
-  // CHECK: %[[PACK:.*]] = "tfl.pack"(%arg0) {axis = 0 : i32, values_count = 1 : i32} : (tensor<2x?xf32>) -> tensor<1x2x?xf32>
-  // CHECK: return %[[PACK]] : tensor<1x2x?xf32>
-}
