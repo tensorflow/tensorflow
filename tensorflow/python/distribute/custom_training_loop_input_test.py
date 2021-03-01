@@ -459,8 +459,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
     input_iterator = iter(
         distribution.experimental_distribute_dataset(
             get_dataset_from_tensor_slices(data).batch(2),
-            distribute_lib.InputOptions(
-                experimental_prefetch_to_device=False)))
+            distribute_lib.InputOptions(experimental_fetch_to_device=False)))
 
     local_results = distribution.experimental_local_results(
         input_iterator.get_next())
@@ -479,7 +478,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
     input_iterator = iter(
         distribution.distribute_datasets_from_function(
             lambda _: get_dataset_from_tensor_slices(data),
-            distribute_lib.InputOptions(experimental_prefetch_to_device=False)))
+            distribute_lib.InputOptions(experimental_fetch_to_device=False)))
 
     local_results = distribution.experimental_local_results(
         input_iterator.get_next())
@@ -700,15 +699,15 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
     # This assumes that there are exactly 2 replicas
     outputs = distribution.experimental_local_results(
         distribution.run(step_fn, args=(next(input_iterator),)))
-    self.assertAllEqual((9, 2), outputs[0][0].values[0].shape)
-    self.assertAllEqual((3, 3, 2), outputs[0][1].values[0].shape)
-    self.assertAllEqual((3, 3, 2), outputs[0][2].values[0].shape)
-    self.assertAllEqual((3, 3, 2), outputs[0][3].values[0].shape)
+    self.assertAllEqual((9, 2), outputs[0][0].shape)
+    self.assertAllEqual((3, 3, 2), outputs[0][1].shape)
+    self.assertAllEqual((3, 3, 2), outputs[0][2].shape)
+    self.assertAllEqual((3, 3, 2), outputs[0][3].shape)
 
-    self.assertAllEqual((4, 2), outputs[0][0].values[1].shape)
-    self.assertAllEqual((2, 2, 2), outputs[0][1].values[1].shape)
-    self.assertAllEqual((2, 2, 2), outputs[0][2].values[1].shape)
-    self.assertAllEqual((2, 2, 2), outputs[0][3].values[1].shape)
+    self.assertAllEqual((4, 2), outputs[1][0].shape)
+    self.assertAllEqual((2, 2, 2), outputs[1][1].shape)
+    self.assertAllEqual((2, 2, 2), outputs[1][2].shape)
+    self.assertAllEqual((2, 2, 2), outputs[1][3].shape)
 
   @combinations.generate(
       combinations.combine(

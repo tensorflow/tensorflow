@@ -50,8 +50,6 @@ class DatasetCreatorTest(test.TestCase):
         next(iter(dataset_ops.DatasetV2.from_tensor_slices([1, 1]))))
 
   def test_dataset_creator_usage_in_parameter_server_model_fit(self):
-    self.skipTest("TODO(rchao): Enable this test once training API changes for "
-                  "DatasetFactory is submitted.")
     cluster_def = multi_worker_test_base.create_in_process_cluster(
         num_workers=2, num_ps=1, rpc_layer="grpc")
     cluster_def["chief"] = [

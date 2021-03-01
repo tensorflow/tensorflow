@@ -50,6 +50,9 @@ class LossesContainerTest(keras_parameterized.TestCase):
     self.assertEqual(loss_metric.name, 'loss')
     self.assertEqual(loss_metric.result().numpy(), 1.)
 
+    loss_container.reset_states()
+    self.assertEqual(loss_metric.result().numpy(), 0.)
+
   def test_loss_list(self):
     loss_container = compile_utils.LossesContainer(['mse', 'mae'], [1, 0.5])
 
@@ -75,6 +78,11 @@ class LossesContainerTest(keras_parameterized.TestCase):
     output_2_metric = loss_container.metrics[2]
     self.assertEqual(output_2_metric.name, 'output_2_loss')
     self.assertEqual(output_2_metric.result().numpy(), 0.5)
+
+    loss_container.reset_states()
+    self.assertEqual(loss_metric.result().numpy(), 0)
+    self.assertEqual(output_1_metric.result().numpy(), 0)
+    self.assertEqual(output_2_metric.result().numpy(), 0)
 
   def test_loss_dict(self):
     loss_container = compile_utils.LossesContainer(
@@ -107,6 +115,11 @@ class LossesContainerTest(keras_parameterized.TestCase):
     out2_metric = loss_container.metrics[2]
     self.assertEqual(out2_metric.name, 'out2_loss')
     self.assertEqual(out2_metric.result().numpy(), 0.5)
+
+    loss_container.reset_states()
+    self.assertEqual(loss_metric.result().numpy(), 0)
+    self.assertEqual(out1_metric.result().numpy(), 0)
+    self.assertEqual(out2_metric.result().numpy(), 0)
 
   def test_loss_partial_dict_with_output_names(self):
     loss_container = compile_utils.LossesContainer(
@@ -400,6 +413,9 @@ class MetricsContainerTest(keras_parameterized.TestCase):
     self.assertEqual(metric.name, 'mse')
     self.assertEqual(metric.result().numpy(), 1.)
 
+    metric_container.reset_states()
+    self.assertEqual(metric.result().numpy(), 0.)
+
   def test_list_of_metrics_one_output(self):
     metric_container = compile_utils.MetricsContainer(['mse', 'mae'])
     y_t, y_p = 2 * array_ops.ones((10, 5)), array_ops.zeros((10, 5))
@@ -413,6 +429,10 @@ class MetricsContainerTest(keras_parameterized.TestCase):
     mae_metric = metric_container.metrics[1]
     self.assertEqual(mae_metric.name, 'mae')
     self.assertEqual(mae_metric.result().numpy(), 2.)
+
+    metric_container.reset_states()
+    self.assertEqual(mse_metric.result().numpy(), 0.)
+    self.assertEqual(mae_metric.result().numpy(), 0.)
 
   def test_list_of_metrics_list_of_outputs(self):
     metric_container = compile_utils.MetricsContainer(
@@ -494,6 +514,12 @@ class MetricsContainerTest(keras_parameterized.TestCase):
     weighted_mae_metric = metric_container.metrics[3]
     self.assertEqual(weighted_mae_metric.name, 'out2_weighted_mae')
     self.assertEqual(weighted_mae_metric.result().numpy(), 2.)
+
+    metric_container.reset_states()
+    self.assertEqual(mse_metric.result().numpy(), 0.)
+    self.assertEqual(weighted_mse_metric.result().numpy(), 0.)
+    self.assertEqual(mae_metric.result().numpy(), 0.)
+    self.assertEqual(weighted_mae_metric.result().numpy(), 0.)
 
   def test_metric_partial_dict_with_output_names(self):
     metric_container = compile_utils.MetricsContainer(
@@ -763,6 +789,15 @@ class MetricsContainerTest(keras_parameterized.TestCase):
 
     self.assertEqual(metric_container.metrics[0].name, 'custom_metric_fn')
     self.assertEqual(metric_container.metrics[1].name, 'custom_metric_class')
+
+  def test_reset_states_existing_metric_before_built(self):
+    metric = metrics_mod.Mean()
+    metric.update_state([2.0, 4.0])
+    self.assertEqual(metric.result().numpy(), 3.0)
+
+    metric_container = compile_utils.MetricsContainer(metric)
+    metric_container.reset_states()
+    self.assertEqual(metric.result().numpy(), 0.0)
 
 
 if __name__ == '__main__':

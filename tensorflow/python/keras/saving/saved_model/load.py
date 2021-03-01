@@ -50,7 +50,6 @@ from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
-from tensorflow.python.training.tracking.tracking import delete_tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 
@@ -169,7 +168,7 @@ def load(path, compile=True, options=None):  # pylint: disable=redefined-builtin
         'training_config', None)
     if training_config is not None:
       model.compile(**saving_utils.compile_args_from_training_config(
-          training_config))
+          training_config), from_serialized=True)
       saving_utils.try_build_compiled_arguments(model)
     else:
       logging.warning('No training configuration found in save file, so the '
@@ -284,7 +283,7 @@ class KerasObjectLoader(object):
         # loading layers from the config, such as variables.
         continue
       for name in PUBLIC_ATTRIBUTES:
-        delete_tracking(node, name)
+        node._delete_tracking(name)  # pylint: disable=protected-access
 
       if isinstance(node, functional_lib.Functional):
         # Delete the temporary layer dependencies, which were used to restore
@@ -294,7 +293,7 @@ class KerasObjectLoader(object):
         dependencies = list(node._self_unconditional_dependency_names)  # pylint: disable=protected-access
         for name in dependencies:
           if re.match(r'^layer(_with_weights)?-[\d+]', name) is not None:
-            delete_tracking(node, name)
+            node._delete_tracking(name)  # pylint: disable=protected-access
 
   def _add_children_recreated_from_config(self, obj, proto, node_id):
     """Recursively records objects recreated from config."""
@@ -697,7 +696,7 @@ class KerasObjectLoader(object):
       model.__init__(inputs, outputs, name=config['name'])
       functional_lib.connect_ancillary_layers(model, created_layers)
 
-    # Set model dtype and trainable status.
+    # Set model dtype.
     _set_network_attributes_from_metadata(model)
 
     # Unblock models that are dependent on this model.
@@ -1162,7 +1161,7 @@ def _set_network_attributes_from_metadata(revived_obj):
     metadata = revived_obj._serialized_attributes['metadata']
     if metadata.get('dtype') is not None:
       revived_obj._set_dtype_policy(metadata['dtype'])
-    revived_obj.trainable = metadata['trainable']
+    revived_obj._trainable = metadata['trainable']
     # pylint:enable=protected-access
 
 

@@ -67,16 +67,17 @@ struct NcclCollectiveConfig {
 
   int64 operand_count;
   std::vector<PrimitiveType> operand_element_type;
-  int64 replica_count;
   std::vector<ReplicaGroup> replica_groups;
   RendezvousKey::CollectiveOpKind collective_op_kind;
   int64 op_id;
+  CollectiveOpGroupMode group_mode;
+
+  bool IsDegenerate(int64_t replica_count, int64_t partition_count) const;
 };
 
-
 template <typename OpT>
-NcclCollectiveConfig GetNcclCollectiveConfigForMlir(OpT op,
-                                                    int64 replica_count) {
+NcclCollectiveConfig GetNcclCollectiveConfigForMlir(
+    OpT op, absl::optional<bool> use_global_device_ids) {
   NcclCollectiveConfig config;
   config.operand_count = op.operands().size();
   config.operand_element_type.reserve(config.operand_count);
@@ -84,13 +85,12 @@ NcclCollectiveConfig GetNcclCollectiveConfigForMlir(OpT op,
     const Shape shape = TypeToShape(op.operands()[i].getType());
     config.operand_element_type.push_back(shape.element_type());
   }
-  config.replica_count = replica_count;
   config.replica_groups =
       ConvertReplicaGroups(op.replica_groups()).ValueOrDie();
 
   if (!op.IsCrossReplica()) {
     config.collective_op_kind = RendezvousKey::kCrossModule;
-    config.op_id = op.channel_id()->handle().getUInt();
+    config.op_id = static_cast<int64>(op.channel_id()->handle().getInt());
   } else {
     config.collective_op_kind = RendezvousKey::kCrossReplica;
     mlir::ModuleOp parent = op->template getParentOfType<mlir::ModuleOp>();
@@ -98,6 +98,9 @@ NcclCollectiveConfig GetNcclCollectiveConfigForMlir(OpT op,
         parent->getAttrOfType<mlir::IntegerAttr>("hlo.unique_id");
     config.op_id = static_cast<int64>(unique_id.getInt());
   }
+  config.group_mode = GetCollectiveOpGroupMode(op.channel_id().hasValue(),
+                                               use_global_device_ids)
+                          .ValueOrDie();
   return config;
 }
 

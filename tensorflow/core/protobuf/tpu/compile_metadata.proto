@@ -62,6 +62,10 @@ message TPUCompileMetadataProto {
 
     // Name of the node that the arg comes from.
     string name = 10;
+
+    // Whether to use XLA collectives to broadcast this parameter to all
+    // replicas, instead of using TensorFlow Send/Recv among the tasks.
+    bool requires_xla_broadcast = 11;
   }
   repeated Arg args = 1;
 
@@ -116,7 +120,5 @@ message TPUCompileMetadataProto {
   // requested.
   bool use_spmd_for_xla_partitioning = 15;
 
-  // Enables use of XLA collectives for broadcast of replicated parameters to
-  // all replicas, instead of using TensorFlow Send/Recv.
-  bool broadcast_replicated_parameters_via_collectives = 16;
+  reserved 16;  // Was broadcast_replicated_parameters_via_collectives
 }

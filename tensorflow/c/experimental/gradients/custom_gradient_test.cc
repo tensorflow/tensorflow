@@ -101,7 +101,7 @@ TEST_P(CustomGradientTest, ExpWithPassThroughGrad) {
   AbstractTensorHandlePtr x;
   {
     AbstractTensorHandle* x_raw = nullptr;
-    Status s = TestScalarTensorHandle(ctx.get(), 1.0f, &x_raw);
+    Status s = TestScalarTensorHandle<float, TF_FLOAT>(ctx.get(), 1.0f, &x_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
     x.reset(x_raw);
   }

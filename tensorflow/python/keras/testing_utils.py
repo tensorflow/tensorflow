@@ -469,8 +469,13 @@ def get_small_functional_mlp(num_hidden, num_classes, input_dim):
 class SmallSubclassMLP(models.Model):
   """A subclass model based small MLP."""
 
-  def __init__(self, num_hidden, num_classes, use_bn=False, use_dp=False):
-    super(SmallSubclassMLP, self).__init__(name='test_model')
+  def __init__(self,
+               num_hidden,
+               num_classes,
+               use_bn=False,
+               use_dp=False,
+               **kwargs):
+    super(SmallSubclassMLP, self).__init__(name='test_model', **kwargs)
     self.use_bn = use_bn
     self.use_dp = use_dp
 

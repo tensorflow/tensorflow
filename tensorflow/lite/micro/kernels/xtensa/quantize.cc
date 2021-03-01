@@ -111,6 +111,7 @@ void AffineQuantize(int scale_multiplier, const int32_t zero_point,
 
 #endif  // defined(HIFIMINI)
 
+#if defined(HIFIMINI) || defined(FUSION_F1)
 TfLiteStatus EvalXtensa(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
 #if defined(HIFIMINI)
@@ -167,6 +168,7 @@ TfLiteStatus EvalXtensa(TfLiteContext* context, TfLiteNode* node) {
   }
   return kTfLiteOk;
 }
+#endif  // defined(HIFIMINI) || defined(FUSION_F1)
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# LINT.IfChange
 """Utils for managing different mode strings used by Keras and Estimator models.
 """
 
@@ -107,3 +108,4 @@ class ModeKeyMap(collections_abc.Mapping):
 
   def __len__(self):
     return len(self._keys)
+# LINT.ThenChange(//tensorflow/python/keras/saving/utils_v1/mode_keys.py)

@@ -27,6 +27,7 @@ import sys
 import threading
 import time
 import types as python_types
+import warnings
 import weakref
 
 import numpy as np
@@ -460,6 +461,12 @@ def get_registered_object(name, custom_objects=None, module_objects=None):
   return None
 
 
+# pylint: disable=g-bad-exception-name
+class CustomMaskWarning(Warning):
+  pass
+# pylint: enable=g-bad-exception-name
+
+
 @keras_export('keras.utils.serialize_keras_object')
 def serialize_keras_object(instance):
   """Serialize a Keras object into a JSON-compatible representation.
@@ -478,6 +485,20 @@ def serialize_keras_object(instance):
   _, instance = tf_decorator.unwrap(instance)
   if instance is None:
     return None
+
+  # pylint: disable=protected-access
+  #
+  # For v1 layers, checking supports_masking is not enough. We have to also
+  # check whether compute_mask has been overridden.
+  supports_masking = (getattr(instance, 'supports_masking', False)
+                      or (hasattr(instance, 'compute_mask')
+                          and not is_default(instance.compute_mask)))
+  if supports_masking and is_default(instance.get_config):
+    warnings.warn('Custom mask layers require a config and must override '
+                  'get_config. When loading, the custom mask layer must be '
+                  'passed to the custom_objects argument.',
+                  category=CustomMaskWarning)
+  # pylint: enable=protected-access
 
   if hasattr(instance, 'get_config'):
     name = get_registered_name(instance.__class__)

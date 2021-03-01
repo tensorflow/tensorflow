@@ -146,6 +146,17 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
       self.assertRegex("GPU", gens[0].state.device)
 
   @test_util.run_v2_only
+  def testSplitInFunction(self):
+    g = random.Generator.from_seed(1)
+    new_g = [None]  # using list as mutable cells
+    @def_function.function
+    def f():
+      if new_g[0] is None:  # avoid creating variable in 2nd trace
+        new_g[0] = g.split(2)
+      return [new_g[0][i].normal([]) for i in range(2)]
+    f()
+
+  @test_util.run_v2_only
   def testReset(self):
     shape = [2, 3]
     gen = random.Generator.from_seed(0)
@@ -197,6 +208,24 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
         self.assertAllEqual(expected_normal, v)
       check_results(expected_normal1, f(constructor))
       check_results(expected_normal2, f(constructor))
+
+  @test_util.run_v2_only
+  def testCreateGeneratorFromSymbolic(self):
+    g = [None, None, None]  # using list as mutable cells
+    @def_function.function
+    def f(scalar, vector2, vector3):
+      if g[0] is None:  # avoid creating variable in 2nd trace
+        g[0] = random.Generator.from_seed(scalar)
+        g[0].reset_from_seed(scalar)  # also test reset
+        g[1] = random.Generator.from_state(vector3, random.RNG_ALG_PHILOX)
+        g[1].reset(vector3)
+        g[2] = random.Generator.from_key_counter(
+            scalar, vector2, random.RNG_ALG_PHILOX)
+        g[2].reset_from_key_counter(scalar, vector2)
+      return [g[i].normal([]) for i in range(3)]
+    args = (1, [2, 2], [3, 3, 3])
+    args = [constant_op.constant(v) for v in args]
+    f(*args)
 
   @parameterized.parameters([
       ("philox", random.RNG_ALG_PHILOX, random.Algorithm.PHILOX),

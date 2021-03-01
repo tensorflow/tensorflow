@@ -54,17 +54,9 @@ void MicroPrintf(const char* format, ...) {
 
 namespace tflite {
 ErrorReporter* GetMicroErrorReporter() {
-#if !defined(RENODE)
   if (error_reporter_ == nullptr) {
     error_reporter_ = new (micro_error_reporter_buffer) MicroErrorReporter();
   }
-#else
-  // TODO(#46937): Until we resolve the global variable issue with Renode, we
-  // will be creating a new ErrorReporter object each time. While this is
-  // inefficient, it still allows us to make progress.
-  error_reporter_ = new (micro_error_reporter_buffer) MicroErrorReporter();
-#endif
-
   return error_reporter_;
 }
 

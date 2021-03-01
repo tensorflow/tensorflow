@@ -575,8 +575,8 @@ class StridedSliceGradOp : public XlaOpKernel {
         // Input is a dynamic dimension, set the same dynamic dimension size in
         // the output.
         auto dim_size = xla::Slice(dynamic_shape, {dim}, {dim + 1}, {1});
-        auto dim_size_scalar =
-            xla::Reshape(xla::ShapeUtil::MakeScalarShape(xla::S32), dim_size);
+        dim_size = xla::ConvertElementType(dim_size, xla::S32);
+        auto dim_size_scalar = xla::Reshape(dim_size, {});
         grad = xla::SetDimensionSize(grad, dim_size_scalar, dim);
       } else if (grad_shape.is_dynamic_dimension(dim)) {
         // Input is static but output is dynamic, respect input and remove any

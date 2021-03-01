@@ -37,6 +37,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "graph_util"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "monitoring"
     mtype: "<type \'module\'>"
   }

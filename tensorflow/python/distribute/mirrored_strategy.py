@@ -26,12 +26,14 @@ from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import mirrored_run
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
+from tensorflow.python.distribute import values_util
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
@@ -453,7 +455,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
                   for d in self._devices))
       return input_lib.InputWorkers(self._input_workers_devices)
     else:
-      if not options.experimental_prefetch_to_device:
+      if not options.experimental_fetch_to_device:
         return input_lib.InputWorkers([
             (host_device, (host_device,) * len(compute_devices))
             for host_device, compute_devices in self._input_workers_devices
@@ -568,7 +570,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         dataset,
         self._input_workers_with_options(options),
         self._container_strategy(),
-        num_replicas_in_sync=self._num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync,
+        options=options)
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     return numpy_dataset.one_host_numpy_dataset(
@@ -772,6 +775,19 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
                **distribute_utils.select_replica(i, kwargs)))
     return distribute_utils.update_regroup(self, updates, group)
 
+  def _replica_ctx_update(self, var, fn, args, kwargs):
+    replica_context = distribution_strategy_context.get_replica_context()
+    assert replica_context
+    replica_id = values_util.get_current_replica_id_as_int()
+    name = "update_%d" % replica_id
+
+    if isinstance(var, values.DistributedVariable):
+      var = var._get_replica(replica_id)  # pylint: disable=protected-access
+
+    with ops.device(var.device), ops.name_scope(name):
+      result = fn(var, *args, **kwargs)
+    return result
+
   def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
     assert isinstance(colocate_with, tuple)
     # TODO(josh11b): In eager mode, use one thread per device.
@@ -792,11 +808,6 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     assert distribute_utils.is_mirrored(replica_local_var)
     return array_ops.identity(replica_local_var._get())
     # pylint: enable=protected-access
-
-  def _local_results(self, val):
-    if isinstance(val, values.DistributedValues):
-      return val._values  # pylint: disable=protected-access
-    return (val,)
 
   def value_container(self, val):
     return distribute_utils.value_container(val)

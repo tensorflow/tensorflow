@@ -69,7 +69,7 @@ class TableHandler(object):
     keys, values = self.table.export()
     return (self._eval(keys), self._eval(values))
 
-  def vocab_size(self):
+  def table_size(self):
     return self._eval(self.table.size())
 
   def clear(self):
@@ -223,17 +223,16 @@ def get_vocabulary_from_file(vocabulary_path, encoding="utf-8"):
   return vocab
 
 
-def validate_vocabulary_is_unique(vocabulary):
-  """Validate that a vocabulary contains no repeated tokens."""
+def find_repeated_tokens(vocabulary):
+  """Return all repeated tokens in a vocabulary."""
   vocabulary_set = set(vocabulary)
   if len(vocabulary) != len(vocabulary_set):
-    repeated_items = [
+    return [
         item for item, count in collections.Counter(vocabulary).items()
         if count > 1
     ]
-    raise ValueError("The passed vocabulary has at least one repeated "
-                     "term. Please uniquify your dataset. The repeated terms "
-                     "are %s" % repeated_items)
+  else:
+    return []
 
 
 def assert_same_type(expected_type, values, value_name):

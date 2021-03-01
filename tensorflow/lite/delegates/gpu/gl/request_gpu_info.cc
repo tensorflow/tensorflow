@@ -80,6 +80,16 @@ absl::Status RequestGpuInfo(GpuInfo* gpu_info) {
   glGetIntegerv(GL_MAX_IMAGE_UNITS, &info.opengl_info.max_image_units);
   glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS,
                 &info.opengl_info.max_array_texture_layers);
+  glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS,
+                &info.opengl_info.max_fragment_image_units);
+  glGetIntegerv(GL_MAX_FRAGMENT_UNIFORM_VECTORS,
+                &info.opengl_info.max_fragment_uniform_vec4_count);
+  GLint max_color_atttachments;
+  glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS, &max_color_atttachments);
+  GLint max_draw_buffers;
+  glGetIntegerv(GL_MAX_DRAW_BUFFERS, &max_draw_buffers);
+  info.opengl_info.max_color_atttachments =
+      std::min(max_color_atttachments, max_draw_buffers);
   RETURN_IF_ERROR(GetOpenGlErrors());
   *gpu_info = info;
   return absl::OkStatus();

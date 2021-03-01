@@ -845,36 +845,57 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     Returns:
       A `StructuredTensor`.
     """
+    return  cls._from_pyval(pyval, typespec, ())
+
+  @classmethod
+  def _from_pyval(cls, pyval, typespec, path_so_far):
+    """Helper function for from_pyval.
+
+
+    Args:
+      pyval: The nested Python structure that should be used to create the new
+        `StructuredTensor`.
+      typespec: A `StructuredTensorSpec` specifying the expected type for each
+        field. If not specified, then all nested dictionaries are turned into
+        StructuredTensors, and all nested lists are turned into Tensors (if
+        rank<2) or RaggedTensors (if rank>=2).
+      path_so_far: the path of fields that led here (for error messages).
+
+    Returns:
+      A `StructuredTensor`.
+    """
     if isinstance(pyval, dict):
-      return cls._from_pydict(pyval, typespec)
+      return cls._from_pydict(pyval, typespec, path_so_far)
     elif isinstance(pyval, (list, tuple)):
       keys = set()
       rank = _pyval_find_struct_keys_and_depth(pyval, keys)
       if rank is not None:
-        return cls._from_pylist_of_dict(pyval, keys, rank, typespec)
+        return cls._from_pylist_of_dict(pyval, keys, rank, typespec,
+                                        path_so_far)
       else:
-        return cls._from_pylist_of_value(pyval, typespec)
+        return cls._from_pylist_of_value(pyval, typespec, path_so_far)
     else:
-      return cls._from_pyscalar(pyval, typespec)
+      return cls._from_pyscalar(pyval, typespec, path_so_far)
 
   @classmethod
-  def _from_pydict(cls, pyval, typespec):
+  def _from_pydict(cls, pyval, typespec, path_so_far):
     """Converts python dictionary `pyval` to a StructuredTensor with rank=0."""
     if typespec is None:
-      fields = dict((k, cls.from_pyval(v)) for (k, v) in pyval.items())
+      fields = dict((k, cls._from_pyval(v, None, path_so_far + (k,)))
+                    for (k, v) in pyval.items())
     else:
       spec_shape = typespec._shape  # pylint: disable=protected-access
       field_specs = typespec._field_specs  # pylint: disable=protected-access
       if not (isinstance(typespec, StructuredTensorSpec) and
               spec_shape.rank == 0 and set(pyval) == set(field_specs)):
-        raise ValueError('Value does not match typespec: %r vs %r' %
-                         (pyval, typespec))
-      fields = dict(
-          (k, cls.from_pyval(v, field_specs[k])) for (k, v) in pyval.items())
+        raise ValueError('Value at %r does not match typespec: %r vs %r' %
+                         (path_so_far, pyval, typespec))
+      fields = dict((k, cls._from_pyval(v, field_specs[k], path_so_far + (k,)))
+                    for (k, v) in pyval.items())
     return StructuredTensor.from_fields(fields=fields, shape=(), validate=False)
 
   @classmethod
-  def _from_pylist_of_dict(cls, pyval, keys, rank, typespec):
+  def _from_pylist_of_dict(cls, pyval, keys, rank, typespec, path_so_far):
     """Converts python list `pyval` to a StructuredTensor with rank>1."""
     fields = dict((key, []) for key in keys)
     for child in pyval:
@@ -882,62 +903,79 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     if typespec is None:
       shape = tensor_shape.TensorShape([None] * rank)
       for (key, target) in fields.items():
-        fields[key] = cls.from_pyval(target)
+        fields[key] = cls._from_pyval(target, None, path_so_far + (key,))
     else:
       field_specs = typespec._field_specs  # pylint: disable=protected-access
       if ((not isinstance(typespec, StructuredTensorSpec)) or
           (set(fields) - set(field_specs))):
-        raise ValueError('Value does not match typespec: %r vs %r' %
-                         (pyval, typespec))
+        raise ValueError('Value at %r does not match typespec: %r vs %r' %
+                         (path_so_far, pyval, typespec))
       shape = typespec._shape
       if shape.rank < rank:
-        raise ValueError('Value does not match typespec (rank mismatch): '
-                         '%r vs %r' % (pyval, typespec))
+        raise ValueError('Value at %r does not match typespec (rank mismatch): '
+                         '%r vs %r' % (path_so_far, pyval, typespec))
       for (key, spec) in field_specs.items():
-        fields[key] = cls.from_pyval(fields.get(key, []), spec)
-    return StructuredTensor.from_fields(
-        fields=fields, shape=shape, validate=False)
+        fields[key] = cls._from_pyval(
+            fields.get(key, []), spec, path_so_far + (key,))
+    try:
+      return StructuredTensor.from_fields(
+          fields=fields, shape=shape, validate=False)
+    except Exception as exc:
+      raise ValueError('Error parsing path %r' % (path_so_far,)) from exc
 
   @classmethod
-  def _from_pylist_of_value(cls, pyval, typespec):
+  def _from_pylist_of_value(cls, pyval, typespec, path_so_far):
     """Converts python list `pyval` to a Tensor or RaggedTensor with rank>1."""
     if typespec is None:
-      return ragged_factory_ops.constant(pyval)
+      try:
+        return ragged_factory_ops.constant(pyval)
+      except Exception as exc:
+        raise ValueError('Error parsing path %r' % (path_so_far,)) from exc
     elif isinstance(typespec, tensor_spec.TensorSpec):
-      result = constant_op.constant(pyval, typespec.dtype)
+      try:
+        result = constant_op.constant(pyval, typespec.dtype)
+      except Exception as exc:
+        raise ValueError('Error parsing path %r' % (path_so_far,)) from exc
       if not typespec.shape.is_compatible_with(result.shape):
-        raise ValueError('Value does not match typespec: %r vs %r' %
-                         (typespec, pyval))
+        raise ValueError('Value at %r does not match typespec: %r vs %r' %
+                         (path_so_far, typespec, pyval))
       return result
     elif isinstance(typespec, ragged_tensor.RaggedTensorSpec):
       # pylint: disable=protected-access
-      return ragged_factory_ops.constant(
-          pyval,
-          dtype=typespec._dtype,
-          ragged_rank=typespec._ragged_rank,
-          row_splits_dtype=typespec._row_splits_dtype,
-          inner_shape=typespec._shape[typespec._ragged_rank + 1:])
+      try:
+        return ragged_factory_ops.constant(
+            pyval,
+            dtype=typespec._dtype,
+            ragged_rank=typespec._ragged_rank,
+            row_splits_dtype=typespec._row_splits_dtype,
+            inner_shape=typespec._shape[typespec._ragged_rank + 1:])
+      except Exception as exc:
+        raise ValueError('Error parsing path %r' % (path_so_far,)) from exc
     elif isinstance(typespec, StructuredTensorSpec):
       empty_rank = _pyval_empty_list_depth(pyval)
       if empty_rank is None:
-        raise ValueError('Value does not match typespec: %r vs %r' %
-                         (typespec, pyval))
+        raise ValueError('Value at %r does not match typespec: %r vs %r' %
+                         (path_so_far, typespec, pyval))
       else:
-        return cls._from_pylist_of_dict(pyval, set(), empty_rank, typespec)
+        return cls._from_pylist_of_dict(pyval, set(), empty_rank, typespec,
+                                        path_so_far)
     else:
-      raise ValueError('Value does not match typespec: %r vs %r' %
-                       (typespec, pyval))
+      raise ValueError('Value at %r does not match typespec: %r vs %r' %
+                       (path_so_far, typespec, pyval))
 
   @classmethod
-  def _from_pyscalar(cls, pyval, typespec):
+  def _from_pyscalar(cls, pyval, typespec, path_so_far):
     """Converts python scalar value `pyval` to a Tensor."""
     if typespec is None:
-      return constant_op.constant(pyval)
+      try:
+        return constant_op.constant(pyval)
+      except Exception as exc:
+        raise ValueError('Error parsing path %r' % (path_so_far,)) from exc
     else:
       if not (isinstance(typespec, tensor_spec.TensorSpec) and
               typespec.shape.rank == 0):
-        raise ValueError('Value does not match typespec: %r vs %r' %
-                         (typespec, pyval))
+        raise ValueError('Value at %r does not match typespec: %r vs %r' %
+                         (path_so_far, typespec, pyval))
       # TODO(edloper): Check that typespec.shape matches.
       return constant_op.constant(pyval, typespec.dtype)
 

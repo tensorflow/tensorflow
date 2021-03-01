@@ -30,12 +30,23 @@ from tensorflow.python.data.experimental.ops import snapshot
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
-from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
+
+
+def is_graphdef_file(filename):
+  return filename.endswith("-graph.pbtxt")
+
+
+def is_temp_file(filename):
+  return "-tmp-" in filename
+
+
+def listdir_and_filter(dirname, filter_fn):
+  return [path for path in sorted(os.listdir(dirname)) if filter_fn(path)]
 
 
 class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
@@ -77,19 +88,18 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
   def assertSnapshotDirectoryContains(self, directory, num_fingerprints,
                                       num_runs_per_fingerprint,
                                       num_snapshot_shards_per_run):
-    dirlist_raw = os.listdir(directory)
-    dirlist = []
 
-    # Ignore the graphdef pbtxts we write for debugging purposes.
-    for i in range(len(dirlist_raw)):
-      if not dirlist_raw[i].endswith("-graph.pbtxt"):
-        dirlist.append(dirlist_raw[i])
-
+    # Ignore the graphdef pbtxts we write for debugging purposes and temporary
+    # files that are an artifact of how TF writes files.
+    dirlist = listdir_and_filter(
+        directory,
+        lambda p: not (is_graphdef_file(p) or is_temp_file(p)))
     self.assertLen(dirlist, num_fingerprints)
 
     for i in range(num_fingerprints):
       fingerprint_dir = os.path.join(directory, dirlist[i])
-      fingerprint_dir_list = sorted(os.listdir(fingerprint_dir))
+      fingerprint_dir_list = listdir_and_filter(
+          fingerprint_dir, lambda p: not is_temp_file(p))
       self.assertLen(fingerprint_dir_list, num_runs_per_fingerprint + 1)
       self.assertEqual(fingerprint_dir_list[num_runs_per_fingerprint],
                        "snapshot.metadata")
@@ -387,16 +397,14 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testReadOptimizableUsingFlatMap(self):
-    if context.context().use_tfrt:
-      self.skipTest("b/177260096: Flaky test.")
-    dataset = dataset_ops.Dataset.range(100)
+    dataset = dataset_ops.Dataset.range(1000)
     # Will be optimized into ShuffleAndRepeat.
     dataset = dataset.shuffle(10)
     dataset = dataset.repeat(2)
     dataset = dataset.apply(snapshot.snapshot(self._snapshot_dir))
-    self.assertDatasetProducesSet(dataset, 2 * list(range(100)))
+    self.assertDatasetProducesSet(dataset, 2 * list(range(1000)))
     flat_map = dataset_ops.Dataset.from_tensors(dataset).flat_map(lambda x: x)
-    self.assertDatasetProducesSet(flat_map, 2 * list(range(100)))
+    self.assertDatasetProducesSet(flat_map, 2 * list(range(1000)))
     self.assertSnapshotDirectoryContains(
         self._snapshot_dir,
         num_fingerprints=1,
@@ -435,19 +443,17 @@ class LegacySnapshotDatasetTest(
 
   def assertSnapshotDirectoryContains(self, directory, num_fingerprints,
                                       num_runs_per_fp, num_snapshot_files):
-    dirlist_raw = os.listdir(directory)
-    dirlist = []
-
-    # Ignore the graphdef pbtxts we write for debugging purposes.
-    for i in range(len(dirlist_raw)):
-      if not dirlist_raw[i].endswith("-graph.pbtxt"):
-        dirlist.append(dirlist_raw[i])
-
+    # Ignore the graphdef pbtxts we write for debugging purposes and temporary
+    # files that are an artifact of how TF writes files.
+    dirlist = listdir_and_filter(
+        directory,
+        lambda p: not (is_graphdef_file(p) or is_temp_file(p)))
     self.assertLen(dirlist, num_fingerprints)
 
     for i in range(num_fingerprints):
       fingerprint_dir = os.path.join(directory, dirlist[i])
-      fingerprint_dir_list = sorted(os.listdir(fingerprint_dir))
+      fingerprint_dir_list = listdir_and_filter(
+          fingerprint_dir, lambda p: not is_temp_file(p))
       self.assertLen(fingerprint_dir_list, num_runs_per_fp + 1)
       self.assertEqual(fingerprint_dir_list[num_runs_per_fp],
                        "snapshot.metadata")

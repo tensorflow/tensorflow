@@ -191,19 +191,33 @@ Status ResourceMgr::DoCreate(const string& container, TypeIndex type,
                                type.name());
 }
 
+Status ResourceMgr::Lookup(const ResourceHandle& handle,
+                           ResourceBase** resource) const {
+  tf_shared_lock l(mu_);
+  return DoLookup(handle.container(), handle.hash_code(),
+                  /*type_name=*/"ResourceBase", handle.name(), resource);
+}
+
 Status ResourceMgr::DoLookup(const string& container, TypeIndex type,
                              const string& name,
+                             ResourceBase** resource) const {
+  return DoLookup(container, type.hash_code(), type.name(), name, resource);
+}
+
+Status ResourceMgr::DoLookup(const string& container, uint64 type_hash_code,
+                             const string& type_name,
+                             const string& resource_name,
                              ResourceBase** resource) const {
   const Container* b = gtl::FindPtrOrNull(containers_, container);
   if (b == nullptr) {
     return errors::NotFound("Container ", container,
                             " does not exist. (Could not find resource: ",
-                            container, "/", name, ")");
+                            container, "/", resource_name, ")");
   }
-  auto iter = b->find({type.hash_code(), name});
+  auto iter = b->find({type_hash_code, resource_name});
   if (iter == b->end()) {
-    return errors::NotFound("Resource ", container, "/", name, "/", type.name(),
-                            " does not exist.");
+    return errors::NotFound("Resource ", container, "/", resource_name, "/",
+                            type_name, " does not exist.");
   }
   *resource = const_cast<ResourceBase*>(iter->second.resource.get());
   (*resource)->Ref();
@@ -324,6 +338,12 @@ Status HandleFromInput(OpKernelContext* ctx, StringPiece input,
   TF_RETURN_IF_ERROR(ctx->input(input, &tensor));
   *handle = tensor->flat<ResourceHandle>()(0);
   return Status::OK();
+}
+
+Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
+                      ResourceBase** value) {
+  TF_RETURN_IF_ERROR(internal::ValidateDevice(ctx, p));
+  return ctx->resource_manager()->Lookup(p, value);
 }
 
 Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p) {

@@ -457,6 +457,7 @@ class PjRtExecutable {
   // Executes on devices addressable by the client. Requires executable has a
   // device_assignment and all devices in the device_assignment are addressable
   // by the client.
+  // `argument_handles` is `[num_devices, num_args]`.
   virtual StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
   Execute(absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
           const ExecuteOptions& options) = 0;
