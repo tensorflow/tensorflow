@@ -1421,11 +1421,11 @@ def _cuda_copts(opts = []):
 def tf_gpu_kernel_library(
         srcs,
         copts = [],
-        gpu_copts = [],
+        cuda_copts = [],
         deps = [],
         hdrs = [],
         **kwargs):
-    copts = copts + tf_copts() + _cuda_copts(opts = gpu_copts) + rocm_copts(opts = gpu_copts)
+    copts = copts + tf_copts() + _cuda_copts(opts = cuda_copts) + rocm_copts(opts = cuda_copts)
     kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
 
     cuda_library(

@@ -117,6 +117,7 @@ class GpuKernelToBlobPass
       if (!absl::SimpleAtoi(consumable_arch, &arch)) {
         return InternalError("Could not parse ROCm architecture number");
       }
+
       std::string libdevice_dir = tensorflow::RocdlRoot();
       auto llvm_module_copy = llvm::CloneModule(*llvmModule);
       xla::gpu::GpuVersion gpu_version{std::make_pair(arch, arch_str)};
@@ -134,7 +135,7 @@ class GpuKernelToBlobPass
         return hsaco;
       }
 
-      images.push_back(tensorflow::se::HsacoImage{arch_str, std::move(hsaco)});
+      images.push_back({arch_str, std::move(hsaco)});
     }
 
     // TODO(b/169870789): Revisit the use of fatbins.

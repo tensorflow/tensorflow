@@ -2024,9 +2024,9 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 10,
     tags = [
+        "no_rocm",
         "noasan",
         "optonly",
-        "no_rocm",
     ],
     deps = [
         ":array_ops",

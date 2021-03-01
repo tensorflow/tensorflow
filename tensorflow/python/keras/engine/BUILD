@@ -610,7 +610,6 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 8,
     tags = [
-        "no_rocm",
         "no-internal-py3",
         "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564

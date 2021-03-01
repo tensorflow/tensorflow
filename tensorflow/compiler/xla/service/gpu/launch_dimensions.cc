@@ -47,7 +47,7 @@ static int64 ThreadsPerBlockLimit(GpuDeviceInfo gpu_device_info) {
     threads_per_block = gpu_device_info.threads_per_warp;
     if (threads_per_block == 0) {
       // Fall back to *something* if we can't even get num threads per warp.
-      threads_per_block = 64;
+      threads_per_block = 32;
     }
   }
   return threads_per_block;
