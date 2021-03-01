@@ -11,9 +11,6 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
-
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
@@ -333,30 +330,15 @@ tf_cc_binary(
     ],
 )
 
-tf_python_pybind_extension(
-    name = "_pywrap_transform_graph",
-    srcs = ["transform_graph_wrapper.cc"],
-    hdrs = ["//tensorflow/tools/graph_transforms:transform_graph_hdrs"],
-    module_name = "_pywrap_transform_graph",
-    deps = [
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/python/lib/core:pybind11_status",
-        "//tensorflow/tools/graph_transforms:transform_graph_lib",
-        "//third_party/python_runtime:headers",
-        "@pybind11",
-    ],
-)
-
 py_library(
     name = "transform_graph_py",
     srcs = ["__init__.py"],
     srcs_version = "PY3",
     deps = [
-        ":_pywrap_transform_graph",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:errors",
         "//tensorflow/python:util",
+        "//tensorflow/python/util:_pywrap_transform_graph",
     ],
 )
 
