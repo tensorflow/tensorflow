@@ -551,9 +551,10 @@ SelfAdjointEigResult SelfAdjointEig(XlaOp a, bool lower, int64 max_iter,
   }
 
   auto output = output_with_status.ValueOrDie();
-  std::tie(tl, tr, bl, br) = {output[2], output[3], output[4], output[5]};
-  std::tie(v_tl, v_tr, v_bl, v_br) = {output[6], output[7], output[8],
-                                      output[9]};
+  std::tie(tl, tr, bl, br) =
+      std::make_tuple(output[2], output[3], output[4], output[5]);
+  std::tie(v_tl, v_tr, v_bl, v_br) =
+      std::make_tuple(output[6], output[7], output[8], output[9]);
 
   SelfAdjointEigResult result;
   auto w = ConcatInDim(builder,
