@@ -14,9 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/reference/log_softmax.h"
 
+#include <cstddef>
 #include <cstdint>
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
@@ -25,71 +28,110 @@ namespace tflite {
 namespace {
 
 struct LogSoftmaxOpData {
-  struct SoftmaxParams params = {};
-  float f_table[256];
+  int32_t input_multiplier;
+  int32_t input_left_shift;
+  int32_t reverse_scaling_divisor;
+  int32_t reverse_scaling_right_shift;
+  int diff_min;
+  size_t outer_size;  // number of tensor elements skipping computation axis
+  size_t depth;       // number of tensor elements on computation axis
 };
 
-void* LogSoftmaxInit(TfLiteContext* context, const char* buffer,
-                     size_t length) {
-  return new LogSoftmaxOpData;
-}
+// input/output tensor index
+constexpr int kInputTensor = 0;
+constexpr int kOutputTensor = 0;
 
-TfLiteStatus LogSoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
-  LogSoftmaxOpData* data = reinterpret_cast<LogSoftmaxOpData*>(node->user_data);
+TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node) {
+  LogSoftmaxOpData* data = static_cast<LogSoftmaxOpData*>(node->user_data);
 
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   const TfLiteTensor* input;
-  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
   TfLiteTensor* output;
-  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
 
-  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
-    TF_LITE_ENSURE_EQ(context, output->params.scale, 16.0 / 256);
-    static const double kBeta = 1.0;
-    if (input->type == kTfLiteUInt8) {
-      TF_LITE_ENSURE_EQ(context, output->params.zero_point, 255);
-    }
-    if (input->type == kTfLiteInt8) {
-      TF_LITE_ENSURE_EQ(context, output->params.zero_point, 127);
-    }
-    data->params.table = data->f_table;
-    optimized_ops::PopulateSoftmaxLookupTable(&data->params,
-                                              input->params.scale, kBeta);
-    data->params.zero_point = output->params.zero_point;
-    data->params.scale = output->params.scale;
+  TF_LITE_ENSURE(context, HaveSameShapes(input, output));
+
+  if (input->type == kTfLiteInt8) {
+    // quantization datum
+    constexpr int32_t kOutputZeroPoint = 127;
+    constexpr float kOutputScale = 16.0 / 256;
+    constexpr double kBeta = 1.0;
+    constexpr int kScaledDiffIntegerBits = 5;
+
+    TF_LITE_ENSURE(context, output->params.scale == kOutputScale);
+    TF_LITE_ENSURE(context, output->params.zero_point == kOutputZeroPoint);
+
+    int input_left_shift;
+    int reverse_scaling_right_shift;
+    tflite::PreprocessLogSoftmaxScalingExp(
+        kBeta, static_cast<double>(input->params.scale), kScaledDiffIntegerBits,
+        &data->input_multiplier, &input_left_shift,
+        &data->reverse_scaling_divisor, &reverse_scaling_right_shift);
+    data->input_left_shift = static_cast<int32_t>(input_left_shift);
+    data->reverse_scaling_right_shift =
+        static_cast<int32_t>(-reverse_scaling_right_shift);
+    // diff_min has a negative value, and is used to limit the maximum magnitude
+    // of the diffs, which are <= 0.
+    data->diff_min =
+        -tflite::CalculateInputRadius(kScaledDiffIntegerBits, input_left_shift);
+
+    RuntimeShape input_shape = GetTensorShape(input);
+    const int trailing_dim = input_shape.DimensionsCount() - 1;
+    data->outer_size =
+        static_cast<size_t>(FlatSizeSkipDim(input_shape, trailing_dim));
+    data->depth = static_cast<size_t>(input_shape.Dims(trailing_dim));
   }
 
-  return context->ResizeTensor(context, output,
-                               TfLiteIntArrayCopy(input->dims));
+  return kTfLiteOk;
+}
+
+void* LogSoftmaxInit(TfLiteContext* context, const char* buffer,
+                     size_t length) {
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+  return context->AllocatePersistentBuffer(context, sizeof(LogSoftmaxOpData));
+}
+
+TfLiteStatus LogSoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
+  return CalculateOpData(context, node);
 }
 
 TfLiteStatus LogSoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
   const LogSoftmaxOpData* data =
-      reinterpret_cast<LogSoftmaxOpData*>(node->user_data);
-  const TfLiteTensor* input;
-  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
-  TfLiteTensor* output;
-  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+      static_cast<LogSoftmaxOpData*>(node->user_data);
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
   switch (input->type) {
     case kTfLiteFloat32: {
-      SoftmaxParams op_params;
-      reference_ops::LogSoftmax(
-          op_params, GetTensorShape(input), GetTensorData<float>(input),
-          GetTensorShape(output), GetTensorData<float>(output));
+      SoftmaxParams op_params = {};
+      reference_ops::LogSoftmax(op_params, tflite::micro::GetTensorShape(input),
+                                tflite::micro::GetTensorData<float>(input),
+                                tflite::micro::GetTensorShape(output),
+                                tflite::micro::GetTensorData<float>(output));
       return kTfLiteOk;
     }
     case kTfLiteInt8: {
-      SoftmaxParams op_params;
-      reference_ops::LogSoftmax(
-          op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-          GetTensorShape(output), GetTensorData<int8_t>(output));
+      SoftmaxParams op_params = {};
+      op_params.input_multiplier = data->input_multiplier;
+      op_params.input_left_shift = data->input_left_shift;
+      op_params.reverse_scaling_divisor = data->reverse_scaling_divisor;
+      op_params.reverse_scaling_right_shift = data->reverse_scaling_right_shift;
+      op_params.diff_min = data->diff_min;
+      reference_ops::LogSoftmax(op_params, data->outer_size, data->depth,
+                                tflite::micro::GetTensorShape(input),
+                                tflite::micro::GetTensorData<int8_t>(input),
+                                tflite::micro::GetTensorShape(output),
+                                tflite::micro::GetTensorData<int8_t>(output));
       return kTfLiteOk;
     }
     default:
       TF_LITE_KERNEL_LOG(context,
-                         "Only float32, int8 are supported currently, got %s.",
+                         "LOG_SOFTMAX only supports float32, int8, got %s.",
                          TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
@@ -97,10 +139,15 @@ TfLiteStatus LogSoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace
 
-TfLiteRegistration* Register_LOG_SOFTMAX() {
-  static TfLiteRegistration r = {LogSoftmaxInit, nullptr, LogSoftmaxPrepare,
-                                 LogSoftmaxEval};
-  return &r;
+TfLiteRegistration Register_LOG_SOFTMAX() {
+  return {/*init=*/LogSoftmaxInit,
+          /*free=*/nullptr,
+          /*prepare=*/LogSoftmaxPrepare,
+          /*invoke=*/LogSoftmaxEval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace tflite

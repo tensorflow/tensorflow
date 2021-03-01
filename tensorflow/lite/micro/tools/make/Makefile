@@ -277,6 +277,7 @@ tensorflow/lite/micro/kernels/hard_swish_test.cc \
 tensorflow/lite/micro/kernels/l2norm_test.cc \
 tensorflow/lite/micro/kernels/logical_test.cc \
 tensorflow/lite/micro/kernels/logistic_test.cc \
+tensorflow/lite/micro/kernels/log_softmax_test.cc \
 tensorflow/lite/micro/kernels/maximum_minimum_test.cc \
 tensorflow/lite/micro/kernels/mul_test.cc \
 tensorflow/lite/micro/kernels/neg_test.cc \
@@ -334,6 +335,7 @@ tensorflow/lite/micro/kernels/kernel_util.cc \
 tensorflow/lite/micro/kernels/l2norm.cc \
 tensorflow/lite/micro/kernels/logical.cc \
 tensorflow/lite/micro/kernels/logistic.cc \
+tensorflow/lite/micro/kernels/log_softmax.cc \
 tensorflow/lite/micro/kernels/maximum_minimum.cc \
 tensorflow/lite/micro/kernels/mul.cc \
 tensorflow/lite/micro/kernels/neg.cc \
@@ -424,6 +426,7 @@ tensorflow/lite/kernels/internal/reference/integer_ops/pooling.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/tanh.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/transpose_conv.h \
 tensorflow/lite/kernels/internal/reference/l2normalization.h \
+tensorflow/lite/kernels/internal/reference/log_softmax.h \
 tensorflow/lite/kernels/internal/reference/maximum_minimum.h \
 tensorflow/lite/kernels/internal/reference/mul.h \
 tensorflow/lite/kernels/internal/reference/neg.h \
