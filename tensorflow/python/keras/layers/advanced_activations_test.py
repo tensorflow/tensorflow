@@ -111,8 +111,8 @@ class AdvancedActivationsTest(keras_parameterized.TestCase):
   def test_leaky_relu_with_invalid_alpha(self):
     # Test case for GitHub issue 46993.
     with self.assertRaisesRegex(ValueError,
-                                'The alpha value of a Leaky ReLU layer cannot '
-                                'be None, needs a float. Got None'):
+                                'The alpha value of a Leaky ReLU layer '
+                                'cannot be None, needs a float. Got None'):
       testing_utils.layer_test(
           keras.layers.LeakyReLU,
           kwargs={'alpha': None},
@@ -120,8 +120,8 @@ class AdvancedActivationsTest(keras_parameterized.TestCase):
           supports_masking=True)
     
     with self.assertRaisesRegex(ValueError, 
-                                'The alpha value of a Leaky ReLU layer should '
-                                'be >=0, got -10'):
+                                'The alpha value of a Leaky ReLU layer '
+                                'should be >=0, got -10'):
       testing_utils.layer_test(
           keras.layers.LeakyReLU,
           kwargs={'alpha': -10},
@@ -141,8 +141,8 @@ class AdvancedActivationsTest(keras_parameterized.TestCase):
 
   def test_threshold_relu_with_invalid_alpha(self):
     with self.assertRaisesRegex(ValueError,
-                                'Theta of a Thresholded ReLU layer cannot be None, '
-                                'requires a float. Got None'):
+                                'Theta of a Thresholded ReLU layer cannot '
+                                'be None, requires a float. Got None'):
       testing_utils.layer_test(
           keras.layers.ThresholdedReLU,
           kwargs={'theta': None},
@@ -150,8 +150,8 @@ class AdvancedActivationsTest(keras_parameterized.TestCase):
           supports_masking=True)
     
     with self.assertRaisesRegex(ValueError,
-                                'The theta value of a Thresholded ReLU layer '
-                                'should be >=0, got -10'):
+                                'The theta value of a Thresholded ReLU '
+                                'layer should be >=0, got -10'):
       testing_utils.layer_test(
           keras.layers.ThresholdedReLU,
           kwargs={'theta': -10},
