@@ -43,6 +43,11 @@ namespace TF {
 // ops.
 std::unique_ptr<OperationPass<FuncOp>> CreateDropWhileShapeInvariantPass();
 
+// Creates a pass that drops `shape_invariant` attribute from While/WhileRegion
+// ops within device cluster.
+std::unique_ptr<OperationPass<FuncOp>>
+CreateDropWhileShapeInvariantInDeviceClusterPass();
+
 // Transforms functional control flow operations in the TensorFlow dialect to
 // MLIR Control Flow Graph (CFG) form.
 std::unique_ptr<OperationPass<FuncOp>> CreateTFFunctionalControlFlowToCFG();
