@@ -311,6 +311,41 @@ class BinaryOpsTestBase : public OpsTestBase {
 
   template <typename T, typename BaselineT, typename OutT,
             typename BaselineOutT>
+  void TestBroadcastingRank6(const std::string& op_name,
+                             const absl::InlinedVector<T, 10>& lhs_input,
+                             const absl::InlinedVector<T, 10>& rhs_input,
+                             BaselineOutT (*baseline_callback)(BaselineT,
+                                                               BaselineT),
+                             const test::OpsTestConfig& config) {
+    // Prepare inputs.
+    TensorShape lhs_shape{1, 2, 3, 1, 2, 1};
+    TensorShape rhs_shape{1, 1, 1, 2, 3};
+    auto repeated_lhs_input =
+        test::RepeatInputToMatchShape(lhs_input, lhs_shape.num_elements());
+    auto repeated_rhs_input =
+        test::RepeatInputToMatchShape(rhs_input, rhs_shape.num_elements());
+
+    // Compute expected results.
+    TensorShape expected_shape{1, 2, 3, 1, 2, 3};
+    std::vector<int> lhs_indices = {0, 0, 0, 1, 1, 1, 2,  2,  2,  3,  3,  3,
+                                    4, 4, 4, 5, 5, 5, 6,  6,  6,  7,  7,  7,
+                                    8, 8, 8, 9, 9, 9, 10, 10, 10, 11, 11, 11};
+    std::vector<int> rhs_indices = {
+        0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5,
+        0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5,
+    };
+    auto expected_output =
+        ComputeExpectedOutput<T, BaselineT, OutT, BaselineOutT>(
+            lhs_indices, repeated_lhs_input, rhs_indices, repeated_rhs_input,
+            baseline_callback);
+
+    RunAndExpectResult<T, OutT>(op_name, lhs_shape, repeated_lhs_input,
+                                rhs_shape, repeated_rhs_input, expected_shape,
+                                expected_output, config);
+  }
+
+  template <typename T, typename BaselineT, typename OutT,
+            typename BaselineOutT>
   void TestEmptyShapeBroadcasting(const std::string& op_name,
                                   const absl::InlinedVector<T, 10>& lhs_input,
                                   const absl::InlinedVector<T, 10>& rhs_input,
@@ -389,6 +424,11 @@ class BinaryOpsTestBase : public OpsTestBase {
                                                                               \
   TEST_F(BinaryOpsTest, op_name##Broadcasting##test_name) {                   \
     TestBroadcasting<T, BaselineT, OutT, BaselineOutT>(                       \
+        #op_name, lhs_input, rhs_input, baseline_callback, config);           \
+  }                                                                           \
+                                                                              \
+  TEST_F(BinaryOpsTest, op_name##BroadcastingRank6##test_name) {              \
+    TestBroadcastingRank6<T, BaselineT, OutT, BaselineOutT>(                  \
         #op_name, lhs_input, rhs_input, baseline_callback, config);           \
   }                                                                           \
                                                                               \
