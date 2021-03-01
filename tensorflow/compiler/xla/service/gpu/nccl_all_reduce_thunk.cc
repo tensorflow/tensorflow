@@ -86,13 +86,14 @@ static absl::optional<ReductionKind> MatchReductionComputation(
   }
 }
 
-static NcclAllReduceConfig GetNcclAllReduceConfig(mlir::lmhlo::AllReduceOp op,
-                                                  int64 replica_count) {
+/*static*/ NcclAllReduceConfig NcclAllReduceThunk::GetNcclAllReduceConfig(
+    mlir::lmhlo::AllReduceOp op) {
   auto reduction_kind = MatchReductionComputation(op);
   CHECK(reduction_kind.has_value());
 
   NcclAllReduceConfig config;
-  config.config = GetNcclCollectiveConfigForMlir(op, replica_count);
+  config.config =
+      GetNcclCollectiveConfigForMlir(op, op.use_global_device_ids());
   config.reduction_kind = *reduction_kind;
   return config;
 }
@@ -108,10 +109,10 @@ static NcclAllReduceConfig GetNcclAllReduceConfig(mlir::lmhlo::AllReduceOp op,
 }
 
 NcclAllReduceThunk::NcclAllReduceThunk(
-    ThunkInfo thunk_info, mlir::lmhlo::AllReduceOp op, int64 replica_count,
+    ThunkInfo thunk_info, mlir::lmhlo::AllReduceOp op,
     std::vector<NcclAllReduceThunk::Buffer> buffers)
     : NcclCollectiveThunk(Thunk::kNcclAllReduce, thunk_info),
-      config_(GetNcclAllReduceConfig(op, replica_count)),
+      config_(GetNcclAllReduceConfig(op)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());
 }

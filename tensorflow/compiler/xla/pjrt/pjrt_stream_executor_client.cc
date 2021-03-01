@@ -187,19 +187,6 @@ class CpuAllocator : public tensorflow::Allocator {
   }
 };
 
-static int DefaultThreadPoolSize() {
-  // Google's CI system exposes an environment variable NPROC that describes
-  // a CPU reservation for tests.
-  // TODO(phawkins): expose a better thought-out set of knobs to control
-  // parallelism.
-  const char* nproc_str = std::getenv("NPROC");
-  int nproc = 0;
-  if (nproc_str && absl::SimpleAtoi(nproc_str, &nproc)) {
-    return std::max(0, nproc);
-  }
-  return tensorflow::port::MaxParallelism();
-}
-
 PjRtStreamExecutorClient::PjRtStreamExecutorClient(
     std::string platform_name, LocalClient* client,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices, int task_id,
@@ -1340,7 +1327,7 @@ PjRtStreamExecutorBuffer::CopyToDeviceHelper(
       // have completed.
       tensorflow::down_cast<PjRtStreamExecutorDevice*>(device_)
           ->local_device_state()
-          ->ThenRelease(transfer_stream, src_device_buffer);
+          ->ThenRelease(transfer_stream, std::move(src_device_buffer));
     }
     return copy_event_or.status();
   }

@@ -100,15 +100,15 @@ struct WritableFileRawStream : public llvm::raw_ostream {
 
 struct CrashReproducerStream : public mlir::PassManager::ReproducerStream {
   CrashReproducerStream(llvm::StringRef name,
-                        std::unique_ptr<WritableFile> file)
+                        std::unique_ptr<llvm::raw_ostream> file)
       : name(name), ostream(std::move(file)) {}
 
   llvm::StringRef description() override { return name; }
-  raw_ostream& os() override { return ostream; }
+  raw_ostream& os() override { return *ostream; }
 
  private:
   std::string name;
-  WritableFileRawStream ostream;
+  std::unique_ptr<llvm::raw_ostream> ostream;
 };
 }  // namespace
 
@@ -225,25 +225,32 @@ void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path) {
     }
   }
 
-  auto* env = tensorflow::Env::Default();
-  auto status = env->RecursivelyCreateDir(path);
-  if (!status.ok()) {
-    LOG(WARNING) << "cannot create directory '" + path +
-                        "': " + status.error_message();
-    return;
-  }
+  if (path != "-") {
+    auto* env = tensorflow::Env::Default();
+    auto status = env->RecursivelyCreateDir(path);
+    if (!status.ok()) {
+      LOG(WARNING) << "cannot create directory '" + path +
+                          "': " + status.error_message();
+      return;
+    }
 
-  path += "/mlir_reproducer_";
+    path += "/mlir_reproducer_";
 
-  if (!tensorflow::Env::Default()->CreateUniqueFileName(&path, ".mlir")) {
-    LOG(WARNING)
-        << "cannot create unique filename, won't enable MLIR crash reproducer.";
-    return;
+    if (!tensorflow::Env::Default()->CreateUniqueFileName(&path, ".mlir")) {
+      LOG(WARNING) << "cannot create unique filename, won't enable MLIR crash "
+                      "reproducer.";
+      return;
+    }
   }
 
   mlir::PassManager::ReproducerStreamFactory factory =
       [path](std::string& error)
       -> std::unique_ptr<mlir::PassManager::ReproducerStream> {
+    // Use the stderr stream.
+    if (path == "-")
+      return std::make_unique<CrashReproducerStream>(
+          "(stderr)", std::make_unique<LogInfoRawStream>());
+
     // Try to open the file and generate a raw_ostream.
     std::unique_ptr<WritableFile> file;
     Status status = tensorflow::Env::Default()->NewWritableFile(path, &file);
@@ -252,7 +259,8 @@ void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path) {
                            "': ", status.error_message());
       return nullptr;
     }
-    return std::make_unique<CrashReproducerStream>(path, std::move(file));
+    return std::make_unique<CrashReproducerStream>(
+        path, std::make_unique<WritableFileRawStream>(std::move(file)));
   };
   pm.enableCrashReproducerGeneration(factory, /*genLocalReproducer=*/false);
 }

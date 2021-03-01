@@ -221,7 +221,6 @@ py_test(
         ":lite",
         ":lite_v2_test_util",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/lite/kernels/hashtable:pywrap_hashtable_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "@six_archive//:six",
@@ -293,7 +292,6 @@ py_test(
         "no_windows",
     ],
     deps = [
-        ":lite_constants",
         ":util",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:array_ops",
@@ -360,6 +358,9 @@ py_library(
         "//tensorflow/lite/toco/python:toco_from_protos",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:platform",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
 )

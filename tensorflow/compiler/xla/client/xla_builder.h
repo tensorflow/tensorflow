@@ -432,7 +432,12 @@ class XlaBuilder {
   StatusOr<std::vector<Shape>> GetOperandShapes(
       absl::Span<const XlaOp> operands) const;
 
+  // Converts the op to string for the ease of debugging.
+  std::string OpToString(XlaOp op) const;
+
  private:
+  void ToStringHelper(std::string* out, int ident, int64 op_handle) const;
+
   // Build helper which takes the id of the root operation..
   StatusOr<XlaComputation> Build(int64 root_id, bool remove_dynamic_dimensions);
 

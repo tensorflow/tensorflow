@@ -888,11 +888,7 @@ TYPED_TEST_P(FusedPadConvOpTest, PaddingConvTestNchw) { this->Run("NCHW"); }
 REGISTER_TYPED_TEST_SUITE_P(FusedPadConvOpTest, PaddingConvTest,
                             PaddingConvTestNchw);
 
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
 using FusedPadConvDataTypes = ::testing::Types<float, bfloat16>;
-#else
-using FusedPadConvDataTypes = ::testing::Types<float>;
-#endif
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedPadConvOpTest, FusedPadConvDataTypes);
 
 class FilterCacheTest : public OpsTestBase {

@@ -375,9 +375,11 @@ Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
         "Value index for line number requires table value dtype of int64, got ",
         DataTypeString(table->value_dtype()));
   }
-  if (value_index == kWholeLine && value_dtype != DT_STRING) {
+  if (value_index == kWholeLine && !DataTypeIsInteger(value_dtype) &&
+      value_dtype != DT_STRING) {
     return errors::InvalidArgument(
-        "Value index for whole line requires table value dtype of string, got ",
+        "Value index for whole line requires table value dtype of integer or "
+        "string, got ",
         DataTypeString(table->value_dtype()));
   }
 

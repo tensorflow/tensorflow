@@ -25,16 +25,22 @@ from tensorflow.python.ops import array_ops
 class FilterBenchmark(benchmark_base.DatasetBenchmarkBase):
   """Benchmarks for `tf.data.Dataset.filter()`."""
 
-  def _benchmark(self, predicate, name):
-    dataset = (
-        dataset_ops.Dataset.from_tensors(True).repeat(None).filter(predicate))
-    self.run_and_report_benchmark(dataset, num_elements=100000, name=name)
+  def _benchmark(self, predicate, name, benchmark_id):
+    dataset = dataset_ops.Dataset.from_tensors(True)
+    dataset = dataset.repeat().filter(predicate)
+    self.run_and_report_benchmark(
+        dataset,
+        num_elements=100000,
+        extras={
+            "model_name": "filter.benchmark.%d" % benchmark_id,
+        },
+        name=name)
 
   def benchmark_simple_function(self):
-    self._benchmark(array_ops.identity, "simple_function")
+    self._benchmark(array_ops.identity, "simple_function", benchmark_id=1)
 
   def benchmark_return_component_optimization(self):
-    self._benchmark(lambda x: x, "return_component")
+    self._benchmark(lambda x: x, "return_component", benchmark_id=2)
 
 
 if __name__ == "__main__":

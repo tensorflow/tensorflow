@@ -67,7 +67,6 @@ LogicalResult LiftVariablesFromSession(
     ModuleOp module, Session* session,
     const SmallSet<StringRef, 4>& resource_names) {
   OpBuilder builder(module.getBodyRegion());
-  MLIRContext* context = module.getContext();
 
   if (!session) return module.emitOpError() << "no session provided";
 
@@ -137,7 +136,7 @@ LogicalResult LiftVariablesFromSession(
     ElementsAttr tensor_attr = tensor_attr_or.ValueOrDie();
 
     builder.create<tf_saved_model::GlobalTensorOp>(
-        NameLoc::get(builder.getIdentifier(name.str()), context),
+        NameLoc::get(builder.getIdentifier(name.str())),
         builder.getStringAttr(name), tensor_attr,
         TypeAttr::get(tensor_attr.getType()), builder.getUnitAttr());
   }

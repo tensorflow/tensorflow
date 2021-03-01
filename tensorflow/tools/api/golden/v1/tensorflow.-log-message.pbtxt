@@ -41,6 +41,12 @@ tf_proto {
         name: "FATAL"
         number: 50
       }
+      options {
+        deprecated: true
+      }
+    }
+    options {
+      deprecated: true
     }
   }
 }

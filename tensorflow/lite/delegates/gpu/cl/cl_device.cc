@@ -198,6 +198,8 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
       GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE2D_MAX_HEIGHT);
   info.opencl_info.buffer_max_size =
       GetDeviceInfo<cl_ulong>(id, CL_DEVICE_MAX_MEM_ALLOC_SIZE);
+  info.opencl_info.max_allocation_size =
+      GetDeviceInfo<cl_ulong>(id, CL_DEVICE_MAX_MEM_ALLOC_SIZE);
   if (info.opencl_info.cl_version >= OpenClVersion::kCl1_2) {
     info.opencl_info.image_buffer_max_size =
         GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE_MAX_BUFFER_SIZE);

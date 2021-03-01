@@ -240,6 +240,44 @@ StatusOr<std::vector<Shape>> XlaBuilder::GetOperandShapes(
   return operand_shapes;
 }
 
+std::string XlaBuilder::OpToString(XlaOp op) const {
+  std::string s;
+  ToStringHelper(&s, /*ident=*/0, op.handle());
+  return s;
+}
+
+static std::string ShapeToString(const xla::ShapeProto& shape) {
+  if (shape.tuple_shapes_size() > 1) {
+    return absl::StrCat(
+        "(",
+        absl::StrJoin(shape.tuple_shapes(), ", ",
+                      [&](std::string* s, const xla::ShapeProto& subshape) {
+                        absl::StrAppend(s, ShapeToString(subshape));
+                      }),
+        ")");
+  }
+  return absl::StrCat("[", absl::StrJoin(shape.dimensions(), ", "), "]");
+}
+
+void XlaBuilder::ToStringHelper(std::string* out, int ident,
+                                int64 op_handle) const {
+  const HloInstructionProto& instr =
+      *(LookUpInstructionByHandle(op_handle).ValueOrDie());
+  absl::StrAppend(out, std::string(ident, ' '), instr.opcode(),
+                  ", shape=", ShapeToString(instr.shape()));
+  if (instr.has_metadata()) {
+    absl::StrAppend(out, ", metadata={", instr.metadata().source_file(), ":",
+                    instr.metadata().source_line(), "}");
+  }
+  if (instr.operand_ids_size()) {
+    absl::StrAppend(out, "\n");
+  }
+  absl::StrAppend(out, absl::StrJoin(instr.operand_ids(), "\n",
+                                     [&](std::string* s, int64 subop) {
+                                       ToStringHelper(s, ident + 2, subop);
+                                     }));
+}
+
 XlaBuilder::XlaBuilder(const string& computation_name)
     : name_(computation_name) {}
 

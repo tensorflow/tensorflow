@@ -292,6 +292,7 @@ xla_test(
     srcs = ["qr_test.cc"],
     tags = ["optonly"],
     deps = [
+        ":constants",
         ":matrix",
         ":qr",
         "//tensorflow/compiler/xla:array2d",
@@ -299,6 +300,7 @@ xla_test(
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
@@ -455,6 +457,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:lib",
@@ -469,7 +472,6 @@ xla_test(
         "gpu",
     ],
     real_hardware_only = True,
-    shard_count = 10,
     tags = ["optonly"],
     deps = [
         ":arithmetic",

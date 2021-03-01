@@ -31,6 +31,47 @@ using xla::StatusOr;
 
 namespace errors = tensorflow::errors;
 
+tflite::TensorType ConvertTypeToTensorType(mlir::Type type) {
+  if (type.isF16()) {
+    return tflite::TensorType_FLOAT16;
+  } else if (type.isF32()) {
+    return tflite::TensorType_FLOAT32;
+  } else if (type.isF64()) {
+    return tflite::TensorType_FLOAT64;
+  } else if (type.isa<mlir::TF::StringType>()) {
+    return tflite::TensorType_STRING;
+  } else if (auto complex_type = type.dyn_cast<mlir::ComplexType>()) {
+    if (complex_type.getElementType().isF32()) {
+      return tflite::TensorType_COMPLEX64;
+    } else if (complex_type.getElementType().isF64()) {
+      return tflite::TensorType_COMPLEX128;
+    }
+    llvm_unreachable("invalid complex Type in conversion");
+  } else if (auto itype = type.dyn_cast<mlir::IntegerType>()) {
+    switch (itype.getWidth()) {
+      case 1:
+        return tflite::TensorType_BOOL;
+      case 8:
+        if (itype.isUnsigned())
+          return tflite::TensorType_UINT8;
+        else
+          return tflite::TensorType_INT8;
+      case 16:
+        return tflite::TensorType_INT16;
+      case 32:
+        return tflite::TensorType_INT32;
+      case 64:
+        if (itype.isUnsigned())
+          return tflite::TensorType_UINT64;
+        else
+          return tflite::TensorType_INT64;
+      default:
+        llvm_unreachable("invalid integer Type in conversion");
+    }
+  }
+  llvm_unreachable("invalid Type in conversion");
+}
+
 mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder) {
   switch (type) {
     case tflite::TensorType_FLOAT16:

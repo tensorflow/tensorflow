@@ -29,8 +29,9 @@ using namespace std;
 // ================== Helper functions =================
 
 // Fills data with values [start,end) with given step size.
-void Range(vector<int>* data, int start, int end, int step = 1) {
-  for (int i = start; i < end; i += step) {
+void Range(vector<int32_t>* data, int32_t start, int32_t end,
+           int32_t step = 1) {
+  for (int32_t i = start; i < end; i += step) {
     (*data)[i] = i;
   }
 }
@@ -72,12 +73,12 @@ Status RunAndMaybeSum(AbstractContext* ctx, Model forward,
   // Will sum all dimensions, so get a Tensor containing [0,...,num_dims_out-1].
   AbstractTensorHandlePtr sum_dims;
   {
-    vector<int> vals(num_dims_out);
+    vector<int32_t> vals(num_dims_out);
     int64_t vals_shape[] = {num_dims_out};
     Range(&vals, 0, num_dims_out);
     AbstractTensorHandle* sum_dims_raw = nullptr;
-    TF_RETURN_IF_ERROR(TestTensorHandleWithDimsInt(ctx, vals.data(), vals_shape,
-                                                   1, &sum_dims_raw));
+    TF_RETURN_IF_ERROR(TestTensorHandleWithDims<int32_t, TF_INT32>(
+        ctx, vals.data(), vals_shape, 1, &sum_dims_raw));
     sum_dims.reset(sum_dims_raw);
   }
 
@@ -130,8 +131,8 @@ Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
     AbstractTensorHandlePtr two_eps;
     {
       AbstractTensorHandle* two_eps_raw = nullptr;
-      TF_RETURN_IF_ERROR(
-          TestScalarTensorHandle(ctx, 2 * epsilon, &two_eps_raw));
+      TF_RETURN_IF_ERROR(TestScalarTensorHandle<float, TF_FLOAT>(
+          ctx, 2 * epsilon, &two_eps_raw));
       two_eps.reset(two_eps_raw);
     }
 
@@ -142,7 +143,7 @@ Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
     AbstractTensorHandlePtr thetaPlus;
     {
       AbstractTensorHandle* thetaPlus_raw = nullptr;
-      TF_RETURN_IF_ERROR(TestTensorHandleWithDimsFloat(
+      TF_RETURN_IF_ERROR(TestTensorHandleWithDims<float, TF_FLOAT>(
           ctx, thetaPlus_data.data(), theta_dims.data(), num_dims,
           &thetaPlus_raw));
       thetaPlus.reset(thetaPlus_raw);
@@ -155,7 +156,7 @@ Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
     AbstractTensorHandlePtr thetaMinus;
     {
       AbstractTensorHandle* thetaMinus_raw = nullptr;
-      TF_RETURN_IF_ERROR(TestTensorHandleWithDimsFloat(
+      TF_RETURN_IF_ERROR(TestTensorHandleWithDims<float, TF_FLOAT>(
           ctx, thetaMinus_data.data(), theta_dims.data(), num_dims,
           &thetaMinus_raw));
       thetaMinus.reset(thetaMinus_raw);
@@ -194,7 +195,7 @@ Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
   }
 
   // Populate *numerical_grad with the data from dtheta_approx.
-  TF_RETURN_IF_ERROR(TestTensorHandleWithDimsFloat(
+  TF_RETURN_IF_ERROR(TestTensorHandleWithDims<float, TF_FLOAT>(
       ctx, dtheta_approx.data(), theta_dims.data(), num_dims, numerical_grad));
   TF_DeleteTensor(theta_tensor);
   return Status::OK();

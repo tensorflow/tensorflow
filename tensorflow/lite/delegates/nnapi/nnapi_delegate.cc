@@ -676,7 +676,7 @@ NNMemory::~NNMemory() {
   if (nn_memory_handle_) {
     nnapi_->ANeuralNetworksMemory_free(nn_memory_handle_);
   }
-  if (fd_ > 0) close(fd_);
+  if (fd_ >= 0) close(fd_);
 #endif
 }
 

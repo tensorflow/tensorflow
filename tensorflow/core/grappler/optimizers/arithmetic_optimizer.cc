@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/tensor_coding.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/strided_slice_op.h"
@@ -2141,6 +2142,99 @@ class ReorderCastLikeAndValuePreserving : public ArithmeticOptimizerStage {
   }
 };
 
+// Reorder redundant reshapes around a single unary element-wise op, i.e.,
+//
+//    input -> reshape A -> unary -> reshape B -> output
+//
+// becomes
+//
+//    input -> unary -> reshape A -> reshape B -> output
+//
+// We conservatively consider reshapes to be redundant only if:
+//  1) The input shape of A is equal to the output shape of B.
+//  2) Both A and unary have a single output.
+//
+// A later pass (RemoveRedundantReshapeOrBroadcastTo) will remove both reshapes
+//
+class ReorderRedundantReshapeAroundUnary : public ArithmeticOptimizerStage {
+ public:
+  explicit ReorderRedundantReshapeAroundUnary(
+      const GraphOptimizerContext& ctx,
+      const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("ReorderRedundantReshapeAroundUnary", ctx,
+                                 ctx_ext) {}
+
+  ~ReorderRedundantReshapeAroundUnary() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsReshape(*node) && !IsInPreserveSet(*node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    // Check that we have a chain of (reshape -> unary -> reshape), with no
+    // additional outputs on either the first reshape or unary op
+    NodeDef* head = node;
+    if (!IsReshape(*head) || IsInPreserveSet(*head)) {
+      return Status::OK();
+    }
+
+    NodeDef* unary;
+    TF_RETURN_IF_ERROR(GetInputNode(head->input(0), &unary));
+    if (!IsUnaryElementWise(*unary) || IsInPreserveSet(*unary) ||
+        NumNonControlOutputs(*unary, *ctx().node_map) != 1) {
+      return Status::OK();
+    }
+
+    NodeDef* tail;
+    TF_RETURN_IF_ERROR(GetInputNode(unary->input(0), &tail));
+    if (!IsReshape(*tail) || IsInPreserveSet(*tail) ||
+        NumNonControlOutputs(*tail, *ctx().node_map) != 1) {
+      return Status::OK();
+    }
+
+    // The reshapes are a no-op if the input and output shapes match
+    NodeDef* input;
+    TF_RETURN_IF_ERROR(GetInputNode(tail->input(0), &input));
+    if (!InputMatchesOutputShape(*input, *head)) {
+      VLOG(3) << "Input and output shapes are unequal: input=" << input->name()
+              << ", output=" << head->name();
+      return Status::OK();
+    }
+
+    // Reordering ops with control inputs can result in a cyliclic graph so we
+    // conservatively ignore such ops
+    if (NumControlInputs(*unary) != 0 || NumControlInputs(*tail) != 0) {
+      return Status::OK();
+    }
+
+    // Swap `unary` and `tail` reshape
+    unary->set_input(0, input->name());
+    ctx().node_map->UpdateInput(unary->name(), tail->name(), input->name());
+    tail->set_input(0, unary->name());
+    ctx().node_map->UpdateInput(tail->name(), input->name(), unary->name());
+    head->set_input(0, tail->name());
+    ctx().node_map->UpdateInput(head->name(), unary->name(), tail->name());
+
+    *simplified_node_name = node->name();
+    AddToOptimizationQueue(node);
+    return Status::OK();
+  }
+
+ private:
+  // Returns whether the input shape of the first op matches the output shape of
+  // the second op.
+  bool InputMatchesOutputShape(const NodeDef& input, const NodeDef& output) {
+    const OpInfo::TensorProperties* input_props;
+    const OpInfo::TensorProperties* output_props;
+    if (!GetTensorProperties(input.name(), &input_props).ok() ||
+        !GetTensorProperties(output.name(), &output_props).ok()) {
+      return false;
+    }
+
+    return ShapesSymbolicallyEqual(input_props->shape(), output_props->shape());
+  }
+};
+
 // Fold a multiply of a scalar into the following convolution. This folding
 // can jump across nodes that merely reorders data (such as reshape and
 // transpose). For example, we can optimize
@@ -2455,6 +2549,127 @@ class ReplaceMulWithSquare : public ArithmeticOptimizerStage {
     }
 
     return Status::OK();
+  }
+};
+
+// Replace a combination of Mul with broadcasting by Tile. E.g. replace
+//
+// input(1x22x1x48x1x64) -> Mul (1x22x2x48x2x64) -> output
+// Ones (1x22x2x48x2x64) -^
+//
+// with
+//
+// input -> Tile(1x22x2x48x2x64) -> output
+class ReplaceMulWithBroadcastByTile : public ArithmeticOptimizerStage {
+ public:
+  explicit ReplaceMulWithBroadcastByTile(
+      const GraphOptimizerContext& ctx,
+      const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("ReplaceMulWithBroadcastByTile", ctx,
+                                 ctx_ext) {}
+  ~ReplaceMulWithBroadcastByTile() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsMul(*node) && !IsInPreserveSet(*node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    NodeDef *input, *ones;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &input));
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &ones));
+    if (IsInPreserveSet(*node) || IsInPreserveSet(*input) ||
+        IsInPreserveSet(*ones)) {
+      return Status::OK();
+    }
+
+    // TODO(kkiningh): Generalize using IsOnes from constant_folding.cc
+    if (IsConstant(*input) || !IsOnes(*ones)) return Status::OK();
+
+    // Avoid optimizing the same node twice
+    const NodeScopeAndName scope_and_name = ParseNodeScopeAndName(node->name());
+    const string tile_node_name = OptimizedNodeName(scope_and_name, "Tile");
+    const string const_node_name = OptimizedNodeName(scope_and_name, "Const");
+    if (ctx().node_map->NodeExists(tile_node_name) ||
+        ctx().node_map->NodeExists(const_node_name)) {
+      return Status::OK();
+    }
+
+    const std::vector<OpInfo::TensorProperties>& props =
+        ctx().graph_properties->GetInputProperties(node->name());
+    if (props.size() != 2) return Status::OK();
+
+    // Ignore ops where the shape doesn't change
+    const TensorShapeProto& input_shape = props[0].shape();
+    const TensorShapeProto& ones_shape = props[1].shape();
+    TensorShapeProto output_shape;
+    if (!ShapeAfterBroadcast(input_shape, ones_shape, &output_shape)) {
+      return Status::OK();
+    }
+    if (ShapesSymbolicallyEqual(input_shape, output_shape)) {
+      return Status::OK();
+    }
+
+    // All inputs must have same input/output dimensions
+    if (input_shape.dim_size() != output_shape.dim_size() ||
+        ones_shape.dim_size() != output_shape.dim_size())
+      return Status::OK();
+
+    // At this point all preconditions are met. Can proceed with rewrite.
+    VLOG(3) << "Simplify multiply with all ones input: node=" << node->name()
+            << "@" << output_shape << " ones=" << ones->name() << "@"
+            << ones_shape << " input=" << input->name() << "@" << input_shape;
+
+    // 1. Create constant node with correct tile multiples
+    Tensor multiples(DT_INT32, TensorShape({output_shape.dim_size()}));
+    for (int i = 0; i < output_shape.dim_size(); ++i) {
+      int64 size = output_shape.dim(i).size() / input_shape.dim(i).size();
+      if (TF_PREDICT_FALSE(size >= INT_MAX)) {
+        return Status(error::OUT_OF_RANGE, "int32 overflow");
+      }
+      multiples.flat<int32>()(i) = static_cast<int32>(size);
+    }
+
+    NodeDef* const_node = AddEmptyNode(const_node_name);
+    TF_RETURN_IF_ERROR(ConstantFolding::CreateNodeDef(
+        const_node->name(), TensorValue(&multiples), const_node));
+    const_node->set_device(node->device());
+    ForwardControlDependencies(const_node, {ones});
+    AddToOptimizationQueue(const_node);
+
+    // 2. Replace multiply node with Tile(Const, input);
+    const DataType type = GetDataTypeFromAttr(*node, "T");
+    NodeDef* tile_node = AddEmptyNode(tile_node_name);
+    tile_node->set_op("Tile");
+    tile_node->set_device(node->device());
+    SetDataTypeToAttr(type, "T", tile_node);
+    SetDataTypeToAttr(DT_INT32, "Tmultiples", tile_node);
+    tile_node->add_input(input->name());
+    tile_node->add_input(const_node->name());
+
+    ForwardControlDependencies(tile_node, {node});
+    *simplified_node_name = tile_node->name();
+
+    return Status::OK();
+  }
+
+ protected:
+  bool IsOnes(const NodeDef& node) const {
+    if (!IsReallyConstant(node)) return false;
+    if (node.attr().at("dtype").type() != DT_FLOAT) return false;
+
+    Tensor tensor;
+    if (!tensor.FromProto(node.attr().at("value").tensor())) {
+      return false;
+    }
+
+    auto values = tensor.flat<float>();
+    for (int i = 0; i < tensor.NumElements(); ++i) {
+      if (values(i) != 1.0f) {
+        return false;
+      }
+    }
+
+    return true;
   }
 };
 
@@ -3704,10 +3919,14 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<RemoveNegationStage>(ctx, ctx_ext);
   if (options_.replace_mul_with_square)
     pipeline.AddStage<ReplaceMulWithSquare>(ctx, ctx_ext);
+  if (options_.replace_mul_with_tile)
+    pipeline.AddStage<ReplaceMulWithBroadcastByTile>(ctx, ctx_ext);
   if (options_.remove_logical_not)
     pipeline.AddStage<RemoveLogicalNotStage>(ctx, ctx_ext);
   if (options_.reorder_cast_like_and_value_preserving)
     pipeline.AddStage<ReorderCastLikeAndValuePreserving>(ctx, ctx_ext);
+  if (options_.reorder_redundant_reshape_around_unary)
+    pipeline.AddStage<ReorderRedundantReshapeAroundUnary>(ctx, ctx_ext);
   if (options_.simplify_aggregation)
     pipeline.AddStage<SimplifyAggregation>(ctx, ctx_ext);
   if (options_.hoist_cwise_unary_chains)

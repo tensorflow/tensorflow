@@ -450,6 +450,8 @@ cuda_py_test(
     ],
     python_version = "PY3",
     tags = [
+        "noasan",  # TODO(b/180630068)
+        "nomsan",  # TODO(b/180630068)
         "notsan",  # TODO(b/151841995)
     ],
     deps = [
@@ -1539,16 +1541,26 @@ cuda_py_test(
         ":collective_all_reduce_strategy",
         ":combinations",
         ":distribute_lib",
+        ":distribute_utils",
         ":strategy_combinations",
         ":values",
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:config",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:func_graph",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:rnn_cell",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/training/tracking:util",
     ],
 )
 
@@ -1728,7 +1740,6 @@ py_test(
     tags = [
         "noasan",
         "nomsan",
-        "notsan",
     ],  # b/175904958
     deps = [
         ":multi_process_runner",
