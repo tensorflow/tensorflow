@@ -96,7 +96,7 @@ struct ReluToFusedBatchNorm : public OpRewritePattern<ReluOp> {
     state.addOperands(batch_norm.getOperands());
     if (side_input) state.operands.push_back(side_input);
     state.addTypes(batch_norm.getResultTypes());
-    state.addAttributes(batch_norm.getAttrs());
+    state.addAttributes(batch_norm->getAttrs());
     Operation *op = rewriter.createOperation(state);
     rewriter.replaceOp(batch_norm, op->getResults());
 

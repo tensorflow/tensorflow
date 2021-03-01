@@ -886,9 +886,29 @@ int64 ReplicaCount(const std::vector<std::vector<int64>>& replica_groups) {
   return replica_count;
 }
 
+StatusOr<std::unique_ptr<HloModule>> MakeCollectiveCommOpComputation(
+    std::vector<std::vector<int64>> replica_groups,
+    absl::optional<int64> replica_count, absl::optional<int64> num_partitions,
+    absl::string_view other_attributes, absl::string_view template_str) {
+  HloModuleConfig config;
+  config.set_replica_count(
+      replica_count.value_or(ReplicaCount(replica_groups)));
+  config.set_num_partitions(num_partitions.value_or(1));
+  return ParseAndReturnUnverifiedModule(
+      absl::StrReplaceAll(
+          template_str,
+          {{"REPLICA_GROUPS", ReplicaGroupsStr(replica_groups)},
+           {"OTHER_ATTRIBUTES", other_attributes.empty()
+                                    ? ""
+                                    : absl::StrCat(",", other_attributes)}}),
+      config);
+}
+
 StatusOr<std::unique_ptr<HloModule>> MakeAllReduceComputation(
     std::vector<std::vector<int64>> replica_groups,
-    absl::optional<int64> replica_count = absl::nullopt) {
+    absl::optional<int64> replica_count = absl::nullopt,
+    absl::optional<int64> num_partitions = absl::nullopt,
+    absl::string_view other_attributes = "") {
   const char* kTemplate = R"(
   HloModule test
   add {
@@ -899,18 +919,11 @@ StatusOr<std::unique_ptr<HloModule>> MakeAllReduceComputation(
   ENTRY entry {
     p = f32[128]{0} parameter(0)
     crs = f32[128]{0} all-reduce(p), to_apply=add, replica_groups=REPLICA_GROUPS
+                                     OTHER_ATTRIBUTES
   })";
-
-  HloModuleConfig config;
-  if (replica_count) {
-    config.set_replica_count(*replica_count);
-  } else {
-    config.set_replica_count(ReplicaCount(replica_groups));
-  }
-  return ParseAndReturnUnverifiedModule(
-      absl::StrReplaceAll(
-          kTemplate, {{"REPLICA_GROUPS", ReplicaGroupsStr(replica_groups)}}),
-      config);
+  return MakeCollectiveCommOpComputation(replica_groups, replica_count,
+                                         num_partitions, other_attributes,
+                                         kTemplate);
 }
 
 TEST_F(HloVerifierTest, AllReduce_NoReplicaGroupsOK) {
@@ -947,33 +960,70 @@ TEST_F(HloVerifierTest, AllReduce_MissingReplicaId) {
 TEST_F(HloVerifierTest, AllReduce_NotEnougReplicasInGroupConfig) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllReduceComputation({{0, 1}}, 8));
   EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
-              HasSubstr("Replica count in HloModuleConfig is 8, but "
-                        "ReplicaGroup config contains 2 replicas"));
+              HasSubstr("In kCrossReplica mode, replica groups should contain "
+                        "8 replicas, but found 2"));
 }
 
 TEST_F(HloVerifierTest, AllReduce_TooManyReplicasInGroupConfig) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           MakeAllReduceComputation({{0, 1}, {2, 3}}, 2));
   EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
-              HasSubstr("Replica count in HloModuleConfig is 2, but "
-                        "ReplicaGroup config contains 4 replicas"));
+              HasSubstr("In kCrossReplica mode, replica groups should contain "
+                        "2 replicas, but found 4"));
+}
+
+TEST_F(HloVerifierTest, AllReduce_CrossReplicaAndPartition_Invalid) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      MakeAllReduceComputation({{0, 1}, {2, 3}}, 2, 1, "channel_id=1"));
+  EXPECT_THAT(
+      verifier().Run(module.get()).status().error_message(),
+      HasSubstr(
+          "In kCrossReplicaAndPartition mode, replica groups should contain "
+          "2 replicas, but found 4"));
+}
+
+TEST_F(HloVerifierTest, AllReduce_CrossReplicaAndPartition_Valid) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      MakeAllReduceComputation({{0, 1}, {2, 3}}, 4, 1, "channel_id=1"));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, AllReduce_FlattenedID_Invalid) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      MakeAllReduceComputation({{0, 1}, {2, 3}}, 1, 2,
+                               "channel_id=1, use_global_device_ids=true"));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("In kFlattenedID mode, replica groups should contain "
+                        "2 flattened IDs, but found 4"));
+}
+
+TEST_F(HloVerifierTest, AllReduce_FlattenedID_Valid) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      MakeAllReduceComputation({{0, 1}, {2, 3}}, 2, 2,
+                               "channel_id=1, use_global_device_ids=true"));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 StatusOr<std::unique_ptr<HloModule>> MakeAllToAllComputation(
-    std::vector<std::vector<int64>> replica_groups) {
+    std::vector<std::vector<int64>> replica_groups,
+    absl::optional<int64> replica_count = absl::nullopt,
+    absl::optional<int64> num_partitions = absl::nullopt,
+    absl::string_view other_attributes = "") {
   const char* kTemplate = R"(
   HloModule test
   ENTRY entry {
     p0 = f32[128]{0} parameter(0)
     p1 = f32[128]{0} parameter(1)
     a2a = (f32[128], f32[128]) all-to-all(p0, p1), replica_groups=REPLICA_GROUPS
+                                                   OTHER_ATTRIBUTES
   })";
-  HloModuleConfig config;
-  config.set_replica_count(ReplicaCount(replica_groups));
-  return ParseAndReturnUnverifiedModule(
-      absl::StrReplaceAll(
-          kTemplate, {{"REPLICA_GROUPS", ReplicaGroupsStr(replica_groups)}}),
-      config);
+  return MakeCollectiveCommOpComputation(replica_groups, replica_count,
+                                         num_partitions, other_attributes,
+                                         kTemplate);
 }
 
 TEST_F(HloVerifierTest, AllToAll_NoReplicaGroupsOK) {
@@ -984,7 +1034,7 @@ TEST_F(HloVerifierTest, AllToAll_NoReplicaGroupsOK) {
 TEST_F(HloVerifierTest, AllToAll_EmptyReplicaGroup) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllToAllComputation({{0, 1}, {}}));
   EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
-              HasSubstr("empty replica group"));
+              HasSubstr("cannot have an empty replica group"));
 }
 
 TEST_F(HloVerifierTest, AllToAll_RepeatedReplicaId) {
@@ -1001,11 +1051,27 @@ TEST_F(HloVerifierTest, AllToAll_MissingReplicaId) {
               HasSubstr("Replica 4 is not named"));
 }
 
-TEST_F(HloVerifierTest, AllToAll_WrongNumberOfReplicasInGroup) {
+TEST_F(HloVerifierTest, AllToAll_UniformSizeOfReplicasInGroup) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           MakeAllToAllComputation({{0, 1}, {2}, {3, 4}}));
   EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
-              HasSubstr("Replica group has size 1"));
+              HasSubstr("Replica groups expected to be of uniform size"));
+}
+
+TEST_F(HloVerifierTest, AllToAll_CrossPartition_Invalid) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      MakeAllToAllComputation({{0, 1}, {2, 3}}, 1, 2, "channel_id=1"));
+  EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
+              HasSubstr("In kCrossPartition mode, replica groups should "
+                        "contain 2 partitions, but found 4"));
+}
+
+TEST_F(HloVerifierTest, AllToAll_CrossPartition_Valid) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      MakeAllToAllComputation({{0, 1}, {2, 3}}, 1, 4, "channel_id=1"));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_F(HloVerifierTest, AllToAll_LayoutConstrained) {
@@ -1056,6 +1122,82 @@ TEST_F(HloVerifierTest, CollectivePermuteSameTargetTwice) {
                           ParseAndReturnUnverifiedModule(kModuleStr));
   EXPECT_THAT(verifier().Run(module.get()).status().error_message(),
               HasSubstr("Target 2 appears more than once"));
+}
+
+TEST_F(HloVerifierTest, CollectivePermuteCrossReplicaSourceOOR) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128] parameter(0)
+    ROOT permute = f32[128] collective-permute(p0),
+      source_target_pairs={{5,2}, {1,2}, {2,0}}
+  }
+  )";
+  HloModuleConfig config;
+  config.set_replica_count(3);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  const std::string error_message =
+      verifier().Run(module.get()).status().error_message();
+  EXPECT_THAT(error_message, HasSubstr("Source 5"));
+  EXPECT_THAT(error_message, HasSubstr("must be < 3"));
+}
+
+TEST_F(HloVerifierTest, CollectivePermuteCrossReplicaTargetOOR) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128] parameter(0)
+    ROOT permute = f32[128] collective-permute(p0),
+      source_target_pairs={{0,1}, {1,2}, {2,7}}
+  }
+  )";
+  HloModuleConfig config;
+  config.set_replica_count(3);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  const std::string error_message =
+      verifier().Run(module.get()).status().error_message();
+  EXPECT_THAT(error_message, HasSubstr("Target 7"));
+  EXPECT_THAT(error_message, HasSubstr("must be < 3"));
+}
+
+TEST_F(HloVerifierTest, CollectivePermuteCrossPartitionSourceOOR) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128] parameter(0)
+    ROOT permute = f32[128] collective-permute(p0),
+      source_target_pairs={{5,2}, {1,2}, {2,0}}, channel_id=1
+  }
+  )";
+  HloModuleConfig config;
+  config.set_num_partitions(3);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  const std::string error_message =
+      verifier().Run(module.get()).status().error_message();
+  EXPECT_THAT(error_message, HasSubstr("Source 5"));
+  EXPECT_THAT(error_message, HasSubstr("must be < 3"));
+}
+
+TEST_F(HloVerifierTest, CollectivePermuteCrossPartitionTargetOOR) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[128] parameter(0)
+    ROOT permute = f32[128] collective-permute(p0),
+      source_target_pairs={{0,2}, {1,7}, {2,0}}, channel_id=1
+  }
+  )";
+  HloModuleConfig config;
+  config.set_num_partitions(3);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  const std::string error_message =
+      verifier().Run(module.get()).status().error_message();
+  EXPECT_THAT(error_message, HasSubstr("Target 7"));
+  EXPECT_THAT(error_message, HasSubstr("must be < 3"));
 }
 
 TEST_F(HloVerifierTest, FusionShapeVerifier) {
@@ -1318,6 +1460,30 @@ TEST_F(HloVerifierTest, UseGlobalDeviceIdsEmptyReplicaGroup) {
 
   ENTRY CRS {
     input = f32[8]{0} parameter(0)
+    ROOT crs = f32[8]{0} all-reduce(input), replica_groups={}, channel_id=1,
+                         use_global_device_ids=true, to_apply=add
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.error_message(),
+      HasSubstr("Replica groups must be specified in flattened-id mode"));
+}
+
+TEST_F(HloVerifierTest, InvalidChannelIDandUseGlobalDeviceIDs) {
+  const char* const hlo_string = R"(
+  HloModule Module
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY CRS {
+    input = f32[8]{0} parameter(0)
     ROOT crs = f32[8]{0} all-reduce(input), replica_groups={},
                          use_global_device_ids=true, to_apply=add
   })";
@@ -1326,9 +1492,10 @@ TEST_F(HloVerifierTest, UseGlobalDeviceIdsEmptyReplicaGroup) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.error_message(),
-              HasSubstr("Replica group must be specified when "
-                        "use_global_device_ids is true"));
+  EXPECT_THAT(
+      status.error_message(),
+      HasSubstr(
+          "Invalid combination of has_channel_id and use_global_device_ids"));
 }
 
 }  // namespace

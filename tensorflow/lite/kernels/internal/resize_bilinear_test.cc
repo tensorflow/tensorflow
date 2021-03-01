@@ -12,9 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/kernels/internal/optimized/resize_bilinear.h"
+
 #include <algorithm>
 #include <cmath>
 #include <list>
+#include <type_traits>
 #include <typeinfo>
 #include <vector>
 
@@ -62,6 +65,13 @@ void TestOneResizeBilinear(const tflite::ResizeBilinearParams& op_params,
       op_params, input_dims_inference, input_data.data(), output_size_dims,
       output_size_data.data(), output_dims_inference, output_data.data());
 
+  bool strict_match = false;
+  if (std::is_same<T, uint8>::value && ((depth % 8) == 0) &&
+      ((input_width * 8) == output_width) &&
+      ((input_height * 8) == output_height)) {
+    strict_match = true;
+  }
+
   double sum_diff = 0;
   float max_abs_val = 0;
   for (int i = 0; i < output_buffer_size; i++) {
@@ -71,10 +81,16 @@ void TestOneResizeBilinear(const tflite::ResizeBilinearParams& op_params,
         max_abs_val, std::abs(static_cast<float>(reference_output_data[i])));
   }
 
-  if (sum_diff != 0.f) {
-    const float mean_diff = static_cast<float>(sum_diff / output_buffer_size);
-    const float relative_error = std::abs(mean_diff) / max_abs_val;
-    ASSERT_LT(relative_error, error_threshold);
+  if (strict_match) {
+    if (sum_diff > 0) {
+      ASSERT_EQ(sum_diff, 0);
+    }
+  } else {
+    if (sum_diff != 0.f) {
+      const float mean_diff = static_cast<float>(sum_diff / output_buffer_size);
+      const float relative_error = std::abs(mean_diff) / max_abs_val;
+      ASSERT_LT(relative_error, error_threshold);
+    }
   }
 }
 

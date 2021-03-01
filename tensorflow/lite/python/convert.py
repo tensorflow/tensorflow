@@ -53,7 +53,7 @@ def _requires_input_stats(toco_flags: _toco_flags_pb2.TocoFlags()) -> bool:
     type and it is not post training quantization, else False.
   """
   quantized_inference_types = \
-    [_types_pb2.QUANTIZED_UINT8, _types_pb2.INT8]
+    [_types_pb2.QUANTIZED_UINT8, _types_pb2.QUANTIZED_INT8]
   return ((toco_flags.inference_type in quantized_inference_types or
            toco_flags.inference_input_type in quantized_inference_types) and
           not toco_flags.post_training_quantize)
@@ -78,10 +78,10 @@ def convert_tensor_tf_type_to_tflite_type(
       dtypes.float32: _types_pb2.FLOAT,
       dtypes.float64: _types_pb2.FLOAT64,
       dtypes.int8: _types_pb2.INT8,
-      dtypes.int16: _types_pb2.QUANTIZED_INT16,
+      dtypes.int16: _types_pb2.INT16,
       dtypes.int32: _types_pb2.INT32,
       dtypes.int64: _types_pb2.INT64,
-      dtypes.uint8: _types_pb2.QUANTIZED_UINT8,
+      dtypes.uint8: _types_pb2.UINT8,
       dtypes.uint32: _types_pb2.UINT32,
       dtypes.uint64: _types_pb2.UINT64,
       dtypes.string: _types_pb2.STRING,
@@ -115,7 +115,7 @@ def convert_inference_tf_type_to_tflite_type(
   mapping = {
       dtypes.float32: _types_pb2.FLOAT,
       dtypes.uint8: _types_pb2.QUANTIZED_UINT8,
-      dtypes.int8: _types_pb2.INT8,
+      dtypes.int8: _types_pb2.QUANTIZED_INT8,
       dtypes.int16: _types_pb2.QUANTIZED_INT16,
   }
   tflite_type = mapping.get(tf_type)
@@ -199,7 +199,7 @@ class ConverterError(Exception):
 def mlir_quantize(input_data_str,
                   disable_per_channel=False,
                   fully_quantize=False,
-                  inference_type=_types_pb2.INT8,
+                  inference_type=_types_pb2.QUANTIZED_INT8,
                   enable_numeric_verify=False):
   """Quantize `input_data_str` with calibration results.
 

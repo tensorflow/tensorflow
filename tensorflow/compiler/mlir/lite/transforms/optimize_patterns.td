@@ -497,7 +497,7 @@ foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
 // such that the value operation happens before move operation.
 foreach ValueOp = [TFL_CeilOp, TFL_ExpOp, TFL_FloorOp, TFL_NegOp,
                    TFL_ReluOp, TFL_Relu1Op, TFL_Relu6Op, TFL_RoundOp,
-                   TFL_TanhOp, TFL_SqrtOp, TFL_SquareOp] in {
+                   TFL_TanhOp, TFL_SqrtOp, TFL_SquareOp, TFL_LogisticOp] in {
   foreach MoveOp = [TFL_DepthToSpaceOp, TFL_ExpandDimsOp, TFL_SqueezeOp,
                    TFL_ReshapeOp, TFL_TransposeOp] in {
     def ReorderElementwiseAndMoveOperations#ValueOp#MoveOp : Pat<
@@ -760,17 +760,11 @@ foreach ArgMinMaxOp = [TFL_ArgMinOp, TFL_ArgMaxOp] in {
      (AxesIsLastDimension $axes, $logits)]>;
 }
 
-class AllElementsAreI64<string val> : Constraint<CPred<
-  "($0.isa<DenseElementsAttr>() && "
-   "$0.cast<DenseElementsAttr>().getType().cast<ShapedType>().getElementType().isInteger(64) && "
-   "std::all_of($0.cast<DenseElementsAttr>().getValues<int64_t>().begin(), "
-               "$0.cast<DenseElementsAttr>().getValues<int64_t>().end(), "
-               "[](int64_t v){ return v == " #val# ";}))">>;
+def CanOptimizeIdentitySliceOp : Constraint<CPred<
+  "TFL::CanOptimizeIdentitySliceOp($0, $1, $2)">>;
 
-// Remove Slice ops slicing the whole input tensor, effectively no-op
+// Remove Slice ops slicing the whole input tensor, effectively no-op.
 def OptimizeSliceOp : Pat<
-  (TFL_SliceOp:$output $input, (ConstantOp $begin), $shape),
+  (TFL_SliceOp:$output $input, (ConstantOp $begin), (ConstantOp $size)),
   (replaceWithValue $input),
-  [(AllElementsAreI64<"0"> $begin),
-   (IsTailOfShape $input, $output),
-   (IsTailOfShape $output, $input)]>;
+  [(CanOptimizeIdentitySliceOp $input, $begin, $size)]>;

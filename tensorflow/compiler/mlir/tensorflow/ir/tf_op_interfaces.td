@@ -105,27 +105,6 @@ def TF_FoldOperandsTransposeInterface : OpInterface<"FoldOperandsTransposeInterf
 }
 
 //===----------------------------------------------------------------------===//
-// TensorFlow Contraction Fusion Interfaces.
-//===----------------------------------------------------------------------===//
-
-def TF_ContractionFusableInterface : OpInterface<"ContractionFusableInterface"> {
-  let description = [{
-    A contraction fusable operation is one that can be fused into the output of
-    a tensor contraction (MatMul, Conv2D, etc...) operation.
-
-    For example all element wise operations are trivially contraction fusable.
-  }];
-
-  let methods = [
-    InterfaceMethod<
-      [{Returns contraction fusion if the operation satisfies all the fusion
-        requirements. Otherwise returns empty optional.}],
-      "Optional<ContractionFusion>", "GetContractionFusion", (ins)
-    >,
-  ];
-}
-
-//===----------------------------------------------------------------------===//
 // TensorFlow Resource Handle Interfaces.
 //===----------------------------------------------------------------------===//
 

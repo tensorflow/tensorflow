@@ -47,6 +47,7 @@ HANDLER(GetSplit);
 HANDLER(GetVersion);
 HANDLER(GetOrRegisterDataset);
 HANDLER(ReleaseJobClient);
+HANDLER(MaybeRemoveTask);
 HANDLER(GetOrCreateJob);
 HANDLER(ClientHeartbeat);
 HANDLER(GetWorkers);

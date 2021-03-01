@@ -27,11 +27,11 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import smart_cond
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.mixed_precision import loss_scale as keras_loss_scale_module
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
-from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
@@ -323,7 +323,7 @@ class _DynamicLossScaleState(trackable.Trackable):
 
   def __call__(self):
     """Returns the current loss scale as a scalar `float32` tensor."""
-    return ops.convert_to_tensor(self._current_loss_scale)
+    return ops.convert_to_tensor_v2_with_dispatch(self._current_loss_scale)
 
   def update(self, grads):
     """Updates the value of the loss scale.
@@ -567,9 +567,10 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
   def loss_scale(self):
     """The current loss scale as a float32 scalar tensor."""
     if isinstance(self._loss_scale, _DynamicLossScaleState):
-      return ops.convert_to_tensor(self._loss_scale.current_loss_scale)
+      return ops.convert_to_tensor_v2_with_dispatch(
+          self._loss_scale.current_loss_scale)
     else:
-      return ops.convert_to_tensor(self._loss_scale)
+      return ops.convert_to_tensor_v2_with_dispatch(self._loss_scale)
 
   @property
   def dynamic_counter(self):
@@ -741,8 +742,8 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
     # DistributionStrategy does not support having a cond in a replica context
     # with a branch that calls `merge_call`, and self._optimizer.apply_gradients
     # calls `merge_call`.
-    maybe_apply_op = control_flow_util.smart_cond(
-        should_apply_grads, apply_fn, do_not_apply_fn)
+    maybe_apply_op = smart_cond.smart_cond(should_apply_grads, apply_fn,
+                                           do_not_apply_fn)
     return control_flow_ops.group(maybe_apply_op, loss_scale_update_op)
 
   def _apply_gradients(self, grads, wrapped_vars, name,

@@ -1,12 +1,52 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
 load("//third_party/googleapis:repository_rules.bzl", "config_googleapis")
-load("//tensorflow:workspace.bzl", "tf_bind")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("@bazel_toolchains//repositories:repositories.bzl", bazel_toolchains_repositories = "repositories")
 load("@build_bazel_rules_swift//swift:repositories.bzl", "swift_rules_dependencies")
 load("@com_github_grpc_grpc//bazel:grpc_extra_deps.bzl", "grpc_extra_deps")
 load("@local_config_android//:android.bzl", "android_workspace")
+
+def _tf_bind():
+    """Bind targets for some external repositories"""
+    ##############################################################################
+    # BIND DEFINITIONS
+    #
+    # Please do not add bind() definitions unless we have no other choice.
+    # If that ends up being the case, please leave a comment explaining
+    # why we can't depend on the canonical build target.
+
+    # Needed by Protobuf
+    native.bind(
+        name = "grpc_cpp_plugin",
+        actual = "@com_github_grpc_grpc//src/compiler:grpc_cpp_plugin",
+    )
+    native.bind(
+        name = "grpc_python_plugin",
+        actual = "@com_github_grpc_grpc//src/compiler:grpc_python_plugin",
+    )
+
+    native.bind(
+        name = "grpc_lib",
+        actual = "@com_github_grpc_grpc//:grpc++",
+    )
+
+    native.bind(
+        name = "grpc_lib_unsecure",
+        actual = "@com_github_grpc_grpc//:grpc++_unsecure",
+    )
+
+    # Needed by Protobuf
+    native.bind(
+        name = "python_headers",
+        actual = str(Label("//third_party/python_runtime:headers")),
+    )
+
+    # Needed by Protobuf
+    native.bind(
+        name = "six",
+        actual = "@six_archive//:six",
+    )
 
 def workspace():
     http_archive(
@@ -72,7 +112,7 @@ def workspace():
 
     # If a target is bound twice, the later one wins, so we have to do tf bindings
     # at the end of the WORKSPACE file.
-    tf_bind()
+    _tf_bind()
 
     grpc_extra_deps()
     config_googleapis()

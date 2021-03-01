@@ -28,7 +28,7 @@
     {
       "tensors": [
         {
-          "shape": [1, 5],
+          "shape": [1, 5, 2],
           "name": "input0"
         },
         {

@@ -84,8 +84,20 @@ bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
 using ::llvm::cast;
 
 // Optimize TFLite operations in functions.
-struct Optimize : public PassWrapper<Optimize, FunctionPass> {
+class OptimizePass : public PassWrapper<OptimizePass, FunctionPass> {
+ public:
+  OptimizePass() = default;
+  OptimizePass(const OptimizePass &) {}
+  explicit OptimizePass(bool enable_canonicalization) {
+    enable_canonicalization_ = enable_canonicalization;
+  }
   void runOnFunction() override;
+
+ private:
+  Option<bool> enable_canonicalization_{
+      *this, "enable-canonicalization",
+      llvm::cl::desc("Enable canonicalization during optimization pass."),
+      llvm::cl::init(false)};
 };
 
 // Returns whether the given type `a` is broadcast-compatible with `b`.
@@ -193,6 +205,50 @@ bool CanOptimizeIdentityGatherNdOrScatterNdOp(Value params,
   for (const auto &v : indices.getValues<APInt>()) {
     if (v.getSExtValue() != cur_value) return false;
     ++cur_value;
+  }
+
+  return true;
+}
+
+// Returns true if we can eliminate the SliceOp. When the values of `begin` are
+// all 0s and `size[i]` is equal to either -1 or `input.shape[i]`
+// for each dim i, the output tensor is identical to `input`.
+bool CanOptimizeIdentitySliceOp(Value input, Attribute begin, Attribute size) {
+  // Checks if `begin` and `size` are i32 or i64.
+  auto begin_attr = begin.dyn_cast<DenseIntElementsAttr>();
+  auto size_attr = size.dyn_cast<DenseIntElementsAttr>();
+  if (!begin_attr || !size_attr) {
+    return false;
+  }
+
+  auto begin_elem_ty = begin_attr.getType().getElementType();
+  if (!begin_elem_ty.isInteger(32) && !begin_elem_ty.isInteger(64)) {
+    return false;
+  }
+  auto size_elem_ty = size_attr.getType().getElementType();
+  if (!size_elem_ty.isInteger(32) && !size_elem_ty.isInteger(64)) {
+    return false;
+  }
+
+  // Checks if `input` is ranked and its rank is equal to number of elements in
+  // `begin` and `size`.
+  auto input_ty = input.getType().cast<ShapedType>();
+  if (!input_ty.hasRank()) {
+    return false;
+  }
+
+  int64_t rank = input_ty.getRank();
+  if (rank != begin_attr.getNumElements() ||
+      rank != size_attr.getNumElements()) {
+    return false;
+  }
+
+  // Checks if `begin` is all 0s, and `size[i]` is equal to either -1 or
+  // `input.shape[i]`.
+  for (uint64_t i = 0; i < rank; ++i) {
+    if (begin_attr.getValue<APInt>({i}).getSExtValue() != 0) return false;
+    int64_t si = size_attr.getValue<APInt>({i}).getSExtValue();
+    if (si != -1 && si != input_ty.getDimSize(i)) return false;
   }
 
   return true;
@@ -707,6 +763,12 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
     if (!bias.getType().isa<NoneType>() &&
         !matchPattern(bias, m_Constant(&bias_cst)))
       return failure();
+    auto binary_op_activation_func =
+        binary_op->template getAttrOfType<StringAttr>(
+            "fused_activation_function");
+    if (!binary_op_activation_func ||
+        binary_op_activation_func.getValue() != "NONE")
+      return failure();
     ShapedType filter_type = filter_cst.getType();
 
     if (llvm::isa<AddOp, SubOp>(binary_op)) {
@@ -1005,13 +1067,70 @@ struct ConvertTrivialTransposeOpToReshapeOp
   }
 };
 
+// Remove Reshape before FullyConnected when `keep_num_dims=false` and Reshape
+// does not alter the last dimension as FullyConnected will collapse all other
+// dimensions into a single dimension. For example,
+//
+//   %shape = constant dense<[1, 128, 64]> : tensor<3xi32>
+//   %reshape = tfl.reshape(%input, %shape) // %input: tensor<128x64xf32>
+//   %fc = tfl.fully_connected(%reshape, %filter, %bias)
+//           {keep_num_dims = false, weights_format = "DEFAULT"}
+//
+// can be canonicalized to
+//
+//   %fc = tfl.fully_connected(%input, %filter, %bias)
+//           {keep_num_dims = false, weights_format = "DEFAULT"}
+struct RemoveReshapeBeforeFullyConnected
+    : public OpRewritePattern<TFL::FullyConnectedOp> {
+  using OpRewritePattern<TFL::FullyConnectedOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::FullyConnectedOp fully_connected_op,
+                                PatternRewriter &) const override {
+    auto input = fully_connected_op.input();
+    auto input_ty = input.getType().dyn_cast<ShapedType>();
+    auto output_ty = fully_connected_op.output()[0]
+                         .getType()
+                         .template dyn_cast<ShapedType>();
+    if (!input_ty.hasStaticShape() ||
+        fully_connected_op.weights_format() != "DEFAULT" ||
+        fully_connected_op.keep_num_dims() || !output_ty.hasStaticShape() ||
+        output_ty.getRank() != 2) {
+      return failure();
+    }
+
+    auto reshape_op = input.getDefiningOp<TFL::ReshapeOp>();
+    if (!reshape_op) return failure();
+
+    // Check if the last dimension does not change after reshape.
+    auto reshape_input = reshape_op.input();
+    auto reshape_input_ty = reshape_input.getType().dyn_cast<ShapedType>();
+    if (!reshape_input_ty.hasStaticShape() || input_ty.getRank() == 0 ||
+        reshape_input_ty.getRank() == 0 ||
+        input_ty.getDimSize(input_ty.getRank() - 1) !=
+            reshape_input_ty.getDimSize(reshape_input_ty.getRank() - 1)) {
+      return failure();
+    }
+
+    // Connect the input to the one of reshape.
+    fully_connected_op.setOperand(0, reshape_input);
+    return success();
+  }
+};
+
 using FuseBinaryOpToFollowingFullyConnected =
     FuseBinaryOpToFollowingAffineOp<FullyConnectedOp>;
 using FuseBinaryOpToFollowingDepthwiseConv2D =
     FuseBinaryOpToFollowingAffineOp<DepthwiseConv2DOp>;
 using FuseBinaryOpToFollowingConv2D = FuseBinaryOpToFollowingAffineOp<Conv2DOp>;
 
-void Optimize::runOnFunction() {
+// Adds canonicalization patterns to the list of patterns.
+void AddCanonicalizationPatterns(MLIRContext *context,
+                                 OwningRewritePatternList *patterns) {
+  for (auto *op : context->getRegisteredOperations())
+    op->getCanonicalizationPatterns(*patterns, context);
+}
+
+void OptimizePass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto *ctx = &getContext();
   auto func = getFunction();
@@ -1025,34 +1144,37 @@ void Optimize::runOnFunction() {
                   FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
                   FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
                   FuseFullyConnectedAndMul>(ctx);
+  if (enable_canonicalization_) AddCanonicalizationPatterns(ctx, &patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Fuse the binary ops with the following ops.
   OwningRewritePatternList phase_2_patterns;
   TFL::populateWithGenerated(ctx, phase_2_patterns);
-  phase_2_patterns
-      .insert<ScalarizeSplatConstantForAdd, ScalarizeSplatConstantForSub,
-              ScalarizeSplatConstantForMul, ScalarizeSplatConstantForDiv,
-              FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
-              FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
-              FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
-              FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
-              FuseFullyConnectedAndMul, FuseBinaryOpToFollowingConv2D,
-              FuseBinaryOpToFollowingDepthwiseConv2D,
-              FuseBinaryOpToFollowingFullyConnected, FuseConv2DAndMulWithQDQs,
-              FuseDepthwiseConv2DAndMulWithQDQs,
-              ConvertTrivialTransposeOpToReshapeOp>(ctx);
+  phase_2_patterns.insert<
+      ScalarizeSplatConstantForAdd, ScalarizeSplatConstantForSub,
+      ScalarizeSplatConstantForMul, ScalarizeSplatConstantForDiv,
+      FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
+      FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
+      FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
+      FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
+      FuseFullyConnectedAndMul, FuseBinaryOpToFollowingConv2D,
+      FuseBinaryOpToFollowingDepthwiseConv2D,
+      FuseBinaryOpToFollowingFullyConnected, FuseConv2DAndMulWithQDQs,
+      FuseDepthwiseConv2DAndMulWithQDQs, ConvertTrivialTransposeOpToReshapeOp,
+      RemoveReshapeBeforeFullyConnected>(ctx);
+  if (enable_canonicalization_)
+    AddCanonicalizationPatterns(ctx, &phase_2_patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
-
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass() {
-  return std::make_unique<Optimize>();
+std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass(
+    bool enable_canonicalization) {
+  return std::make_unique<OptimizePass>(enable_canonicalization);
 }
 
-static PassRegistration<Optimize> pass(
+static PassRegistration<OptimizePass> pass(
     "tfl-optimize", "Optimize within the TensorFlow Lite dialect");
 
 }  // namespace TFL

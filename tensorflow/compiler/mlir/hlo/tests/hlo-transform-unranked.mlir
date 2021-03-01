@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt --transform-unranked-hlo --cse --split-input-file %s | FileCheck %s
+// RUN: mlir-hlo-opt --mhlo-transform-unranked-hlo --cse --split-input-file %s | FileCheck %s
 
 // Check the validity of expected IR.
 // CHECK-LABEL: @sqr_transform_result

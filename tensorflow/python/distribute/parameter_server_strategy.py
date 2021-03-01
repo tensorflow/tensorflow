@@ -323,7 +323,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         compute_devices, self._variable_device)
 
   def _input_workers_with_options(self, options=None):
-    if not options or options.experimental_prefetch_to_device:
+    if not options or options.experimental_fetch_to_device:
       return input_lib.InputWorkers(
           [(self._worker_device, self._compute_devices)])
     else:
@@ -573,11 +573,6 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         return result
       else:
         return nest.map_structure(self._local_results, result)
-
-  def _local_results(self, val):
-    if isinstance(val, values.DistributedValues):
-      return val.values
-    return (val,)
 
   def value_container(self, val):
     if (hasattr(val, "_aggregating_container") and

@@ -167,7 +167,7 @@ class IrEmitterUnnested : public IrEmitter,
   Status EmitConstant(MlirEmitterInput mlir_input);
 
   Status HandleCopy(HloInstruction* copy) override;
-  Status EmitCopyForMlir(MlirEmitterInput input);
+  Status EmitCopyFromMlir(MlirEmitterInput input);
 
   Status HandleConditional(HloInstruction* conditional) override;
   Status HandleConvolution(HloInstruction* convolution) override;
@@ -183,9 +183,9 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleFft(HloInstruction* fft) override;
   Status EmitFftThunkFromMlir(MlirEmitterInput input);
   Status HandleFusion(HloInstruction* fusion) override;
+  Status EmitFusionFromMlir(MlirEmitterInput mlir_input);
   Status EmitLoopFusionFromMlir(
-      MlirEmitterInput input, const Shape& output_shape,
-      absl::optional<int> unroll_factor_override = {});
+      MlirEmitterInput input, absl::optional<int> unroll_factor_override = {});
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleReduce(HloInstruction* reduce) override;
   Status EmitReduceFromMlir(MlirEmitterInput mlir_input);
@@ -194,7 +194,9 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleTuple(HloInstruction* tuple) override;
   Status HandleWhile(HloInstruction* xla_while) override;
   Status HandleInfeed(HloInstruction* xla_infeed) override;
+  Status EmitInfeedFromMlir(MlirEmitterInput input);
   Status HandleOutfeed(HloInstruction* outfeed) override;
+  Status EmitOutfeedFromMlir(MlirEmitterInput input);
   Status HandleRng(HloInstruction* random) override;
   Status HandleRngGetAndUpdateState(HloInstruction* rng_state) override;
   Status EmitRngGetAndUpdateState(MlirEmitterInput mlir_input);

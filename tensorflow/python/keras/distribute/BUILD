@@ -743,6 +743,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
+        "no_tfrt",  # TODO(b/179839466): Reenable TFRT after the issue is resolved.
     ],
     deps = [
         ":multi_worker_testing_utils",
@@ -760,6 +761,7 @@ cuda_py_test(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:parameter_server_strategy",
+        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/keras",
         "//tensorflow/python/keras:backend",
@@ -767,6 +769,7 @@ cuda_py_test(
         "//tensorflow/python/keras:engine",
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras/optimizer_v2",
+        "//tensorflow/python/keras/utils:kpl_test_utils",
         "@absl_py//absl/testing:parameterized",
     ],
 )

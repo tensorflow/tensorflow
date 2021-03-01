@@ -64,9 +64,8 @@ class FullyConnectedBuffers : public NodeShader {
 
   if (gid.x < $dst_depth$) {
     int offset = 4 * gid.x * $src_depth$ + 4 * tid.y;
-    int iterations = ($src_depth$ + threads-1) / threads;
-    for (int d = 0; d < iterations; d++, offset += 4 * threads) {
-      vec4 src = $input_data_0[0, 0, d * threads + tid.y]$;
+    for (int d = tid.y; d < $src_depth$; d += threads, offset += 4 * threads) {
+      vec4 src = $input_data_0[0, 0, d]$;
       value_0.x += dot(src, $weights[offset + 0]$);
       value_0.y += dot(src, $weights[offset + 1]$);
       value_0.z += dot(src, $weights[offset + 2]$);

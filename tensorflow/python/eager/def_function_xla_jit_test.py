@@ -149,7 +149,7 @@ class DefFunctionTest(xla_test.XLATestCase):
       inputs = constant_op.constant([1, 2, 2, 3, 3])
       with self.assertRaisesRegex(
           errors.InvalidArgumentError, 'legalization failed'
-          if test_util.is_mlir_bridge_enabled() else 'not compilable'):
+          if test_util.is_mlir_bridge_enabled() else 'unsupported operations'):
         func(inputs)
 
   def testUnsupportedOps(self):
@@ -168,7 +168,7 @@ class DefFunctionTest(xla_test.XLATestCase):
       self.assertAllClose([1, 2, 3], func(inputs))
       with self.assertRaisesRegex(
           errors.InvalidArgumentError, 'legalization failed'
-          if test_util.is_mlir_bridge_enabled() else 'not compilable'):
+          if test_util.is_mlir_bridge_enabled() else 'unsupported operations'):
         xla_func(inputs)
 
   @test_util.disable_mlir_bridge('TODO(b/155782411): MLIR bridge does not'
@@ -215,6 +215,8 @@ class DefFunctionTest(xla_test.XLATestCase):
       with self.assertRaisesRegex(errors.InvalidArgumentError, 'COMMENT2'):
         fn(inputs)
 
+  @test_util.disable_mlir_bridge('TODO(b/181176476): Wrong stack trace for '
+                                 'failed legalization in MLIR bridge')
   def testPythonStackTraceControlFlow(self):
     if 'tpu' in self.device.lower():
       self.skipTest('XLA TPU supports tf.unique')
@@ -384,7 +386,7 @@ class DefFunctionTest(xla_test.XLATestCase):
       c = C()
       with self.assertRaisesRegex(
           errors.InvalidArgumentError, 'legalization failed'
-          if test_util.is_mlir_bridge_enabled() else 'not compilable'):
+          if test_util.is_mlir_bridge_enabled() else 'unsupported operations'):
         c.f1(inputs)
 
   def testMustBeConstantPropagation(self):
@@ -578,6 +580,7 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       self.assertEqual(inner_retracings, 1)
 
+  @test_util.disable_mlir_bridge('b/180951174')
   def testUpdateVariable(self):
     with ops.device('device:{}:0'.format(self.device)):
 

@@ -441,7 +441,7 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
     // non-derived ones.
     llvm::StringSet<> getDefinedAttributeNames() {
       llvm::StringSet<> all_attrs;
-      for (auto& attr : getAttrs()) {
+      for (auto& attr : (*this)->getAttrs()) {
         all_attrs.insert(attr.first.strref());
       }
       for (const auto& operand : llvm::enumerate(getType().getInputs())) {

@@ -156,7 +156,7 @@ class TPUEmbedding(tracking.AutoTrackable):
       strategy.distribute_datasets_from_function(
           dataset_fn=...,
           options=tf.distribute.InputOptions(
-              experimental_prefetch_to_device=False))
+              experimental_fetch_to_device=False))
   dataset_iterator = iter(distributed_dataset)
   ```
 
@@ -592,7 +592,7 @@ class TPUEmbedding(tracking.AutoTrackable):
         strategy.distribute_datasets_from_function(
             dataset_fn=...,
             options=tf.distribute.InputOptions(
-                experimental_prefetch_to_device=False))
+                experimental_fetch_to_device=False))
     dataset_iterator = iter(distributed_dataset)
 
     @tf.function
@@ -689,7 +689,7 @@ class TPUEmbedding(tracking.AutoTrackable):
         strategy.distribute_datasets_from_function(
             dataset_fn=...,
             options=tf.distribute.InputOptions(
-                experimental_prefetch_to_device=False))
+                experimental_fetch_to_device=False))
     dataset_iterator = iter(distributed_dataset)
 
     @tf.function
@@ -1102,10 +1102,9 @@ class TPUEmbedding(tracking.AutoTrackable):
             "Received input tensor {} which is on a TPU input device {}. Input "
             "tensors for TPU embeddings must be placed on the CPU. Please "
             "ensure that your dataset is prefetching tensors to the host by "
-            "setting the 'experimental_prefetch_to_device' option of the "
+            "setting the 'experimental_fetch_to_device' option of the "
             "dataset distribution function. See the documentation of the "
-            "enqueue method for an example.".format(
-                path, device_string))
+            "enqueue method for an example.".format(path, device_string))
 
     # expand_composites here is important, we need to check the device of each
     # underlying tensor.
@@ -1145,7 +1144,7 @@ class TPUEmbedding(tracking.AutoTrackable):
         strategy.distribute_datasets_from_function(
             dataset_fn=...,
             options=tf.distribute.InputOptions(
-                experimental_prefetch_to_device=False))
+                experimental_fetch_to_device=False))
     dataset_iterator = iter(distributed_dataset)
 
     @tf.function
@@ -1603,7 +1602,7 @@ def cpu_embedding_lookup(inputs, weights, tables, feature_config):
     elif isinstance(inp, sparse_tensor.SparseTensor):
       if feature.max_sequence_length > 0:
         batch_size = math_ops.cast(array_ops.shape(inp)[0], dtype=dtypes.int64)
-        sparse_shape = array_ops.concat(
+        sparse_shape = array_ops.stack(
             [batch_size, feature.max_sequence_length], axis=0)
         # TPU Embedding truncates sequences to max_sequence_length, and if we
         # don't truncate, scatter_nd will error out if the index was out of
@@ -1611,7 +1610,7 @@ def cpu_embedding_lookup(inputs, weights, tables, feature_config):
         truncated_inp = sparse_ops.sparse_slice(inp, start=[0, 0],
                                                 size=sparse_shape)
 
-        dense_output_shape = array_ops.concat(
+        dense_output_shape = array_ops.stack(
             [batch_size, feature.max_sequence_length, feature.table.dim],
             axis=0)
         outputs.append(
