@@ -192,11 +192,10 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
   void Flush() override {
     mutex_lock lock(aggregated_events_mutex_);
 
-    VLOG(kRocmTracerVlog) << "RocmTraceCollector collected "
-                          << num_callback_events_ << " callback events, "
-                          << num_activity_events_
-                          << " activity events, and aggregated them into "
-                          << aggregated_events_.size() << " events.";
+    VLOG(3) << "RocmTraceCollector collected " << num_callback_events_
+            << " callback events, " << num_activity_events_
+            << " activity events, and aggregated them into "
+            << aggregated_events_.size() << " events.";
 
     for (auto& iter : aggregated_events_) {
       auto& event = iter.second;
@@ -208,24 +207,24 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
       if (IsEventTypeWithoutHCCActivityRecordCallback(event.type)) {
         DumpRocmTracerEvent(event, 0, 0);
         if (event.device_id == RocmTracerEvent::kInvalidDeviceId) {
-          VLOG(kRocmTracerVlog) << "Explicitly setting device_id to 0 for "
-                                   "event with correlation_id="
-                                << event.correlation_id << ",";
+          VLOG(3) << "Explicitly setting device_id to 0 for "
+                     "event with correlation_id="
+                  << event.correlation_id << ",";
           event.device_id = 0;
         } else {
-          VLOG(kRocmTracerVlog) << "Unexpectedly found a non-default "
-                                   "device_id for event with correlation_id="
-                                << event.correlation_id << ",";
+          VLOG(3) << "Unexpectedly found a non-default "
+                     "device_id for event with correlation_id="
+                  << event.correlation_id << ",";
         }
         if (event.stream_id == RocmTracerEvent::kInvalidStreamId) {
-          VLOG(kRocmTracerVlog) << "Explicitly setting stream_id to 0 for "
-                                   "event with correlation_id="
-                                << event.correlation_id << ",";
+          VLOG(3) << "Explicitly setting stream_id to 0 for "
+                     "event with correlation_id="
+                  << event.correlation_id << ",";
           event.stream_id = 0;
         } else {
-          VLOG(kRocmTracerVlog) << "Unexpectedly found a non-default "
-                                   "stream_id for event with correlation_id="
-                                << event.correlation_id << ",";
+          VLOG(3) << "Unexpectedly found a non-default "
+                     "stream_id for event with correlation_id="
+                  << event.correlation_id << ",";
         }
       }
 
@@ -235,8 +234,8 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
       auto kv_pair = device_id_map_.find(physical_id);
       if (kv_pair == device_id_map_.end()) {
         logical_id = next_logical_device_id_++;
-        VLOG(kRocmTracerVlog) << "Mapping physical device id " << physical_id
-                              << " to logical device id " << logical_id;
+        VLOG(3) << "Mapping physical device id " << physical_id
+                << " to logical device id " << logical_id;
         device_id_map_[physical_id] = logical_id;
       } else {
         logical_id = kv_pair->second;
@@ -717,7 +716,7 @@ Status GpuTracer::DoStart() {
       GetRocmTraceCollectorOptions(rocm_tracer_->NumGpus());
   uint64 start_gputime_ns = RocmTracer::GetTimestamp();
   uint64 start_walltime_ns = tensorflow::EnvTime::NowNanos();
-  // VLOG(kRocmTracerVlog) << "CPU Start Time : " << start_walltime_ns / 1000
+  // VLOG(3) << "CPU Start Time : " << start_walltime_ns / 1000
   // 			 << " , GPU Start Time : " << start_gputime_ns / 1000;
   rocm_trace_collector_ = std::make_unique<RocmTraceCollectorImpl>(
       trace_collector_options, start_walltime_ns, start_gputime_ns);
@@ -761,8 +760,7 @@ Status GpuTracer::DoCollectData(StepStats* step_stats) {
 Status GpuTracer::CollectData(RunMetadata* run_metadata) {
   switch (profiling_state_) {
     case State::kNotStarted:
-      VLOG(kRocmTracerVlog)
-          << "No trace data collected, session wasn't started";
+      VLOG(3) << "No trace data collected, session wasn't started";
       return Status::OK();
     case State::kStartedOk:
       return errors::FailedPrecondition("Cannot collect trace before stopping");
@@ -770,7 +768,7 @@ Status GpuTracer::CollectData(RunMetadata* run_metadata) {
       LOG(ERROR) << "Cannot collect, roctracer failed to start";
       return Status::OK();
     case State::kStoppedError:
-      VLOG(kRocmTracerVlog) << "No trace data collected";
+      VLOG(3) << "No trace data collected";
       return Status::OK();
     case State::kStoppedOk: {
       // Input run_metadata is shared by profiler interfaces, we need append.
@@ -793,8 +791,7 @@ Status GpuTracer::DoCollectData(XSpace* space) {
 Status GpuTracer::CollectData(XSpace* space) {
   switch (profiling_state_) {
     case State::kNotStarted:
-      VLOG(kRocmTracerVlog)
-          << "No trace data collected, session wasn't started";
+      VLOG(3) << "No trace data collected, session wasn't started";
       return Status::OK();
     case State::kStartedOk:
       return errors::FailedPrecondition("Cannot collect trace before stopping");
@@ -802,7 +799,7 @@ Status GpuTracer::CollectData(XSpace* space) {
       LOG(ERROR) << "Cannot collect, roctracer failed to start";
       return Status::OK();
     case State::kStoppedError:
-      VLOG(kRocmTracerVlog) << "No trace data collected";
+      VLOG(3) << "No trace data collected";
       return Status::OK();
     case State::kStoppedOk: {
       DoCollectData(space);
