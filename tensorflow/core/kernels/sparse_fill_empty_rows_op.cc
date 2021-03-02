@@ -42,7 +42,9 @@ template <typename T, typename Tindex>
 struct SparseFillEmptyRows<CPUDevice, T, Tindex> {
   Status operator()(OpKernelContext* context, const Tensor& default_value_t,
                     const Tensor& indices_t, const Tensor& values_t,
-                    const Tensor& dense_shape_t) {
+                    const Tensor& dense_shape_t,
+                    typename AsyncOpKernel::DoneCallback done) {
+    (void)done;  // Unused (only used in GPU implementation)
     const int kOutputIndicesOutput = 0;
     const int kOutputValuesOutput = 1;
     const int kEmptyRowIndicatorOutput = 2;
@@ -186,6 +188,55 @@ struct SparseFillEmptyRows<CPUDevice, T, Tindex> {
 
 }  // namespace functor
 
+namespace {
+
+template <typename Device, typename T, typename Tindex>
+void SparseFillEmptyRowsOpImpl(
+    OpKernelContext* context, AsyncOpKernel::DoneCallback done = nullptr) {
+  if (!done) {
+    done = [] {};
+  }
+
+  const int kIndicesInput = 0;
+  const int kValuesInput = 1;
+  const int kDenseShapeInput = 2;
+  const int kDefaultValueInput = 3;
+
+  const Tensor& indices_t = context->input(kIndicesInput);
+  const Tensor& values_t = context->input(kValuesInput);
+  const Tensor& dense_shape_t = context->input(kDenseShapeInput);
+  const Tensor& default_value_t = context->input(kDefaultValueInput);
+
+  OP_REQUIRES_ASYNC(
+      context, TensorShapeUtils::IsVector(dense_shape_t.shape()),
+      errors::InvalidArgument("dense_shape must be a vector, saw: ",
+                              dense_shape_t.shape().DebugString()),
+      done);
+  OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsMatrix(indices_t.shape()),
+                    errors::InvalidArgument("indices must be a matrix, saw: ",
+                                            indices_t.shape().DebugString()),
+                    done);
+  OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsVector(values_t.shape()),
+                    errors::InvalidArgument("values must be a vector, saw: ",
+                                            values_t.shape().DebugString()),
+                    done);
+  OP_REQUIRES_ASYNC(
+      context, TensorShapeUtils::IsScalar(default_value_t.shape()),
+      errors::InvalidArgument("default_value must be a scalar, saw: ",
+                              default_value_t.shape().DebugString()),
+      done);
+  // TODO(ebrevdo): add shape checks between values, indices,
+  // dense_shape.  Also add check that dense rank > 0.
+
+  using FunctorType = functor::SparseFillEmptyRows<Device, T, Tindex>;
+  OP_REQUIRES_OK_ASYNC(context,
+                       FunctorType()(context, default_value_t, indices_t,
+                                     values_t, dense_shape_t, done),
+                       done);
+}
+
+}  // namespace
+
 template <typename Device, typename T, typename Tindex>
 class SparseFillEmptyRowsOp : public OpKernel {
  public:
@@ -193,34 +244,7 @@ class SparseFillEmptyRowsOp : public OpKernel {
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    const int kIndicesInput = 0;
-    const int kValuesInput = 1;
-    const int kDenseShapeInput = 2;
-    const int kDefaultValueInput = 3;
-
-    const Tensor& indices_t = context->input(kIndicesInput);
-    const Tensor& values_t = context->input(kValuesInput);
-    const Tensor& dense_shape_t = context->input(kDenseShapeInput);
-    const Tensor& default_value_t = context->input(kDefaultValueInput);
-
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(dense_shape_t.shape()),
-                errors::InvalidArgument("dense_shape must be a vector, saw: ",
-                                        dense_shape_t.shape().DebugString()));
-    OP_REQUIRES(context, TensorShapeUtils::IsMatrix(indices_t.shape()),
-                errors::InvalidArgument("indices must be a matrix, saw: ",
-                                        indices_t.shape().DebugString()));
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(values_t.shape()),
-                errors::InvalidArgument("values must be a vector, saw: ",
-                                        values_t.shape().DebugString()));
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(default_value_t.shape()),
-                errors::InvalidArgument("default_value must be a scalar, saw: ",
-                                        default_value_t.shape().DebugString()));
-    // TODO(ebrevdo): add shape checks between values, indices,
-    // dense_shape.  Also add check that dense rank > 0.
-
-    OP_REQUIRES_OK(context, functor::SparseFillEmptyRows<Device, T, Tindex>()(
-                                context, default_value_t, indices_t, values_t,
-                                dense_shape_t));
+    SparseFillEmptyRowsOpImpl<Device, T, Tindex>(context);
   }
 };
 
@@ -249,47 +273,7 @@ class SparseFillEmptyRowsGPUOp : public AsyncOpKernel {
       : AsyncOpKernel(context) {}
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
-    const int kIndicesInput = 0;
-    const int kValuesInput = 1;
-    const int kDenseShapeInput = 2;
-    const int kDefaultValueInput = 3;
-
-    const int kOutputIndicesOutput = 0;
-    const int kOutputValuesOutput = 1;
-    const int kEmptyRowIndicatorOutput = 2;
-    const int kReverseIndexMapOutput = 3;
-
-    const Tensor& indices_t = context->input(kIndicesInput);
-    const Tensor& values_t = context->input(kValuesInput);
-    const Tensor& dense_shape_t = context->input(kDenseShapeInput);
-    const Tensor& default_value_t = context->input(kDefaultValueInput);
-
-    OP_REQUIRES_ASYNC(
-        context, TensorShapeUtils::IsVector(dense_shape_t.shape()),
-        errors::InvalidArgument("dense_shape must be a vector, saw: ",
-                                dense_shape_t.shape().DebugString()),
-        done);
-    OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsMatrix(indices_t.shape()),
-                      errors::InvalidArgument("indices must be a matrix, saw: ",
-                                              indices_t.shape().DebugString()),
-                      done);
-    OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsVector(values_t.shape()),
-                      errors::InvalidArgument("values must be a vector, saw: ",
-                                              values_t.shape().DebugString()),
-                      done);
-    OP_REQUIRES_ASYNC(
-        context, TensorShapeUtils::IsScalar(default_value_t.shape()),
-        errors::InvalidArgument("default_value must be a scalar, saw: ",
-                                default_value_t.shape().DebugString()),
-        done);
-    // TODO(ebrevdo): add shape checks between values, indices,
-    // dense_shape.  Also add check that dense rank > 0.
-
-    using FunctorType = functor::SparseFillEmptyRows<GPUDevice, T, Tindex>;
-    OP_REQUIRES_OK_ASYNC(context,
-                         FunctorType()(context, default_value_t, indices_t,
-                                       values_t, dense_shape_t, done),
-                         done);
+    SparseFillEmptyRowsOpImpl<GPUDevice, T, Tindex>(context, done);
   }
 };
 
