@@ -25,16 +25,14 @@ namespace testing {
 namespace {
 
 template <typename InType, typename PosType>
-void TestGather(const int* input_dims, const InType* input_data,
+void TestGatherDataOnly(const int* input_dims, const InType* input_data,
                     const int* positions_dims, const PosType* positions_data,
-                    const int* expected_out_dims, int* output_dims,
                     const InType* expected_output_data, InType* output_data,
-                    const TfLiteGatherParams *params) {
+                    const int axis = 0) {
   TfLiteIntArray* in_dims = IntArrayFromInts(input_dims);
   TfLiteIntArray* pos_dims = IntArrayFromInts(positions_dims);
-  TfLiteIntArray* out_dims = IntArrayFromInts(output_dims);
-  const int in_dims_size = in_dims->size;
-  const int out_dims_size = out_dims->size;
+  TfLiteIntArray* out_dims = IntArrayFromInts(input_dims);
+  TfLiteGatherParams params = {axis};
   const int output_size = ElementCount(*out_dims);
 
   constexpr int inputs_size = 2;
@@ -52,7 +50,44 @@ void TestGather(const int* input_dims, const InType* input_data,
 
   const TfLiteRegistration registration = Register_GATHER();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
-                             outputs_array, params);
+                             outputs_array, &params);
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
+
+  for (int i = 0; i < output_size; ++i) {
+    TF_LITE_MICRO_EXPECT_EQ(expected_output_data[i], output_data[i]);
+  }
+}
+
+template <typename InType, typename PosType>
+void TestGatherDataShape(const int* input_dims, const InType* input_data,
+                    const int* positions_dims, const PosType* positions_data,
+                    const int* expected_out_dims, int* output_dims,
+                    const InType* expected_output_data, InType* output_data,
+                    const int axis = 0) {
+  TfLiteIntArray* in_dims = IntArrayFromInts(input_dims);
+  TfLiteIntArray* pos_dims = IntArrayFromInts(positions_dims);
+  TfLiteIntArray* out_dims = IntArrayFromInts(output_dims);
+  TfLiteGatherParams params = {axis};
+  const int in_dims_size = in_dims->size;
+  const int output_size = ElementCount(*out_dims);
+
+  constexpr int inputs_size = 2;
+  constexpr int outputs_size = 1;
+  constexpr int tensors_size = inputs_size + outputs_size;
+  TfLiteTensor tensors[tensors_size] = {
+      CreateTensor(input_data, in_dims),
+      CreateTensor(positions_data, pos_dims),
+      CreateTensor(output_data, out_dims, true),
+  };
+  int inputs_array_data[] = {2, 0, 1};
+  TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
+  int outputs_array_data[] = {1, 2};
+  TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
+
+  const TfLiteRegistration registration = Register_GATHER();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array, &params);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
@@ -78,17 +113,12 @@ TF_LITE_MICRO_TESTS_BEGIN
 TF_LITE_MICRO_TEST(GatherOpTestShuffle) {
   float output_data[4];
   const int input_dims[] = {2, 2, 2};
-  const float input_data[] = {-1.1, 1.2, -2.1, 2.2};
-  const float golden_data[] = {-1.1, 1.2, -2.1, 2.2};
-  const int positions_dims[] = {2, 1, 0};
-  const int32_t positions_data[] = {1, 0};
-  const int32_t axis = 2;
-  const int golden_dims[] = {2, 2, 2};
-  int output_dims[] = {3, 0, 0, 0};
-  TfLiteGatherParams params = {axis};
-  tflite::testing::TestGather<float, int32_t>(input_dims, input_data, positions_dims,
-                                  positions_data, golden_dims, output_dims,
-                                  golden_data, output_data, &params);
+  const float input_data[] = {-2.0, 0.2, 0.7, 0.8};
+  const float golden_data[] = {0.7, 0.8, -2, 0.2};
+  const int positions_dims[] = {1, 1};
+  const int32_t positions_data[] = {2};
+  tflite::testing::TestGatherDataOnly<float, int32_t>(input_dims, input_data, positions_dims,
+                                  positions_data, golden_data, output_data);
   TF_LITE_MICRO_EXPECT_EQ(0, 1); 
 }
 
