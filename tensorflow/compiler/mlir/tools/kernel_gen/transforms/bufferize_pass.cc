@@ -125,8 +125,9 @@ struct HloBufferizePass : public HloBufferizePassBase<HloBufferizePass> {
         &context, &converter, &patterns, /*insert_copy=*/false);
     populateFuncOpTypeConversionPattern(patterns, &context, converter);
     populateCallOpTypeConversionPattern(patterns, &context, converter);
-    populateBranchOpInterfaceAndReturnOpTypeConversionPattern(
-        patterns, &context, converter);
+    populateBranchOpInterfaceTypeConversionPattern(patterns, &context,
+                                                   converter);
+    populateReturnOpTypeConversionPattern(patterns, &context, converter);
 
     // Configure legality and structural patterns.
     populateBufferizeMaterializationLegality(target);
