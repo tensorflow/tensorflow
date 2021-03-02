@@ -41,6 +41,13 @@ XlaOp LogDet(XlaOp a) {
     TF_ASSIGN_OR_RETURN(Shape a_shape, a.builder()->GetShape(a));
     auto qr = Qr(a);
 
+    int64 m = ShapeUtil::GetDimension(a_shape, -2);
+    int64 n = ShapeUtil::GetDimension(a_shape, -1);
+    if (m != n) {
+      return InvalidArgument(
+          "Arguments to logdet must be (batched) square matrices, got: %s",
+          a_shape.ToString());
+    }
     // Get the sign and logarithm of the determinant based on the values along
     // the diagonal of R and the number of zeros in taus.
     auto log_abs_det = Einsum(Log(Abs(qr.q_and_r)), "...aa->...");
@@ -49,9 +56,10 @@ XlaOp LogDet(XlaOp a) {
         One(a.builder(), a_shape.element_type()),
         CreateScalarMultiplyComputation(a_shape.element_type(), a.builder()),
         {a_shape.rank() - 2});
+    auto sliced_taus = SliceInMinorDims(qr.taus, {0}, {n - 1});
     auto sign_taus = Reduce(
-        Select(Eq(qr.taus, ZerosLike(qr.taus)), FullLike(qr.taus, -1),
-               FullLike(qr.taus, 1)),
+        Select(Ne(sliced_taus, ZerosLike(sliced_taus)),
+               FullLike(sliced_taus, -1), FullLike(sliced_taus, 1)),
         One(a.builder(), a_shape.element_type()),
         CreateScalarMultiplyComputation(a_shape.element_type(), a.builder()),
         {a_shape.rank() - 2});
