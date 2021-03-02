@@ -297,6 +297,7 @@ cc_library(
     # Public visibility is needed for external TF/XLA backends.
     visibility = ["//visibility:public"],
     deps = XLA_DEVICE_DEPS + [":xla_compilation_cache"],
+    alwayslink = 1,
 )
 
 cc_library(
