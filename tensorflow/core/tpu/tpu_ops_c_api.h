@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/tpu/libtftpu.h"
 #include "tensorflow/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
@@ -160,8 +161,8 @@ TFTPU_CAPI_EXPORT void TfTpuOrdinalSelector_Destroy(
     TfTpuOrdinalSelector* ordinal_selector);
 
 TFTPU_CAPI_EXPORT void TfTpuOrdinalSelector_GetOrdinal(
-    TfTpuOrdinalSelector* ordinal_selector, absl::optional<uint64> key,
-    int64_t* req_id, int64* ordinal);
+    TfTpuOrdinalSelector* ordinal_selector, absl::optional<uint64_t> key,
+    int64_t* req_id, int64_t* ordinal);
 
 TFTPU_CAPI_EXPORT void TfTpuOrdinalSelector_DequeueFromCoreSelector(
     TfTpuOrdinalSelector* ordinal_selector, int32_t device_ordinal,
