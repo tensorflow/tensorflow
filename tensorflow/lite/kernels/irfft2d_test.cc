@@ -88,7 +88,7 @@ TEST(Irfft2dOpTest, FftLengthSmallerThanInputSize) {
   EXPECT_THAT(model.GetOutput(), ElementsAreArray(expected_result));
 }
 
-TEST(Irfft2dOpTest, DISABLED_FftLengthGreaterThanInputSize) {
+TEST(Irfft2dOpTest, FftLengthGreaterThanInputSize) {
   Irfft2dOpModel model({TensorType_COMPLEX64, {4, 3}}, {TensorType_INT32, {2}});
   // clang-format off
   model.PopulateTensor<std::complex<float>>(model.input(), {
