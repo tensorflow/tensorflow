@@ -17,12 +17,13 @@ limitations under the License.
 
 #include <cstring>
 
+#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/common.h"
 
 namespace tflite {
 namespace reference_ops {
 
-template <typename T, typename CoordsT = int32>
+template <typename T, typename CoordsT = int32_t>
 inline void Gather(const tflite::GatherParams& op_params,
                    const RuntimeShape& input_shape, const T* input_data,
                    const RuntimeShape& coords_shape, const CoordsT* coords_data,

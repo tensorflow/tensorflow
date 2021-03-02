@@ -40,6 +40,7 @@ TfLiteRegistration Register_ELU();
 TfLiteRegistration Register_EXP();
 TfLiteRegistration Register_EXPAND_DIMS();
 TfLiteRegistration Register_FILL();
+TfLiteRegistration Register_GATHER();
 TfLiteRegistration Register_LEAKY_RELU();
 TfLiteRegistration Register_QUANTIZE();
 TfLiteRegistration Register_SHAPE();

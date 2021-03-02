@@ -24,11 +24,12 @@ namespace tflite {
 namespace testing {
 namespace {
 
-template <typename T>
-void TestGather(const int* input_dims, const T* input_data,
-                    const int* positions_dims, const int32_t* positions_data,
-                    const int* expected_out_dims, const int* output_dims,
-                    const T* expected_output_data, T* output_data) {
+template <typename InType, typename PosType>
+void TestGather(const int* input_dims, const InType* input_data,
+                    const int* positions_dims, const PosType* positions_data,
+                    const int* expected_out_dims, int* output_dims,
+                    const InType* expected_output_data, InType* output_data,
+                    const TfLiteGatherParams *params) {
   TfLiteIntArray* in_dims = IntArrayFromInts(input_dims);
   TfLiteIntArray* pos_dims = IntArrayFromInts(positions_dims);
   TfLiteIntArray* out_dims = IntArrayFromInts(output_dims);
@@ -49,10 +50,9 @@ void TestGather(const int* input_dims, const T* input_data,
   int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  const TfLiteRegistration registration = Register_GATHER(); //TODO built-in data
+  const TfLiteRegistration registration = Register_GATHER();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
-                             outputs_array,
-                             /*builtin_data=*/nullptr);
+                             outputs_array, params);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
@@ -75,32 +75,24 @@ void TestGather(const int* input_dims, const T* input_data,
 
 TF_LITE_MICRO_TESTS_BEGIN
 
-TF_LITE_MICRO_TEST(ExpandDimsPositiveAxisTest0) {
-  int8_t output_data[4];
-  const int input_dims[] = {2, 2, 2};
-  const int8_t input_data[] = {-1, 1, -2, 2};
-  const int8_t golden_data[] = {-1, 1, -2, 2};
-  const int positions_dims[] = {1, 1};
-  const int32_t positions_data[] = {0};
-  const int golden_dims[] = {3, 1, 2, 2};
-  tflite::testing::TestExpandDims<int8_t>(input_dims, input_data, positions_dims,
-                                          positions_data, golden_dims, golden_data,
-                                          output_data);
-}
-
-TF_LITE_MICRO_TEST(ExpandDimsPositiveAxisTest1) {
+TF_LITE_MICRO_TEST(GatherOpTestShuffle) {
   float output_data[4];
   const int input_dims[] = {2, 2, 2};
   const float input_data[] = {-1.1, 1.2, -2.1, 2.2};
   const float golden_data[] = {-1.1, 1.2, -2.1, 2.2};
-  const int positions_dims[] = {1, 1};
-  const int32_t positions_data[] = {1};
-  const int golden_dims[] = {3, 2, 1, 2};
-  tflite::testing::TestExpandDims<float>(input_dims, input_data, positions_dims,
-                                         positions_data, golden_dims, golden_data,
-                                         output_data);
+  const int positions_dims[] = {2, 1, 0};
+  const int32_t positions_data[] = {1, 0};
+  const int32_t axis = 2;
+  const int golden_dims[] = {2, 2, 2};
+  int output_dims[] = {3, 0, 0, 0};
+  TfLiteGatherParams params = {axis};
+  tflite::testing::TestGather<float, int32_t>(input_dims, input_data, positions_dims,
+                                  positions_data, golden_dims, output_dims,
+                                  golden_data, output_data, &params);
+  TF_LITE_MICRO_EXPECT_EQ(0, 1); 
 }
 
+#if 0
 TF_LITE_MICRO_TEST(ExpandDimsPositiveAxisTest2) {
   int8_t output_data[4];
   const int input_dims[] = {2, 2, 2};
@@ -109,8 +101,8 @@ TF_LITE_MICRO_TEST(ExpandDimsPositiveAxisTest2) {
   const int positions_dims[] = {1, 1};
   const int32_t positions_data[] = {2};
   const int golden_dims[] = {3, 2, 2, 1};
-  tflite::testing::TestExpandDims<int8_t>(input_dims, input_data, positions_dims,
-                                          positions_data, golden_dims, golden_data,
+  tflite::testing::TestExpandDims(input_dims, <int8_t>input_data, positions_dims,
+                                          positions_data, golden_dims, <int8_t>golden_data,
                                           output_data);
 }
 
@@ -165,5 +157,6 @@ TF_LITE_MICRO_TEST(ExpandDimsNegativeAxisTest1) {
                                          positions_data, golden_dims, golden_data,
                                          output_data);
 }
+#endif
 
 TF_LITE_MICRO_TESTS_END

@@ -274,6 +274,7 @@ cc_library(
         "expand_dims.cc",
         "fill.cc",
         "floor.cc",
+        "gather.cc",
         "l2norm.cc",
         "leaky_relu.cc",
         "logical.cc",
@@ -665,6 +666,21 @@ cc_test(
     name = "fully_connected_test",
     srcs = [
         "fully_connected_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_utils",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "gather_test",
+    srcs = [
+        "gather_test.cc",
     ],
     deps = [
         ":kernel_runner",
