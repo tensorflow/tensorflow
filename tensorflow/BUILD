@@ -229,7 +229,7 @@ config_setting(
     name = "macos_arm64",
     values = {
         "apple_platform_type": "macos",
-        "cpu": "darwin_arm64",
+        "cpu": "darwin",
     },
     visibility = ["//visibility:public"],
 )
