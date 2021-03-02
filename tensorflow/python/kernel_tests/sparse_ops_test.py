@@ -602,6 +602,17 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(output.dense_shape, [2, 5])
       self.assertAllEqual(empty_row_indicator_out, np.zeros(2).astype(np.bool))
 
+  def testInvalidIndices(self):
+    with test_util.use_gpu():
+      sp_input = sparse_tensor.SparseTensor(
+          indices=np.array([[1, 2], [1, 3], [99, 1], [99, 3]]),
+          values=np.array([1, 3, 2, 4]),
+          dense_shape=np.array([2, 5]))
+
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "indices\(2, 0\) is invalid"):
+        self.evaluate(sparse_ops.sparse_fill_empty_rows(sp_input, -1))
+
 
 class SparseAddTest(test_util.TensorFlowTestCase):
 

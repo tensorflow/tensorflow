@@ -74,11 +74,13 @@ namespace {
 template <typename Tindex>
 __global__ __launch_bounds__(1024) void CountElementsPerRowKernel(
     GpuLaunchConfig cfg, Tindex dense_rows, int rank, const Tindex* indices,
-    Tindex* elements_per_row, int* rows_are_not_ordered) {
+    Tindex* elements_per_row, int* rows_are_not_ordered,
+    int* first_invalid_index) {
   GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
     Tindex row = indices[i * rank];
     if (row < 0 || row >= dense_rows) {
-      continue;  // Ignore indices that are out of range
+      GpuAtomicMin(first_invalid_index, i);
+      continue;
     }
     GpuAtomicAdd(&elements_per_row[row], 1);
     if (i > 0 && row < indices[(i - 1) * rank]) {
@@ -236,10 +238,23 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
              .ok()) {
       return errors::Internal("Failed to zero rows_are_not_ordered");
     }
+    Tensor first_invalid_index_t;
+    TF_RETURN_IF_ERROR(context->allocate_temp(DT_INT32, TensorShape({1}),
+                                              &first_invalid_index_t));
+    auto first_invalid_index_gpu = first_invalid_index_t.flat<int>();
+    constexpr const int kAllIndicesValid = std::numeric_limits<int>::max();
+    se::DeviceMemoryBase first_invalid_index_gpu_memory(
+        first_invalid_index_gpu.data(), sizeof(int));
+    if (!stream
+             ->ThenMemset32(&first_invalid_index_gpu_memory, kAllIndicesValid,
+                            sizeof(int))
+             .ok()) {
+      return errors::Internal("Failed to initialize first_invalid_index");
+    }
 
     TF_RETURN_IF_ERROR(wrap_kernel_call(
         CountElementsPerRowKernel<Tindex>, device, N, dense_rows, rank, indices,
-        elements_per_row, rows_are_not_ordered_gpu));
+        elements_per_row, rows_are_not_ordered_gpu, first_invalid_index_gpu));
 
     Tensor input_row_ends_t;
     TF_RETURN_IF_ERROR(context->allocate_temp(
@@ -361,17 +376,33 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
       return errors::Internal("Failed to copy rows_are_not_ordered to host");
     }
 
+    ScratchSpace<int> first_invalid_index_host(context, 1, /*on_host=*/true);
+    if (!stream
+             ->ThenMemcpy(first_invalid_index_host.mutable_data(),
+                          first_invalid_index_gpu_memory,
+                          sizeof(*first_invalid_index_host.data()))
+             .ok()) {
+      return errors::Internal("Failed to copy first_invalid_index to host");
+    }
+
     // We must wait for num_empty_rows and rows_are_not_ordered to be copied to
     // the host, so we enqueue the remainder of the computation onto the stream
     // asynchronously to avoid stalling execution.
     auto async_finish_computation =
-        [this, context, kOutputIndicesOutput, kOutputValuesOutput,
-         kReverseIndexMapOutput, index_type, N, rank, indices, values,
-         default_value, dense_rows, num_empty_rows_host,
-         rows_are_not_ordered_host, num_empty_rows_through_t,
-         num_empty_rows_through, input_row_ends_t, input_row_ends,
-         empty_row_indicator_t, empty_row_indicator, done]() -> void {
+        [this, context, kReverseIndexMapOutput, kAllIndicesValid, index_type, N,
+         rank, indices, values, default_value, dense_rows, num_empty_rows_host,
+         rows_are_not_ordered_host, first_invalid_index_host,
+         num_empty_rows_through_t, num_empty_rows_through, input_row_ends_t,
+         input_row_ends, empty_row_indicator_t, empty_row_indicator,
+         done]() -> void {
       CHECK(done);  // Crash OK
+
+      int first_invalid_index = *first_invalid_index_host.data();
+      OP_REQUIRES_ASYNC(context, first_invalid_index == kAllIndicesValid,
+                        errors::InvalidArgument("indices(", first_invalid_index,
+                                                ", 0) is invalid."),
+                        done);
+
       Tensor* output_indices_t;
       Tindex num_empty_rows = *num_empty_rows_host.data();
       const Tindex N_full = N + num_empty_rows;
