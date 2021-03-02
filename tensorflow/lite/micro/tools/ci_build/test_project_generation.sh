@@ -36,11 +36,15 @@ rm -rf ${TEST_OUTPUT_DIR}
 TEST_OUTPUT_DIR_CMSIS="/tmp/tflm_project_gen_cmsis"
 rm -rf ${TEST_OUTPUT_DIR_CMSIS}
 
-readable_run python3 tensorflow/lite/micro/tools/project_generation/create_tflm_tree.py ${TEST_OUTPUT_DIR}
+readable_run \
+  python3 tensorflow/lite/micro/tools/project_generation/create_tflm_tree.py \
+  ${TEST_OUTPUT_DIR} \
+  -e hello_world
+
 readable_run cp tensorflow/lite/micro/tools/project_generation/Makefile ${TEST_OUTPUT_DIR}
 
 pushd ${TEST_OUTPUT_DIR} > /dev/null
-readable_run make -j8 libtflm
+readable_run make -j8 examples
 popd > /dev/null
 
 readable_run python3 tensorflow/lite/micro/tools/project_generation/create_tflm_tree.py \
