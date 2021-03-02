@@ -1868,6 +1868,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           'expecting %s weights. Provided weights: %s...' %
           (self.name, len(weights), expected_num_weights, str(weights)[:50]))
 
+    weights = [np.array(item) for item in weights]
+    
     weight_index = 0
     weight_value_tuples = []
     for param in params:
