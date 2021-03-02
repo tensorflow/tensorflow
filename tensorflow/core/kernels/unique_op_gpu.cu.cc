@@ -206,6 +206,21 @@ class UniqueOpGPU : public AsyncOpKernel {
                       errors::Internal("No GPU stream available."), done);
 
     int64 input_size = input.NumElements();
+    bool has_count_output = num_outputs() > 2;
+    if (input_size == 0) {
+      // Early exit for trivial case.
+      Tensor* t = nullptr;
+      OP_REQUIRES_OK_ASYNC(
+          context, context->allocate_output(0, TensorShape({0}), &t), done);
+      OP_REQUIRES_OK_ASYNC(
+          context, context->allocate_output(1, TensorShape({0}), &t), done);
+      if (has_count_output) {
+        OP_REQUIRES_OK_ASYNC(
+            context, context->allocate_output(2, TensorShape({0}), &t), done);
+      }
+      done();
+      return;
+    }
 
     // The algorithm implemented here is as follows:
     // input = [3, 5, 3, 4, 1, 4, 9, 8, 6, 3, 5, 7, 8, 8, 4, 6, 4, 2, 5, 6]
@@ -291,24 +306,18 @@ class UniqueOpGPU : public AsyncOpKernel {
     // Copy the last element of sorted_input_unique_ids back to the host to
     // obtain uniq_size.
     ScratchSpace<TIndex> last_idx_host(context, 1, /*on_host=*/true);
-    if (input_size > 0) {
-      OP_REQUIRES_ASYNC(
-          context,
-          stream
-              ->ThenMemcpy(
-                  last_idx_host.mutable_data(),
-                  se::DeviceMemoryBase(
-                      const_cast<TIndex*>(sorted_input_unique_ids_ptr) +
-                          (input_size - 1),
-                      sizeof(*last_idx_host.data())),
-                  sizeof(*last_idx_host.data()))
-              .ok(),
-          errors::Internal("Failed to copy last_idx to host"), done);
-    } else {
-      *last_idx_host.mutable_data() = -1;
-    }
+    OP_REQUIRES_ASYNC(
+        context,
+        stream
+            ->ThenMemcpy(last_idx_host.mutable_data(),
+                         se::DeviceMemoryBase(
+                             const_cast<TIndex*>(sorted_input_unique_ids_ptr) +
+                                 (input_size - 1),
+                             sizeof(*last_idx_host.data())),
+                         sizeof(*last_idx_host.data()))
+            .ok(),
+        errors::Internal("Failed to copy last_idx to host"), done);
 
-    bool has_count_output = num_outputs() > 2;
     auto async_finish_computation = [this, context, input_size, input_ptr,
                                      sorted_input_inds, sorted_input_inds_ptr,
                                      sorted_input_unique_ids,
