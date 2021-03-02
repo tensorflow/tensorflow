@@ -39,7 +39,7 @@ TfLiteStatus ExpandTensorDim(TfLiteContext* context,
   }
   std::cout << "axis after roundup: " << axis << std::endl;
   std::cout << "input_dims->size: " << input_dims->size << std::endl;
-  TF_LITE_ENSURE(context, axis <= input_dims->size);
+  //TF_LITE_ENSURE(context, axis <= input_dims->size);
 
   output_dims->size = input_dims->size + 1;
   std::cout << "output_dims->size: " << output_dims->size << std::endl;
