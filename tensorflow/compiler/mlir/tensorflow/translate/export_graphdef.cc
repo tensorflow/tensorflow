@@ -667,7 +667,8 @@ Status Exporter::Convert(mlir::ModuleOp module,
     if (function.isExternal())
       return errors::FailedPrecondition("External functions not supported");
 
-    if (function.getName() == entry_func_id) {
+    if (function.getName() == entry_func_id &&
+        !configs.export_entry_func_to_flib) {
       entry_func.emplace(function);
     } else {
       TF_RETURN_IF_ERROR(
@@ -675,13 +676,17 @@ Status Exporter::Convert(mlir::ModuleOp module,
     }
   }
 
-  if (!entry_func.has_value())
-    return errors::FailedPrecondition("entry function `main` must be present");
+  if (!configs.export_entry_func_to_flib) {
+    if (!entry_func.has_value())
+      return errors::FailedPrecondition(
+          "entry function `main` must be present");
 
-  // Updates the graph and the function library definition.
-  TF_ASSIGN_OR_RETURN(
-      *graph, Exporter::Convert(configs, tf_dialect, entry_func.value(), &flib,
-                                control_ret_nodes));
+    // Updates the graph and the function library definition.
+    TF_ASSIGN_OR_RETURN(
+        *graph, Exporter::Convert(configs, tf_dialect, entry_func.value(),
+                                  &flib, control_ret_nodes));
+  }
+
   for (auto& func_def : flib.function()) {
     TF_RETURN_IF_ERROR(flib_def->AddFunctionDef(func_def));
   }
@@ -716,8 +721,16 @@ StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
     mlir::ModuleOp module, const GraphExportConfig& configs) {
   FunctionLibraryDefinition flib_def(OpRegistry::Global(),
                                      FunctionDefLibrary());
-  auto graph = absl::make_unique<Graph>(flib_def);
+  std::unique_ptr<Graph> graph;
   TF_RETURN_IF_ERROR(ConvertMlirToGraph(module, configs, &graph, &flib_def));
+
+  // If the entry function is exported to flib, then no graph is constructed.
+  // Construct one in that case.
+  if (configs.export_entry_func_to_flib) {
+    graph = std::make_unique<Graph>(OpRegistry::Global());
+  }
+  TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(flib_def.ToProto()));
+
   auto graphdef = absl::make_unique<GraphDef>();
   graph->ToGraphDef(graphdef.get());
   if (!configs.export_library) graphdef->clear_library();
