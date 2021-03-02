@@ -271,7 +271,7 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   const XPlane* host_plane = FindPlaneWithName(space, kCuptiDriverApiPlaneName);
   ASSERT_NE(host_plane, nullptr);
 #elif TENSORFLOW_USE_ROCM
-  const XPlane* host_plane = FindPlaneWithName(space, kRocmTracerPlaneName);
+  const XPlane* host_plane = FindPlaneWithName(space, kRoctracerApiPlaneName);
   ASSERT_NE(host_plane, nullptr);
 #endif
 

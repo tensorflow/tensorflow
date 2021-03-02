@@ -35,8 +35,8 @@ TF_CONST_INIT extern const absl::string_view kGpuPlanePrefix;
 TF_CONST_INIT extern const absl::string_view kTpuPlanePrefix;
 // Name of XPlane that contains CUPTI driver API generated events.
 TF_CONST_INIT extern const absl::string_view kCuptiDriverApiPlaneName;
-// Name of XPlane that contains RocmTracer generated events.
-TF_CONST_INIT extern const absl::string_view kRocmTracerPlaneName;
+// Name of XPlane that contains Roctracer API generated events.
+TF_CONST_INIT extern const absl::string_view kRoctracerApiPlaneName;
 // Name of XPlane that contains profile metadata such as XLA debug info.
 TF_CONST_INIT extern const absl::string_view kMetadataPlaneName;
 // Name of XPlane that contains kpi related metrics.
