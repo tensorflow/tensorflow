@@ -176,9 +176,9 @@ class InitializersTest(test.TestCase):
         self._runner(
             init_ops.Orthogonal(seed=123), tensor_shape, target_mean=0.)
 
-  @test.disable_with_predicate(pred=test.is_built_with_rocm,
-                               skip_message='Disable subtest on ROCm '
-                                            'due to missing QR op support')
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='Disable subtest on ROCm due to missing QR op support')
   @test_util.run_gpu_only
   def testVariablePlacementWithOrthogonalInitializer(self):
     with ops.Graph().as_default() as g:

@@ -1032,10 +1032,9 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
           input_layer.compute_output_shape([None, 2, 4]).as_list(),
           [None, 2, 16])
 
-  @test.disable_with_predicate(pred=test.is_built_with_rocm,
-                               skip_message='Skipping the test as ROCm '
-                                            'MIOpen does not support '
-                                            'padded input yet.')
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='Skipping as ROCm MIOpen does not support padded input yet.')
   def test_Bidirectional_last_output_with_masking(self):
     rnn = keras.layers.LSTM
     samples = 2
@@ -1063,10 +1062,9 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(y[0], np.concatenate([y[1], y[3]], axis=1))
 
   @parameterized.parameters([keras.layers.LSTM, keras.layers.GRU])
-  @test.disable_with_predicate(pred=test.is_built_with_rocm,
-                               skip_message='Skipping the test as ROCm '
-                                            'MIOpen does not support '
-                                            'padded input yet.')
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='Skipping as ROCm MIOpen does not support padded input yet.')
   def test_Bidirectional_sequence_output_with_masking(self, rnn):
     samples = 2
     dim = 5
@@ -1269,9 +1267,9 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
         batch_size=10)
 
   @parameterized.parameters(['ave', 'concat', 'mul'])
-  @test.disable_with_predicate(pred=test.is_built_with_rocm,
-                               skip_message='Skipping the test as ROCm '
-                               'RNN does not support ragged tensors yet.')
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='Skipping as ROCm RNN does not support ragged tensors yet.')
   def test_Bidirectional_ragged_input(self, merge_mode):
     np.random.seed(100)
     rnn = keras.layers.LSTM
