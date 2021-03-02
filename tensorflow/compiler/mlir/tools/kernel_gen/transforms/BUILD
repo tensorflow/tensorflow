@@ -37,6 +37,7 @@ cc_library(
     hdrs = ["rewriters.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        "//tensorflow/compiler/mlir/hlo",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
