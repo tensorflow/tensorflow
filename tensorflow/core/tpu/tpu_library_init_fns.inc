@@ -86,6 +86,7 @@ tensorflow::Status SetTpuOpsStructFns(void* library_handle) {
   TFTPU_SET_FN(ops_api_fn, TfTpuOrdinalSelector_Destroy);
   TFTPU_SET_FN(ops_api_fn, TfTpuOrdinalSelector_GetOrdinal);
   TFTPU_SET_FN(ops_api_fn, TfTpuOrdinalSelector_DequeueFromCoreSelector);
+  TFTPU_SET_FN(ops_api_fn, TfTpu_GetTpuPartitionedCallParams);
 
   return tensorflow::Status::OK();
 }
