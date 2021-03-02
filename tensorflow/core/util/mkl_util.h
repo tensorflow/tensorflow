@@ -996,11 +996,7 @@ memory::data_type MklDnnType<qint32>() {
 }
 template <>
 memory::data_type MklDnnType<bfloat16>() {
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
   return memory::data_type::bf16;
-#else
-  return memory::data_type::f32;
-#endif
 }
 
 // Map MklTensorFormat to MKL-DNN format tag
@@ -2034,7 +2030,6 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
 
 #define REGISTER_TEST_FLOAT32(TEST) REGISTER_TEST(TEST, DT_FLOAT, Float32Input);
 
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
 #define REGISTER_TEST_BFLOAT16(TEST) \
   REGISTER_TEST(TEST, DT_BFLOAT16, BFloat16Input);
 
@@ -2043,7 +2038,6 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
   REGISTER_TEST_BFLOAT16(TEST);
 #else
 #define REGISTER_TEST_ALL_TYPES(TEST) REGISTER_TEST_FLOAT32(TEST);
-#endif  // ENABLE_INTEL_MKL_BFLOAT16
 
 #endif  // INTEL_MKL
 #endif  // TENSORFLOW_CORE_UTIL_MKL_UTIL_H_
