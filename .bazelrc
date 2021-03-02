@@ -92,6 +92,7 @@
 #     release_cpu_macos:    Toolchain and CUDA options for MacOS CPU builds.
 #     release_gpu_linux:    Toolchain and CUDA options for Linux GPU builds.
 #     release_gpu_linux_cuda_10_1:    Toolchain and CUDA options for CUDA 10.1 Linux GPU builds.
+#     release_gpu_linux_cuda_11_2:    Toolchain and CUDA options for CUDA 11.2 Linux GPU builds.
 #     release_cpu_windows:    Toolchain and CUDA options for Windows CPU builds.
 #     release_gpu_windows:    Toolchain and CUDA options for Windows GPU builds.
 
@@ -622,6 +623,12 @@ build:release_gpu_linux_cuda_10_1 --config=release_gpu_linux
 build:release_gpu_linux_cuda_10_1 --action_env CUDA_TOOLKIT_PATH="/usr/local/cuda-10.1"
 build:release_gpu_linux_cuda_10_1 --action_env=TF_CUDA_VERSION="10"
 build:release_gpu_linux_cuda_10_1 --action_env=TF_CUDNN_VERSION="7"
+
+
+build:release_gpu_linux_cuda_11_2 --config=release_gpu_linux
+build:release_gpu_linux_cuda_11_2 --action_env CUDA_TOOLKIT_PATH="/usr/local/cuda-11.2"
+build:release_gpu_linux_cuda_11_2 --action_env=TF_CUDA_VERSION="11.2"
+build:release_gpu_linux_cuda_11_2 --action_env=TF_CUDNN_VERSION="8.1"
 
 # Address sanitizer
 # CC=clang bazel build --config asan
