@@ -520,7 +520,7 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1
   def testFillFloat(self):
-    with self.session(use_gpu=True):
+    with self.session():
       values = constant_op.constant(
           [0.0, 10.0, 13.0, 14.0, 32.0, 33.0], dtype=dtypes.float64)
       default_value = constant_op.constant(-1.0, dtype=dtypes.float64)

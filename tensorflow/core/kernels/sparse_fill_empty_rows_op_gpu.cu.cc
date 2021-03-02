@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -168,8 +168,6 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
                     const Tensor& indices_t, const Tensor& values_t,
                     const Tensor& dense_shape_t,
                     typename AsyncOpKernel::DoneCallback done) {
-    const int kOutputIndicesOutput = 0;
-    const int kOutputValuesOutput = 1;
     const int kEmptyRowIndicatorOutput = 2;
     const int kReverseIndexMapOutput = 3;
 
@@ -250,12 +248,12 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
 
     size_t temp_storage_bytes;
     auto err = gpuprim::DeviceScan::InclusiveSum(
-        /* d_temp_storage */ nullptr,
-        /* temp_storage_bytes */ temp_storage_bytes,
-        /* d_in */ elements_per_row.data(),
-        /* d_out */ input_row_ends.data(),
-        /* num_items */ dense_rows,
-        /* stream */ cu_stream);
+        /*d_temp_storage=*/nullptr,
+        /*temp_storage_bytes=*/temp_storage_bytes,
+        /*d_in=*/elements_per_row.data(),
+        /*d_out=*/input_row_ends.data(),
+        /*num_items=*/dense_rows,
+        /*stream=*/cu_stream);
     if (err != 0) {
       return errors::Internal(
           "SparseFillEmptyRows: Could not launch "
@@ -269,12 +267,12 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
           DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
           &temp_storage));
       err = gpuprim::DeviceScan::InclusiveSum(
-          /* d_temp_storage */ temp_storage.flat<int8>().data(),
-          /* temp_storage_bytes */ temp_storage_bytes,
-          /* d_in */ elements_per_row.data(),
-          /* d_out */ input_row_ends.data(),
-          /* num_items */ dense_rows,
-          /* stream */ cu_stream);
+          /*d_temp_storage=*/temp_storage.flat<int8>().data(),
+          /*temp_storage_bytes=*/temp_storage_bytes,
+          /*d_in=*/elements_per_row.data(),
+          /*d_out=*/input_row_ends.data(),
+          /*num_items=*/dense_rows,
+          /*stream=*/cu_stream);
       if (err != 0) {
         return errors::Internal(
             "SparseFillEmptyRows: Could not launch "
@@ -309,12 +307,12 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
     auto num_empty_rows_through = num_empty_rows_through_t.flat<Tindex>();
 
     err = gpuprim::DeviceScan::InclusiveSum(
-        /* d_temp_storage */ nullptr,
-        /* temp_storage_bytes */ temp_storage_bytes,
-        /* d_in */ empty_row_indicator,
-        /* d_out */ num_empty_rows_through.data(),
-        /* num_items */ dense_rows,
-        /* stream */ cu_stream);
+        /*d_temp_storage=*/nullptr,
+        /*temp_storage_bytes=*/temp_storage_bytes,
+        /*d_in=*/empty_row_indicator,
+        /*d_out=*/num_empty_rows_through.data(),
+        /*num_items=*/dense_rows,
+        /*stream=*/cu_stream);
     if (err != 0) {
       return errors::Internal(
           "SparseFillEmptyRows: Could not launch "
@@ -328,12 +326,12 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
           DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
           &temp_storage2));
       err = gpuprim::DeviceScan::InclusiveSum(
-          /* d_temp_storage */ temp_storage2.flat<int8>().data(),
-          /* temp_storage_bytes */ temp_storage_bytes,
-          /* d_in */ empty_row_indicator,
-          /* d_out */ num_empty_rows_through.data(),
-          /* num_items */ dense_rows,
-          /* stream */ cu_stream);
+          /*d_temp_storage=*/temp_storage2.flat<int8>().data(),
+          /*temp_storage_bytes=*/temp_storage_bytes,
+          /*d_in=*/empty_row_indicator,
+          /*d_out=*/num_empty_rows_through.data(),
+          /*num_items=*/dense_rows,
+          /*stream=*/cu_stream);
       if (err != 0) {
         return errors::Internal(
             "SparseFillEmptyRows: Could not launch "
@@ -343,7 +341,7 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
       }
     }
 
-    ScratchSpace<Tindex> num_empty_rows_host(context, 1, /* on_host */ true);
+    ScratchSpace<Tindex> num_empty_rows_host(context, 1, /*on_host=*/true);
     if (!stream
              ->ThenMemcpy(num_empty_rows_host.mutable_data(),
                           se::DeviceMemoryBase(
@@ -354,7 +352,7 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
       return errors::Internal("Failed to copy num_empty_rows to host");
     }
 
-    ScratchSpace<int> rows_are_not_ordered_host(context, 1, /* on_host */ true);
+    ScratchSpace<int> rows_are_not_ordered_host(context, 1, /*on_host=*/true);
     if (!stream
              ->ThenMemcpy(rows_are_not_ordered_host.mutable_data(),
                           rows_are_not_ordered_gpu_memory,
@@ -380,7 +378,7 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
       TensorShape output_indices_shape({N_full, rank});
       OP_REQUIRES_OK_ASYNC(
           context,
-          context->allocate_output(kOutputIndicesOutput, output_indices_shape,
+          context->allocate_output("output_indices", output_indices_shape,
                                    &output_indices_t),
           done);
       auto output_indices = output_indices_t->matrix<Tindex>();
@@ -388,7 +386,7 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
       Tensor* output_values_t;
       OP_REQUIRES_OK_ASYNC(
           context,
-          context->allocate_output(kOutputValuesOutput, TensorShape({N_full}),
+          context->allocate_output("output_values", TensorShape({N_full}),
                                    &output_values_t),
           done);
       auto output_values = output_values_t->vec<T>();
@@ -586,11 +584,11 @@ struct SparseFillEmptyRowsGrad<GPUDevice, T, Tindex> {
 
     std::size_t temp_storage_bytes = 0;
     auto gpuprim_status = gpuprim::DeviceReduce::Sum(
-        /*temp_storage = */ nullptr, temp_storage_bytes,
-        /*d_in = */ transform_iterator,
-        /*d_out = */ d_default_value.data(),
-        /*num_items = */ N_full,
-        /*stream = */ device.stream());
+        /*temp_storage=*/nullptr, temp_storage_bytes,
+        /*d_in=*/transform_iterator,
+        /*d_out=*/d_default_value.data(),
+        /*num_items=*/N_full,
+        /*stream=*/device.stream());
 
     if (gpuprim_status != gpuSuccess) {
       return errors::Internal(
@@ -606,12 +604,11 @@ struct SparseFillEmptyRowsGrad<GPUDevice, T, Tindex> {
         &temp_storage));
 
     gpuprim_status = gpuprim::DeviceReduce::Sum(
-        /*temp_storage = */ temp_storage.flat<int8>().data(),
-        temp_storage_bytes,
-        /*d_in = */ transform_iterator,
-        /*d_out = */ d_default_value.data(),
-        /*num_items = */ N_full,
-        /*stream = */ device.stream());
+        /*temp_storage=*/temp_storage.flat<int8>().data(), temp_storage_bytes,
+        /*d_in=*/transform_iterator,
+        /*d_out=*/d_default_value.data(),
+        /*num_items=*/N_full,
+        /*stream=*/device.stream());
 
     if (gpuprim_status != gpuSuccess) {
       return errors::Internal(
