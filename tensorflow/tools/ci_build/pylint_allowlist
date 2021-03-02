@@ -170,6 +170,8 @@
 ^tensorflow/python/training/tracking/tracking\.py.*\[E0202.*method-hidden
 ^tensorflow/python/training/tracking/util_test.py.*\[E1120.*no-value-for-parameter
 ^tensorflow/python/training/tracking/util_test.py.*\[E1123.*unexpected-keyword-arg
+^tensorflow/python/training/tracking/util_with_v1_optimizers_test.py.*\[E1120.*no-value-for-parameter
+^tensorflow/python/training/tracking/util_with_v1_optimizers_test.py.*\[E1123.*unexpected-keyword-arg
 ^tensorflow/python/util/function_utils_test.py.*\[E1120.*no-value-for-parameter
 ^tensorflow/python/util/tf_stack_test.py.*\[E1121.*too-many-function-args
 ^tensorflow/security/fuzzing/raggedCountSparseOutput_fuzz.py.*\[C0330.*bad-continuation
