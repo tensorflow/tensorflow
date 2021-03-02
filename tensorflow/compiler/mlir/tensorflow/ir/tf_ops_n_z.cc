@@ -302,6 +302,49 @@ OpFoldResult PackOp::fold(ArrayRef<Attribute> operands) {
   return slice_op.input();
 }
 
+// Convert Pack to Reshape when there is only one operand to be packed.
+// For example,
+//
+//   %0 = tf.Pack(%input) {axis = 0} // %input : tensor<2x3xf32>
+//
+// can be canonicalized to
+//
+//   %shape = "tf.Const"() {value = dense<[1, 2, 3]> : tensor<3xi64>}
+//   %0 = tf.Reshape(%input, %shape)
+struct ConvertPackToReshape : public OpRewritePattern<PackOp> {
+  using OpRewritePattern<PackOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(PackOp pack_op,
+                                PatternRewriter &rewriter) const override {
+    // Check if there is only one operand to be packed.
+    if (pack_op.N() != 1) {
+      return failure();
+    }
+
+    // Check if input and output are static.
+    auto input_ty = pack_op.getOperand(0).getType().cast<ShapedType>();
+    auto output_ty = pack_op.output().getType().cast<ShapedType>();
+    if (!input_ty.hasStaticShape() || !output_ty.hasStaticShape()) {
+      return failure();
+    }
+
+    // Create constant shape for reshape.
+    auto type =
+        RankedTensorType::get(output_ty.getRank(), rewriter.getIntegerType(64));
+    auto shape_attr = DenseIntElementsAttr::get(type, output_ty.getShape());
+    auto shape = rewriter.create<ConstOp>(pack_op.getLoc(), shape_attr);
+
+    rewriter.replaceOpWithNewOp<ReshapeOp>(pack_op, output_ty,
+                                           pack_op.getOperand(0), shape);
+    return success();
+  }
+};
+
+void PackOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                         MLIRContext *context) {
+  results.insert<ConvertPackToReshape>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // PadOp
 //===----------------------------------------------------------------------===//
