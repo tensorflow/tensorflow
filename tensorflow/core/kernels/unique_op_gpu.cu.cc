@@ -265,10 +265,10 @@ class UniqueOpGPU : public AsyncOpKernel {
     const T* input_ptr = input.flat<T>().data();
     OP_REQUIRES_OK_ASYNC(
         context,
-        (GpuRadixSort(context, input_size, /*keys_in=*/input_ptr,
-                      /*keys_out=*/sorted_input_ptr,
-                      /*indices_in=*/static_cast<const TIndex*>(nullptr),
-                      /*indices_out=*/sorted_input_inds_ptr)),
+        GpuRadixSort(context, input_size, /*keys_in=*/input_ptr,
+                     /*keys_out=*/sorted_input_ptr,
+                     /*indices_in=*/static_cast<const TIndex*>(nullptr),
+                     /*indices_out=*/sorted_input_inds_ptr),
         done);
 
     // Create a fancy input iterator to indicate segment boundaries.
