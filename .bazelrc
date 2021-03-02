@@ -50,7 +50,6 @@
 # Feature and Third party library support options:
 #     xla:          Build TF with XLA
 #     tpu:          Build TF with TPU support
-#     using_cuda:   CUDA is available to build system.
 #     cuda:         Build with full cuda support.
 #     rocm:         Build with AMD GPU support (rocm).
 #     mkl:          Enable full mkl support.
@@ -191,23 +190,22 @@ build:mkl_aarch64 -c opt
 
 # This config refers to building with CUDA available. It does not necessarily
 # mean that we build CUDA op kernels.
-build:using_cuda --define=using_cuda=true
-build:using_cuda --action_env TF_NEED_CUDA=1
-build:using_cuda --crosstool_top=@local_config_cuda//crosstool:toolchain
+build:cuda_base --@local_config_cuda//:enable_cuda
+build:cuda_base --action_env TF_NEED_CUDA=1
+build:cuda_base --crosstool_top=@local_config_cuda//crosstool:toolchain
 
 # Enable the mlir generated GPU kernels only for cuda builds.
 build --define=tensorflow_enable_mlir_generated_gpu_kernels=0
 # This is a more specific option, so it takes precedence over the line above for cuda builds.
-build:using_cuda --define=tensorflow_enable_mlir_generated_gpu_kernels=1
+build:cuda_base --define=tensorflow_enable_mlir_generated_gpu_kernels=1
 
 # This config refers to building CUDA op kernels with nvcc.
-build:cuda --config=using_cuda
-build:cuda --define=using_cuda_nvcc=true
+build:cuda --config=cuda_base
+build:cuda --@local_config_cuda//:cuda_compiler=nvcc
 
 # This config refers to building CUDA op kernels with clang.
-build:cuda_clang --config=using_cuda
-build:cuda_clang --define=using_cuda_clang=true
-build:cuda_clang --define=using_clang=true
+build:cuda_clang --config=cuda_base
+build:cuda_clang --@local_config_cuda//:cuda_compiler=clang
 build:cuda_clang --action_env TF_CUDA_CLANG=1
 
 # dbg config, as a shorthand for '--config=opt -c dbg'
@@ -431,6 +429,9 @@ build:rbe_cpu_linux --host_platform="@ubuntu16.04-manylinux2010-py3_config_platf
 build:rbe_cpu_linux --platforms="@ubuntu16.04-manylinux2010-py3_config_platform//:platform"
 
 build:rbe_linux_cuda_base --config=rbe_linux
+build:rbe_linux_cuda_base --@local_config_cuda//:enable_cuda
+build:rbe_linux_cuda_base --@local_config_cuda//:cuda_compiler=nvcc
+# TODO(csigg): those probably don't do anything because cuda_config is remote.
 build:rbe_linux_cuda_base --repo_env=TF_NEED_TENSORRT=1
 build:rbe_linux_cuda_base --repo_env=TF_CUDA_VERSION=10
 build:rbe_linux_cuda_base --repo_env=TF_CUDNN_VERSION=7
@@ -439,7 +440,6 @@ build:rbe_linux_cuda_base --repo_env=TF_NEED_CUDA=1
 test:rbe_linux_cuda_base --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
 
 build:rbe_linux_cuda10.1_nvcc_base --config=rbe_linux_cuda_base
-build:rbe_linux_cuda10.1_nvcc_base --define=using_cuda_nvcc=true
 build:rbe_linux_cuda10.1_nvcc_base --host_crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda//crosstool:toolchain"
 build:rbe_linux_cuda10.1_nvcc_base --crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda//crosstool:toolchain"
 build:rbe_linux_cuda10.1_nvcc_base --extra_toolchains="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda//crosstool:toolchain-linux-x86_64"
@@ -456,7 +456,6 @@ build:rbe_linux_cuda10.1_nvcc_py3.7 --config=rbe_linux_cuda10.1_nvcc_base --repo
 build:rbe_linux_cuda10.1_nvcc_py3.8 --config=rbe_linux_cuda10.1_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_python3.8"
 
 build:rbe_linux_cuda11.0_nvcc_base --config=rbe_linux_cuda_base
-build:rbe_linux_cuda11.0_nvcc_base --define=using_cuda_nvcc=true
 build:rbe_linux_cuda11.0_nvcc_base --host_crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_cuda//crosstool:toolchain"
 build:rbe_linux_cuda11.0_nvcc_base --crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_cuda//crosstool:toolchain"
 build:rbe_linux_cuda11.0_nvcc_base --extra_toolchains="@ubuntu18.04-gcc7_manylinux2010-cuda11.0-cudnn8-tensorrt7.1_config_cuda//crosstool:toolchain-linux-x86_64"

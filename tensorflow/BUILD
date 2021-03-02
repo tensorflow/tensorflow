@@ -197,7 +197,10 @@ config_setting(
 
 config_setting(
     name = "windows",
-    values = {"cpu": "x64_windows"},
+    # Internal builds query the target OS.
+    # copybara:uncomment flag_values = {"//tools/cpp:cc_target_os": "windows"},
+    # OSS builds query the CPU type.
+    values = {"cpu": "x64_windows"},  # copybara:comment
     visibility = ["//visibility:public"],
 )
 
@@ -411,11 +414,12 @@ config_setting(
 
 # Crosses between platforms and file system libraries not supported on those
 # platforms due to limitations in nested select() statements.
-config_setting(
+selects.config_setting_group(
     name = "with_cuda_support_windows_override",
-    define_values = {"using_cuda_nvcc": "true"},
-    values = {"cpu": "x64_windows"},
-    visibility = ["//visibility:public"],
+    match_all = [
+        ":using_cuda_nvcc",
+        ":windows",
+    ],
 )
 
 config_setting(
@@ -479,9 +483,46 @@ selects.config_setting_group(
     ],
 )
 
-config_setting(
+# Config setting that is satisfied when TensorFlow is being built with CUDA
+# support through e.g. `--config=cuda` (or `--config=cuda_clang` in OSS).
+alias(
+    name = "is_cuda_enabled",
+    actual = if_oss(
+        "@local_config_cuda//:is_cuda_enabled",
+        "@local_config_cuda//cuda:using_clang",
+    ),
+)
+
+# Config setting that is satisfied when CUDA device code should be compiled
+# with clang. It does not imply that CUDA support has been enabled.
+alias(
+    name = "is_cuda_compiler_clang",
+    actual = if_oss(
+        "@local_config_cuda//:is_cuda_compiler_clang",
+        "@local_config_cuda//cuda:TRUE",
+    ),
+)
+
+# Config setting that is satisfied when CUDA device code should be compiled
+# with nvcc. It does not imply that CUDA support has been enabled.
+alias(
+    name = "is_cuda_compiler_nvcc",
+    actual = if_oss(
+        "@local_config_cuda//:is_cuda_compiler_nvcc",
+        "@local_config_cuda//cuda:FALSE",
+    ),
+)
+
+# Config setting whether TensorFlow is built with CUDA support using clang.
+alias(
     name = "using_cuda_clang",
-    define_values = {"using_cuda_clang": "true"},
+    actual = "@local_config_cuda//cuda:using_clang",
+)
+
+# Config setting whether TensorFlow is built with CUDA support using nvcc.
+alias(
+    name = "using_cuda_nvcc",
+    actual = "@local_config_cuda//cuda:using_nvcc",
 )
 
 # Config setting to use in select()s to distinguish open source build from
@@ -502,12 +543,12 @@ bool_setting(
     visibility = ["//visibility:private"],
 )
 
-config_setting(
+selects.config_setting_group(
     name = "using_cuda_clang_with_dynamic_build",
-    define_values = {
-        "using_cuda_clang": "true",
-        "framework_shared_object": "true",
-    },
+    match_all = [
+        ":using_cuda_clang",
+        ":framework_shared_object",
+    ],
 )
 
 selects.config_setting_group(
@@ -526,19 +567,6 @@ config_setting(
         "framework_shared_object": "true",
     },
     visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "using_cuda_nvcc",
-    define_values = {"using_cuda_nvcc": "true"},
-)
-
-config_setting(
-    name = "using_cuda_nvcc_with_dynamic_build",
-    define_values = {
-        "using_cuda_nvcc": "true",
-        "framework_shared_object": "true",
-    },
 )
 
 selects.config_setting_group(
@@ -566,15 +594,6 @@ config_setting(
     name = "api_version_2",
     define_values = {"tf_api_version": "2"},
     visibility = ["//visibility:public"],
-)
-
-# This flag is defined for select statements that match both
-# on 'windows' and 'api_version_2'. In this case, bazel requires
-# having a flag which is a superset of these two.
-config_setting(
-    name = "windows_and_api_version_2",
-    define_values = {"tf_api_version": "2"},
-    values = {"cpu": "x64_windows"},
 )
 
 # This flag enables experimental MLIR support.

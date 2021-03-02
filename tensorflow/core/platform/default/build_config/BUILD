@@ -27,6 +27,20 @@ cc_library(
     deps = [],
 )
 
+cc_library(
+    name = "_empty_lib",
+    visibility = ["//visibility:private"],
+)
+
+alias(
+    name = "_cuda_runtime",
+    actual = select({
+        "//tensorflow:framework_shared_object": ":_empty_lib",
+        "//conditions:default": "//tensorflow/stream_executor/cuda:all_runtime",
+    }),
+    visibility = ["//visibility:private"],
+)
+
 tf_cuda_library(
     name = "stream_executor",
     cuda_deps = [
@@ -47,11 +61,11 @@ tf_cuda_library(
         "//tensorflow:macos": ["IOKit"],
         "//conditions:default": [],
     }) + select({
-        "//tensorflow:using_cuda_clang": ["//tensorflow/stream_executor/cuda:all_runtime"],
-        "//tensorflow:using_cuda_nvcc": ["//tensorflow/stream_executor/cuda:all_runtime"],
-        "//tensorflow:using_cuda_clang_with_dynamic_build": [],
-        "//tensorflow:using_cuda_nvcc_with_dynamic_build": [],
-        "//tensorflow:using_rocm_hipcc": ["//tensorflow/stream_executor/rocm:all_runtime"],
+        "//tensorflow:using_cuda_clang": [":_cuda_runtime"],
+        "//tensorflow:using_cuda_nvcc": [":_cuda_runtime"],
+        "//tensorflow:using_rocm_hipcc": [
+            "//tensorflow/stream_executor/rocm:all_runtime",
+        ],
         "//conditions:default": [],
     }),
 )
