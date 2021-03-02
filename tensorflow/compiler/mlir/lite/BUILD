@@ -626,7 +626,6 @@ tf_native_cc_binary(
     srcs = [
         "converter_gen.cc",
     ],
-    compatible_with = get_compatible_with_cloud(),
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TableGen",
