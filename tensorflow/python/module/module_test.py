@@ -335,8 +335,7 @@ class ForwardMethodsTest(test_util.TensorFlowTestCase):
 class AbcTest(test_util.TensorFlowTestCase):
 
   def testAbstract(self):
-    msg = "Can't instantiate .* abstract methods"
-    with self.assertRaisesRegex(TypeError, msg):
+    with self.assertRaises(TypeError):
       AbstractModule()  # pylint: disable=abstract-class-instantiated
 
   def testConcrete(self):
