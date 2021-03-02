@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <iostream>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
@@ -29,6 +30,7 @@ void TestExpandDims(const int* input_dims, const T* input_data,
                     const int* axis_dims, const int32_t* axis_data,
                     const int* expected_output_dims, const int* output_dims,
                     const T* expected_output_data, T* output_data) {
+  std::cout << "in TestExpandDims()" << std::endl;
   TfLiteIntArray* in_dims = IntArrayFromInts(input_dims);
   TfLiteIntArray* ax_dims = IntArrayFromInts(axis_dims);
   TfLiteIntArray* out_dims = IntArrayFromInts(output_dims);
@@ -47,12 +49,14 @@ void TestExpandDims(const int* input_dims, const T* input_data,
   int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
+  std::cout << "launching micro op EXPAND_DIMS" << std::endl;
   const TfLiteRegistration registration = Register_EXPAND_DIMS();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array,
                              /*builtin_data=*/nullptr);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
+  std::cout << "micro op EXPAND_DIMS finished" << std::endl;
 
   // The output tensor's data and shape have been updated by the kernel.
   TfLiteTensor* actual_out_tensor = &tensors[2];
@@ -66,6 +70,7 @@ void TestExpandDims(const int* input_dims, const T* input_data,
   for (int i = 0; i < output_size; ++i) {
     TF_LITE_MICRO_EXPECT_EQ(expected_output_data[i], output_data[i]);
   }
+  std::cout << "micro op EXPAND_DIMS shape and data passed" << std::endl;
 }
 
 }  // namespace
@@ -170,6 +175,7 @@ TF_LITE_MICRO_TEST(ExpandDimsNegativeAxisTest1) {
   tflite::testing::TestExpandDims<float>(input_dims, input_data, axis_dims,
                                          axis_data, golden_dims, output_dims,
                                          golden_data, output_data);
+  TF_LITE_MICRO_EXPECT_EQ(0, 1);
 }
 
 TF_LITE_MICRO_TESTS_END

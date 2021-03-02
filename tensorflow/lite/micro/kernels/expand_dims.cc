@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <iostream>
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -29,6 +30,7 @@ constexpr int kOutputTensor = 0;
 TfLiteStatus ExpandTensorDim(TfLiteContext* context,
                              const TfLiteEvalTensor* input, int32_t axis,
                              TfLiteEvalTensor* output) {
+  std::cout << "in ExpandTensorDim()" << std::endl;
   const TfLiteIntArray* input_dims = input->dims;
   TfLiteIntArray* output_dims = output->dims;
   if (axis < 0) {
@@ -46,12 +48,14 @@ TfLiteStatus ExpandTensorDim(TfLiteContext* context,
       output_dims->data[i] = input_dims->data[i - 1];
     }
   }
+  std::cout << "end of ExpandTensorDim() OK" << std::endl;
   return kTfLiteOk;
 }
 
 TfLiteStatus GetAxisValueFromTensor(TfLiteContext* context,
                                     const TfLiteEvalTensor* axis,
                                     int32_t* axis_value) {
+  std::cout << "in GetAxisValueFromTensor()" << std::endl;
   const int axis_dims = (tflite::micro::GetTensorShape(axis)).DimensionsCount();
   if (axis_dims > 1) {
     TF_LITE_KERNEL_LOG(context, "Axis has only one element for Expand_Dims.",
@@ -62,6 +66,7 @@ TfLiteStatus GetAxisValueFromTensor(TfLiteContext* context,
   if (kTfLiteInt32 == (axis->type)) {
     const int32_t* axis_ptr = tflite::micro::GetTensorData<int32_t>(axis);
     *axis_value = axis_ptr[0];
+    std::cout << "end of GetAxisValueFromTensor() OK" << std::endl;
     return kTfLiteOk;
   } else {
     TF_LITE_KERNEL_LOG(context,
@@ -72,6 +77,7 @@ TfLiteStatus GetAxisValueFromTensor(TfLiteContext* context,
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  std::cout << "in expand_dims Prepare()" << std::endl;
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   const TfLiteTensor* input;
@@ -87,17 +93,21 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                        "DynamicTensor is not yet supported by Expand_Dims.");
     return kTfLiteError;
   }
+  std::cout << "end of expand_dims Prepare() OK" << std::endl;
   return kTfLiteOk;
 }
 
 template <typename Tin, typename Tout>
 void memCopyN(Tout* out, Tin* in, const int num_elements) {
+  std::cout << "in memCopyN()" << std::endl;
   for (int i = 0; i < num_elements; ++i) {
     out[i] = static_cast<Tout>(in[i]);
   }
+  std::cout << "end of memCopyN() OK" << std::endl;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  std::cout << "in expand_dims Eval()" << std::endl;
   const TfLiteEvalTensor* input =
       tflite::micro::GetEvalInput(context, node, kInputTensor);
   const TfLiteEvalTensor* axis =
@@ -134,6 +144,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           input->type);
       return kTfLiteError;
   }
+  std::cout << "end of expand_dims Eval() OK" << std::endl;
   return kTfLiteOk;
 }
 }  // namespace
