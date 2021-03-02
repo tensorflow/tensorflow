@@ -68,7 +68,6 @@ tf_cuda_cc_test(
     tags = tf_cuda_tests_tags() + [
         "nomac",
         "gpu_cupti",
-        "no_rocm",
     ],
     deps = [
         ":device_tracer",

@@ -201,12 +201,6 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
     for (auto& iter : aggregated_events_) {
       auto& event = iter.second;
 
-      // sliently drop events that we capture via roctracer
-      // but do not yet know how to export to either stepstats or xplane
-      // sliently because we only want to use OnEventsDropped for cases
-      // when we drop events because they are somehow invalid
-      if (event.type == RocmTracerEventType::Memset) continue;
-
       // For some hip API events, we never get a corresponding HCC
       // activity record callback and hence we currently do not have a way
       // of associating a valid device_id and stream_id with those events.
