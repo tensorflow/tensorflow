@@ -175,6 +175,7 @@ TF_LITE_MICRO_TEST(ExpandDimsNegativeAxisTest1) {
   tflite::testing::TestExpandDims<float>(input_dims, input_data, axis_dims,
                                          axis_data, golden_dims, output_dims,
                                          golden_data, output_data);
+  //TF_LITE_MICRO_EXPECT_EQ(0, 1);
 }
 
 TF_LITE_MICRO_TESTS_END

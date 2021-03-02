@@ -31,15 +31,20 @@ TfLiteStatus ExpandTensorDim(TfLiteContext* context,
                              const TfLiteEvalTensor* input, int32_t axis,
                              TfLiteEvalTensor* output) {
   std::cout << "in ExpandTensorDim()" << std::endl;
+  std::cout << "axis before roundup: " << axis << std::endl;
   const TfLiteIntArray* input_dims = input->dims;
   TfLiteIntArray* output_dims = output->dims;
   if (axis < 0) {
     axis = input_dims->size + 1 + axis;
   }
+  std::cout << "axis after roundup: " << axis << std::endl;
+  std::cout << "input_dims->size: " << input_dims->size << std::endl;
   TF_LITE_ENSURE(context, axis <= input_dims->size);
 
   output_dims->size = input_dims->size + 1;
+  std::cout << "output_dims->size: " << output_dims->size << std::endl;
   for (int32_t i = 0; i < output_dims->size; ++i) {
+    std::cout << "i=" << i << ";  input_dims->data[i]: " << input_dims->data[i] << std::endl;
     if (i < axis) {
       output_dims->data[i] = input_dims->data[i];
     } else if (i == axis) {
