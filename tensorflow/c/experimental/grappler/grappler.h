@@ -51,7 +51,7 @@ limitations under the License.
 //   // Version checking uses `struct_size`. It should be set both by core
 //   // and the plugin.
 //   TP_OptimizerRegistrationParams params{
-//       TP_OPTIMIZER_REGISTRARION_PARAMS_STRUCT_SIZE};
+//       TP_OPTIMIZER_REGISTRATION_PARAMS_STRUCT_SIZE};
 //   TP_Optimizer optimizer{TP_OPTIMIZER_STRUCT_SIZE};
 //   TP_OptimizerConfigs configs{TP_OPTIMIZER_CONFIGS_STRUCT_SIZE};
 //   params.optimizer = &optimizer;
@@ -60,7 +60,7 @@ limitations under the License.
 //   /* Plugin code below */
 //    void TF_InitGraph(TP_OptimizerRegistrationParams* params,
 //                            TF_Status* status) {
-//      params->struct_size = TP_OPTIMIZER_REGISTRARION_PARAMS_STRUCT_SIZE;
+//      params->struct_size = TP_OPTIMIZER_REGISTRATION_PARAMS_STRUCT_SIZE;
 //      params->device_type = "MY_DEVICE";
 //
 //      // Disable certain optimizer.
@@ -155,7 +155,7 @@ typedef struct TP_OptimizerRegistrationParams {
   TP_Optimizer* optimizer;                 // output, set by plugin
 } TP_OptimizerRegistrationParams;
 
-#define TP_OPTIMIZER_REGISTRARION_PARAMS_STRUCT_SIZE \
+#define TP_OPTIMIZER_REGISTRATION_PARAMS_STRUCT_SIZE \
   TF_OFFSET_OF_END(TP_OptimizerRegistrationParams, optimizer)
 
 // TF_InitGraph is used to do graph optimizer registration.

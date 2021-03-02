@@ -56,7 +56,7 @@ namespace {
 tensorflow::Status ValidateTPOptimizerRegistrationParams(
     const TP_OptimizerRegistrationParams& params) {
   VALIDATE_STRUCT_SIZE(TP_OptimizerRegistrationParams, params,
-                       TP_OPTIMIZER_REGISTRARION_PARAMS_STRUCT_SIZE);
+                       TP_OPTIMIZER_REGISTRATION_PARAMS_STRUCT_SIZE);
   VALIDATE_MEMBER(TP_OptimizerRegistrationParams, params, device_type);
   return tensorflow::Status::OK();
 }
@@ -167,7 +167,7 @@ tensorflow::Status InitGraphPlugin(void* dso_handle) {
 
 tensorflow::Status InitGraphPlugin(TFInitGraphPluginFn init_fn) {
   TP_OptimizerRegistrationParams params{
-      TP_OPTIMIZER_REGISTRARION_PARAMS_STRUCT_SIZE};
+      TP_OPTIMIZER_REGISTRATION_PARAMS_STRUCT_SIZE};
   TP_Optimizer optimizer{TP_OPTIMIZER_STRUCT_SIZE};
   TP_OptimizerConfigs optimizer_configs{TP_OPTIMIZER_CONFIGS_STRUCT_SIZE};
   params.major_version = SE_MAJOR;

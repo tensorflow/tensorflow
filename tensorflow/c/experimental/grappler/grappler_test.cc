@@ -32,7 +32,7 @@ void optimize_func(void* optimizer, TF_Buffer* graph_buf,
                    TF_Buffer* optimized_graph_buf, TF_Status* tf_status) {}
 
 void PopulateDefaultParam(TP_OptimizerRegistrationParams* params) {
-  params->struct_size = TP_OPTIMIZER_REGISTRARION_PARAMS_STRUCT_SIZE;
+  params->struct_size = TP_OPTIMIZER_REGISTRATION_PARAMS_STRUCT_SIZE;
   params->optimizer_configs->struct_size = TP_OPTIMIZER_CONFIGS_STRUCT_SIZE;
   params->optimizer->struct_size = TP_OPTIMIZER_STRUCT_SIZE;
   params->optimizer->create_func = nullptr;
