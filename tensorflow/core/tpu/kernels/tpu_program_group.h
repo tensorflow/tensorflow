@@ -127,12 +127,12 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
 
   const std::vector<XLA_TpuProgram*>& tpu_programs() const;
   std::vector<XLA_TpuProgram*> tpu_programs(TpuProgramShardingType type) const;
-  const XLA_TpuProgram* tpu_program(int index) const;
+  const XLA_TpuProgram* tpu_program(int index) const override;
   void set_tpu_programs(absl::Span<XLA_TpuProgram* const> tpu_programs);
 
-  const TPUExecutableInfoProto& executable_info(int index) const;
+  const TPUExecutableInfoProto& executable_info(int index) const override;
 
-  const TPUHostTransferInfoProto& host_transfer_info(int index) const;
+  const TPUHostTransferInfoProto& host_transfer_info(int index) const override;
   void set_hlo_metadatas(absl::Span<const xla::HloProto> hlo_metadatas);
   const xla::HloProto* hlo_metadata(int index) const;
   absl::Span<const xla::HloProto* const> hlo_metadatas() const override;

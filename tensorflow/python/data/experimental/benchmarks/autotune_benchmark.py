@@ -41,9 +41,9 @@ class AutotuneBenchmark(benchmark_base.DatasetBenchmarkBase):
         if autotune_buffers else "parallelism_only")
     wall_time = self.run_and_report_benchmark(
         dataset=dataset,
-        num_elements=1,
+        num_elements=benchmark_iters,
         warmup=True,
-        iters=benchmark_iters,
+        iters=1,
         name=benchmark_label + (autotune_string if autotune else ""))
     return wall_time
 

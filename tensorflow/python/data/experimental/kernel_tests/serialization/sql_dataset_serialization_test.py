@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the SqlDataset serialization."""
+"""Tests for checkpointing the SqlDataset."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -22,8 +22,8 @@ import os
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.kernel_tests import sql_dataset_test_base
-from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
 from tensorflow.python.data.experimental.ops import readers
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
@@ -31,10 +31,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class SqlDatasetSerializationTest(
-    sql_dataset_test_base.SqlDatasetTestBase,
-    dataset_serialization_test_base.DatasetSerializationTestBase,
-    parameterized.TestCase):
+class SqlDatasetCheckpointTest(sql_dataset_test_base.SqlDatasetTestBase,
+                               checkpoint_test_base.CheckpointTestBase,
+                               parameterized.TestCase):
 
   def _build_dataset(self, num_repeats):
     data_source_name = os.path.join(test.get_temp_dir(), "tftest.sqlite")

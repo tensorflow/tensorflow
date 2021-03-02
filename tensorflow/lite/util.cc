@@ -96,7 +96,10 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
       *bytes = sizeof(float);
       break;
     case kTfLiteInt32:
-      *bytes = sizeof(int);
+      *bytes = sizeof(int32_t);
+      break;
+    case kTfLiteUInt32:
+      *bytes = sizeof(uint32_t);
       break;
     case kTfLiteUInt8:
       *bytes = sizeof(uint8_t);
@@ -169,4 +172,8 @@ std::string GetOpNameByRegistration(const TfLiteRegistration& registration) {
   return result;
 }
 
+bool IsValidationSubgraph(const char* name) {
+  // NOLINTNEXTLINE: can't use absl::StartsWith as absl is not allowed.
+  return name && std::string(name).find(kValidationSubgraphNamePrefix) == 0;
+}
 }  // namespace tflite

@@ -28,23 +28,13 @@ config_setting(
     },
 )
 
-config_setting(
-    name = "darwin",
-    values = {"cpu": "darwin"},
-)
-
-config_setting(
-    name = "freebsd",
-    values = {"cpu": "freebsd"},
-)
-
 # Provides CUDA headers for '#include "third_party/gpus/cuda/include/cuda.h"'
 # All clients including TensorFlow should use these directives.
 cuda_header_library(
     name = "cuda_headers",
     hdrs = [
         "cuda/cuda_config.h",
-        ":cuda-include"
+        ":cuda-include",
     ],
     include_prefix = "third_party/gpus",
     includes = [
@@ -128,6 +118,12 @@ cc_import(
 )
 
 cc_import(
+    name = "cublasLt",
+    interface_library = "cuda/lib/%{cublasLt_lib}",
+    system_provided = 1,
+)
+
+cc_import(
     name = "cusolver",
     interface_library = "cuda/lib/%{cusolver_lib}",
     system_provided = 1,
@@ -163,6 +159,7 @@ cc_library(
     name = "cuda",
     deps = [
         ":cublas",
+        ":cublasLt",
         ":cuda_headers",
         ":cudart",
         ":cudnn",
@@ -173,13 +170,13 @@ cc_library(
 
 alias(
     name = "cub_headers",
-    actual = "%{cub_actual}"
+    actual = "%{cub_actual}",
 )
 
 cuda_header_library(
     name = "cupti_headers",
     hdrs = [":cuda-extras"],
-    include_prefix="third_party/gpus",
+    include_prefix = "third_party/gpus",
     includes = ["cuda/extras/CUPTI/include/"],
     deps = [":cuda_headers"],
 )
@@ -211,7 +208,7 @@ bzl_library(
 
 py_library(
     name = "cuda_config_py",
-    srcs = ["cuda/cuda_config.py"]
+    srcs = ["cuda/cuda_config.py"],
 )
 
 %{copy_rules}

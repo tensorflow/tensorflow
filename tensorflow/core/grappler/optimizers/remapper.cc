@@ -230,15 +230,9 @@ bool IsCpuCompatibleDataType(const NodeDef* contraction,
                              const string& type_attr = "T") {
   DataType dtype = GetDataTypeFromAttr(*contraction, type_attr);
 #if defined(INTEL_MKL)
-#if defined(ENABLE_INTEL_MKL_BFLOAT16)
   if (IsConv2D(*contraction) || IsDepthwiseConv2dNative(*contraction) ||
       IsMatMul(*contraction)) {
     return dtype == DT_FLOAT || dtype == DT_BFLOAT16;
-#else
-  if (IsConv2D(*contraction) || IsDepthwiseConv2dNative(*contraction) ||
-      IsMatMul(*contraction)) {
-    return dtype == DT_FLOAT;
-#endif  // ENABLE_INTEL_MKL_BFLOAT16
 #else
   if (IsConv2D(*contraction)) {
     return dtype == DT_FLOAT || dtype == DT_DOUBLE;
@@ -677,14 +671,9 @@ bool FindContractionWithBiasAddAndAdd(const RemapperContext& ctx,
   const auto* node_def = node_view.node();
   if (!IsAddN(*node_def) && !IsAddWithNoBroadcast(ctx, *node_def)) return false;
 
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
   // MKL AddN ops only support float and bfloat16 data types.
   if (!HasDataType(node_def, DT_FLOAT) && !HasDataType(node_def, DT_BFLOAT16))
     return false;
-#else
-  // MKL AddN ops only support float data type.
-  if (!HasDataType(node_def, DT_FLOAT)) return false;
-#endif  // ENABLE_INTEL_MKL_BFLOAT16
 
   ContractionWithBiasAdd base;
   matched->port_id = 0;
@@ -730,14 +719,9 @@ bool FindContractionWithBiasAndAddActivation(
   // Currently, Contraction + Bias + Add + Tanh pattern is not supported
   if (IsTanh(*node_def)) return false;
 
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
   // MKL activation op only supports float and bfloat16 data types.
   if (!HasDataType(node_def, DT_FLOAT) && !HasDataType(node_def, DT_BFLOAT16))
     return false;
-#else
-  // MKL activation op only supports float data type.
-  if (!HasDataType(node_def, DT_FLOAT)) return false;
-#endif  // ENABLE_INTEL_MKL_BFLOAT16
 
   // And input to activation must match ContractionWithBiasAddAndAdd pattern.
   if (node_view->NumRegularFanins() < 1) return false;
@@ -843,7 +827,7 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
     const auto* fused_batch_norm_node_def = fused_batch_norm.node();
     if (!IsFusedBatchNorm(*fused_batch_norm_node_def)) return false;
 
-#ifndef ENABLE_MKLDNN_V1
+#ifndef INTEL_MKL
     // We fuse FusedBatchNorm on GPU or MKL CPU.
     if (!NodeIsOnGpu(fused_batch_norm_node_def)) return false;
 #else
@@ -851,7 +835,7 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
 #endif
 
     DataType t_dtype = GetDataTypeFromAttr(*fused_batch_norm_node_def, "T");
-#ifndef ENABLE_MKLDNN_V1
+#ifndef INTEL_MKL
     if (t_dtype != DT_FLOAT && t_dtype != DT_HALF) return false;
 #else
     if (t_dtype != DT_FLOAT && t_dtype != DT_BFLOAT16) return false;
@@ -919,7 +903,7 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
   if (IsAdd(*relu_fanin_0_node_def)) {
     // Currently no CPU implementation for "FusedBatchNorm + SideInput +
     // <Activation>""
-#ifdef ENABLE_MKLDNN_V1
+#ifdef INTEL_MKL
     return false;
 #endif
 
@@ -1022,7 +1006,7 @@ void CopyFusedBatchNormAttributes(const NodeDef& fused_batch_norm,
   if (fused_batch_norm.op() != "FusedBatchNorm") {
     SetAttrValue(src_attr.at("U"), &(*attr)["U"]);
   } else {
-#ifndef ENABLE_MKLDNN_V1
+#ifndef INTEL_MKL
     SetAttrValue(src_attr.at("T"), &(*attr)["U"]);
 #else
     SetAttrValue(DT_FLOAT, &(*attr)["U"]);

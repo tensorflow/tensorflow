@@ -44,7 +44,7 @@ tf_cuda_library(
         "//tensorflow/stream_executor/platform:dso_loader",
         "//tensorflow/stream_executor/rocm:rocm_platform_id",
     ] + select({
-        "@local_config_cuda//cuda:darwin": ["IOKit"],
+        "//tensorflow:macos": ["IOKit"],
         "//conditions:default": [],
     }) + select({
         "//tensorflow:using_cuda_clang": ["//tensorflow/stream_executor/cuda:all_runtime"],
@@ -67,7 +67,7 @@ cc_library(
             ":cuda",
         ],
     }) + select({
-        "@local_config_cuda//cuda:darwin": ["IOKit"],
+        "//tensorflow:macos": ["IOKit"],
         "//conditions:default": [],
     }),
 )
@@ -194,7 +194,7 @@ cc_library(
         "@local_config_cuda//cuda:cudart",
     ],
     linkopts = select({
-        "@local_config_cuda//cuda:darwin": [
+        "//tensorflow:macos": [
             "-Wl,-rpath,../local_config_cuda/cuda/lib",
             "-Wl,-rpath,../local_config_cuda/cuda/extras/CUPTI/lib",
         ],

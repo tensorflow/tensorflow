@@ -38,64 +38,6 @@ namespace jax {
 
 namespace py = pybind11;
 
-// TODO(jblespiau): Using `NoSharding` instead of `None` would allow us to
-// simplify the conversion logic.
-std::vector<AvalDimSharding> PyShardingToCpp(pybind11::tuple py_sharding) {
-  std::vector<AvalDimSharding> cpp_sharding;
-  cpp_sharding.reserve(py_sharding.size());
-  for (py::handle value : py_sharding) {
-    if (value.is_none()) {
-      cpp_sharding.push_back(NoSharding());
-    } else if (py::isinstance<Chunked>(value)) {
-      cpp_sharding.push_back(py::cast<Chunked>(value));
-    } else if (py::isinstance<Unstacked>(value)) {
-      cpp_sharding.push_back(py::cast<Unstacked>(value));
-    } else {
-      throw std::runtime_error(
-          absl::StrCat("Not supported Python object in PyShardingToCpp in "
-                       "pmap_lib.cc. The object was of type ",
-                       py::cast<std::string>(py::str(value.get_type())),
-                       "\n:", py::cast<std::string>(py::str(value))));
-    }
-  }
-  return cpp_sharding;
-}
-
-pybind11::tuple CppShardingToPy(std::vector<AvalDimSharding> sharding) {
-  py::tuple result(sharding.size());
-  int counter = 0;
-  for (auto value : sharding) {
-    if (absl::holds_alternative<NoSharding>(value)) {
-      result[counter++] = py::none();
-    } else if (absl::holds_alternative<Chunked>(value)) {
-      py::handle handle = py::cast(absl::get<Chunked>(value));
-      result[counter++] = py::cast<py::object>(handle);
-    } else if (absl::holds_alternative<Unstacked>(value)) {
-      py::handle handle = py::cast(absl::get<Unstacked>(value));
-      result[counter++] = py::cast<py::object>(handle);
-    } else {
-      LOG(FATAL) << "Unhandled CPP type in CppShardingToPy.";
-    }
-  }
-  return result;
-}
-
-std::vector<MeshDimAssignment> PyMeshShardingToCpp(
-    pybind11::tuple py_mesh_mapping) {
-  return py::cast<std::vector<MeshDimAssignment>>(py_mesh_mapping);
-}
-
-pybind11::tuple CppMeshMappingToPy(
-    std::vector<MeshDimAssignment> mesh_mapping) {
-  py::tuple result(mesh_mapping.size());
-  int counter = 0;
-  for (auto& value : mesh_mapping) {
-    result[counter] = py::cast(value);
-    ++counter;
-  }
-  return result;
-}
-
 namespace {
 
 struct PmapCacheEntry {
@@ -132,11 +74,10 @@ struct PmapCacheEntry {
 class PmapFunction {
  public:
   PmapFunction(py::function fun, py::function cache_miss,
-               py::function get_jax_enable_x64, std::vector<int> static_argnums)
+               std::vector<int> static_argnums)
       : fun_(std::move(fun)),
         cache_miss_(std::move(cache_miss)),
-        static_argnums_(std::move(static_argnums)),
-        get_jax_enable_x64_(get_jax_enable_x64) {
+        static_argnums_(std::move(static_argnums)) {
     std::sort(static_argnums_.begin(), static_argnums_.end());
   }
 
@@ -181,9 +122,6 @@ class PmapFunction {
   // We need a `unique_ptr` here to ensure value pointer stability.
   absl::flat_hash_map<CallSignature, std::unique_ptr<PmapCacheEntry>>
       executables_;
-
-  const py::function get_jax_enable_x64_;
-  absl::optional<bool> jax_enable_x64_ = absl::nullopt;
 
   // A vector of size `num_outputs`, specifying the sharding of each output
   std::vector<ShardingSpec> sharding_specs_;
@@ -256,10 +194,6 @@ py::object PmapFunction::Call(py::args args, py::kwargs kwargs) {
   if (always_fallback_to_python_) {
     return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
   }
-  // Delayed values are retrieved on the first call to `Call`.
-  if (jax_enable_x64_ == absl::nullopt) {
-    jax_enable_x64_ = py::cast<bool>(get_jax_enable_x64_());
-  }
 
   ParsedArgumentsAsBuffers arguments;
   if (!ParseArguments(args, kwargs, static_argnums_, arguments).ok()) {
@@ -268,7 +202,7 @@ py::object PmapFunction::Call(py::args args, py::kwargs kwargs) {
 
   // Get dynamic argument signatures.
   for (py::handle arg : arguments.flat_dynamic_args) {
-    auto signature_or_error = ArgSignatureOfValue(arg, jax_enable_x64_.value());
+    auto signature_or_error = ArgSignatureOfValue(arg, GetEnableX64());
     if (!signature_or_error.ok()) {
       return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
     }
@@ -404,7 +338,10 @@ void BuildPmapSubmodule(pybind11::module& m) {
                     std::vector<MeshDimAssignment>>(),
            py::arg("sharding"), py::arg("mesh_mapping"))
       .def_property_readonly("sharding", &ShardingSpec::GetSharding)
-      .def_property_readonly("mesh_mapping", &ShardingSpec::GetMeshMapping);
+      .def_property_readonly("mesh_mapping", &ShardingSpec::GetMeshMapping)
+      .def("__eq__", [](const ShardingSpec& self, const ShardingSpec& other) {
+        return self == other;
+      });
 
   py::class_<ShardedDeviceArray> sda(pmap_lib, "ShardedDeviceArray");
   sda.def(py::init<pybind11::handle, ShardingSpec, pybind11::list>())
@@ -422,11 +359,9 @@ void BuildPmapSubmodule(pybind11::module& m) {
   pmap_lib.def(
       "pmap",
       [](py::function fun, py::function cache_miss,
-         py::function get_jax_enable_x64,
          std::vector<int> static_argnums) -> std::unique_ptr<PmapFunction> {
         return std::make_unique<PmapFunction>(
-            std::move(fun), std::move(cache_miss),
-            std::move(get_jax_enable_x64), std::move(static_argnums));
+            std::move(fun), std::move(cache_miss), std::move(static_argnums));
       });
 }
 

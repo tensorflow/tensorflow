@@ -888,6 +888,11 @@ def HLO_ConcatenateOp : HLO_Op<"concatenate",
   let hasCanonicalizer = 1;
   let hasFolder = 1;
 
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r) {
+      return succeeded(mlir::verifyCompatibleShapes(l, r));
+    }
+  }];
 }
 
 def HLO_CollectivePermuteOp: HLO_Op<"collective_permute",
@@ -960,6 +965,9 @@ def HLO_DotGeneralOp: HLO_Op<"dot_general", [NoSideEffect]>,
 
   let results = (outs HLO_Tensor);
   let verifier = [{ return Verify(*this); }];
+  // DotGeneral op required custom exporter to pass the preferred element type
+  // to Xla builder.
+  let hasCustomHLOConverter = 1;
 }
 
 // Define Base Einsum op within the HLO dialect as these are client ops and

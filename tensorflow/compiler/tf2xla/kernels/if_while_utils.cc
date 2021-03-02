@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/kernels/if_while_utils.h"
 
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
+#include "tensorflow/compiler/tf2xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 
 namespace tensorflow {
 
@@ -38,11 +40,28 @@ absl::InlinedVector<int, 5> ConvertCompileTimeConstArgumentsToConst(
       xla::StatusOr<absl::optional<Tensor>> maybe_constant =
           expression.ResolveConstant(ctx->compiler()->client());
       if (maybe_constant.ok() && maybe_constant.ValueOrDie().has_value()) {
-        arg->kind = XlaCompiler::Argument::kConstant;
-        arg->type = expression.dtype();
-        arg->constant_value = std::move(maybe_constant.ValueOrDie().value());
-        arg->shape = expression.GetShape().ValueOrDie();
-        resolved_constant_idxs.push_back(i);
+        xla::StatusOr<Tensor> values_are_dynamic =
+            expression.ResolveDynamism(ctx->compiler()->client());
+        bool all_values_are_static = false;
+        if (!values_are_dynamic.ok()) {
+          // Conservatiely assume all values are dynamic.
+          all_values_are_static = true;
+        } else {
+          xla::Literal literal =
+              HostTensorToLiteral(values_are_dynamic.ValueOrDie()).ValueOrDie();
+          all_values_are_static = literal.IsAll(0);
+        }
+
+        if (all_values_are_static) {
+          arg->kind = XlaCompiler::Argument::kConstant;
+          arg->type = expression.dtype();
+          arg->constant_value = std::move(maybe_constant.ValueOrDie().value());
+          arg->shape = expression.GetShape().ValueOrDie();
+          resolved_constant_idxs.push_back(i);
+        } else {
+          arg->value_bound.emplace(
+              std::move(maybe_constant.ValueOrDie().value()));
+        }
       }
     }
   }

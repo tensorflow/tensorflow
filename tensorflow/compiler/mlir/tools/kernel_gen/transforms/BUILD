@@ -37,6 +37,7 @@ cc_library(
     hdrs = ["rewriters.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        "//tensorflow/compiler/mlir/hlo",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
@@ -126,6 +127,7 @@ cc_library(
         "@llvm-project//mlir:StandardOpsTransforms",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TargetLLVMIR",
+        "@llvm-project//mlir:TargetLLVMIRModuleTranslation",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TensorTransforms",
         "@llvm-project//mlir:Transforms",

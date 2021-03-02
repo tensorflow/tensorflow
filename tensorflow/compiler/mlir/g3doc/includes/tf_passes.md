@@ -621,3 +621,6 @@ func @tf_tpu_rewrite(%arg0: tensor<8xi32>) -> tensor<8xi32> {
   return %1 : tensor<8xi32>
 }
 ```
+### `-tf-verify-for-export`: Verify module is suitable for export back to TF Graph
+Verifies whether all functions in module are of single tf_executor.graph and
+each tf_executor.island in tf_executor.graph only has a single op.

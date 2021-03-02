@@ -432,7 +432,7 @@ def _map_captures_to_created_tensors(original_captures, resource_map):
           if isinstance(secondary_referrer, base.Trackable):
             trackable_referrers.append(secondary_referrer)
       raise AssertionError(
-          ("Tried to export a function which references untracked resource {}."
+          ("Tried to export a function which references untracked resource {}. "
            "TensorFlow objects (e.g. tf.Variable) captured by functions must "
            "be tracked by assigning them to an attribute of a tracked object "
            "or assigned to an attribute of the main object directly.\n\n"

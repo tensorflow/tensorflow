@@ -48,8 +48,8 @@ Status PopulateQuantizationSpecs(
 // Convert imported MLIR file to TfLite flatbuffer.
 // This will also run relevant passes as well.
 Status ConvertMLIRToTFLiteFlatBuffer(
-    const toco::TocoFlags& toco_flags, mlir::OwningModuleRef module,
-    const mlir::TFL::PassConfig& pass_config,
+    const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
+    mlir::OwningModuleRef module, const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags, string* result,
     llvm::Optional<tensorflow::Session*> session);
 

@@ -252,6 +252,15 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::ExpOp>(Location loc,
 }
 
 template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::Expm1Op>(Location loc,
+                                                    ArrayRef<Type> result_types,
+                                                    ArrayRef<Value> args,
+                                                    OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::math::ExpM1Op>{}(
+      loc, result_types, args, b);
+}
+
+template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::CeilOp>(Location loc,
                                                    ArrayRef<Type> result_types,
                                                    ArrayRef<Value> args,

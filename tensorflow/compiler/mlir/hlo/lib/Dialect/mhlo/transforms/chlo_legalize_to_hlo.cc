@@ -51,7 +51,7 @@ struct ConvertConstantLikeOp : public OpConversionPattern<ConstantLikeOp> {
       ConversionPatternRewriter &rewriter) const override {
     auto result_ty = op.getType().cast<ShapedType>();
 
-    // Unranked uses are not supported.  Consider `transform-unranked-hlo`.
+    // Unranked uses are not supported.  Consider `mhlo-transform-unranked-hlo`.
     if (!result_ty.hasRank()) return failure();
 
     // Lower to MHLO constant if statically shaped.
@@ -894,6 +894,51 @@ Value MaterializeZeta(ConversionPatternRewriter &rewriter, Location loc,
   return output;
 }
 
+Value MaterializePolygamma(ConversionPatternRewriter &rewriter, Location loc,
+                           ValueRange args) {
+  PolygammaOp::Adaptor transformed(args);
+  Value n = transformed.n();
+  Value x = transformed.x();
+
+  // Handle integer n > 0.
+  Value one = getConstantLike(rewriter, loc, 1.0, x);
+  Value two = getConstantLike(rewriter, loc, 2.0, x);
+  Value sign = rewriter.create<mhlo::SubOp>(
+      loc,
+      rewriter.create<mhlo::MulOp>(loc, two,
+                                   rewriter.create<mhlo::RemOp>(loc, n, two)),
+      one);
+  Value n_plus_one = rewriter.create<mhlo::AddOp>(loc, n, one);
+  Value exp_lgamma_np1 = rewriter.create<mhlo::ExpOp>(
+      loc, rewriter.create<chlo::LgammaOp>(loc, n_plus_one));
+  Value zeta = rewriter.create<chlo::ZetaOp>(loc, n_plus_one, x);
+  Value result = rewriter.create<mhlo::MulOp>(
+      loc, rewriter.create<mhlo::MulOp>(loc, sign, exp_lgamma_np1), zeta);
+
+  // Handle n = 0.
+  const StringAttr kEQ = rewriter.getStringAttr(
+      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::EQ));
+  Value zero = getConstantLike(rewriter, loc, 0.0, x);
+  Value n_eq_zero = rewriter.create<mhlo::CompareOp>(loc, n, zero, kEQ);
+  result = rewriter.create<mhlo::SelectOp>(
+      loc, n_eq_zero, rewriter.create<chlo::DigammaOp>(loc, x), result);
+
+  // Check that n is a natural number.
+  const StringAttr kNE = rewriter.getStringAttr(
+      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::NE));
+  Value non_int = rewriter.create<mhlo::CompareOp>(
+      loc, n, rewriter.create<mhlo::FloorOp>(loc, n), kNE);
+  const StringAttr kLT = rewriter.getStringAttr(
+      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::LT));
+  Value negative = rewriter.create<mhlo::CompareOp>(loc, n, zero, kLT);
+  Value non_natural = rewriter.create<mhlo::OrOp>(loc, non_int, negative);
+  return rewriter.create<mhlo::SelectOp>(
+      loc, non_natural,
+      getConstantLike(rewriter, loc, std::numeric_limits<double>::quiet_NaN(),
+                      x),
+      result);
+}
+
 struct ConvertLgammaOp : public OpConversionPattern<LgammaOp> {
   using OpConversionPattern<LgammaOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
@@ -920,6 +965,20 @@ struct ConvertDigammaOp : public OpConversionPattern<DigammaOp> {
   }
 };
 
+struct ConvertPolygammaOp : public OpConversionPattern<PolygammaOp> {
+  using OpConversionPattern<PolygammaOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      PolygammaOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    FloatType min_precision_ty = rewriter.getF32Type();
+    rewriter.replaceOp(
+        op, MaterializeWithUpcast(rewriter, loc, operands, min_precision_ty,
+                                  &MaterializePolygamma));
+    return success();
+  }
+};
+
 struct ConvertZetaOp : public OpConversionPattern<ZetaOp> {
   using OpConversionPattern<ZetaOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
@@ -930,6 +989,90 @@ struct ConvertZetaOp : public OpConversionPattern<ZetaOp> {
     rewriter.replaceOp(
         op, MaterializeWithUpcast(rewriter, loc, operands, min_precision_ty,
                                   &MaterializeZeta));
+    return success();
+  }
+};
+
+struct ConvertSelectOp : public OpConversionPattern<BroadcastSelectOp> {
+  using OpConversionPattern<BroadcastSelectOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      BroadcastSelectOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    // Only support ranked operands.
+    typename BroadcastSelectOp::Adaptor transformed(operands);
+    Value pred = transformed.pred();
+    Value on_true = transformed.on_true();
+    Value on_false = transformed.on_false();
+    auto pred_type = pred.getType().dyn_cast<RankedTensorType>();
+    auto on_true_type = on_true.getType().dyn_cast<RankedTensorType>();
+    auto on_false_type = on_false.getType().dyn_cast<RankedTensorType>();
+    auto result_type = op.getResult().getType().dyn_cast<RankedTensorType>();
+    if (!pred_type || !on_true_type || !on_false_type || !result_type) {
+      return failure();
+    }
+
+    auto loc = op.getLoc();
+
+    Value pred_shape = rewriter.createOrFold<shape::ShapeOfOp>(loc, pred);
+    Value on_true_shape = rewriter.createOrFold<shape::ShapeOfOp>(loc, on_true);
+    Value on_false_shape =
+        rewriter.createOrFold<shape::ShapeOfOp>(loc, on_false);
+    int64_t result_rank = std::max(
+        {pred_type.getRank(), on_true_type.getRank(), on_false_type.getRank()});
+
+    Value broadcastable_cstr =
+        rewriter.createOrFold<shape::CstrBroadcastableOp>(
+            loc, ValueRange{pred_shape, on_true_shape, on_false_shape});
+    auto assuming_op = rewriter.create<shape::AssumingOp>(
+        loc, ArrayRef<Type>{result_type}, broadcastable_cstr);
+
+    OpBuilder::InsertionGuard guard(rewriter);
+    rewriter.createBlock(&assuming_op.doRegion());
+
+    Value result_extents = rewriter.createOrFold<shape::BroadcastOp>(
+        loc, shape::getExtentTensorType(op.getContext()),
+        ValueRange{pred_shape, on_true_shape, on_false_shape},
+        /*error=*/nullptr);
+    auto shape_type =
+        RankedTensorType::get({result_rank}, rewriter.getIndexType());
+    result_extents =
+        rewriter.createOrFold<tensor::CastOp>(loc, shape_type, result_extents);
+
+    Value broadcasted_pred = pred;
+    // Pred has an implicit broadcast for scalars, so use that when convenient.
+    if (pred_type.getRank() > 0) {
+      auto pred_broadcast_dimensions = llvm::to_vector<4>(
+          llvm::seq<int64_t>(result_rank - pred_type.getRank(), result_rank));
+      broadcasted_pred = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
+          loc,
+          RankedTensorType::get(result_type.getShape(),
+                                pred_type.getElementType()),
+          pred, result_extents,
+          rewriter.getI64TensorAttr(pred_broadcast_dimensions));
+    }
+    auto on_true_broadcast_dimensions = llvm::to_vector<4>(
+        llvm::seq<int64_t>(result_rank - on_true_type.getRank(), result_rank));
+    Value broadcasted_on_true = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
+        loc,
+        RankedTensorType::get(result_type.getShape(),
+                              on_true_type.getElementType()),
+        on_true, result_extents,
+        rewriter.getI64TensorAttr(on_true_broadcast_dimensions));
+    auto on_false_broadcast_dimensions = llvm::to_vector<4>(
+        llvm::seq<int64_t>(result_rank - on_false_type.getRank(), result_rank));
+    Value broadcasted_on_false = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
+        loc,
+        RankedTensorType::get(result_type.getShape(),
+                              on_false_type.getElementType()),
+        on_false, result_extents,
+        rewriter.getI64TensorAttr(on_false_broadcast_dimensions));
+
+    // And generate the final non-broadcasted ternary op.
+    Value final_result = rewriter.create<mhlo::SelectOp>(
+        loc, result_type, broadcasted_pred, broadcasted_on_true,
+        broadcasted_on_false);
+    rewriter.create<shape::AssumingYieldOp>(loc, final_result);
+    rewriter.replaceOp(op, {assuming_op.getResult(0)});
     return success();
   }
 };
@@ -1081,6 +1224,7 @@ void PopulateChloBroadcastingPatterns(MLIRContext *context,
       context, patterns, 10);
   PopulateForBroadcastingBinaryOp<ConvertRankedDynamicBroadcastBinaryOp>(
       context, patterns, 5);
+  patterns->insert<ConvertSelectOp>(context);
 }
 
 void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
@@ -1095,6 +1239,7 @@ void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
                    ConvertErfOp,
                    ConvertErfcOp,
                    ConvertLgammaOp,
+                   ConvertPolygammaOp,
                    ConvertZetaOp>(context);
   // clang-format on
 }

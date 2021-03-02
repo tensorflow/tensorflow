@@ -177,7 +177,7 @@ LogicalResult InferReturnTypeComponentsForTFOp(
     OpResultAsShapeFn op_result_as_shape_fn,
     ResultElementTypeFn result_element_type_fn,
     SmallVectorImpl<ShapedTypeComponents>& inferred_return_shapes) {
-  assert(op->getName().getDialect() ==
+  assert(op->getName().getDialectNamespace() ==
          TensorFlowDialect::getDialectNamespace());
 
   auto op_name_or =

@@ -192,8 +192,9 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def(
       "QR",
       [](XlaOp a, bool full_matrices) -> StatusOr<std::pair<XlaOp, XlaOp>> {
-        TF_ASSIGN_OR_RETURN(auto qr, QRDecomposition(a, full_matrices));
-        return std::make_pair(qr.q, qr.r);
+        XlaOp q, r;
+        QrExplicit(a, full_matrices, q, r);
+        return std::make_pair(q, r);
       },
       py::arg("operand"), py::arg("full_matrices"));
   ops.def(

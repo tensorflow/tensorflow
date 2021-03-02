@@ -52,11 +52,12 @@ command:
 
 ```
 make -f tensorflow/lite/micro/tools/make/Makefile \
-TARGET=arc_emsdp TAGS=reduce_codesize \
+TARGET=arc_emsdp ARC_TAGS=reduce_codesize \
+OPTIMIZED_KERNEL_DIR=arc_mli \
 generate_person_detection_int8_make_project
 ```
 
-Note that `TAGS=reduce_codesize` applies example specific changes of code to
+Note that `ARC_TAGS=reduce_codesize` applies example specific changes of code to
 reduce total size of application. It can be omitted.
 
 ### Build and Run Example
@@ -226,18 +227,17 @@ build and upload the example.
 To test the camera, start by pointing the device's camera at something that is
 definitely not a person, or just covering it up. The next time the blue LED
 flashes, the device will capture a frame from the camera and begin to run
-inference. Since the vision model we are using for person detection is
-relatively large, it takes a long time to run inference—around 19 seconds at the
-time of writing, though it's possible TensorFlow Lite has gotten faster since
-then.
+inference. The vision model we are using for person detection is relatively
+large, but with cmsis-nn optimizations it only takes around 800ms to run the
+model.
 
-After 19 seconds or so, the inference result will be translated into another LED
-being lit. Since you pointed the camera at something that isn't a person, the
-red LED should light up.
+After a moment, the inference result will be translated into another LED being
+lit. Since you pointed the camera at something that isn't a person, the red LED
+should light up.
 
 Now, try pointing the device's camera at yourself! The next time the blue LED
 flashes, the device will capture another image and begin to run inference. After
-19 seconds, the green LED should light up!
+a brief puase, the green LED should light up!
 
 Remember, image data is captured as a snapshot before each inference, whenever
 the blue LED flashes. Whatever the camera is pointed at during that moment is

@@ -69,8 +69,9 @@ std::string ExperimentalConvertSavedModelToMlir(
 // Returns:
 //   A string of textual MLIR representing the raw imported SavedModel.
 std::string ExperimentalConvertSavedModelV1ToMlirLite(
-    const std::string &saved_model_path, const std::string &tags,
-    bool upgrade_legacy, bool show_debug_info, TF_Status *status);
+    const std::string &saved_model_path, const std::string &exported_names_str,
+    const std::string &tags, bool upgrade_legacy, bool show_debug_info,
+    TF_Status *status);
 
 // Load a SavedModel V1 and return a textual MLIR string corresponding to it.
 //
@@ -83,9 +84,9 @@ std::string ExperimentalConvertSavedModelV1ToMlirLite(
 // Returns:
 //   A string of textual MLIR representing the raw imported SavedModel.
 std::string ExperimentalConvertSavedModelV1ToMlir(
-    const std::string &saved_model_path, const std::string &tags,
-    bool lift_variables, bool upgrade_legacy, bool show_debug_info,
-    TF_Status *status);
+    const std::string &saved_model_path, const std::string &exported_names_str,
+    const std::string &tags, bool lift_variables, bool upgrade_legacy,
+    bool show_debug_info, TF_Status *status);
 
 std::string ExperimentalRunPassPipeline(const std::string &mlir_txt,
                                         const std::string &pass_pipeline,

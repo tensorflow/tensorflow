@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/metrics.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -48,6 +50,7 @@ namespace data {
 /* static */ constexpr const char* const ParallelBatchDatasetOp::kDropRemainder;
 /* static */ constexpr const char* const ParallelBatchDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const ParallelBatchDatasetOp::kOutputShapes;
+/* static */ constexpr const char* const ParallelBatchDatasetOp::kDeterministic;
 
 namespace {
 
@@ -64,7 +67,8 @@ constexpr char kStatus[] = "status";
 class ParallelBatchDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, int64 batch_size, int64 num_parallel_calls,
-          bool drop_remainder, const DatasetBase* input)
+          bool drop_remainder, const DatasetBase* input,
+          DeterminismPolicy deterministic)
       : DatasetBase(DatasetContext(ctx)),
         batch_size_(batch_size),
         // Dataset batch is sometimes used to stack all elements in the
@@ -76,6 +80,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
         num_parallel_calls_(num_parallel_calls),
         drop_remainder_(drop_remainder),
         input_(input),
+        deterministic_(deterministic),
         traceme_metadata_(
             {{"autotune",
               num_parallel_calls == model::kAutotune ? "true" : "false"},
@@ -156,10 +161,16 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     Node* drop_remainder = nullptr;
     TF_RETURN_IF_ERROR(b->AddScalar(drop_remainder_, &drop_remainder));
 
+    std::vector<std::pair<StringPiece, AttrValue>> attrs;
+    // Attr: deterministic
+    AttrValue deterministic_attr;
+    b->BuildAttrValue(deterministic_.String(), &deterministic_attr);
+    attrs.emplace_back(kDeterministic, deterministic_attr);
+
     TF_RETURN_IF_ERROR(b->AddDataset(
         this,
-        {input_graph_node, batch_size, num_parallel_calls, drop_remainder}, {},
-        output));
+        {input_graph_node, batch_size, num_parallel_calls, drop_remainder},
+        attrs, output));
     return Status::OK();
   }
 
@@ -171,7 +182,9 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
           mu_(std::make_shared<mutex>()),
           cond_var_(std::make_shared<condition_variable>()),
           num_parallel_calls_(std::make_shared<model::SharedState>(
-              params.dataset->num_parallel_calls_, mu_, cond_var_)) {}
+              params.dataset->num_parallel_calls_, mu_, cond_var_)),
+          deterministic_(params.dataset->deterministic_.IsDeterministic() ||
+                         params.dataset->deterministic_.IsDefault()) {}
 
     ~Iterator() override {
       CancelThreads(/*wait=*/true);
@@ -183,10 +196,14 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       if (num_parallel_calls_->value == model::kAutotune) {
         num_parallel_calls_->value = ctx->runner_threadpool_size();
       }
+      cancellation_manager_ = absl::make_unique<CancellationManager>();
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(),
           [this]() { CancelThreads(/*wait=*/false); }, &deregister_fn_));
-      return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
+      IteratorContext::Params params(ctx);
+      params.cancellation_manager = cancellation_manager_.get();
+      return dataset()->input_->MakeIterator(IteratorContext(params), this,
+                                             prefix(), &input_impl_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -196,21 +213,16 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       {
         mutex_lock l(*mu_);
         EnsureRunnerThreadStarted(ctx);
-        while (!cancelled_ && (batch_results_.empty() ||
-                               !batch_results_.front()->call_finished)) {
-          ++waiting_;
+        while (ShouldWait(&result)) {
           RecordStop(ctx);
           cond_var_->wait(l);
           RecordStart(ctx);
-          --waiting_;
         }
         if (cancelled_) {
           return errors::Cancelled("Iterator was cancelled");
         }
-        std::swap(result, batch_results_.front());
-        batch_results_.pop_front();
-        cond_var_->notify_all();
       }
+
       profiler::TraceMe traceme([&] {
         return profiler::TraceMeEncode("ParallelBatchConsume",
                                        {{"element_id", result->uid}});
@@ -278,9 +290,13 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
         mu_->unlock();
       }
       auto result = dataset()->traceme_metadata_;
+      result.push_back(
+          std::make_pair("deterministic", deterministic_ ? "true" : "false"));
       result.push_back(std::make_pair(
           "parallelism",
-          strings::Printf("%lld", static_cast<long long>(parallelism))));
+          parallelism == -1
+              ? kTraceInfoUnavailable
+              : strings::Printf("%lld", static_cast<long long>(parallelism))));
       return result;
     }
 
@@ -355,7 +371,6 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
 
       if (batch_elements->empty()) {
         CallCompleted(ctx, result);
-        DCHECK(end_of_input);
         return;
       }
 
@@ -376,6 +391,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     }
 
     void CancelThreads(bool wait) TF_LOCKS_EXCLUDED(mu_) {
+      cancellation_manager_->StartCancel();
       mutex_lock l(*mu_);
       cancelled_ = true;
       cond_var_->notify_all();
@@ -434,6 +450,45 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
         }
         new_calls.clear();
       }
+    }
+
+    // Determines whether the caller needs to wait for a result. Upon returning
+    // false, `result` will point to the result.
+    bool ShouldWait(std::shared_ptr<BatchResult>* result)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+      if (cancelled_) {
+        return false;
+      }
+      if (!deterministic_) {
+        // Iterate through in-flight results and return the first one that is
+        // found to be available and not end-of-input. If the first result (in
+        // order) is end-of-input, we know that all earlier iterations have
+        // already been completed, so it is safe to return that result for the
+        // caller to process end of iteration.
+        bool find_batch;
+        for (auto it = batch_results_.begin(); it != batch_results_.end();
+             ++it) {
+          if (!(*it)->call_finished) continue;
+          find_batch = (it == batch_results_.begin());
+          if (!find_batch) {
+            tf_shared_lock l((*it)->mu);
+            find_batch = !(*it)->end_of_input;
+          }
+          if (find_batch) {
+            std::swap(*result, *it);
+            batch_results_.erase(it);
+            cond_var_->notify_all();
+            return false;
+          }
+        }
+      } else if (!batch_results_.empty() &&
+                 batch_results_.front()->call_finished) {
+        std::swap(*result, batch_results_.front());
+        batch_results_.pop_front();
+        cond_var_->notify_all();
+        return false;
+      }
+      return true;
     }
 
     Status ReadBatchResult(IteratorContext* ctx, IteratorStateReader* reader,
@@ -495,7 +550,11 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     const std::shared_ptr<condition_variable> cond_var_;
     // Identifies the maximum number of parallel calls.
     const std::shared_ptr<model::SharedState> num_parallel_calls_;
+    const bool deterministic_;
 
+    // Controls cancellation of `input_impl_`. Must be ordered before
+    // `input_impl_` so that `input_impl_` is destroyed first.
+    std::unique_ptr<CancellationManager> cancellation_manager_;
     // Counts the number of outstanding calls for this batch.
     int64 num_calls_ TF_GUARDED_BY(*mu_) = 0;
     std::unique_ptr<IteratorBase> input_impl_;
@@ -505,8 +564,6 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     std::unique_ptr<Thread> runner_thread_ TF_GUARDED_BY(*mu_);
     // Determines whether the transformation has been cancelled.
     bool cancelled_ TF_GUARDED_BY(*mu_) = false;
-    // Identifies the number of callers currently waiting for a batch result.
-    int64 waiting_ TF_GUARDED_BY(*mu_) = 0;
 
     // Method for deregistering the cancellation callback.
     std::function<void()> deregister_fn_;
@@ -518,11 +575,19 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
   const bool drop_remainder_;
   const DatasetBase* const input_;
   std::vector<PartialTensorShape> output_shapes_;
+  const DeterminismPolicy deterministic_;
   const TraceMeMetadata traceme_metadata_;
 };
 
 ParallelBatchDatasetOp::ParallelBatchDatasetOp(OpKernelConstruction* ctx)
-    : UnaryDatasetOpKernel(ctx) {}
+    : UnaryDatasetOpKernel(ctx) {
+  if (ctx->HasAttr(kDeterministic)) {
+    std::string deterministic;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kDeterministic, &deterministic));
+    OP_REQUIRES_OK(
+        ctx, DeterminismPolicy::FromString(deterministic, &deterministic_));
+  }
+}
 
 void ParallelBatchDatasetOp::MakeDataset(OpKernelContext* ctx,
                                          DatasetBase* input,
@@ -540,8 +605,8 @@ void ParallelBatchDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(
       ctx, ParseScalarArgument<bool>(ctx, kDropRemainder, &drop_remainder));
 
-  *output =
-      new Dataset(ctx, batch_size, num_parallel_calls, drop_remainder, input);
+  *output = new Dataset(ctx, batch_size, num_parallel_calls, drop_remainder,
+                        input, deterministic_);
 }
 
 namespace {

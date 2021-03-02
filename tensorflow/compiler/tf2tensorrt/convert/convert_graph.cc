@@ -481,22 +481,27 @@ Status CreateTRTNode(const ConversionParams& params,
   NodeDef trt_node;
   NameAttrList function;
   function.set_name(StrCat(info.engine_name, "_native_segment"));
-  Status status =
-      node_builder.Attr("input_shapes", input_shape_protos)
-          .Attr("static_engine",
-                info.engine_type == EngineInfo::EngineType::TRTStatic)
-          .Attr("segment_func", function)
-          .Attr("serialized_segment", segment_string)
-          .Attr("calibration_data", "")
-          .Attr("max_cached_engines_count", info.maximum_cached_engines)
-          .Attr("workspace_size_bytes", info.max_workspace_size_bytes)
-          .Attr("max_batch_size", max_batch_size)
-          .Attr("precision_mode", prec_string)
-          .Attr("use_calibration", info.use_calibration)
-          .Attr("_use_implicit_batch", params.use_implicit_batch)
-          .Attr("_allow_build_at_runtime", info.allow_build_at_runtime)
-          .Attr("OutT", out_types)
-          .Finalize(&trt_node);
+  node_builder.Attr("input_shapes", input_shape_protos)
+      .Attr("static_engine",
+            info.engine_type == EngineInfo::EngineType::TRTStatic)
+      .Attr("segment_func", function)
+      .Attr("serialized_segment", segment_string)
+      .Attr("calibration_data", "")
+      .Attr("max_cached_engines_count", info.maximum_cached_engines)
+      .Attr("workspace_size_bytes", info.max_workspace_size_bytes)
+      .Attr("max_batch_size", max_batch_size)
+      .Attr("precision_mode", prec_string)
+      .Attr("use_calibration", info.use_calibration)
+      .Attr("_use_implicit_batch", params.use_implicit_batch)
+      .Attr("_allow_build_at_runtime", info.allow_build_at_runtime)
+      .Attr("OutT", out_types);
+
+  if (!params.use_implicit_batch) {
+    node_builder.Attr("profile_strategy",
+                      ProfileStrategyToName(params.profile_strategy));
+  }
+
+  Status status = node_builder.Finalize(&trt_node);
   if (!status.ok()) {
     LOG(ERROR) << "Node construction failed with" << status;
     return status;

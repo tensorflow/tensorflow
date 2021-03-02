@@ -22,9 +22,6 @@ SF_BSPS_URL := "http://mirror.tensorflow.org/github.com/sparkfun/SparkFun_Apollo
 SF_BSPS_MD5 := "34199f7e754735661d1c8a70a40ca7a3"
 SF_BSPS_DEST := boards_sfe
 
-STM32_BARE_LIB_URL := "http://mirror.tensorflow.org/github.com/google/stm32_bare_lib/archive/c07d611fb0af58450c5a3e0ab4d52b47f99bc82d.zip"
-STM32_BARE_LIB_MD5 := "282bff40d4d0b92278fd123a3b6e3123"
-
 ifeq ($(HOST_OS),osx)
   RISCV_TOOLCHAIN_URL := "http://mirror.tensorflow.org/static.dev.sifive.com/dev-tools/riscv64-unknown-elf-gcc-8.1.0-2019.01.0-x86_64-apple-darwin.tar.gz"
   RISCV_TOOLCHAIN_MD5 := "2ac2fa00618b9ab7fa0c7d0ec173de94"

@@ -424,7 +424,7 @@ struct HloToLhloReduceOpConverter : public BaseOpConversion<mhlo::ReduceOp> {
       buffer_args.push_back(InsertAlloc(loc, result, &rewriter));
     }
     auto new_op = rewriter.create<lmhlo::ReduceOp>(loc, llvm::None, buffer_args,
-                                                   op.getAttrs());
+                                                   op->getAttrs());
 
     // Copy over the operations inside the region.
     rewriter.inlineRegionBefore(op.body(), new_op.body(), new_op.body().end());
@@ -607,8 +607,9 @@ struct HloLegalizeToLhlo
     populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
     populateFuncOpTypeConversionPattern(patterns, &context, converter);
     populateCallOpTypeConversionPattern(patterns, &context, converter);
-    populateBranchOpInterfaceAndReturnOpTypeConversionPattern(
-        patterns, &context, converter);
+    populateBranchOpInterfaceTypeConversionPattern(patterns, &context,
+                                                   converter);
+    populateReturnOpTypeConversionPattern(patterns, &context, converter);
     populateEliminateBufferizeMaterializationsPatterns(&context, converter,
                                                        patterns);
 
@@ -658,6 +659,7 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
       HloToLhloOpConverter<mhlo::DivOp>,
       HloToLhloOpConverter<mhlo::DotOp>,
       HloToLhloOpConverter<mhlo::ExpOp>,
+      HloToLhloOpConverter<mhlo::Expm1Op>,
       HloToLhloOpConverter<mhlo::FloorOp>,
       HloToLhloOpConverter<mhlo::GatherOp>,
       HloToLhloOpConverter<mhlo::ImagOp>,

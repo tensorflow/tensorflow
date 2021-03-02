@@ -597,6 +597,7 @@ class EagerPyFuncTest(PyFuncTestBase):
         self.assertIsNone(ret)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_tfrt("b/180469928")
   def testEagerPyFuncInDefun(self):
     with test_util.device(use_gpu=True):
       def wrapper():

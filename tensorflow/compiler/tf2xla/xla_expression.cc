@@ -170,7 +170,9 @@ xla::StatusOr<absl::optional<Tensor>> XlaExpression::ResolveConstant(
 
   TF_ASSIGN_OR_RETURN(bool is_constant,
                       handle().builder()->IsConstant(handle()));
-  if (!is_constant) return {absl::nullopt};
+  if (!is_constant) {
+    return {absl::nullopt};
+  }
 
   if (!client)
     return errors::InvalidArgument("client is required to resolve constant");

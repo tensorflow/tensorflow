@@ -36,7 +36,9 @@ filegroup(
     srcs = [
         "ir/tfl_op_interfaces.td",
         "ir/tfl_ops.td",
+        "ir/tfl_structs.td",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:SideEffectTdFiles",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
@@ -57,6 +59,22 @@ gentbl(
             "ir/tfl_ops.cc.inc",
         ),
         (
+            "-gen-dialect-doc",
+            "g3doc/tfl_ops.md",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "ir/tfl_ops.td",
+    td_srcs = [
+        ":tensorflow_lite_ops_td_files",
+    ],
+)
+
+gentbl(
+    name = "tensorflow_lite_structs_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
             "-gen-struct-attr-decls",
             "ir/tfl_structs.h.inc",
         ),
@@ -64,13 +82,9 @@ gentbl(
             "-gen-struct-attr-defs",
             "ir/tfl_structs.cc.inc",
         ),
-        (
-            "-gen-dialect-doc",
-            "g3doc/tfl_ops.md",
-        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "ir/tfl_ops.td",
+    td_file = "ir/tfl_structs.td",
     td_srcs = [
         ":tensorflow_lite_ops_td_files",
     ],
@@ -227,19 +241,23 @@ cc_library(
         "ir/tfl_ops.h.inc",
         "ir/tfl_ops_interface.cc.inc",
         "ir/tfl_ops_interface.h.inc",
+        "ir/tfl_structs.cc.inc",
         "runtime_verifiers.inc",
         "utils/attribute_utils.cc",
     ],
     hdrs = [
         "ir/tfl_ops.h",
+        "ir/tfl_structs.h.inc",
         "transforms/passes.h",
         "utils/attribute_utils.h",
         "@llvm-project//mlir:include/mlir/Transforms/InliningUtils.h",
     ],
     deps = [
         ":tensorflow_lite_ops_inc_gen",
+        ":tensorflow_lite_structs_inc_gen",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/lite/schema:schema_fbs",
         "//third_party/eigen3",
@@ -467,6 +485,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
@@ -507,7 +526,7 @@ cc_library(
         "transforms/passes.h",
     ],
     deps = [
-        "convert_type",
+        ":convert_type",
         ":tensorflow_lite",
         ":validators",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
@@ -598,10 +617,7 @@ gentbl(
     tblgen = "//tensorflow/compiler/mlir/lite/quantization:op_quant_spec_getters_gen",
     td_file = "ir/tfl_ops.td",
     td_srcs = [
-        "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
-        "ir/tfl_op_interfaces.td",
+        ":tensorflow_lite_ops_td_files",
     ],
 )
 
@@ -610,6 +626,7 @@ tf_native_cc_binary(
     srcs = [
         "converter_gen.cc",
     ],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TableGen",
@@ -649,6 +666,7 @@ cc_library(
         "flatbuffer_operator.h",
     ],
     deps = [
+        ":convert_type",
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/xla:statusor",
@@ -957,6 +975,8 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/core:core_cpu_base",
+        "//tensorflow/lite/toco:model_flags_proto_cc",
+        "//tensorflow/lite/toco:toco_flags_proto_cc",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
         "@llvm-project//mlir:IR",
