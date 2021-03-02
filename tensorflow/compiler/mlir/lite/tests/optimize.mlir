@@ -642,6 +642,34 @@ func @NotReorderReshapeAddIfHighDim(%arg0: tensor<1x1x1x1x30x96xf32>) -> tensor<
   // CHECK: return %[[rs2]]
 }
 
+// CHECK-LABEL: @ReorderReshapeAdd2DConst
+func @ReorderReshapeAdd2DConst(%arg0: tensor<8x15xf32>) -> tensor<1x8x3x5xf32> {
+  %cst = constant dense<2.0> : tensor<3x5xf32>
+  %shape = constant dense<[1, 8, 3, 5]> : tensor<4xi32>
+  %1 = "tfl.reshape"(%arg0, %shape) : (tensor<8x15xf32>, tensor<4xi32>) -> tensor<1x8x3x5xf32>
+  %2 = "tfl.add"(%1, %cst) {fused_activation_function = "NONE"} : (tensor<1x8x3x5xf32>, tensor<3x5xf32>) -> tensor<1x8x3x5xf32>
+  return %2 : tensor<1x8x3x5xf32>
+
+  // CHECK: %[[cst1:.*]] = constant dense<[1, 8, 3, 5]> : tensor<4xi32>
+  // CHECK: %[[cst2:.*]] = constant dense<2.000000e+00> : tensor<15xf32>
+  // CHECK: %[[rs1:.*]] = "tfl.add"(%arg0, %[[cst2]])
+  // CHECK: %[[rs2:.*]] = "tfl.reshape"(%[[rs1]], %[[cst1]])
+  // CHECK: return %[[rs2]]
+}
+
+// CHECK-LABEL: @NotReorderReshapeAdd2DConstIfLastDimIsNotNumElementsOfRhs
+func @NotReorderReshapeAdd2DConstIfLastDimIsNotNumElementsOfRhs(%arg0: tensor<15x8xf32>) -> tensor<1x8x3x5xf32> {
+  %cst = constant dense<2.0> : tensor<3x5xf32>
+  %shape = constant dense<[1, 8, 3, 5]> : tensor<4xi32>
+  %1 = "tfl.reshape"(%arg0, %shape) : (tensor<15x8xf32>, tensor<4xi32>) -> tensor<1x8x3x5xf32>
+  %2 = "tfl.add"(%1, %cst) {fused_activation_function = "NONE"} : (tensor<1x8x3x5xf32>, tensor<3x5xf32>) -> tensor<1x8x3x5xf32>
+  return %2 : tensor<1x8x3x5xf32>
+
+  // CHECK: %[[rs1:.*]] = "tfl.reshape"(%arg0
+  // CHECK: %[[rs2:.*]] = "tfl.add"(%[[rs1]]
+  // CHECK: return %[[rs2]]
+}
+
 // CHECK-LABEL: @ReorderElementwiseValueOpAndMoveOp
 func @ReorderElementwiseValueOpAndMoveOp(%arg0: tensor<40x40x1xf32>) -> tensor<40x40xf32> {
   %shape = constant dense<[40, 40]> : tensor<2xi32>
