@@ -239,7 +239,7 @@ TfLiteStatus TestConvQuantizedPerChannel(
                    output_dims_count, output_scale, output_zero_point);
   return ValidateConvGoldens(
       tensors, tensors_size, expected_output_data_quantized, output_dims_count,
-      conv_params, output_data, 1.0f /* tolerance */, registration);
+      conv_params, registration, output_data, 1.0f /* tolerance */);
 }
 
 }  // namespace testing

@@ -18,7 +18,7 @@
 set -e
 set -x
 
-N_JOBS=$(grep -c ^processor /proc/cpuinfo)
+N_JOBS=4
 
 echo ""
 echo "Bazel will use ${N_JOBS} concurrent job(s)."
