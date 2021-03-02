@@ -1148,8 +1148,7 @@ SmallVector<Value, 2> GetDotOpInitTensorDynSizes(OpBuilder& b, Location loc,
   return dyn_shape;
 }
 
-template <typename InputElType, int input_bit_width, typename OutputElType,
-          int output_bit_width, DotOperationType op_type, typename LinalgOp>
+template <DotOperationType op_type, typename LinalgOp>
 class DotOpOnTensorsConversion : public OpConversionPattern<mhlo::DotOp> {
  public:
   using OpConversionPattern<mhlo::DotOp>::OpConversionPattern;
@@ -1159,28 +1158,13 @@ class DotOpOnTensorsConversion : public OpConversionPattern<mhlo::DotOp> {
     if (!VerifyHloOpBufferOrTensorSemantics</*isLHLO=*/false>(op)) {
       return failure();
     }
+    if (GetDotOperationType(op) != op_type) return failure();
 
     mhlo::DotOp::Adaptor adaptor(args);
 
-    auto lhs_el_type =
-        adaptor.lhs().getType().cast<ShapedType>().getElementType();
-    auto rhs_el_type =
-        adaptor.lhs().getType().cast<ShapedType>().getElementType();
-    if (lhs_el_type != rhs_el_type || !lhs_el_type.isa<InputElType>() ||
-        lhs_el_type.getIntOrFloatBitWidth() != input_bit_width) {
-      return failure();
-    }
-
+    Location loc = op.getLoc();
     auto output_type = op.getType().cast<ShapedType>();
     auto output_el_type = output_type.getElementType();
-    if (!output_el_type.isa<OutputElType>() ||
-        output_el_type.getIntOrFloatBitWidth() != output_bit_width) {
-      return failure();
-    }
-
-    if (GetDotOperationType(op) != op_type) return failure();
-
-    Location loc = op.getLoc();
     auto zero_attr = rewriter.getZeroAttr(output_el_type);
     Value zero = rewriter.create<ConstantOp>(loc, zero_attr);
     SmallVector<Value, 2> dyn_shape = GetDotOpInitTensorDynSizes(
@@ -1207,8 +1191,6 @@ SmallVector<Value, 8> GetDotGeneralOpInitTensorDynSizes(
   return dyn_shape;
 }
 
-template <typename InputElType, int input_bit_width, typename OutputElType,
-          int output_bit_width, typename LinalgOp>
 class DotGeneralOpOnTensorsConversion
     : public OpConversionPattern<mhlo::DotGeneralOp> {
  public:
@@ -1247,23 +1229,10 @@ class DotGeneralOpOnTensorsConversion
     }
 
     mhlo::DotGeneralOp::Adaptor adaptor(args);
-    auto lhs_el_type =
-        adaptor.lhs().getType().cast<ShapedType>().getElementType();
-    auto rhs_el_type =
-        adaptor.lhs().getType().cast<ShapedType>().getElementType();
-    if (lhs_el_type != rhs_el_type || !lhs_el_type.isa<InputElType>() ||
-        lhs_el_type.getIntOrFloatBitWidth() != input_bit_width) {
-      return failure();
-    }
-
-    auto output_type = op.getType().cast<ShapedType>();
-    auto output_el_type = output_type.getElementType();
-    if (!output_el_type.isa<OutputElType>() ||
-        output_el_type.getIntOrFloatBitWidth() != output_bit_width) {
-      return failure();
-    }
 
     Location loc = op.getLoc();
+    auto output_type = op.getType().cast<ShapedType>();
+    auto output_el_type = output_type.getElementType();
     SmallVector<Value, 8> dyn_shape = GetDotGeneralOpInitTensorDynSizes(
         rewriter, loc, adaptor.lhs(), adaptor.rhs(), output_type);
     auto zero_attr = rewriter.getZeroAttr(output_el_type);
@@ -1271,7 +1240,7 @@ class DotGeneralOpOnTensorsConversion
     auto init_tensor = GetInitTensor(rewriter, loc, output_type, dyn_shape);
     Value zero_tensor =
         rewriter.create<linalg::FillOp>(loc, init_tensor, zero).getResult(0);
-    Operation* linalg_op = rewriter.create<LinalgOp>(
+    Operation* linalg_op = rewriter.create<linalg::BatchMatmulOp>(
         loc, /*resultTensorTypes=*/TypeRange{op.getType()},
         /*inputs=*/ValueRange{adaptor.lhs(), adaptor.rhs()},
         /*outputBuffers=*/ValueRange{zero_tensor});
@@ -1709,49 +1678,12 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       ReverseConverter<mhlo::ReverseOp, false>,
       SliceConverter<mhlo::SliceOp, false>,
       TransposeConverter<mhlo::TransposeOp, false>,
-      DotOpOnTensorsConversion<IntegerType, 8, IntegerType, 32,
-                               DotOperationType::kMatrixMatrix,
-                               linalg::MatmulI8I8I32Op>,
-      DotOpOnTensorsConversion<IntegerType, 8, IntegerType, 32,
-                               DotOperationType::kMatrixVector,
-                               linalg::MatvecI8I8I32Op>,
-      DotOpOnTensorsConversion<IntegerType, 8, IntegerType, 32,
-                               DotOperationType::kVectorDot,
-                               linalg::DotI8I8I32Op>,
-      DotOpOnTensorsConversion<IntegerType, 16, IntegerType, 32,
-                               DotOperationType::kMatrixMatrix,
-                               linalg::MatmulI16I16I32Op>,
-      DotOpOnTensorsConversion<IntegerType, 16, IntegerType, 32,
-                               DotOperationType::kMatrixVector,
-                               linalg::MatvecI16I16I32Op>,
-      DotOpOnTensorsConversion<IntegerType, 16, IntegerType, 32,
-                               DotOperationType::kVectorDot,
-                               linalg::DotI16I16I32Op>,
-      DotOpOnTensorsConversion<IntegerType, 32, IntegerType, 32,
-                               DotOperationType::kMatrixMatrix,
-                               linalg::MatmulI32I32I32Op>,
-      DotOpOnTensorsConversion<IntegerType, 32, IntegerType, 32,
-                               DotOperationType::kMatrixVector,
-                               linalg::MatvecI32I32I32Op>,
-      DotOpOnTensorsConversion<IntegerType, 32, IntegerType, 32,
-                               DotOperationType::kVectorDot,
-                               linalg::DotI32I32I32Op>,
-      DotOpOnTensorsConversion<FloatType, 32, FloatType, 32,
-                               DotOperationType::kMatrixMatrix,
+      DotOpOnTensorsConversion<DotOperationType::kMatrixMatrix,
                                linalg::MatmulOp>,
-      DotOpOnTensorsConversion<FloatType, 32, FloatType, 32,
-                               DotOperationType::kMatrixVector,
+      DotOpOnTensorsConversion<DotOperationType::kMatrixVector,
                                linalg::MatvecOp>,
-      DotOpOnTensorsConversion<FloatType, 32, FloatType, 32,
-                               DotOperationType::kVectorDot, linalg::DotOp>,
-      DotGeneralOpOnTensorsConversion<IntegerType, 8, IntegerType, 32,
-                                      linalg::BatchMatmulI8I8I32Op>,
-      DotGeneralOpOnTensorsConversion<IntegerType, 16, IntegerType, 32,
-                                      linalg::BatchMatmulI16I16I32Op>,
-      DotGeneralOpOnTensorsConversion<IntegerType, 32, IntegerType, 32,
-                                      linalg::BatchMatmulI32I32I32Op>,
-      DotGeneralOpOnTensorsConversion<FloatType, 32, FloatType, 32,
-                                      linalg::BatchMatmulOp>,
+      DotOpOnTensorsConversion<DotOperationType::kVectorDot, linalg::DotOp>,
+      DotGeneralOpOnTensorsConversion,
       NormalConvOpOnTensorsConversion,
       ReduceOnTensorsConversion,
       PadOpOnTensorsConversion>(context);
