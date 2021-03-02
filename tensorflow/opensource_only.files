@@ -275,11 +275,6 @@ tensorflow/third_party/toolchains/preconfig/win_1803/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py36/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py37/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py38/BUILD
-tensorflow/third_party/toolchains/remote/BUILD
-tensorflow/third_party/toolchains/remote/BUILD.tpl
-tensorflow/third_party/toolchains/remote/configure.bzl
-tensorflow/third_party/toolchains/remote/execution.bzl.tpl
-tensorflow/third_party/toolchains/remote_config/configs.bzl
 tensorflow/third_party/typing_extensions.BUILD
 tensorflow/third_party/wrapt.BUILD
 tensorflow/third_party/zlib.BUILD
