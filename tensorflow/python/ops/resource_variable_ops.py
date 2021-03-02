@@ -2134,6 +2134,12 @@ class _UnreadVariable(BaseResourceVariable):
     """The op for this variable."""
     return self._parent_op
 
+  
+@ops.RegisterGradient("ReadVariableOp")
+def _ReadGrad(_, grad):
+  """Gradient for read op."""	
+  return grad
+
 
 def variable_shape(handle, out_type=dtypes.int32):
   if getattr(handle, "_handle_data",
