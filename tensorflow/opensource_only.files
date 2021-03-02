@@ -226,11 +226,6 @@ tensorflow/third_party/tflite_mobilenet_quant.BUILD
 tensorflow/third_party/tflite_ovic_testdata.BUILD
 tensorflow/third_party/tflite_smartreply.BUILD
 tensorflow/third_party/toolchains/BUILD
-tensorflow/third_party/toolchains/clang6/BUILD
-tensorflow/third_party/toolchains/clang6/CROSSTOOL.tpl
-tensorflow/third_party/toolchains/clang6/README.md
-tensorflow/third_party/toolchains/clang6/clang.BUILD
-tensorflow/third_party/toolchains/clang6/repo.bzl
 tensorflow/third_party/toolchains/cpus/arm/BUILD
 tensorflow/third_party/toolchains/cpus/arm/arm_compiler_configure.bzl
 tensorflow/third_party/toolchains/cpus/arm/cc_config.bzl.tpl
