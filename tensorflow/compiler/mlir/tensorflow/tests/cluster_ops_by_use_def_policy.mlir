@@ -1,4 +1,4 @@
-// RUN: tf-opt -split-input-file -cluster-ops-by-policy="oplist="tf.Neg,tf.Add,tf.Neg" policy-name="foo"" %s | FileCheck %s
+// RUN: tf-opt -cluster-ops-by-policy="oplist=tf.Neg,tf.Add,tf.Neg policy-name=foo" %s -print-ir-after-all | FileCheck %s
 
 // CHECK-LABEL: func @multiple_clusters
 
