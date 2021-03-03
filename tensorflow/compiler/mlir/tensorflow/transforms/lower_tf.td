@@ -196,6 +196,22 @@ def LowerIsNanOp : Pat<(TF_IsNanOp $x),
                         /*incompatible_shape_error*/ConstBoolAttrTrue)>;
 
 //===----------------------------------------------------------------------===//
+// Finite op patterns.
+//===----------------------------------------------------------------------===//
+
+// IsFinite(x) = !IsNan(x) && !IsInf(x) = (x == x) && (abs(x) != inf)
+def LowerIsFiniteOp : Pat<(TF_IsFiniteOp $x),
+                          (TF_LogicalAndOp
+                            (TF_EqualOp
+                              $x,
+                              $x,
+                              /*incompatible_shape_error*/ConstBoolAttrTrue),
+                            (TF_NotEqualOp
+                              (TF_AbsOp $x),
+                              (TF_ConstOp (GetScalarInfOfType $x)),
+                              /*incompatible_shape_error*/ConstBoolAttrTrue))>;
+
+//===----------------------------------------------------------------------===//
 // L2Loss op patterns.
 //===----------------------------------------------------------------------===//
 

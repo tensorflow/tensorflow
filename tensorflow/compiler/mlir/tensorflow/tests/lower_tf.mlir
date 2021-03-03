@@ -96,6 +96,18 @@ func @is_inf(%arg0: tensor<3x4xf32>) -> tensor<3x4xi1> {
   return %0 : tensor<3x4xi1>
 }
 
+// CHECK-LABEL: @is_finite
+func @is_finite(%arg0: tensor<3x4xf32>) -> tensor<3x4xi1> {
+  // CHECK: %[[INF:.*]] = "tf.Const"() {value = dense<0x7F800000> : tensor<f32>} : () -> tensor<f32>
+  // CHECK: %[[EQUAL:.*]] = "tf.Equal"(%arg0, %arg0) {incompatible_shape_error = true} : (tensor<3x4xf32>, tensor<3x4xf32>) -> tensor<3x4xi1>
+  // CHECK: %[[ABS:.*]] = "tf.Abs"(%arg0) : (tensor<3x4xf32>) -> tensor<3x4xf32>
+  // CHECK: %[[NOT_EQUAL:.*]] = "tf.NotEqual"(%2, %0) {incompatible_shape_error = true} : (tensor<3x4xf32>, tensor<f32>) -> tensor<3x4xi1>
+  // CHECK: %[[RESULT:.*]] = "tf.LogicalAnd"(%1, %3) : (tensor<3x4xi1>, tensor<3x4xi1>) -> tensor<3x4xi1>
+  %0 = "tf.IsFinite"(%arg0) : (tensor<3x4xf32>) -> tensor<3x4xi1>
+  // CHECK: return %[[RESULT]]
+  return %0 : tensor<3x4xi1>
+}
+
 // CHECK-LABEL: @is_nan
 func @is_nan(%arg0: tensor<3x4xf32>) -> tensor<3x4xi1> {
   // CHECK: %[[RESULT:.*]] = "tf.NotEqual"(%arg0, %arg0) {incompatible_shape_error = true} : (tensor<3x4xf32>, tensor<3x4xf32>) -> tensor<3x4xi1>
