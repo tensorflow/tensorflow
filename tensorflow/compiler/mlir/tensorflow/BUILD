@@ -163,11 +163,11 @@ gentbl(
 tf_ops_category_list = [
     {
         "name": "ops_a_m",
-        "include": "tf.[A-M].*$$",
+        "include": "tf.[A-M].*$",
     },
     {
         "name": "ops_n_z",
-        "include": "tf.[N-Z].*$$",
+        "include": "tf.[N-Z].*$",
     },
 ]
 
@@ -177,11 +177,11 @@ tf_ops_category_list = [
         compatible_with = get_compatible_with_cloud(),
         tbl_outs = [
             (
-                "-gen-op-decls -op-include-regex='" + target["include"] + "'",
+                "-gen-op-decls -op-include-regex=" + target["include"],
                 "ir/tf_" + target["name"] + ".h.inc",
             ),
             (
-                "-gen-op-defs -op-include-regex='" + target["include"] + "'",
+                "-gen-op-defs -op-include-regex=" + target["include"],
                 "ir/tf_" + target["name"] + ".cc.inc",
             ),
         ],
@@ -198,11 +198,11 @@ gentbl(
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
-            "-gen-op-decls -op-exclude-regex='" + "|".join([target["include"] for target in tf_ops_category_list]) + "' ",
+            "-gen-op-decls -op-exclude-regex=" + "|".join([target["include"] for target in tf_ops_category_list]),
             "ir/tf_remaining_ops.h.inc",
         ),
         (
-            "-gen-op-defs -op-exclude-regex='" + "|".join([target["include"] for target in tf_ops_category_list]) + "' ",
+            "-gen-op-defs -op-exclude-regex=" + "|".join([target["include"] for target in tf_ops_category_list]),
             "ir/tf_remaining_ops.cc.inc",
         ),
     ],
