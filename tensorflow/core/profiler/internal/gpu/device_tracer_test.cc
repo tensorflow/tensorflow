@@ -67,18 +67,6 @@ namespace {
 std::unique_ptr<Session> CreateSession() {
   SessionOptions options;
 
-  // Disable common runtime constant folding.
-  options.config.mutable_graph_options()
-      ->mutable_optimizer_options()
-      ->set_opt_level(OptimizerOptions::L0);
-
-  // Disable Grappler optimizations for tests.
-  tensorflow::RewriterConfig* cfg =
-      options.config.mutable_graph_options()->mutable_rewrite_options();
-  cfg->set_constant_folding(tensorflow::RewriterConfig::OFF);
-  cfg->set_layout_optimizer(tensorflow::RewriterConfig::OFF);
-  cfg->set_remapping(tensorflow::RewriterConfig::OFF);
-
   (*options.config.mutable_device_count())["CPU"] = 1;
   (*options.config.mutable_device_count())["GPU"] = 1;
   options.config.set_allow_soft_placement(true);
@@ -283,7 +271,7 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   const XPlane* host_plane = FindPlaneWithName(space, kCuptiDriverApiPlaneName);
   ASSERT_NE(host_plane, nullptr);
 #elif TENSORFLOW_USE_ROCM
-  const XPlane* host_plane = FindPlaneWithName(space, kRocmTracerPlaneName);
+  const XPlane* host_plane = FindPlaneWithName(space, kRoctracerApiPlaneName);
   ASSERT_NE(host_plane, nullptr);
 #endif
 
