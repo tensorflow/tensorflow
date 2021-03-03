@@ -49,7 +49,7 @@ import pipes
 CPU_COMPILER = ('/dt7/usr/bin/gcc')
 GCC_HOST_COMPILER_PATH = ('/dt7/usr/bin/gcc')
 
-NVCC_PATH = '/usr/local/cuda-11.0/bin/nvcc'
+NVCC_PATH = '/usr/local/cuda-11.2/bin/nvcc'
 PREFIX_DIR = os.path.dirname(GCC_HOST_COMPILER_PATH)
 NVCC_VERSION = '10.1'
 
