@@ -89,7 +89,8 @@ function run_build () {
     --define=with_default_optimizations=true \
     --define=framework_shared_object=true \
     --define=with_xla_support=true \
-    --define=using_cuda_nvcc=true \
+    --@local_config_cuda//:enable_cuda
+    --@local_config_cuda//:cuda_compiler=nvcc
     --define=use_fast_cpp_protos=true \
     --define=allow_oversize_protos=true \
     --define=grpc_no_ares=true \
