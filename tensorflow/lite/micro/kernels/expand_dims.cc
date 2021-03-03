@@ -48,12 +48,14 @@ TfLiteStatus ExpandTensorDim(TfLiteContext* context,
   }
   std::cout << "updated output_dims->size: " << output_dims->size << std::endl;
   for (int i = 0; i < output_dims->size; ++i) {
-    std::cout << "i=" << i << ";  input_dims->data[i]: " << input_dims->data[i] << std::endl;
     if (i < axis) {
+      std::cout << "i=" << i << ";  (i < axis)  input_dims->data[i]: " << input_dims->data[i] << std::endl;
       output_dims->data[i] = input_dims->data[i];
     } else if (i == axis) {
+      std::cout << "i=" << i << ";  (i == axis)  input_dims->data[i]: " << input_dims->data[i] << std::endl;
       output_dims->data[i] = 1;
     } else {
+      std::cout << "i=" << i << ";  (i > axis)  input_dims->data[i]: " << input_dims->data[i] << std::endl;
       output_dims->data[i] = input_dims->data[i - 1];
     }
   }
