@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -221,3 +223,5 @@ TEST_F(GpuPrimHelpersTest, GpuInclusivePrefixSum) {
 
 }  // namespace
 }  // namespace tensorflow
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
