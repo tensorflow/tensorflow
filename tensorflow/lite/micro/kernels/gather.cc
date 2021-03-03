@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
+#include <iostream>
 #include "tensorflow/lite/kernels/internal/reference/gather.h"
 
 #include "tensorflow/lite/c/common.h"
@@ -28,7 +28,28 @@ constexpr int kInputTensor = 0;
 constexpr int kInputPositions = 1;
 constexpr int kOutputTensor = 0;
 
+template <typename InputT, typename CoordsT>
+TfLiteStatus Gather(const TfLiteGatherParams* params, const TfLiteEvalTensor* input,
+                    const TfLiteEvalTensor* positions, TfLiteEvalTensor* output) {
+  std::cout << "in gather Gather()" << std::endl;
+  tflite::GatherParams op_params;
+  op_params.axis = params->axis;
+  const RuntimeShape input_shape = tflite::micro::GetTensorShape(input);
+  const InputT* input_data = tflite::micro::GetTensorData<InputT>(input);
+  const RuntimeShape coord_shape = tflite::micro::GetTensorShape(positions);
+  const CoordsT* coord_data = tflite::micro::GetTensorData<CoordsT>(positions);
+  const RuntimeShape output_shape = tflite::micro::GetTensorShape(output);
+  InputT* output_data = tflite::micro::GetTensorData<InputT>(output);
+
+  std::cout << "launching reference op Gather()" << std::endl;
+  reference_ops::Gather(op_params, input_shape, input_data, coord_shape,
+                        coord_data, output_shape, output_data);
+  std::cout << "end of gather Gather() OK" << std::endl;
+  return kTfLiteOk;
+}
+
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  std::cout << "in gather Prepare()" << std::endl;
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
@@ -86,27 +107,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   for (int i = axis + 1; i < input->dims->size; ++i) {
     output_shape->data[output_index++] = input->dims->data[i];
   }
-  return kTfLiteOk;
-}
-
-template <typename InputT, typename CoordsT>
-TfLiteStatus Gather(const TfLiteGatherParams* params, const TfLiteEvalTensor* input,
-                    const TfLiteEvalTensor* positions, TfLiteEvalTensor* output) {
-  tflite::GatherParams op_params;
-  op_params.axis = params->axis;
-  const RuntimeShape input_shape = tflite::micro::GetTensorShape(input);
-  const InputT* input_data = tflite::micro::GetTensorData<InputT>(input);
-  const RuntimeShape coord_shape = tflite::micro::GetTensorShape(positions);
-  const CoordsT* coord_data = tflite::micro::GetTensorData<CoordsT>(positions);
-  const RuntimeShape output_shape = tflite::micro::GetTensorShape(output);
-  InputT* output_data = tflite::micro::GetTensorData<InputT>(output);
-
-  reference_ops::Gather(op_params, input_shape, input_data, coord_shape,
-                        coord_data, output_shape, output_data);
+  std::cout << "end of gather Prepare() OK" << std::endl;
   return kTfLiteOk;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  std::cout << "in gather Eval()" << std::endl;
   const auto* params =
       reinterpret_cast<const TfLiteGatherParams*>(node->builtin_data);
   const TfLiteEvalTensor* input =
@@ -140,10 +146,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         return kTfLiteError;
     }
   }
-  TF_LITE_KERNEL_LOG(context,
-                     "Positions of type '%s' are not supported by gather.",
-                     TfLiteTypeGetName(positions->type));
-  return kTfLiteError;
+  std::cout << "end of gather Eval() OK" << std::endl;
+  return kTfLiteOk;
 }
 }  // namespace
 
