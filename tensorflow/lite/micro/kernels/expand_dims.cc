@@ -72,6 +72,9 @@ TfLiteStatus GetAxisValueFromTensor(TfLiteContext* context,
     return kTfLiteError;
   }
 
+  // Unlike gather, expand_dims has no builtin data for axis, thus axis must be
+  // passed in as a tensor. TfLiteType does not define 'int', so axis must be of
+  // data type 'int32_t'.
   if (kTfLiteInt32 == (axis->type)) {
     const int32_t* axis_ptr = tflite::micro::GetTensorData<int32_t>(axis);
     *axis_value = axis_ptr[0];
