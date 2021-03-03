@@ -300,11 +300,11 @@ REGISTER_KERNEL_BUILDER(Name("_VarHandlesOp")
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#define REGISTER_DEFAULT_KERNELS(type)                        \
-  REGISTER_KERNEL_BUILDER(Name("VarHandleOp")                 \
-                              .Device(DEVICE_DEFAULT)         \
-                              .HostMemory("resource")         \
-                              .TypeConstraint<type>("dtype"), \
+#define REGISTER_DEFAULT_KERNELS(type)                         \
+  REGISTER_KERNEL_BUILDER(Name("VarHandleOp")                  \
+                              .Device(DEVICE_DEFAULT)          \
+                              .HostMemory("resource")          \
+                              .TypeConstraint<type>("dtype"),  \
                           VarHandleOp)
 TF_CALL_GPU_ALL_TYPES(REGISTER_DEFAULT_KERNELS);
 TF_CALL_int64(REGISTER_DEFAULT_KERNELS);
