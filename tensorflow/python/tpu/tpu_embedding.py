@@ -329,8 +329,8 @@ ProximalAdagradSlotVariableName = collections.namedtuple(
 FtrlSlotVariableName = collections.namedtuple('FtrlSlotVariableName',
                                               ['accumulator', 'linear'])
 
-ProximalYogiSlotVariableNames = collections.namedtuple('ProximalYogiSlotVariableNames',
-                                                       ['v', 'm'])
+ProximalYogiSlotVariableNames = collections.namedtuple(
+    'ProximalYogiSlotVariableNames', ['v', 'm'])
 
 AdamSlotVariables = collections.namedtuple(
     'AdamSlotVariables', ['m', 'v'])
