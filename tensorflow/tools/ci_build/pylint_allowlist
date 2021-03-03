@@ -100,6 +100,8 @@
 ^tensorflow/python/kernel_tests/parsing_ops_test.py.*\[E1121.*too-many-function-args
 ^tensorflow/python/kernel_tests/partitioned_variables_test.py.*\[E1121.*too-many-function-args
 ^tensorflow/python/kernel_tests/random/multinomial_op_big_test.py.*\[E1123.*unexpected-keyword-arg
+^tensorflow/python/kernel_tests/sparse_tensor_dense_matmul_op_test.py.*\[E1120.*no-value-for-parameter
+^tensorflow/python/kernel_tests/sparse_xent_op_test.py.*\[E1120.*no-value-for-parameter
 ^tensorflow/python/kernel_tests/unicode_encode_op_test.py.*\[E1120.*no-value-for-parameter
 ^tensorflow/python/kernel_tests/unicode_encode_op_test.py.*\[E1123.*unexpected-keyword-arg
 ^tensorflow/python/lib/core/bfloat16_test.py.*\[E1121.*too-many-function-args
@@ -176,3 +178,4 @@
 ^tensorflow/python/util/tf_stack_test.py.*\[E1121.*too-many-function-args
 ^tensorflow/security/fuzzing/raggedCountSparseOutput_fuzz.py.*\[C0330.*bad-continuation
 ^tensorflow/tools/pip_package/setup.py.*\[E1111.*assignment-from-no-return
+^tensorflow/tools/test/system_info.py.*\[E1120.*no-value-for-parameter
