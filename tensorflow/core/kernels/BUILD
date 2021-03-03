@@ -515,7 +515,7 @@ cc_library(
 tf_cuda_only_cc_test(
     name = "gpu_prim_helpers_test",
     srcs = ["gpu_prim_helpers_test.cu.cc"],
-    deps = if_cuda_or_rocm([
+    deps = [
         ":gpu_prim_helpers",
         ":ops_testutil",
         ":ops_util",
@@ -523,7 +523,7 @@ tf_cuda_only_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-    ]),
+    ],
 )
 
 cc_library(
