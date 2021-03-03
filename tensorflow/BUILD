@@ -373,12 +373,6 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-config_setting(
-    name = "with_default_optimizations",
-    define_values = {"with_default_optimizations": "true"},
-    visibility = ["//visibility:public"],
-)
-
 # Features that are default ON are handled differently below.
 #
 config_setting(
