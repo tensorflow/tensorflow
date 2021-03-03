@@ -1012,25 +1012,21 @@ class TestLayerCallTracing(test.TestCase, parameterized.TestCase):
         return inputs * 2
 
     layer = Layer()
-
     call_collection = keras_save.LayerCallCollection(layer)
     fn = call_collection.add_function(layer.call, 'call')
     fn2 = call_collection.add_function(layer.call2, 'call2')
 
-    with keras_save.tracing_scope():
-      fn(np.ones((2, 3)))
-      fn(np.ones((4, 5)))
+    fn(np.ones((2, 3)))
+    fn(np.ones((4, 5)))
 
-    self.assertLen(
-        fn.wrapped_call._list_all_concrete_functions_for_serialization(), 2)
-    self.assertLen(
-        fn2.wrapped_call._list_all_concrete_functions_for_serialization(), 2)
+    self.assertLen(fn._list_all_concrete_functions_for_serialization(), 2)
+    self.assertLen(fn2._list_all_concrete_functions_for_serialization(), 2)
 
     # Check that the shapes are correct
     self.assertEqual(
         {(2, 3), (4, 5)},
-        set(tuple(c.structured_input_signature[0][0].shape.as_list()) for c in
-            fn2.wrapped_call._list_all_concrete_functions_for_serialization()))
+        set(tuple(c.structured_input_signature[0][0].shape.as_list())
+            for c in fn2._list_all_concrete_functions_for_serialization()))
 
   def test_training_arg_replacement(self):
 
@@ -1039,24 +1035,17 @@ class TestLayerCallTracing(test.TestCase, parameterized.TestCase):
       call_collection = keras_save.LayerCallCollection(layer)
       fn = call_collection.add_function(layer.call, 'call')
 
-      with keras_save.tracing_scope():
-        fn(np.ones((2, 3)), training=True)
-      self.assertLen(
-          fn.wrapped_call._list_all_concrete_functions_for_serialization(), 2)
-      with keras_save.tracing_scope():
-        fn(np.ones((2, 4)), training=False)
-      self.assertLen(
-          fn.wrapped_call._list_all_concrete_functions_for_serialization(), 4)
+      fn(np.ones((2, 3)), training=True)
+      self.assertLen(fn._list_all_concrete_functions_for_serialization(), 2)
+
+      fn(np.ones((2, 4)), training=False)
+      self.assertLen(fn._list_all_concrete_functions_for_serialization(), 4)
 
       if training_keyword:
-        with keras_save.tracing_scope():
-          fn(np.ones((2, 5)), True)
-        self.assertLen(
-            fn.wrapped_call._list_all_concrete_functions_for_serialization(), 6)
-        with keras_save.tracing_scope():
-          fn(np.ones((2, 6)))
-        self.assertLen(
-            fn.wrapped_call._list_all_concrete_functions_for_serialization(), 8)
+        fn(np.ones((2, 5)), True)
+        self.assertLen(fn._list_all_concrete_functions_for_serialization(), 6)
+        fn(np.ones((2, 6)))
+        self.assertLen(fn._list_all_concrete_functions_for_serialization(), 8)
 
     class LayerWithTrainingKeyword(keras.engine.base_layer.Layer):
 

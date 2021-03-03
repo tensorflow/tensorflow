@@ -55,8 +55,8 @@ def use_wrapped_call(layer, call_fn, default_training_value=None,
     call_fn are added to the layer losses.
   """
   expects_training_arg = layer_uses_training_bool(layer)
-  if hasattr(call_fn, 'original_layer_call'):  # call_fn is a LayerCall object
-    original_call = call_fn.original_layer_call
+  if hasattr(call_fn, 'original_call'):  # call_fn is a LayerCall object
+    original_call = call_fn.original_call
     # In Python 3, callable objects are not compatible with inspect.getargspec
     call_fn = call_fn.__call__
   else:
@@ -151,6 +151,7 @@ def maybe_add_training_arg(
   """
   if not expects_training_arg:
     return wrapped_call, None
+
   def wrap_with_training_arg(*args, **kwargs):
     """Wrap the `wrapped_call` function, and set training argument."""
     training_arg_index = get_training_arg_index(original_call)
@@ -211,45 +212,41 @@ def get_training_arg_index(call_fn):
           variable keyword arguments
     - None: if layer doesn't expect a training argument.
   """
-  argspec = tf_inspect.getfullargspec(call_fn)
-  if argspec.varargs:
-    # When there are variable args, training must be a keyword arg.
-    if 'training' in argspec.kwonlyargs or argspec.varkw:
-      return -1
-    return None
+  arg_list = tf_inspect.getfullargspec(call_fn).args
+  if tf_inspect.ismethod(call_fn):
+    arg_list = arg_list[1:]
+  if 'training' in arg_list:
+    return arg_list.index('training')
   else:
-    # Try to find 'training' in the list of args or kwargs.
-    arg_list = argspec.args
-    if tf_inspect.ismethod(call_fn):
-      arg_list = arg_list[1:]
-
-    if 'training' in arg_list:
-      return arg_list.index('training')
-    elif 'training' in argspec.kwonlyargs or argspec.varkw:
-      return -1
-    return None
+    return -1
 
 
 def set_training_arg(training, index, args, kwargs):
-  if index is None or index < 0 or len(args) <= index:  # index is invalid
-    kwargs['training'] = training
-  else:
+  if index is None:
+    pass
+  elif index >= 0 and len(args) > index:
     args[index] = training
+  else:
+    kwargs['training'] = training
   return args, kwargs
 
 
 def get_training_arg(index, args, kwargs):
-  if index is None or index < 0 or len(args) <= index:  # index is invalid
-    return kwargs.get('training', None)
-  else:
+  if index is None:
+    return None
+  elif index >= 0 and len(args) > index:
     return args[index]
+  else:
+    return kwargs.get('training', None)
 
 
 def remove_training_arg(index, args, kwargs):
-  if index is None or index < 0 or len(args) <= index:  # index is invalid
-    kwargs.pop('training', None)
-  else:
+  if index is None:
+    pass
+  elif index >= 0 and len(args) > index:
     args.pop(index)
+  else:
+    kwargs.pop('training', None)
 
 
 class SaveOptionsContext(threading.local):
@@ -273,6 +270,5 @@ def keras_option_scope(save_traces):
 
 
 def should_save_traces():
-  """Whether to trace layer functions-can be disabled in the save_traces arg."""
   return _save_options_context.save_traces
 

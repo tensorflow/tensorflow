@@ -22,7 +22,6 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
-import threading
 import weakref
 
 from tensorflow.python.eager import def_function
@@ -37,7 +36,6 @@ from tensorflow.python.keras.saving.saved_model import constants
 from tensorflow.python.keras.saving.saved_model import load as keras_load
 from tensorflow.python.keras.saving.saved_model import serialized_attributes
 from tensorflow.python.keras.saving.saved_model import utils
-from tensorflow.python.keras.utils import tf_contextlib
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
@@ -47,7 +45,6 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
-
 
 # To avoid circular dependencies between keras/engine and keras/saving,
 # code in keras/saving must delay imports.
@@ -189,15 +186,11 @@ def wrap_layer_functions(layer, serialization_cache):
   # Manually trigger traces before restoring the overwritten functions. The
   # functions are traced within the layer call context to ensure that layer
   # functions (e.g. add_loss) behave as though running in graph mode.
-  with tracing_scope():
-    call_collection.trace_with_input_signature()
-    with base_layer_utils.call_context().enter(
-        layer, inputs=None, build_graph=True, training=None, saving=True):
-      for fn in fns.values():
-        if fn is not None and fn.input_signature is not None:
-          if isinstance(fn, LayerCall):
-            fn = fn.wrapped_call
-          fn.get_concrete_function()
+  with base_layer_utils.call_context().enter(
+      layer, inputs=None, build_graph=True, training=None, saving=True):
+    for fn in fns.values():
+      if fn is not None and fn.input_signature is not None:
+        fn.get_concrete_function()
 
   # Restore overwritten functions and losses
   _restore_child_layer_functions(original_fns)
@@ -332,46 +325,6 @@ def _restore_layer_losses(losses_dict):
       layer._eager_losses = losses_dict[layer]['eager_losses']
 # pylint: enable=protected-access
 
-_thread_local_data = threading.local()
-# Enables LayerCallCollection tracing
-_thread_local_data.enable_call_tracing = False
-_thread_local_data.trace_queue = []
-
-
-@tf_contextlib.contextmanager
-def tracing_scope():
-  """Enables tracing scope."""
-  # This enables the LayerCallCollection's tracing mechanism to trace all call
-  # functions in the collection.
-  previous_value = _thread_local_data.enable_call_tracing
-  previous_queue = _thread_local_data.trace_queue
-  try:
-    _thread_local_data.enable_call_tracing = True
-    _thread_local_data.trace_queue = []
-    yield
-  finally:
-    _thread_local_data.enable_call_tracing = previous_value
-
-    # Run traces from the queue.
-    for fn, args, kwargs, training in _thread_local_data.trace_queue:
-      if training is not None:
-        with K.deprecated_internal_learning_phase_scope(training):
-          fn.get_concrete_function(*args, **kwargs)
-      else:
-        fn.get_concrete_function(*args, **kwargs)
-    _thread_local_data.trace_queue = previous_queue
-
-
-def add_trace_to_queue(fn, args, kwargs, training=None):
-  if tracing_enabled():
-    _thread_local_data.trace_queue.append(
-        (fn, args[:], kwargs.copy(), training))
-
-
-def tracing_enabled():
-  """Whether to add extra traces to the queue."""
-  return _thread_local_data.enable_call_tracing
-
 
 class LayerCallCollection(object):
   """Groups wrapped layer call functions.
@@ -401,6 +354,9 @@ class LayerCallCollection(object):
 
     self._input_signature = self._generate_input_signature(layer)
     self._functions = weakref.WeakValueDictionary()
+    # Bool indicating whether this object is currently tracing the layer call
+    # functions.
+    self.tracing = False
 
     # Get the input argument name from the args.
     args = arg_spec.args
@@ -451,19 +407,21 @@ class LayerCallCollection(object):
     """
     args = list(args)
     kwargs = kwargs.copy()
-
+    self.tracing = True
     for fn in self._functions.values():
       # TODO(kathywu): Replace arguments with broader shapes defined in the
       # input signature.
       if self._expects_training_arg:
         def trace_with_training(value, fn=fn):
           utils.set_training_arg(value, self._training_arg_index, args, kwargs)
-          add_trace_to_queue(fn, args, kwargs, value)
+          with K.deprecated_internal_learning_phase_scope(value):
+            fn.get_concrete_function(*args, **kwargs)
 
         trace_with_training(True)
         trace_with_training(False)
       else:
-        add_trace_to_queue(fn, args, kwargs)
+        fn.get_concrete_function(*args, **kwargs)
+    self.tracing = False
 
   @property
   def fn_input_signature(self):
@@ -536,28 +494,24 @@ class LayerCallCollection(object):
 
   def add_function(self, call_fn, name):
     """Adds a layer call function to the collection."""
-    fn = LayerCall(
+    self._functions[name] = fn = LayerCall(
         self, self._maybe_wrap_with_training_arg(call_fn), name,
         input_signature=self.fn_input_signature)
-    self._functions[name] = fn.wrapped_call
-    return fn
 
-  def trace_with_input_signature(self):
-    """Trace with the layer/models inferred input signature if possible."""
-    if (None not in nest.flatten(self._input_signature) and self._has_kwargs):
+    if (None not in nest.flatten(self._input_signature) and
+        self._has_kwargs):
       # Manually add traces for layers that have keyword arguments and have
       # a fully defined input signature.
       self.add_trace(*self._input_signature)
+    return fn
 
 
 def _filtered_inputs(inputs):
   return list(filter(tf_utils.is_tensor_or_variable, nest.flatten(inputs)))
 
 
-def layer_call_wrapper(call_collection, method, name):
+def layer_call_wrapper(call_collection, method):
   """Ensures layer losses are kept the same, and runs method in call context."""
-
-  # Create wrapper that deals with losses and call context.
   def wrapper(*args, **kwargs):
     """Calls method within call context."""
     layer = call_collection.layer
@@ -577,48 +531,27 @@ def layer_call_wrapper(call_collection, method, name):
         ret = method(*args, **kwargs)
     _restore_layer_losses(original_losses)
     return ret
-
-  # Rename to `name`, since tf.function doesn't have a name argument. Without
-  # this, all functions returned by this method will be named "call", which
-  # would be a nightmare to debug.
-  fn = tf_decorator.make_decorator(target=method, decorator_func=wrapper)
-  fn.__name__ = name
-  return fn
+  return tf_decorator.make_decorator(target=method, decorator_func=wrapper)
 
 
-class LayerCall(object):
+class LayerCall(def_function.Function):
   """Function that triggers traces of other functions in the same collection."""
 
-  def __init__(self, call_collection, call_fn, name, input_signature):
-    """Initializes a LayerCall object.
-
-    Args:
-      call_collection: a LayerCallCollection, which contains the other layer
-        call functions (e.g. call_with_conditional_losses, call). These
-        functions should be traced with the same arguments.
-      call_fn: A call function.
-      name: Name of the call function.
-      input_signature: Input signature of call_fn (can be None).
-    """
+  def __init__(self, call_collection, python_function, *args, **kwargs):
     self.call_collection = call_collection
-    self.input_signature = input_signature
-    self.wrapped_call = def_function.function(
-        layer_call_wrapper(call_collection, call_fn, name),
-        input_signature=input_signature)
-    self.original_layer_call = call_collection.layer_call_method
-
-  def _maybe_trace(self, args, kwargs):
-    # Trigger traces of other call functions + extra training-arg traces.
-    if tracing_enabled():
-      self.call_collection.add_trace(*args, **kwargs)
+    self.original_call = call_collection.layer_call_method
+    python_function = layer_call_wrapper(call_collection, python_function)
+    super(LayerCall, self).__init__(python_function, *args, **kwargs)
 
   def __call__(self, *args, **kwargs):
-    self._maybe_trace(args, kwargs)
-    return self.wrapped_call(*args, **kwargs)
+    if not self.call_collection.tracing:
+      self.call_collection.add_trace(*args, **kwargs)
+    return super(LayerCall, self).__call__(*args, **kwargs)
 
   def get_concrete_function(self, *args, **kwargs):
-    self._maybe_trace(args, kwargs)
-    return self.wrapped_call.get_concrete_function(*args, **kwargs)
+    if not self.call_collection.tracing:
+      self.call_collection.add_trace(*args, **kwargs)
+    return super(LayerCall, self).get_concrete_function(*args, **kwargs)
 
 
 def _wrap_call_and_conditional_losses(layer):

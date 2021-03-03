@@ -798,8 +798,7 @@ def _finalize_saved_model_layers(layers):
       layer.call = utils.use_wrapped_call(
           layer, _get_keras_attr(layer).call_and_return_conditional_losses,
           return_method=True)
-      layer._init_call_fn_args(
-          layer._serialized_attributes['metadata']['expects_training_arg'])
+      layer._init_call_fn_args()
     else:
       layer.call = types.MethodType(
           _unable_to_call_layer_due_to_serialization_issue, layer)
