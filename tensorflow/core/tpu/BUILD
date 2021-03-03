@@ -304,6 +304,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/stream_executor/tpu:c_api_decl",
         "//tensorflow/stream_executor/tpu:proto_helper",
+        "@com_google_absl//absl/types:optional",
     ],
     alwayslink = True,
 )

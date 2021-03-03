@@ -888,7 +888,7 @@ class CaseOrIfRegionEliminatePassThrough
 
     // Create new case/if region op.
     auto new_op = rewriter.create<CaseOrIfRegionOp>(
-        op.getLoc(), new_result_types, op.getOperand(), op.getAttrs(),
+        op.getLoc(), new_result_types, op.getOperand(), op->getAttrs(),
         op.getNumRegions());
 
     int next_index = 0;
@@ -2090,6 +2090,19 @@ static LogicalResult Verify(EmptyTensorListOp op) {
     return op.emitOpError("requires max_num_elements operand to be 0D tensor");
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// EnsureShapeOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult EnsureShapeOp::fold(llvm::ArrayRef<mlir::Attribute>) {
+  ShapedType type = input().getType().dyn_cast<ShapedType>();
+  if (!type || !type.hasRank()) return {};
+  // If shape attribute equals input operand's type's shape, fold it to input.
+  if (type.getShape() == shape()) return input();
+  // Else retain to enable failing dynamically.
+  return {};
 }
 
 //===----------------------------------------------------------------------===//

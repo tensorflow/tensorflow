@@ -2541,15 +2541,14 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context, bool allow_quant_ops,
 // the tflite model representation tensors are created lazily, so there is no
 // guarantee that the order will match the source model tensors order.
 absl::Status PrecreateIOTensors(
-    TfLiteContext* context, GraphFloat32* graph, TfLiteIntArray* io_tensors,
+    TfLiteContext* context, GraphFloat32* graph, const std::vector<int>& io_ids,
     absl::flat_hash_map<int, int>* quant_conversion_map,
     absl::flat_hash_map<int, Value*>* tensor_to_value) {
-  for (int i = 0; i < io_tensors->size; ++i) {
-    const int tensor_index = io_tensors->data[i];
-    const TfLiteTensor& tflite_tensor = context->tensors[tensor_index];
+  for (const auto& id : io_ids) {
+    const TfLiteTensor& tflite_tensor = context->tensors[id];
     if (tflite::IsConstantTensor(&tflite_tensor)) continue;
     RETURN_IF_ERROR(ObjectReader::ReadNonConstantTensor(
-        context, tensor_to_value, quant_conversion_map, graph, tensor_index));
+        context, tensor_to_value, quant_conversion_map, graph, id));
   }
   return absl::OkStatus();
 }
@@ -2596,6 +2595,22 @@ absl::Status BuildModel(TfLiteContext* context,
                         const TfLiteDelegateParams* delegate_params,
                         GraphFloat32* graph,
                         absl::flat_hash_map<int, int>* quant_conversion_map) {
+  std::vector<int> inputs(delegate_params->input_tensors->size);
+  std::vector<int> outputs(delegate_params->output_tensors->size);
+  for (int i = 0; i < delegate_params->input_tensors->size; i++) {
+    inputs[i] = delegate_params->input_tensors->data[i];
+  }
+  for (int i = 0; i < delegate_params->output_tensors->size; i++) {
+    outputs[i] = delegate_params->output_tensors->data[i];
+  }
+  return BuildModelEnforceIO(context, delegate_params, inputs, outputs, graph,
+                             quant_conversion_map);
+}
+
+absl::Status BuildModelEnforceIO(
+    TfLiteContext* context, const TfLiteDelegateParams* delegate_params,
+    const std::vector<int>& input_ids, const std::vector<int>& output_ids,
+    GraphFloat32* graph, absl::flat_hash_map<int, int>* quant_conversion_map) {
   std::vector<std::unique_ptr<TFLiteOperationParser>> operations;
   std::vector<int> tflite_nodes;
   for (int i = 0; i < delegate_params->nodes_to_replace->size; ++i) {
@@ -2623,11 +2638,10 @@ absl::Status BuildModel(TfLiteContext* context,
   }
   absl::flat_hash_map<int, Value*> tensor_to_value;
   std::vector<ValueId> variable_inputs_to_value_id;
-  RETURN_IF_ERROR(PrecreateIOTensors(context, graph,
-                                     delegate_params->input_tensors,
+
+  RETURN_IF_ERROR(PrecreateIOTensors(context, graph, input_ids,
                                      quant_conversion_map, &tensor_to_value));
-  RETURN_IF_ERROR(PrecreateIOTensors(context, graph,
-                                     delegate_params->output_tensors,
+  RETURN_IF_ERROR(PrecreateIOTensors(context, graph, output_ids,
                                      quant_conversion_map, &tensor_to_value));
   for (int i = 0; i < operations.size(); ++i) {
     TfLiteNode* tflite_node;

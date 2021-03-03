@@ -1290,6 +1290,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:dynamic_index_splitter",
         "//tensorflow/compiler/xla/service:dynamic_padder",
+        "//tensorflow/compiler/xla/service:eigh_expander",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:flatten_call_graph",
         "//tensorflow/compiler/xla/service:gather_expander",

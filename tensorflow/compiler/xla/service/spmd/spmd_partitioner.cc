@@ -1975,13 +1975,29 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
   auto operand = GetPartitionedHlo(hlo->operand(0));
   // The output shape is the source and the operand shape is the target to get
   // the aligned sharding for the operand.
-  auto desired_operand_sharding = hlo_sharding_util::ReshapeSharding(
-      hlo->shape(), hlo->operand(0)->shape(), hlo->sharding());
+  absl::optional<HloSharding> desired_operand_sharding =
+      hlo_sharding_util::ReshapeSharding(hlo->shape(), hlo->operand(0)->shape(),
+                                         hlo->sharding());
   if (desired_operand_sharding.has_value()) {
     auto operand_hlo = operand.Reshard(*desired_operand_sharding).hlo();
     SetPartitionedHlo(hlo, [&] {
       return b_.AddInstruction(hlo->CloneWithNewOperands(
           MakePartitionedShape(hlo->shape(), hlo->sharding()), {operand_hlo}));
+    });
+    return Status::OK();
+  }
+  absl::optional<HloSharding> desired_output_sharding =
+      hlo_sharding_util::ReshapeSharding(hlo->operand(0)->shape(), hlo->shape(),
+                                         operand.sharding());
+  if (desired_output_sharding.has_value()) {
+    auto reshape = b_.AddInstruction(hlo->CloneWithNewOperands(
+        MakePartitionedShape(hlo->shape(), *desired_output_sharding),
+        {operand.hlo()}));
+    reshape->set_sharding(*desired_output_sharding);
+    SetPartitionedHlo(hlo, [&] {
+      return PartitionedHlo(reshape, hlo->shape(), MakePartitioningState())
+          .Reshard(sharding)
+          .hlo();
     });
     return Status::OK();
   }

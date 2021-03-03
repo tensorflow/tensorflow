@@ -302,6 +302,49 @@ OpFoldResult PackOp::fold(ArrayRef<Attribute> operands) {
   return slice_op.input();
 }
 
+// Convert Pack to Reshape when there is only one operand to be packed.
+// For example,
+//
+//   %0 = tf.Pack(%input) {axis = 0} // %input : tensor<2x3xf32>
+//
+// can be canonicalized to
+//
+//   %shape = "tf.Const"() {value = dense<[1, 2, 3]> : tensor<3xi64>}
+//   %0 = tf.Reshape(%input, %shape)
+struct ConvertPackToReshape : public OpRewritePattern<PackOp> {
+  using OpRewritePattern<PackOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(PackOp pack_op,
+                                PatternRewriter &rewriter) const override {
+    // Check if there is only one operand to be packed.
+    if (pack_op.N() != 1) {
+      return failure();
+    }
+
+    // Check if input and output are static.
+    auto input_ty = pack_op.getOperand(0).getType().cast<ShapedType>();
+    auto output_ty = pack_op.output().getType().cast<ShapedType>();
+    if (!input_ty.hasStaticShape() || !output_ty.hasStaticShape()) {
+      return failure();
+    }
+
+    // Create constant shape for reshape.
+    auto type =
+        RankedTensorType::get(output_ty.getRank(), rewriter.getIntegerType(64));
+    auto shape_attr = DenseIntElementsAttr::get(type, output_ty.getShape());
+    auto shape = rewriter.create<ConstOp>(pack_op.getLoc(), shape_attr);
+
+    rewriter.replaceOpWithNewOp<ReshapeOp>(pack_op, output_ty,
+                                           pack_op.getOperand(0), shape);
+    return success();
+  }
+};
+
+void PackOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                         MLIRContext *context) {
+  results.insert<ConvertPackToReshape>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // PadOp
 //===----------------------------------------------------------------------===//
@@ -2587,7 +2630,7 @@ class ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
                              TF::FusedBatchNormV3Op::getOperationName(),
                              tf_fused_batch_norm_op.getOperands(),
                              new_result_types,
-                             tf_fused_batch_norm_op.getAttrs());
+                             tf_fused_batch_norm_op->getAttrs());
     Operation *tf_fused_batch_norm_op_v3 = rewriter.createOperation(new_state);
 
     rewriter.replaceOp(tf_fused_batch_norm_op,
@@ -3029,9 +3072,9 @@ struct WhileRegionEliminatePassThrough
     }
 
     // Create the new while operation.
-    auto new_while_op =
-        rewriter.create<WhileRegionOp>(while_op.getLoc(), new_result_types,
-                                       new_while_operands, while_op.getAttrs());
+    auto new_while_op = rewriter.create<WhileRegionOp>(
+        while_op.getLoc(), new_result_types, new_while_operands,
+        while_op->getAttrs());
 
     // Move region bodies to the new while.
     rewriter.inlineRegionBefore(while_op.cond(), new_while_op.cond(),

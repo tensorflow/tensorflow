@@ -106,8 +106,8 @@ class GpuCudaMallocAsyncAllocator : public Allocator {
   // Stats.
   // Structures mutable after construction
   mutable mutex lock_;
-  std::unique_ptr<AllocatorStats> stats_ PT_GUARDED_BY(lock_);
-  absl::flat_hash_map<const void*, size_t> size_map_ GUARDED_BY(lock_);
+  std::unique_ptr<AllocatorStats> stats_ TF_PT_GUARDED_BY(lock_);
+  absl::flat_hash_map<const void*, size_t> size_map_ TF_GUARDED_BY(lock_);
 };
 
 }  // namespace tensorflow

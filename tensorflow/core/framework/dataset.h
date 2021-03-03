@@ -570,6 +570,9 @@ class SerializationContext {
     // seeds. This param does not affect datasets that use fixed seeds; fixed
     // seeds will always be preserved.
     bool preserve_random_seeds = true;
+
+    // A resource manager for looking up resources during serialization.
+    ResourceMgr* resource_mgr;
   };
 
   explicit SerializationContext(Params params) : params_(params) {}
@@ -587,6 +590,8 @@ class SerializationContext {
   bool serialize_data_tensors() const { return params_.serialize_data_tensors; }
 
   bool preserve_random_seeds() const { return params_.preserve_random_seeds; }
+
+  ResourceMgr* resource_mgr() const { return params_.resource_mgr; }
 
  private:
   Params params_;
@@ -922,6 +927,8 @@ class DatasetBase : public core::RefCounted {
    private:
     Status AddDatasetOrTensorHelper(SerializationContext* ctx,
                                     const Tensor& val, Node** output);
+    Status AddResourceHelper(SerializationContext* ctx, const Tensor& val,
+                             Node** output);
   };
 
   // Serializes the dataset into a `GraphDef`, which has two uses:

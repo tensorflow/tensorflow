@@ -51,7 +51,7 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeTfWithTf2XlaPass(
 
 /// Replaces types that do not exist in MHLO with equivalent types that do
 /// exist.
-std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTfTypesPass();
+std::unique_ptr<OperationPass<void>> CreateLegalizeTfTypesPass();
 
 /// Adds the TF to XLA via TF2XLA rewrite patterns to the pattern list.
 void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,

@@ -156,7 +156,7 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     // The fused contraction has the same attributes as the original
     // contraction, with two additions: the list of ops which have been fused
     // together; epsilon (only with FusedBatchNorm).
-    std::vector<NamedAttribute> attrs = contraction.getAttrs();
+    std::vector<NamedAttribute> attrs = contraction->getAttrs();
     ArrayAttr fused_ops_attr = ArrayAttr::get(context, fused_ops);
     attrs.push_back(
         NamedAttribute(Identifier::get("fused_ops", context), fused_ops_attr));

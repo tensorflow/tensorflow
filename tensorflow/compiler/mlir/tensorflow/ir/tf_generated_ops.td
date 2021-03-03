@@ -3887,6 +3887,8 @@ Returns the input tensor otherwise.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasFolder = 1;
 }
 
 def TF_EqualOp : TF_Op<"Equal", [Commutative, NoSideEffect]> {
@@ -8563,6 +8565,28 @@ the result here is consistent with a truncating divide. E.g.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_ModelDatasetOp : TF_Op<"ModelDataset", [NoSideEffect]> {
+  let summary = "Identity transformation that models performance.";
+
+  let description = [{
+Identity transformation that models performance.
+  }];
+
+  let arguments = (ins
+    Arg<TF_VariantTensor, [{A variant tensor representing the input dataset.}]>:$input_dataset,
+
+    DefaultValuedAttr<I64Attr, "0">:$algorithm,
+    DefaultValuedAttr<I64Attr, "0">:$cpu_budget,
+    DefaultValuedAttr<I64Attr, "0">:$ram_budget,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+}
+
 def TF_MulOp : TF_Op<"Mul", [Commutative, NoSideEffect, ResultsBroadcastableShape, TF_CwiseBinary, TF_SameOperandsAndResultElementTypeResolveRef]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Returns x * y element-wise.";
@@ -9217,6 +9241,31 @@ def TF_OnesLikeOp : TF_Op<"OnesLike", [Idempotent, NoSideEffect, SameOperandsAnd
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_OptimizeDatasetV2Op : TF_Op<"OptimizeDatasetV2", [NoSideEffect]> {
+  let summary = [{
+Creates a dataset by applying related optimizations to `input_dataset`.
+  }];
+
+  let description = [{
+Creates a dataset by applying related optimizations to `input_dataset`.
+  }];
+
+  let arguments = (ins
+    Arg<TF_VariantTensor, [{A variant tensor representing the input dataset.}]>:$input_dataset,
+    Arg<TF_StrTensor, [{A `tf.string` vector `tf.Tensor` identifying user enabled optimizations.}]>:$optimizations_enabled,
+    Arg<TF_StrTensor, [{A `tf.string` vector `tf.Tensor` identifying user disabled optimizations.}]>:$optimizations_disabled,
+    Arg<TF_StrTensor, [{A `tf.string` vector `tf.Tensor` identifying optimizations by default.}]>:$optimizations_default,
+
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<StrArrayAttr, "{}">:$optimization_configs
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+}
+
 def TF_OptionalGetValueOp : TF_Op<"OptionalGetValue", [NoSideEffect]> {
   let summary = [{
 Returns the value stored in an Optional variant or raises an error if none exists.
@@ -9304,6 +9353,8 @@ This is the opposite of `unpack`.
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasCanonicalizer = 1;
 
   let hasFolder = 1;
 }

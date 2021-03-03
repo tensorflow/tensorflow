@@ -234,6 +234,7 @@ tf_kernel_library(
     name = "cpu_cwise_unary_op",
     srcs = [
         "cpu_op_abs.cc",
+        "cpu_op_rsqrt.cc",
         "cpu_op_sqrt.cc",
     ],
     tags = ["manual"],
@@ -245,6 +246,7 @@ tf_kernel_library(
     deps = [
         ":base_cpu_op",
         ":cpu_abs_kernels",
+        ":cpu_rsqrt_kernels",
         ":cpu_sqrt_kernels",
         "//third_party/eigen3",
     ],
@@ -1063,6 +1065,18 @@ cpu_kernel_library(
         "i16",
         "i32",
         "i64",
+    ],
+    unroll_factors = "4",
+)
+
+cpu_kernel_library(
+    name = "cpu_rsqrt_lib",
+    op = "rsqrt",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
     ],
     unroll_factors = "4",
 )

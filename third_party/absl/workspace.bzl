@@ -2,7 +2,7 @@
 
 load("//third_party:repo.bzl", "tf_http_archive")
 
-def repo(name):
+def repo():
     """Imports absl."""
 
     # Attention: tools parse and update these lines.
@@ -10,7 +10,7 @@ def repo(name):
     ABSL_SHA256 = "f368a8476f4e2e0eccf8a7318b98dafbe30b2600f4e3cf52636e5eb145aba06a"
 
     tf_http_archive(
-        name = name,
+        name = "com_google_absl",
         sha256 = ABSL_SHA256,
         build_file = "//third_party/absl:com_google_absl.BUILD",
         # TODO: Remove the patch when https://github.com/abseil/abseil-cpp/issues/326 is resolved

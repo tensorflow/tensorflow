@@ -82,6 +82,7 @@ void DatasetToGraphOp::Compute(OpKernelContext* ctx) {
   DatasetBase* dataset;
   OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
   SerializationContext::Params params;
+  params.resource_mgr = ctx->resource_manager();
   params.external_state_policy = external_state_policy_;
 
   GraphDef graph_def;

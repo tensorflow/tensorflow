@@ -7,30 +7,6 @@ package(
 
 exports_files(["LICENSE"])
 
-py_library(
-    name = "dataset_serialization_test_base",
-    srcs = [
-        "dataset_serialization_test_base.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:lookup_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:training",
-        "//tensorflow/python:util",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/data/experimental/ops:iterator_ops",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:iterator_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
 tf_py_test(
     name = "assert_cardinality_dataset_serialization_test",
     size = "small",
@@ -41,9 +17,9 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -59,13 +35,13 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/experimental/ops:distribute",
         "//tensorflow/python/data/experimental/ops:interleave_ops",
         "//tensorflow/python/data/experimental/ops:readers",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
@@ -81,11 +57,11 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/experimental/ops:batching",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
@@ -101,9 +77,9 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -142,12 +118,12 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/data/experimental/ops:batching",
         "//tensorflow/python/data/experimental/ops:optimization",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
@@ -162,9 +138,9 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/ops:optimization",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
@@ -179,8 +155,8 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
@@ -197,8 +173,8 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "@absl_py//absl/testing:parameterized",
@@ -215,10 +191,10 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/experimental/ops:readers",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
     ],
 )
 
@@ -232,9 +208,9 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
@@ -250,10 +226,10 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
@@ -270,9 +246,9 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/kernel_tests:reader_dataset_ops_test_base",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:readers",
     ],
 )
@@ -287,7 +263,6 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -298,6 +273,7 @@ tf_py_test(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
@@ -312,9 +288,9 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/ops:grouping",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
@@ -330,9 +306,9 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/ops:grouping",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
@@ -349,10 +325,10 @@ tf_py_test(
         "noasan",  # TODO(b/337374867) fails with -fsanitize=null
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/ops:error_ops",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
@@ -368,10 +344,10 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -388,10 +364,10 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/data/experimental/ops:batching",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
@@ -406,7 +382,6 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -416,6 +391,7 @@ tf_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
@@ -429,9 +405,9 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/ops:matching_files",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
@@ -447,9 +423,9 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/ops:optimization",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
@@ -464,9 +440,9 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/ops:distribute",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
@@ -481,10 +457,10 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:string_ops",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
@@ -500,11 +476,11 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/experimental/ops:interleave_ops",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
@@ -520,7 +496,6 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
@@ -529,6 +504,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
@@ -544,9 +520,9 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/kernel_tests:reader_dataset_ops_test_base",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
     ],
 )
 
@@ -560,8 +536,8 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
@@ -576,7 +552,6 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
@@ -585,6 +560,7 @@ tf_py_test(
         "//tensorflow/python:io_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:variables",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
@@ -599,9 +575,9 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/ops:interleave_ops",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
@@ -616,9 +592,9 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/ops:scan_ops",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
@@ -634,8 +610,8 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
@@ -671,8 +647,8 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -688,9 +664,9 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/ops:shuffle_ops",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
@@ -705,11 +681,11 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
         "//tensorflow/python/data/experimental/ops:iterator_ops",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
@@ -724,12 +700,12 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python/data/experimental/kernel_tests:sql_dataset_test_base",
         "//tensorflow/python/data/experimental/ops:readers",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
     ],
 )
 
@@ -743,12 +719,12 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/experimental/ops:stats_aggregator",
         "//tensorflow/python/data/experimental/ops:stats_ops",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
@@ -763,9 +739,9 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/ops:take_while_ops",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -782,9 +758,9 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/kernel_tests:reader_dataset_ops_test_base",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:readers",
     ],
 )
@@ -800,9 +776,9 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/kernel_tests:reader_dataset_ops_test_base",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:readers",
     ],
 )
@@ -817,9 +793,9 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/ops:batching",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
@@ -835,9 +811,9 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/experimental/ops:unique",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
@@ -852,8 +828,8 @@ tf_py_test(
         "no_windows",
     ],
     deps = [
-        ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],

@@ -1011,9 +1011,7 @@ def TFL_BatchMatMulOp : TFL_Op<"batch_matmul", [
    TFL_OperandHasAtleastRank<0, 2>,
    TFL_OperandHasAtleastRank<1, 2>,
    PredOpTrait<"x and output must have same element type",
-       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-   PredOpTrait<"y and output must have same element type",
-       TFL_TCresVTEtIsSameAsOp<0, 1>>]> {
+       TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
 
   let summary = "Batch Matrix Multiply Operator";
 
@@ -2774,7 +2772,7 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2", [
 def TFL_SelectOp : TFL_Op<"select", [
   NoSideEffect,
   SameOperandsAndResultsScale,
-  PredOpTrait<"operands have same element type", TCopVTEtIsSameAs<1, 2>>,
+  PredOpTrait<"operands have same element type", TFL_TCopVTEtAreSameAt<1, 2>>,
   PredOpTrait<"operands and result have same element type",
     TFL_TCresVTEtIsSameAsOp<0, 1>>]> {
   let summary = "Select operator";
@@ -2810,8 +2808,9 @@ def TFL_SelectOp : TFL_Op<"select", [
 def TFL_SelectV2Op : TFL_Op<"select_v2", [
     ResultsBroadcastableShape,
     NoSideEffect,
+    SameOperandsAndResultsScale,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1, 2], 4>,
-    PredOpTrait<"operands have same element type", TCopVTEtIsSameAs<1, 2>>,
+    PredOpTrait<"operands have same element type", TFL_TCopVTEtAreSameAt<1, 2>>,
     PredOpTrait<"operands and result have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 1>>]> {
   let summary = "SelectV2 operator";

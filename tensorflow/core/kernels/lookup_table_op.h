@@ -162,6 +162,9 @@ inline const ResourceHandle& SubtleMustCopyIfIntegral(
   return value;
 }
 
+// Returns a unique node name starting with "base".
+std::string UniqueNodeName(const std::string& base);
+
 // Lookup table that wraps an flat_hash_map, where the key and value data type
 // is specified.
 //
@@ -180,6 +183,54 @@ template <class K, class V>
 class HashTable : public InitializableLookupTable {
  public:
   HashTable(OpKernelContext* ctx, OpKernel* kernel) {}
+
+  Status AsGraphDef(GraphDefBuilder& builder, Node** out) const override {
+    // We set use_node_name_sharing with a unique node name so that the resource
+    // can outlive the HashTableV2 kernel. This means that the lifetime of the
+    // HashTable resource will be tied to the lifetime of the resource manager
+    // it is created in.
+    // TODO(b/181695913): Provide a mechanism for deleting this resource
+    // earlier when appropriate.
+    Node* hash_table_node = ops::SourceOp(
+        "HashTableV2", builder.opts()
+                           .WithName(UniqueNodeName("HashTableFromGraphDef"))
+                           .WithAttr("key_dtype", key_dtype())
+                           .WithAttr("value_dtype", value_dtype())
+                           .WithAttr("use_node_name_sharing", true));
+    if (table_.empty()) {
+      *out = hash_table_node;
+      return Status::OK();
+    }
+    int size = table_.size();
+    Tensor keys(key_dtype(), TensorShape({size}));
+    Tensor values(value_dtype(), TensorShape({size}));
+
+    auto keys_data = keys.flat<K>();
+    auto values_data = values.flat<V>();
+    int64 i = 0;
+    for (auto it = table_.begin(); it != table_.end(); ++it, ++i) {
+      keys_data(i) = it->first;
+      values_data(i) = it->second;
+    }
+    Node* keys_node = ops::SourceOp(
+        "Const",
+        builder.opts().WithAttr("dtype", key_dtype()).WithAttr("value", keys));
+    Node* values_node =
+        ops::SourceOp("Const", builder.opts()
+                                   .WithAttr("dtype", value_dtype())
+                                   .WithAttr("value", values));
+    auto opts = builder.opts()
+                    .WithAttr("Tin", key_dtype())
+                    .WithAttr("Tout", value_dtype());
+    if (opts.HaveError()) return errors::Internal("Invalid builder opts");
+    NodeBuilder node_builder(opts.GetNameForOp("LookupTableImportV2"),
+                             "LookupTableImportV2", opts.op_registry());
+    node_builder.Input(hash_table_node).Input(keys_node).Input(values_node);
+    Node* initialize_table = opts.FinalizeBuilder(&node_builder);
+    *out = ops::UnaryOp("Identity", hash_table_node,
+                        builder.opts().WithControlInput(initialize_table));
+    return Status::OK();
+  }
 
   size_t size() const override {
     if (!is_initialized())

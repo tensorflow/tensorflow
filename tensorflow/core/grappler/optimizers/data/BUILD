@@ -36,6 +36,7 @@ cc_library(
         ":reorder_data_discarding_ops",
         ":shuffle_and_repeat_fusion",
         ":slack",
+        ":use_private_thread_pool",
     ],
 )
 
@@ -951,6 +952,41 @@ tf_cc_test(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/kernels/data",
+    ],
+)
+
+cc_library(
+    name = "use_private_thread_pool",
+    srcs = ["use_private_thread_pool.cc"],
+    hdrs = ["use_private_thread_pool.h"],
+    deps = [
+        ":graph_utils",
+        ":optimizer_base",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core:lib_internal",
+    ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "use_private_thread_pool_test",
+    srcs = ["use_private_thread_pool_test.cc"],
+    deps = [
+        ":graph_test_utils",
+        ":graph_utils",
+        ":use_private_thread_pool",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
     ],
 )
 

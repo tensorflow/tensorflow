@@ -119,6 +119,10 @@
       `tf.config.experimental.get_memory_usage` in favor of this new function.
     *   Extended `tf.config.experimental.enable_tensor_float_32_execution` to
         control Tensor-Float-32 evaluation in RNNs.
+    *   Added a 'experimental_payloads' field to tf.errors.OpError and
+        its subclasses to support more detailed error reporting.
+        This is inspired from Abseil Status payloads:
+        https://github.com/abseil/abseil-cpp/blob/master/absl/status/status.h
 
 *   `tf.summary`:
   *   New `tf.summary.graph` allows manual write of TensorFlow graph
@@ -140,7 +144,11 @@
         `max_batch_size`. Previously, we issued a warning when the value of
         `rewriter_config_template` is not None. We issued an error when the
         value of `is_dynamic_op` is not True. We didn't use the value for
-        `max_batch_size` for building TensorRT engines.
+        `max_batch_size` for building TensorRT engines. Add parameters
+         `use_dynamic_shape` to enable dynamic shape support. The default is to
+         disable dynamic shape support. Add `dynamic_shape_profile_strategy`
+         for selecting a dynamic shape profile strategy. The default is profile
+         strategy is `Range`.
     *   Issue a warning when function get_tensorrt_rewriter_config is used.
 
 *   TF XLA
