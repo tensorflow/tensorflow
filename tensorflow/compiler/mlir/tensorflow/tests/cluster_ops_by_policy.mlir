@@ -1,4 +1,4 @@
-// RUN: tf-opt -split-input-file -cluster-ops-by-policy=oplist="tf.Neg,tf.Add,tf.Neg" %s | FileCheck %s
+// RUN: tf-opt -split-input-file -cluster-ops-by-policy="oplist="tf.Neg,tf.Add,tf.Neg" policy-name="foo"" %s | FileCheck %s
 
 // CHECK-LABEL: func @multiple_clusters
 
@@ -22,7 +22,7 @@ func @multiple_clusters(%arg0 : tensor<i32>, %arg1 : tensor<i32>) -> tensor<i32>
   // CHECK-NEXT:   "tf.Add"
   // CHECK-NEXT:   %[[RESULT_3:.*]] = "tf.Neg"
   // CHECK-NEXT:   tf_device.return %[[RESULT_3:.*]]
-  // CHECK-NEXT:   }) {device = "cpu"}
+  // CHECK-NEXT:   }) {device = "cpu", policy = "foo"}
   // CHECK:      return %[[RESULT_2:.*]]
   return %5 : tensor<i32>
 }

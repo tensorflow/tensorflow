@@ -47,6 +47,13 @@ constexpr char kDeviceAttr[] = "device";
 // Pass definition.
 struct ClusterOpsByPolicyPass
     : public TF::ClusterOpsByPolicyPassBase<ClusterOpsByPolicyPass> {
+ public:
+  ClusterOpsByPolicyPass() = default;
+  ClusterOpsByPolicyPass(ArrayRef<std::string> op_list,
+                         const std::string &policy) {
+    oplist = op_list;
+    policy_name = policy;
+  }
   void runOnFunction() override;
 };
 
@@ -113,7 +120,8 @@ bool IsOplistMatch(Operation *op, ArrayRef<std::string> oplist,
 }
 
 // Move matched operations into tf_device::ClusterOp.
-void ClusterMatchedOps(ArrayRef<Operation *> matched_ops) {
+tf_device::ClusterOp ClusterMatchedOps(ArrayRef<Operation *> matched_ops,
+                                       StringAttr policy) {
   LLVM_DEBUG({
     llvm::dbgs() << "Creating a cluster for matched ops:\n";
     for (auto e : matched_ops) {
@@ -127,8 +135,8 @@ void ClusterMatchedOps(ArrayRef<Operation *> matched_ops) {
   Operation *lastOp = matched_ops.back();
   OpBuilder builder(lastOp);
   auto loc = lastOp->getLoc();
-  auto clusterOp =
-      builder.create<tf_device::ClusterOp>(loc, lastOp->getResultTypes());
+  auto clusterOp = builder.create<tf_device::ClusterOp>(
+      loc, lastOp->getResultTypes(), policy);
 
   // Create block in clusterOp's region and move 'matched_ops' into it.
   auto block = builder.createBlock(&clusterOp.body());
@@ -145,6 +153,8 @@ void ClusterMatchedOps(ArrayRef<Operation *> matched_ops) {
   // Set device attribute
   if (auto device = lastOp->getAttr(kDeviceAttr))
     clusterOp->setAttr(kDeviceAttr, device);
+
+  return clusterOp;
 }
 
 // Define type to store list of operations.
@@ -171,14 +181,23 @@ void ClusterOpsByPolicyPass::runOnFunction() {
     clusters.push_back(matched_ops);
   });
 
+  // Tag formed clusters with a policy attribute.
+  auto policy = StringAttr::get(&getContext(), policy_name);
+
   // Create clusters.
-  for (const OpList &c : clusters) ClusterMatchedOps(c);
+  for (const OpList &c : clusters) ClusterMatchedOps(c, policy);
 }
 
 }  // namespace
 
 std::unique_ptr<FunctionPass> CreateClusterOpsByPolicyPass() {
   return std::make_unique<TFDevice::ClusterOpsByPolicyPass>();
+}
+
+std::unique_ptr<FunctionPass> CreateClusterOpsByPolicyPass(
+    ArrayRef<std::string> oplist, const std::string &policy_name) {
+  return std::make_unique<TFDevice::ClusterOpsByPolicyPass>(oplist,
+                                                            policy_name);
 }
 
 }  // namespace TFDevice

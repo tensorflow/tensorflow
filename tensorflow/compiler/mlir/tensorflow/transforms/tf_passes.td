@@ -754,6 +754,10 @@ func @cluster_oplist(%arg0: tensor<f32>, %arg1: tensor<i32>) -> tensor<i32> {
   let constructor = "TFDevice::CreateClusterOpsByPolicyPass()";
 
   let options = [
+   Option<"policy_name", "policy-name", "std::string", /*default=*/"",
+          "Adds a policy string attribute to all extracted clusters. This "
+          "attribute allows to distinguish clusters formed by different "
+          "policies or maybe other clustering algorithms.">,
    ListOption<"oplist", "oplist", "std::string",
                "Cluster listed ops when they form a single use def-use chain, "
                "such that each op's single user is the next op in the list.",
