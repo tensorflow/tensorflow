@@ -472,7 +472,12 @@ foreach BinaryOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp] in {
       [(AnyStaticShapeTensor $input),
        (IsTailOfShape $rhs, $lhs),
        (IsLastDimEqualToNumElements $input, $rhs),
-       (HasOneUse $lhs)]>;
+       (HasOneUse $lhs),
+       // Restrict operands to have at most rank 4 because TFLite binary
+       // kernel supports up to 4D broadcast.
+       (HasRankAtMost<4> $input),
+       (HasRankAtMost<4> $lhs),
+       (HasRankAtMost<4> $rhs)]>;
 }
 
 foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
@@ -533,7 +538,12 @@ foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
       [(AnyStaticShapeTensor $input),
        (IsTailOfShape $rhs, $lhs),
        (IsLastDimEqualToNumElements $input, $rhs),
-       (HasOneUse $lhs)]>;
+       (HasOneUse $lhs),
+       // Restrict operands to have at most rank 4 because TFLite binary
+       // kernel supports up to 4D broadcast.
+       (HasRankAtMost<4> $input),
+       (HasRankAtMost<4> $lhs),
+       (HasRankAtMost<4> $rhs)]>;
 }
 
 // Reorder the element-wise value operations and the element move operations,
