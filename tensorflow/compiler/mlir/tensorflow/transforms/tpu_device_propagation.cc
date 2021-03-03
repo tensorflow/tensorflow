@@ -225,24 +225,26 @@ void PropagateDevicesToResults(
 }
 
 struct TPUDevicePropagation
-    : public PassWrapper<TPUDevicePropagation, FunctionPass> {
-  void runOnFunction() override;
+    : public PassWrapper<TPUDevicePropagation, OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
-void TPUDevicePropagation::runOnFunction() {
-  FuncOp func = getFunction();
-  if (!IsSupportedGraph(func)) return;
+void TPUDevicePropagation::runOnOperation() {
+  ModuleOp m = getOperation();
+  m.walk([&](FuncOp func) {
+    if (!IsSupportedGraph(func)) return;
 
-  llvm::DenseMap<Value, llvm::StringRef> value_to_device;
-  PropagateDevicesFromArguments(func, value_to_device);
-  auto graph = llvm::cast<tf_executor::GraphOp>(func.front().front());
-  PropagateDevicesInGraph(graph, value_to_device);
-  PropagateDevicesToResults(func, graph.GetFetch(), value_to_device);
+    llvm::DenseMap<Value, llvm::StringRef> value_to_device;
+    PropagateDevicesFromArguments(func, value_to_device);
+    auto graph = llvm::cast<tf_executor::GraphOp>(func.front().front());
+    PropagateDevicesInGraph(graph, value_to_device);
+    PropagateDevicesToResults(func, graph.GetFetch(), value_to_device);
+  });
 }
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTPUDevicePropagationPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPUDevicePropagationPass() {
   return std::make_unique<TPUDevicePropagation>();
 }
 
