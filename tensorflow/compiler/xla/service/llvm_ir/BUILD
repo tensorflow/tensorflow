@@ -1,9 +1,17 @@
 # Description:
 #    Libraries for helping construct LLVM IR for XLA backends.
 
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+)
 
-package(default_visibility = [":friends"])
+package(
+    default_visibility = [":friends"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "friends",
@@ -21,11 +29,6 @@ filegroup(
     ]),
 )
 
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
-)
-
 cc_library(
     name = "alias_analysis",
     srcs = ["alias_analysis.cc"],
@@ -41,7 +44,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
-        "@llvm//:core",
+        "@llvm-project//llvm:Core",
     ],
 )
 
@@ -50,8 +53,8 @@ tf_cc_test(
     srcs = ["alias_analysis_test.cc"],
     deps = [
         ":alias_analysis",
+        "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
         "//tensorflow/compiler/xla/service/cpu/tests:cpu_codegen_test",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/core:test",
@@ -63,22 +66,25 @@ cc_library(
     srcs = ["llvm_util.cc"],
     hdrs = ["llvm_util.h"],
     deps = [
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:name_uniquer",
+        "//tensorflow/compiler/xla/service/cpu:cpu_options",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm//:core",
-        "@llvm//:support",
-        "@llvm//:target",
-        "@llvm//:transform_utils",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TransformUtils",
     ],
 )
 
@@ -88,16 +94,17 @@ cc_library(
     hdrs = ["ir_array.h"],
     deps = [
         ":llvm_util",
+        "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm//:core",
+        "@llvm-project//llvm:Core",
     ],
 )
 
@@ -110,11 +117,12 @@ cc_library(
         ":llvm_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm//:core",
+        "@llvm-project//llvm:Core",
     ],
 )
 
@@ -129,26 +137,10 @@ cc_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings:str_format",
-        "@llvm//:core",
-    ],
-)
-
-cc_library(
-    name = "kernel_tiling",
-    srcs = ["kernel_tiling.cc"],
-    hdrs = ["kernel_tiling.h"],
-    deps = [
-        ":ir_array",
-        ":llvm_util",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/core:lib",
-        "@llvm//:core",
+        "@llvm-project//llvm:Core",
     ],
 )
 
@@ -158,20 +150,22 @@ cc_library(
     hdrs = ["fused_ir_emitter.h"],
     deps = [
         ":ir_array",
-        ":kernel_tiling",
         ":llvm_util",
         ":loop_emitter",
         ":tuple_ops",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:elemental_ir_emitter",
+        "//tensorflow/compiler/xla/service:fusion_node_indexing_evaluation",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
-        "@llvm//:core",
+        "@llvm-project//llvm:Core",
     ],
 )
 
@@ -187,8 +181,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:elemental_ir_emitter",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service/gpu:launch_dimensions",
         "//tensorflow/compiler/xla/service/gpu:parallel_loop_emitter",
-        "//tensorflow/compiler/xla/service/gpu:partition_assignment",
     ],
 )
 
@@ -204,13 +198,14 @@ cc_library(
         ":loop_emitter",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service/gpu:launch_dimensions",
         "//tensorflow/compiler/xla/service/gpu:parallel_loop_emitter",
-        "//tensorflow/compiler/xla/service/gpu:partition_assignment",
+        "//tensorflow/compiler/xla/service/gpu:target_util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm//:core",
-        "@llvm//:support",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -223,10 +218,10 @@ cc_library(
         ":llvm_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/types:span",
-        "@llvm//:core",
+        "@llvm-project//llvm:Core",
     ],
 )
 
@@ -236,9 +231,9 @@ cc_library(
     hdrs = ["kernel_support_library.h"],
     deps = [
         ":llvm_loop",
-        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        ":llvm_util",
         "@com_google_absl//absl/strings",
-        "@llvm//:core",
+        "@llvm-project//llvm:Core",
     ],
 )
 
@@ -258,7 +253,7 @@ cc_library(
     hdrs = ["math_ops.h"],
     deps = [
         ":llvm_util",
-        "@llvm//:core",
+        "@llvm-project//llvm:Core",
     ],
 )
 
@@ -267,6 +262,16 @@ cc_library(
     srcs = [],
     hdrs = ["ir_builder_mixin.h"],
     deps = [
-        "@llvm//:core",
+        "@llvm-project//llvm:Core",
+    ],
+)
+
+tf_cc_test(
+    name = "ir_array_test",
+    srcs = ["ir_array_test.cc"],
+    deps = [
+        ":ir_array",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )

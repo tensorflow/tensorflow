@@ -17,10 +17,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -208,12 +208,32 @@ bool HardcodeMinMaxForSelect(Model* model, Operator* op) {
   if (output_array.minmax) {
     return false;
   }
-  const auto& input_array_1 = model->GetArray(op->inputs[1]);
-  if (!input_array_1.minmax) {
+
+  auto& input_array_1 = model->GetArray(op->inputs[1]);
+  auto& input_array_2 = model->GetArray(op->inputs[2]);
+
+  if (!input_array_1.minmax && !input_array_2.minmax) {
     return false;
   }
-  const auto& input_array_2 = model->GetArray(op->inputs[2]);
-  if (!input_array_2.minmax) {
+
+  // Propagate up if one input is quantized and the other is constant.
+  if (!input_array_1.minmax &&
+      IsConstantParameterArray(*model, op->inputs[1])) {
+    auto& minmax_1 = input_array_1.GetOrCreateMinMax();
+    const auto& minmax_2 = input_array_2.GetMinMax();
+    minmax_1.min = minmax_2.min;
+    minmax_1.max = minmax_2.max;
+  }
+
+  if (!input_array_2.minmax &&
+      IsConstantParameterArray(*model, op->inputs[2])) {
+    auto& minmax_2 = input_array_2.GetOrCreateMinMax();
+    const auto& minmax_1 = input_array_1.GetMinMax();
+    minmax_2.min = minmax_1.min;
+    minmax_2.max = minmax_1.max;
+  }
+
+  if (!input_array_1.minmax || !input_array_2.minmax) {
     return false;
   }
 
@@ -251,18 +271,18 @@ bool MinMaxApproximatelyEqual(const MinMax& minmax1, const MinMax& minmax2) {
   const double magnitude =
       std::min(minmax1.max - minmax1.min, minmax2.max - minmax2.min);
   const double tolerated = 1e-6 * magnitude;
-  return std::abs(minmax1.min - minmax2.min) < tolerated &&
-         std::abs(minmax1.max - minmax2.max) < tolerated;
+  return std::abs(minmax1.min - minmax2.min) <= tolerated &&
+         std::abs(minmax1.max - minmax2.max) <= tolerated;
 }
 
 // Propagates MinMax from any of the listed arrays, to all others.
 // If multiple of these arrays have MinMax, then these are required
 // to agree with each other.
 bool PropagateMinMaxAmongArrays(Model* model,
-                                const std::vector<string> array_names) {
-  string reference_array_name;
+                                const std::vector<std::string>& array_names) {
+  std::string reference_array_name;
   MinMax* reference_minmax = nullptr;
-  for (const string& array_name : array_names) {
+  for (const std::string& array_name : array_names) {
     if (model->GetArray(array_name).minmax) {
       reference_array_name = array_name;
       reference_minmax = model->GetArray(array_name).minmax.get();
@@ -274,7 +294,7 @@ bool PropagateMinMaxAmongArrays(Model* model,
     return false;
   }
   bool changed = false;
-  for (const string& array_name : array_names) {
+  for (const std::string& array_name : array_names) {
     auto& array = model->GetArray(array_name);
     if (array.minmax) {
       CHECK(MinMaxApproximatelyEqual(*array.minmax, *reference_minmax))
@@ -370,6 +390,37 @@ bool HardcodeMinMaxForLstmCell(Model* model, Operator* op) {
 
   return changed;
 }
+
+bool HardcodeMinMaxForPack(Model* model, Operator* op) {
+  auto& output_array = model->GetArray(op->outputs[0]);
+  if (output_array.minmax) {
+    return false;
+  }
+
+  // If all tensors being packed have the same min/max range, hardcode min/max
+  // for the output.
+  const auto& first_input_array = model->GetArray(op->inputs[0]);
+  if (!first_input_array.minmax) {
+    return false;
+  }
+  const auto& first_input_minmax = first_input_array.GetMinMax();
+
+  for (size_t i = 1; i < op->inputs.size(); i++) {
+    const auto& input_array = model->GetArray(op->inputs[i]);
+    if (!input_array.minmax) {
+      return false;
+    }
+    if (first_input_minmax != input_array.GetMinMax()) {
+      return false;
+    }
+  }
+
+  auto& output_minmax = output_array.GetOrCreateMinMax();
+  output_minmax.min = first_input_minmax.min;
+  output_minmax.max = first_input_minmax.max;
+  return true;
+}
+
 }  // namespace
 
 ::tensorflow::Status HardcodeMinMax::Run(Model* model, std::size_t op_index,
@@ -420,7 +471,12 @@ bool HardcodeMinMaxForLstmCell(Model* model, Operator* op) {
     case OperatorType::kGather:
     case OperatorType::kTranspose:
     case OperatorType::kMean:
+    case OperatorType::kReduceMax:
+    case OperatorType::kReduceMin:
       changed = HardcodeMinMaxFromFirstInput(model, op);
+      break;
+    case OperatorType::kPack:
+      changed = HardcodeMinMaxForPack(model, op);
       break;
     case OperatorType::kSum:
       // reduce_sum is expected to change the output range. Hence
@@ -428,7 +484,7 @@ bool HardcodeMinMaxForLstmCell(Model* model, Operator* op) {
       // in special circumstances like when computing expected value using
       // reduce_sum the input range and the output range matches. Hence the
       // below code would act as a fallback. If a fake_quant node is observed in
-      // the output that takes precendence over the hard coding logic below.
+      // the output that takes precedence over the hard coding logic below.
       changed = HardcodeMinMaxFromFirstInput(model, op);
       if (changed) {
         LOG(WARNING) << "Using the input range for output in reduce_sum op."

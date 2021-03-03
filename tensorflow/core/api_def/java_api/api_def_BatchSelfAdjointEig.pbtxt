@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "BatchSelfAdjointEig"
+  visibility: SKIP
+}

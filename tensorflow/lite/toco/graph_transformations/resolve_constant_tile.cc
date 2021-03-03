@@ -64,8 +64,9 @@ std::pair<int, int> TileOneDimension(const Shape& in_dimensions,
   CopyMultipleTimes(out_data, total_tiled_stride_size,
                     multipliers[dimension] - 1,
                     out_data + total_tiled_stride_size);
-  return std::make_pair(total_stride_size,
-                        total_tiled_stride_size * multipliers[dimension]);
+  return std::make_pair(
+      total_stride_size,
+      static_cast<int>(total_tiled_stride_size * multipliers[dimension]));
 }
 
 template <ArrayDataType Type>
@@ -160,12 +161,7 @@ inline void Tile(const Array& input_array, const Array& multiples_array,
       break;
   }
 
-  // Erase input arrays if no longer used after we remove the op.
-  DeleteArrayIfUsedOnce(op->inputs[0], model);
-  DeleteArrayIfUsedOnce(op->inputs[1], model);
-
-  // Erase the operator.
-  model->operators.erase(it);
+  DeleteOpAndArrays(model, op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

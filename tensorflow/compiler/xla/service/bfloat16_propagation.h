@@ -72,6 +72,10 @@ class BFloat16Propagation : public HloModulePass {
   // (precision reductions were added).
   StatusOr<bool> Run(HloModule* module) override;
 
+  // Returns whether we should avoid changing the precision of inst regardless
+  // of the producers and users.
+  virtual bool ShouldKeepPrecisionUnchanged(const HloInstruction* inst);
+
  private:
   // ***************************
   // Function called and state produced by the forward analysis pass (from
@@ -109,6 +113,11 @@ class BFloat16Propagation : public HloModulePass {
   //
   // Precondition: hlo->opcode() == kWhile
   void DetermineWhileComputationsPrecision(HloInstruction* while_hlo);
+
+  // Special handling in the opportunity-finding pass for conditional branches.
+  //
+  // Precondition: hlo->opcode() == kConditional
+  void DetermineConditionalComputationsPrecision(HloInstruction* cond);
 
   // The set of HloInstructions that have been visited in the
   // opportunity-finding pass.

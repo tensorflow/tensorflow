@@ -14,13 +14,34 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/dataset.h"
 
+#include <unordered_map>
+
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/variant_encode_decode.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/resource.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
+
+static mutex* get_dataset_op_registry_lock() {
+  static mutex dataset_op_registry_lock(LINKER_INITIALIZED);
+  return &dataset_op_registry_lock;
+}
+
+static std::unordered_set<string>* get_dataset_op_registry() {
+  static std::unordered_set<string>* names = new std::unordered_set<string>;
+  return names;
+}
 
 // A wrapper class for storing a `DatasetBase` instance in a DT_VARIANT tensor.
 // Objects of the wrapper class own a reference on an instance of `DatasetBase`,
@@ -42,6 +63,14 @@ class DatasetVariantWrapper {
       : dataset_(other.dataset_) {
     if (dataset_) dataset_->Ref();
   }
+
+  DatasetVariantWrapper& operator=(DatasetVariantWrapper&& other) {
+    if (&other == this) return *this;
+    std::swap(dataset_, other.dataset_);
+    return *this;
+  }
+
+  DatasetVariantWrapper& operator=(const DatasetVariantWrapper& other) = delete;
 
   ~DatasetVariantWrapper() {
     if (dataset_) dataset_->Unref();
@@ -68,8 +97,115 @@ class DatasetVariantWrapper {
   }
 
  private:
-  DatasetBase* const dataset_;  // Owns one reference.
+  DatasetBase* dataset_;  // Owns one reference.
 };
+
+const char kWrappedDatasetVariantTypeName[] =
+    "tensorflow::data::WrappedDatasetVariant";
+
+class WrappedDatasetVariantWrapper {
+ public:
+  WrappedDatasetVariantWrapper() {}
+
+  explicit WrappedDatasetVariantWrapper(const Tensor& ds_tensor)
+      : ds_tensor_(ds_tensor) {}
+
+  Tensor get() const { return ds_tensor_; }
+
+  string TypeName() const { return "tensorflow::WrappedDatasetVariantWrapper"; }
+
+  string DebugString() const {
+    return "tensorflow::WrappedDatasetVariantWrapper::DebugString";
+  }
+
+  void Encode(VariantTensorData* data) const {
+    *(data->add_tensors()) = ds_tensor_;
+  }
+
+  bool Decode(const VariantTensorData& data) {
+    ds_tensor_ = data.tensors(0);
+    return true;
+  }
+
+ private:
+  Tensor ds_tensor_;
+};
+
+class WrapDatasetVariantOp : public OpKernel {
+ public:
+  explicit WrapDatasetVariantOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& tensor = ctx->input(0);
+    OP_REQUIRES(ctx,
+                tensor.dtype() == DT_VARIANT &&
+                    TensorShapeUtils::IsScalar(tensor.shape()),
+                errors::InvalidArgument(
+                    "Dataset tensor must be a scalar of dtype DT_VARIANT."));
+    DatasetBase* unused;
+    OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(tensor, &unused));
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
+    output->scalar<Variant>()() = WrappedDatasetVariantWrapper(tensor);
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("WrapDatasetVariant").Device(DEVICE_CPU),
+                        WrapDatasetVariantOp);
+REGISTER_KERNEL_BUILDER(Name("WrapDatasetVariant")
+                            .HostMemory("input_handle")
+                            .HostMemory("output_handle")
+                            .Device(DEVICE_GPU),
+                        WrapDatasetVariantOp);
+
+class UnwrapDatasetVariantOp : public OpKernel {
+ public:
+  explicit UnwrapDatasetVariantOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& tensor = ctx->input(0);
+    OP_REQUIRES(ctx,
+                tensor.dtype() == DT_VARIANT &&
+                    TensorShapeUtils::IsScalar(tensor.shape()),
+                errors::InvalidArgument(
+                    "Dataset tensor must be a scalar of dtype DT_VARIANT."));
+    Variant variant = tensor.scalar<Variant>()();
+    const WrappedDatasetVariantWrapper* wrapper =
+        variant.get<WrappedDatasetVariantWrapper>();
+    OP_REQUIRES(ctx, wrapper != nullptr,
+                errors::InvalidArgument(
+                    "Tensor must be a WrappedDataset variant object."));
+    Tensor ds_tensor = wrapper->get();
+    OP_REQUIRES_OK(ctx, ctx->set_output("output_handle", ds_tensor));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("UnwrapDatasetVariant").Device(DEVICE_CPU),
+                        UnwrapDatasetVariantOp);
+REGISTER_KERNEL_BUILDER(Name("UnwrapDatasetVariant")
+                            .HostMemory("input_handle")
+                            .HostMemory("output_handle")
+                            .Device(DEVICE_GPU),
+                        UnwrapDatasetVariantOp);
+
+static Status WrappedDatasetVariantDeviceCopy(
+    const WrappedDatasetVariantWrapper& from, WrappedDatasetVariantWrapper* to,
+    const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy) {
+  *to = WrappedDatasetVariantWrapper(from);
+  return Status::OK();
+}
+
+#define REGISTER_OPTIONAL_COPY(DIRECTION)               \
+  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION( \
+      WrappedDatasetVariantWrapper, DIRECTION,          \
+      WrappedDatasetVariantDeviceCopy)
+
+REGISTER_OPTIONAL_COPY(VariantDeviceCopyDirection::HOST_TO_DEVICE);
+REGISTER_OPTIONAL_COPY(VariantDeviceCopyDirection::DEVICE_TO_HOST);
+REGISTER_OPTIONAL_COPY(VariantDeviceCopyDirection::DEVICE_TO_DEVICE);
+
+REGISTER_UNARY_VARIANT_DECODE_FUNCTION(WrappedDatasetVariantWrapper,
+                                       kWrappedDatasetVariantTypeName);
 
 }  // namespace
 
@@ -79,13 +215,13 @@ Status GraphDefBuilderWrapper::AddDataset(
     const std::vector<std::pair<size_t, gtl::ArraySlice<Node*>>>& list_inputs,
     const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
     Node** output) {
-  const string& name = dataset->name();
+  const string& type_string = dataset->type_string();
   std::unique_ptr<const GraphDefBuilder::Options> opts(
       new GraphDefBuilder::Options(b_->opts()));
   // TODO(srbs|mrry): Not all datasets have output_types and output_shapes
   // attributes defined. It will be nice to have a consistent pattern.
-  bool has_output_types_attr = HasAttr(name, "output_types");
-  bool has_output_shapes_attr = HasAttr(name, "output_shapes");
+  bool has_output_types_attr = HasAttr(type_string, "output_types");
+  bool has_output_shapes_attr = HasAttr(type_string, "output_shapes");
   if (has_output_shapes_attr) {
     opts.reset(new GraphDefBuilder::Options(
         opts->WithAttr("output_shapes", dataset->output_shapes())));
@@ -94,7 +230,7 @@ Status GraphDefBuilderWrapper::AddDataset(
     opts.reset(new GraphDefBuilder::Options(
         opts->WithAttr("output_types", dataset->output_dtypes())));
   }
-  for (auto attr : attrs) {
+  for (const auto& attr : attrs) {
     opts.reset(
         new GraphDefBuilder::Options(opts->WithAttr(attr.first, attr.second)));
   }
@@ -102,7 +238,8 @@ Status GraphDefBuilderWrapper::AddDataset(
     return errors::Internal("AddDataset: Failed to build Options with error ",
                             opts->StatusToString());
   }
-  NodeBuilder node_builder(opts->GetNameForOp(name), name, opts->op_registry());
+  NodeBuilder node_builder(opts->GetNameForOp(type_string), type_string,
+                           opts->op_registry());
   {
     size_t total_size = inputs.size() + list_inputs.size();
     auto inputs_iter = inputs.begin();
@@ -127,31 +264,28 @@ Status GraphDefBuilderWrapper::AddDataset(
   }
   *output = opts->FinalizeBuilder(&node_builder);
   if (*output == nullptr) {
-    return errors::Internal("AddDataset: Failed to build ", name,
+    return errors::Internal("AddDataset: Failed to build ", type_string,
                             " op with error ", opts->StatusToString());
   }
   return Status::OK();
 }
 
-Status GraphDefBuilderWrapper::AddFunction(SerializationContext* ctx,
-                                           const string& function_name) {
+Status GraphDefBuilderWrapper::AddFunction(
+    SerializationContext* ctx, const string& function_name,
+    const FunctionLibraryDefinition& lib_def) {
   if (b_->HasFunction(function_name)) {
     VLOG(1) << "Function with name " << function_name << "already exists in"
             << " the graph. It will not be added again.";
     return Status::OK();
   }
-  if (!ctx->optimization_only()) {
-    TF_RETURN_IF_ERROR(
-        EnsureFunctionIsStateless(ctx->flib_def(), function_name));
-  }
-  const FunctionDef* f_def = ctx->flib_def().Find(function_name);
+  const FunctionDef* f_def = lib_def.Find(function_name);
   if (f_def == nullptr) {
     return errors::InvalidArgument("Unable to find FunctionDef for ",
                                    function_name, " in the registry.");
   }
   FunctionDefLibrary def;
   *def.add_function() = *f_def;
-  const string gradient_func = ctx->flib_def().FindGradient(function_name);
+  const string gradient_func = lib_def.FindGradient(function_name);
   if (!gradient_func.empty()) {
     GradientDef* g_def = def.add_gradient();
     g_def->set_function_name(function_name);
@@ -162,19 +296,19 @@ Status GraphDefBuilderWrapper::AddFunction(SerializationContext* ctx,
   // Recursively add functions in inputs of function_name.
   for (const NodeDef& node_def : f_def->node_def()) {
     const OpRegistrationData* op_reg_data = nullptr;
-    TF_RETURN_IF_ERROR(ctx->flib_def().LookUp(node_def.op(), &op_reg_data));
+    TF_RETURN_IF_ERROR(lib_def.LookUp(node_def.op(), &op_reg_data));
     if (op_reg_data->is_function_op) {
-      TF_RETURN_IF_ERROR(AddFunction(ctx, op_reg_data->op_def.name()));
+      TF_RETURN_IF_ERROR(AddFunction(ctx, op_reg_data->op_def.name(), lib_def));
     }
     // Recursively add functions in attrs of this NodeDef.
     for (const auto& pair : node_def.attr()) {
-      TF_RETURN_IF_ERROR(AddAttrFunctions(ctx, pair.second));
+      TF_RETURN_IF_ERROR(AddAttrFunctions(ctx, pair.second, lib_def));
     }
   }
 
   // Recursively add functions in attrs of function_name.
   for (auto iter = f_def->attr().begin(); iter != f_def->attr().end(); iter++) {
-    TF_RETURN_IF_ERROR(AddAttrFunctions(ctx, iter->second));
+    TF_RETURN_IF_ERROR(AddAttrFunctions(ctx, iter->second, lib_def));
   }
   return Status::OK();
 }
@@ -203,6 +337,61 @@ bool GraphDefBuilderWrapper::HasAttr(const string& name,
   return HasAttr(op_def, attr_name);
 }
 
+Status IteratorBase::InitializeBase(IteratorContext* ctx,
+                                    const IteratorBase* parent) {
+  parent_ = parent;
+  id_ =
+      Hash64CombineUnordered(Hash64(prefix()), reinterpret_cast<uint64>(this));
+  if (parent_) {
+    parent_id_ = Hash64CombineUnordered(Hash64(parent_->prefix()),
+                                        reinterpret_cast<uint64>(parent_));
+  }
+  if (const auto& model = ctx->model()) {
+    auto factory = [ctx, this](model::Node::Args args) {
+      return CreateNode(ctx, std::move(args));
+    };
+    model->AddNode(std::move(factory), prefix(), parent->model_node(), &node_);
+    cleanup_fns_.push_back([this, model]() { model->RemoveNode(node_); });
+  }
+  return Status::OK();
+}
+
+int64 GetAllocatedBytes(const std::vector<Tensor>& element) {
+  int64 allocated_bytes = 0;
+  DatasetBase* dataset;
+  for (auto& tensor : element) {
+    if (tensor.dtype() == DT_VARIANT &&
+        GetDatasetFromVariantTensor(tensor, &dataset).ok()) {
+      allocated_bytes += dataset->AllocatedBytes();
+    } else {
+      allocated_bytes += tensor.AllocatedBytes();
+    }
+  }
+  return allocated_bytes;
+}
+
+int64 GetTotalBytes(const std::vector<Tensor>& element) {
+  int64 total_bytes = 0;
+  DatasetBase* dataset;
+  for (auto& tensor : element) {
+    if (tensor.dtype() == DT_VARIANT &&
+        GetDatasetFromVariantTensor(tensor, &dataset).ok()) {
+      total_bytes += dataset->TotalBytes();
+    } else {
+      total_bytes += tensor.TotalBytes();
+    }
+  }
+  return total_bytes;
+}
+
+std::string FullName(const std::string& prefix, const std::string& name) {
+  if (str_util::StrContains(name, kColon)) {
+    LOG(ERROR) << name << " should not contain " << kColon;
+  }
+
+  return strings::StrCat(kFullNameRandomHex, kPipe, prefix, kColon, name);
+}
+
 Status GetDatasetFromVariantTensor(const Tensor& tensor,
                                    DatasetBase** out_dataset) {
   if (!(tensor.dtype() == DT_VARIANT &&
@@ -223,7 +412,7 @@ Status GetDatasetFromVariantTensor(const Tensor& tensor,
 }
 
 Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor) {
-  if (!(tensor->dtype() == DT_VARIANT ||
+  if (!(tensor->dtype() == DT_VARIANT &&
         TensorShapeUtils::IsScalar(tensor->shape()))) {
     return errors::InvalidArgument(
         "Dataset tensor must be a scalar of dtype DT_VARIANT.");
@@ -232,29 +421,51 @@ Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor) {
   return Status::OK();
 }
 
-Status DatasetBase::Save(SerializationContext* ctx,
-                         IteratorStateWriter* writer) const {
-  string serialized_graph_def;
-  string output_node;
-  GraphDefBuilder b;
-  DatasetGraphDefBuilder db(&b);
-  Node* node = nullptr;
-  TF_RETURN_IF_ERROR(AsGraphDefInternal(ctx, &db, &node));
-  output_node = node->name();
-  GraphDef graph_def;
-  TF_RETURN_IF_ERROR(b.ToGraphDef(&graph_def));
-  graph_def.SerializeToString(&serialized_graph_def);
-  TF_RETURN_IF_ERROR(
-      writer->WriteScalar(kDatasetGraphKey, serialized_graph_def));
-  TF_RETURN_IF_ERROR(
-      writer->WriteScalar(kDatasetGraphOutputNodeKey, output_node));
-  return Status::OK();
+Status DatasetBase::MakeIterator(
+    IteratorContext* ctx, const IteratorBase* parent,
+    const string& output_prefix,
+    std::unique_ptr<IteratorBase>* iterator) const {
+  *iterator = MakeIteratorInternal(output_prefix);
+  Status s = (*iterator)->InitializeBase(ctx, parent);
+  if (s.ok()) {
+    s.Update((*iterator)->Initialize(ctx));
+  }
+  if (!s.ok()) {
+    // Reset the iterator to avoid returning an uninitialized iterator.
+    iterator->reset();
+  }
+  return s;
+}
+
+Status DatasetBase::MakeSplitProvider(
+    std::unique_ptr<SplitProvider>* split_provider) const {
+  std::vector<const DatasetBase*> inputs;
+  Status s = InputDatasets(&inputs);
+  if (errors::IsUnimplemented(s)) {
+    return errors::Unimplemented(
+        "Cannot create a split provider for dataset of type ", type_string(),
+        ", because the dataset implements neither `InputDatasets` nor "
+        "`MakeSplitProvider`.");
+  }
+  if (inputs.size() != 1) {
+    return errors::Unimplemented(
+        "Cannot create a split provider for dataset of type ", type_string(),
+        ", because the dataset is not unary (having arity ", inputs.size(),
+        "), and no custom implementation of `MakeSplitProvider` is defined.");
+  }
+  return inputs[0]->MakeSplitProvider(split_provider);
+}
+
+Status DatasetBase::InputDatasets(
+    std::vector<const DatasetBase*>* inputs) const {
+  return errors::Unimplemented("InputDatasets not implemented for ",
+                               type_string());
 }
 
 Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
     SerializationContext* ctx, const DatasetBase* dataset, Node** output) {
   Status status = dataset->AsGraphDefInternal(ctx, this, output);
-  if (ctx->optimization_only() && errors::IsUnimplemented(status)) {
+  if (errors::IsUnimplemented(status) && !ctx->fail_if_unimplemented()) {
     Tensor t(DT_VARIANT, TensorShape({}));
     // `StoreDatasetInVariantTensor` will transfer ownership of `dataset`. We
     // increment the refcount of `dataset` here to retain ownership.
@@ -264,13 +475,192 @@ Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
     TF_RETURN_IF_ERROR(AddPlaceholder(t, output));
     DCHECK_NE(ctx->input_list(), nullptr);
     ctx->input_list()->emplace_back((*output)->name(), std::move(t));
-    LOG(WARNING)
+    LOG_EVERY_N_SEC(WARNING, 30)
         << "Input of " << dataset->DebugString()
         << " will not be optimized because the dataset does not implement the "
            "AsGraphDefInternal() method needed to apply optimizations.";
     return Status::OK();
   }
   return status;
+}
+
+Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensor(
+    SerializationContext* ctx, const Tensor& t, Node** output) {
+  if (t.dtype() == DT_VARIANT) {
+    // If the input tensor is a variant, it may represent a multi-dimensional
+    // array of datasets. We attempt to decode each dataset so that we can use
+    // their custom serialization logic and combine the result of their
+    // individual serializations using the `Pack` operation.
+    //
+    // If this fails, we fallback to using its Variant::Encode() based
+    // serialization.
+    Status s = AddDatasetOrTensorHelper(ctx, t, output);
+    if (s.ok()) {
+      return s;
+    }
+  }
+  return AddTensor(t, output);
+}
+
+Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensorHelper(
+    SerializationContext* ctx, const Tensor& t, Node** output) {
+  if (t.dims() == 0) {
+    DatasetBase* dataset;
+    TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(t, &dataset));
+    return AddInputDataset(ctx, dataset, output);
+  }
+  std::vector<NodeBuilder::NodeOut> nodes;
+  for (int i = 0; i < t.dim_size(0); ++i) {
+    Node* node;
+    TF_RETURN_IF_ERROR(AddDatasetOrTensorHelper(ctx, t.SubSlice(i), &node));
+    nodes.emplace_back(node);
+  }
+  auto op_name = "Pack";
+  auto opts = builder()->opts();
+  NodeBuilder node_builder(opts.GetNameForOp(op_name), op_name,
+                           opts.op_registry());
+  node_builder.Input(std::move(nodes));
+  *output = opts.FinalizeBuilder(&node_builder);
+  return Status::OK();
+}
+
+DatasetBaseIterator::DatasetBaseIterator(const BaseParams& params)
+    : params_(params) {
+  params_.dataset->Ref();
+  VLOG(2) << prefix() << " constructor";
+  strings::StrAppend(&traceme_metadata_, "shapes=");
+  auto& shapes = output_shapes();
+  for (int i = 0; i < shapes.size(); ++i) {
+    if (i > 0) {
+      strings::StrAppend(&traceme_metadata_, " ");
+    }
+    strings::StrAppend(&traceme_metadata_, shapes.at(i).DebugString());
+  }
+  strings::StrAppend(&traceme_metadata_, ",types=");
+  auto& types = output_dtypes();
+  for (int i = 0; i < types.size(); ++i) {
+    if (i > 0) {
+      strings::StrAppend(&traceme_metadata_, " ");
+    }
+    strings::StrAppend(&traceme_metadata_, DataTypeString(types.at(i)));
+  }
+}
+
+DatasetBaseIterator::~DatasetBaseIterator() {
+  VLOG(2) << prefix() << " destructor";
+  params_.dataset->Unref();
+}
+
+string DatasetBaseIterator::BuildTraceMeName() {
+  string result =
+      strings::StrCat(params_.prefix, "#", traceme_metadata_, ",id=", id_);
+  if (parent_) {
+    strings::StrAppend(&result, ",parent_id=", parent_id_);
+  }
+  TraceMeMetadata metadata = GetTraceMeMetadata();
+  for (const auto& pair : metadata) {
+    strings::StrAppend(&result, ",", pair.first, "=", pair.second);
+  }
+  strings::StrAppend(&result, "#");
+  return result;
+}
+
+Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
+                                    std::vector<Tensor>* out_tensors,
+                                    bool* end_of_sequence) {
+  profiler::TraceMe activity([&] { return BuildTraceMeName(); },
+                             profiler::TraceMeLevel::kInfo);
+  DVLOG(3) << prefix() << " GetNext enter";
+  auto model = ctx->model();
+  if (model && model->collect_resource_usage() && node_) {
+    int64 now_nanos = EnvTime::NowNanos();
+    auto output = node_->output();
+    if (output) {
+      output->record_stop(now_nanos);
+    }
+    node_->record_start(now_nanos);
+  }
+  Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
+  if (TF_PREDICT_TRUE(s.ok() && !*end_of_sequence)) {
+    DCHECK_EQ(out_tensors->size(), dataset()->output_dtypes().size());
+    RecordElement(ctx, out_tensors);
+  }
+  if (model && model->collect_resource_usage() && node_) {
+    int64 now_nanos = EnvTime::NowNanos();
+    node_->record_stop(now_nanos);
+    auto output = node_->output();
+    if (output) {
+      output->record_start(now_nanos);
+    }
+  }
+  if (TF_PREDICT_FALSE(errors::IsOutOfRange(s))) {
+    s = errors::Internal("Iterator \"", params_.prefix,
+                         "\" returned `OutOfRange`. This indicates an "
+                         "implementation error as `OutOfRange` errors are not "
+                         "expected to be returned here. Original message: ",
+                         s.error_message());
+    LOG(ERROR) << s;
+  }
+  DVLOG(3) << prefix() << " GetNext exit";
+  return s;
+}
+
+Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
+                                 bool* end_of_sequence, int* num_skipped) {
+  profiler::TraceMe activity([&] { return BuildTraceMeName(); },
+                             profiler::TraceMeLevel::kInfo);
+  DVLOG(3) << prefix() << " Skip enter";
+  auto model = ctx->model();
+  if (model && model->collect_resource_usage() && node_) {
+    int64 now_nanos = EnvTime::NowNanos();
+    auto output = node_->output();
+    if (output) {
+      output->record_stop(now_nanos);
+    }
+    node_->record_start(now_nanos);
+  }
+  Status s = SkipInternal(ctx, num_to_skip, end_of_sequence, num_skipped);
+  if (model && model->collect_resource_usage() && node_) {
+    int64 now_nanos = EnvTime::NowNanos();
+    node_->record_stop(now_nanos);
+    auto output = node_->output();
+    if (output) {
+      output->record_start(now_nanos);
+    }
+  }
+  if (TF_PREDICT_FALSE(errors::IsOutOfRange(s))) {
+    s = errors::Internal("Iterator \"", params_.prefix,
+                         "\" returned `OutOfRange`. This indicates an "
+                         "implementation error as `OutOfRange` errors are not "
+                         "expected to be returned here. Original message: ",
+                         s.error_message());
+    LOG(ERROR) << s;
+  }
+  DVLOG(3) << prefix() << " Skip exit";
+  return s;
+}
+
+Status DatasetBaseIterator::SkipInternal(IteratorContext* ctx, int num_to_skip,
+                                         bool* end_of_sequence,
+                                         int* num_skipped) {
+  *num_skipped = 0;
+  for (int i = 0; i < num_to_skip; ++i) {
+    std::vector<Tensor> out_tensors;
+    TF_RETURN_IF_ERROR(GetNextInternal(ctx, &out_tensors, end_of_sequence));
+    if (*end_of_sequence) {
+      return Status::OK();
+    }
+    // RecordElement is used to count the number of element computed and
+    // help calculate the CPU time spent on a given iterator to do the
+    // autotuning.
+    // Here we only call RecordElement in the default implementation of
+    // SkipInternal (which trivially calls GetNextInternal) and assume
+    // that the overriden SkipInternal in the derived class will have
+    // negligible cost compare to its GetNextInternal.
+    RecordElement(ctx, &out_tensors);
+    (*num_skipped)++;
+  }
+  return Status::OK();
 }
 
 void DatasetOpKernel::Compute(OpKernelContext* ctx) {
@@ -281,6 +671,23 @@ void DatasetOpKernel::Compute(OpKernelContext* ctx) {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
     OP_REQUIRES_OK(ctx, StoreDatasetInVariantTensor(dataset, output));
   }
+}
+
+string DatasetOpKernel::TraceString(const OpKernelContext& ctx,
+                                    bool verbose) const {
+  return profiler::TraceMeOp(name_view(), type_string_view());
+}
+
+// static
+bool DatasetOpKernel::IsDatasetOp(const OpDef* op_def) {
+  if (DatasetOpRegistry::IsRegistered(op_def->name())) {
+    return true;
+  }
+
+  return (op_def->output_arg_size() == 1 &&
+          op_def->output_arg(0).type() == DT_VARIANT &&
+          (absl::EndsWith(op_def->name(), "Dataset") ||
+           absl::EndsWith(op_def->name(), "DatasetV2")));
 }
 
 void UnaryDatasetOpKernel::MakeDataset(OpKernelContext* ctx,
@@ -304,10 +711,8 @@ const char DatasetBase::kDatasetGraphKey[] = "_DATASET_GRAPH";
 const char DatasetBase::kDatasetGraphOutputNodeKey[] =
     "_DATASET_GRAPH_OUTPUT_NODE";
 
-BackgroundWorker::BackgroundWorker(Env* env, const string& name) {
-  thread_.reset(env->StartThread({} /* thread_options */, name,
-                                 [this]() { WorkerLoop(); }));
-}
+BackgroundWorker::BackgroundWorker(Env* env, const char* name)
+    : env_(env), name_(name) {}
 
 BackgroundWorker::~BackgroundWorker() {
   {
@@ -326,12 +731,17 @@ BackgroundWorker::~BackgroundWorker() {
 void BackgroundWorker::Schedule(std::function<void()> work_item) {
   {
     mutex_lock l(mu_);
+    if (!thread_) {
+      thread_ = absl::WrapUnique(env_->StartThread(
+          {} /* thread_options */, name_, [this]() { WorkerLoop(); }));
+    }
     work_queue_.push_back(std::move(work_item));
   }
   cond_var_.notify_one();
 }
 
 void BackgroundWorker::WorkerLoop() {
+  tensorflow::ResourceTagger tag(kTFDataResourceTag, "Background");
   while (true) {
     std::function<void()> work_item = nullptr;
     {
@@ -349,6 +759,43 @@ void BackgroundWorker::WorkerLoop() {
     DCHECK(work_item != nullptr);
     work_item();
   }
+}
+
+// static
+void DatasetOpRegistry::Register(const string& op_name) {
+  mutex_lock l(*get_dataset_op_registry_lock());
+  get_dataset_op_registry()->insert(op_name);
+}
+
+// static
+bool DatasetOpRegistry::IsRegistered(const string& op_name) {
+  mutex_lock l(*get_dataset_op_registry_lock());
+  std::unordered_set<string>* op_names = get_dataset_op_registry();
+  return op_names->find(op_name) != op_names->end();
+}
+
+namespace {
+class RunnerImpl : public Runner {
+ public:
+  void Run(const std::function<void()>& f) override {
+    tensorflow::ResourceTagger tag(kTFDataResourceTag, "Runner");
+    f();
+
+    // NOTE: We invoke a virtual function to prevent `f` being tail-called, and
+    // thus ensure that this function remains on the stack until after `f`
+    // returns.
+    PreventTailCall();
+  }
+
+ private:
+  virtual void PreventTailCall() {}
+};
+}  // namespace
+
+/* static */
+Runner* Runner::get() {
+  static Runner* singleton = new RunnerImpl;
+  return singleton;
 }
 
 }  // namespace data

@@ -13,14 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/cwise_ops_gpu_common.cu.h"
 
 namespace tensorflow {
 namespace functor {
+#if GOOGLE_CUDA
 DEFINE_BINARY5(xlogy, Eigen::half, float, double, complex64, complex128);
+#elif TENSORFLOW_USE_ROCM
+// TODO(ROCm): enable complex64 / complex128 after compiler fix.
+DEFINE_BINARY3(xlogy, Eigen::half, float, double);
+#endif
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -17,23 +17,29 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
 import threading
 import warnings
 
-from tensorflow.python.compat import compat
+import six
+
+from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import sparse
-from tensorflow.python.data.util import structure as structure_lib
+from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import gen_dataset_ops
-from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.training.saver import BaseSaverBuilder
+from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.util import deprecation
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -62,14 +68,16 @@ GLOBAL_ITERATORS = "iterators"
 
 
 def _device_stack_is_empty():
+  if context.executing_eagerly():
+    return context.context().device_name is None
   # pylint: disable=protected-access
   device_stack = ops.get_default_graph()._device_functions_outer_to_inner
   # pylint: enable=protected-access
   return not bool(device_stack)
 
 
-@tf_export("data.Iterator")
-class Iterator(checkpointable.CheckpointableBase):
+@tf_export(v1=["data.Iterator"])
+class Iterator(trackable.Trackable):
   """Represents the state of iterating through a `Dataset`."""
 
   def __init__(self, iterator_resource, initializer, output_types,
@@ -100,10 +108,12 @@ class Iterator(checkpointable.CheckpointableBase):
       raise ValueError("If `structure` is not specified, all of "
                        "`output_types`, `output_shapes`, and `output_classes`"
                        " must be specified.")
-    # pylint: disable=protected-access
-    self._structure = structure_lib.Structure._from_legacy_structure(
+    self._element_spec = structure.convert_legacy_structure(
         output_types, output_shapes, output_classes)
-    # pylint: enable=protected-access
+    self._flat_tensor_shapes = structure.get_flat_tensor_shapes(
+        self._element_spec)
+    self._flat_tensor_types = structure.get_flat_tensor_types(
+        self._element_spec)
 
     self._string_handle = gen_dataset_ops.iterator_to_string_handle(
         self._iterator_resource)
@@ -185,39 +195,22 @@ class Iterator(checkpointable.CheckpointableBase):
       output_shapes = nest.map_structure(
           lambda _: tensor_shape.TensorShape(None), output_types)
     else:
-      output_shapes = nest.map_structure_up_to(
-          output_types, tensor_shape.as_shape, output_shapes)
+      output_shapes = nest.map_structure_up_to(output_types,
+                                               tensor_shape.as_shape,
+                                               output_shapes)
     if output_classes is None:
       output_classes = nest.map_structure(lambda _: ops.Tensor, output_types)
     nest.assert_same_structure(output_types, output_shapes)
+    output_structure = structure.convert_legacy_structure(
+        output_types, output_shapes, output_classes)
     if shared_name is None:
       shared_name = ""
-    if compat.forward_compatible(2018, 8, 3):
-      if _device_stack_is_empty():
-        with ops.device("/cpu:0"):
-          iterator_resource = gen_dataset_ops.iterator_v2(
-              container="",
-              shared_name=shared_name,
-              output_types=nest.flatten(
-                  sparse.as_dense_types(output_types, output_classes)),
-              output_shapes=nest.flatten(
-                  sparse.as_dense_shapes(output_shapes, output_classes)))
-      else:
-        iterator_resource = gen_dataset_ops.iterator_v2(
-            container="",
-            shared_name=shared_name,
-            output_types=nest.flatten(
-                sparse.as_dense_types(output_types, output_classes)),
-            output_shapes=nest.flatten(
-                sparse.as_dense_shapes(output_shapes, output_classes)))
-    else:
-      iterator_resource = gen_dataset_ops.iterator(
-          container="",
-          shared_name=shared_name,
-          output_types=nest.flatten(
-              sparse.as_dense_types(output_types, output_classes)),
-          output_shapes=nest.flatten(
-              sparse.as_dense_shapes(output_shapes, output_classes)))
+    iterator_resource = gen_dataset_ops.iterator_v2(
+        container="",
+        shared_name=shared_name,
+        output_types=structure.get_flat_tensor_types(output_structure),
+        output_shapes=structure.get_flat_tensor_shapes(
+            output_structure))
     return Iterator(iterator_resource, None, output_types, output_shapes,
                     output_classes)
 
@@ -230,7 +223,8 @@ class Iterator(checkpointable.CheckpointableBase):
 
     This method allows you to define a "feedable" iterator where you can choose
     between concrete iterators by feeding a value in a `tf.Session.run` call.
-    In that case, `string_handle` would be a `tf.placeholder`, and you would
+    In that case, `string_handle` would be a `tf.compat.v1.placeholder`, and you
+    would
     feed it with the value of `tf.data.Iterator.string_handle` in each step.
 
     For example, if you had two iterators that marked the current position in
@@ -244,7 +238,7 @@ class Iterator(checkpointable.CheckpointableBase):
     test_iterator = tf.data.Dataset(...).make_one_shot_iterator()
     test_iterator_handle = sess.run(test_iterator.string_handle())
 
-    handle = tf.placeholder(tf.string, shape=[])
+    handle = tf.compat.v1.placeholder(tf.string, shape=[])
     iterator = tf.data.Iterator.from_string_handle(
         handle, train_iterator.output_types)
 
@@ -256,8 +250,8 @@ class Iterator(checkpointable.CheckpointableBase):
     ```
 
     Args:
-      string_handle: A scalar `tf.Tensor` of type `tf.string` that evaluates
-        to a handle produced by the `Iterator.string_handle()` method.
+      string_handle: A scalar `tf.Tensor` of type `tf.string` that evaluates to
+        a handle produced by the `Iterator.string_handle()` method.
       output_types: A nested structure of `tf.DType` objects corresponding to
         each component of an element of this dataset.
       output_shapes: (Optional.) A nested structure of `tf.TensorShape` objects
@@ -275,35 +269,19 @@ class Iterator(checkpointable.CheckpointableBase):
       output_shapes = nest.map_structure(
           lambda _: tensor_shape.TensorShape(None), output_types)
     else:
-      output_shapes = nest.map_structure_up_to(
-          output_types, tensor_shape.as_shape, output_shapes)
+      output_shapes = nest.map_structure_up_to(output_types,
+                                               tensor_shape.as_shape,
+                                               output_shapes)
     if output_classes is None:
       output_classes = nest.map_structure(lambda _: ops.Tensor, output_types)
     nest.assert_same_structure(output_types, output_shapes)
+    output_structure = structure.convert_legacy_structure(
+        output_types, output_shapes, output_classes)
     string_handle = ops.convert_to_tensor(string_handle, dtype=dtypes.string)
-    if compat.forward_compatible(2018, 8, 3):
-      if _device_stack_is_empty():
-        with ops.device("/cpu:0"):
-          iterator_resource = gen_dataset_ops.iterator_from_string_handle_v2(
-              string_handle,
-              output_types=nest.flatten(
-                  sparse.as_dense_types(output_types, output_classes)),
-              output_shapes=nest.flatten(
-                  sparse.as_dense_shapes(output_shapes, output_classes)))
-      else:
-        iterator_resource = gen_dataset_ops.iterator_from_string_handle_v2(
-            string_handle,
-            output_types=nest.flatten(
-                sparse.as_dense_types(output_types, output_classes)),
-            output_shapes=nest.flatten(
-                sparse.as_dense_shapes(output_shapes, output_classes)))
-    else:
-      iterator_resource = gen_dataset_ops.iterator_from_string_handle(
-          string_handle,
-          output_types=nest.flatten(
-              sparse.as_dense_types(output_types, output_classes)),
-          output_shapes=nest.flatten(
-              sparse.as_dense_shapes(output_shapes, output_classes)))
+    iterator_resource = gen_dataset_ops.iterator_from_string_handle_v2(
+        string_handle,
+        output_types=structure.get_flat_tensor_types(output_structure),
+        output_shapes=structure.get_flat_tensor_shapes(output_structure))
     return Iterator(iterator_resource, None, output_types, output_shapes,
                     output_classes)
 
@@ -340,31 +318,48 @@ class Iterator(checkpointable.CheckpointableBase):
         element structure.
     """
     with ops.name_scope(name, "make_initializer") as name:
-      nest.assert_same_structure(self.output_types, dataset.output_types)
-      nest.assert_same_structure(self.output_shapes, dataset.output_shapes)
+      # NOTE(mrry): Cannot depend on `dataset_ops.get_legacy_output*()` due
+      # to that creating a circular dependency.
+      # pylint: disable=protected-access
+      dataset_output_types = nest.map_structure(
+          lambda component_spec: component_spec._to_legacy_output_types(),
+          dataset.element_spec)
+      dataset_output_shapes = nest.map_structure(
+          lambda component_spec: component_spec._to_legacy_output_shapes(),
+          dataset.element_spec)
+      dataset_output_classes = nest.map_structure(
+          lambda component_spec: component_spec._to_legacy_output_classes(),
+          dataset.element_spec)
+      # pylint: enable=protected-access
+
+      nest.assert_same_structure(self.output_types, dataset_output_types)
+      nest.assert_same_structure(self.output_shapes, dataset_output_shapes)
       for iterator_class, dataset_class in zip(
           nest.flatten(self.output_classes),
-          nest.flatten(dataset.output_classes)):
+          nest.flatten(dataset_output_classes)):
         if iterator_class is not dataset_class:
           raise TypeError(
               "Expected output classes %r but got dataset with output class %r."
-              % (self.output_classes, dataset.output_classes))
+              % (self.output_classes, dataset_output_classes))
       for iterator_dtype, dataset_dtype in zip(
-          nest.flatten(self.output_types), nest.flatten(dataset.output_types)):
+          nest.flatten(self.output_types), nest.flatten(dataset_output_types)):
         if iterator_dtype != dataset_dtype:
           raise TypeError(
               "Expected output types %r but got dataset with output types %r." %
-              (self.output_types, dataset.output_types))
+              (self.output_types, dataset_output_types))
       for iterator_shape, dataset_shape in zip(
           nest.flatten(self.output_shapes), nest.flatten(
-              dataset.output_shapes)):
+              dataset_output_shapes)):
         if not iterator_shape.is_compatible_with(dataset_shape):
           raise TypeError("Expected output shapes compatible with %r but got "
                           "dataset with output shapes %r." %
-                          (self.output_shapes, dataset.output_shapes))
+                          (self.output_shapes, dataset_output_shapes))
+
+    # TODO(b/169442955): Investigate the need for this colocation constraint.
     with ops.colocate_with(self._iterator_resource):
+      # pylint: disable=protected-access
       return gen_dataset_ops.make_iterator(
-          dataset._as_variant_tensor(), self._iterator_resource, name=name)  # pylint: disable=protected-access
+          dataset._variant_tensor, self._iterator_resource, name=name)
 
   def get_next(self, name=None):
     """Returns a nested structure of `tf.Tensor`s representing the next element.
@@ -383,10 +378,10 @@ class Iterator(checkpointable.CheckpointableBase):
 
     # Build a TensorFlow graph that does something with each element.
     loss = model_function(next_element)
-    optimizer = ...  # A `tf.train.Optimizer` object.
+    optimizer = ...  # A `tf.compat.v1.train.Optimizer` object.
     train_op = optimizer.minimize(loss)
 
-    with tf.Session() as sess:
+    with tf.compat.v1.Session() as sess:
       try:
         while True:
           sess.run(train_op)
@@ -414,12 +409,26 @@ class Iterator(checkpointable.CheckpointableBase):
     if self._get_next_call_count > GET_NEXT_CALL_WARNING_THRESHOLD:
       warnings.warn(GET_NEXT_CALL_WARNING_MESSAGE)
 
-    # pylint: disable=protected-access
-    flat_ret = gen_dataset_ops.iterator_get_next(
-        self._iterator_resource,
-        output_types=self._structure._flat_types,
-        output_shapes=self._structure._flat_shapes, name=name)
-    return self._structure._from_tensor_list(flat_ret)
+    # TODO(b/169442955): Investigate the need for this colocation constraint.
+    with ops.colocate_with(self._iterator_resource):
+      # pylint: disable=protected-access
+      flat_ret = gen_dataset_ops.iterator_get_next(
+          self._iterator_resource,
+          output_types=self._flat_tensor_types,
+          output_shapes=self._flat_tensor_shapes,
+          name=name)
+      return structure.from_tensor_list(self._element_spec, flat_ret)
+
+  def get_next_as_optional(self):
+    # TODO(b/169442955): Investigate the need for this colocation constraint.
+    with ops.colocate_with(self._iterator_resource):
+      # pylint: disable=protected-access
+      return optional_ops._OptionalImpl(
+          gen_dataset_ops.iterator_get_next_as_optional(
+              self._iterator_resource,
+              output_types=structure.get_flat_tensor_types(self.element_spec),
+              output_shapes=structure.get_flat_tensor_shapes(
+                  self.element_spec)), self.element_spec)
 
   def string_handle(self, name=None):
     """Returns a string-valued `tf.Tensor` that represents this iterator.
@@ -437,18 +446,24 @@ class Iterator(checkpointable.CheckpointableBase):
           self._iterator_resource, name=name)
 
   @property
+  @deprecation.deprecated(
+      None, "Use `tf.compat.v1.data.get_output_classes(iterator)`.")
   def output_classes(self):
     """Returns the class of each component of an element of this iterator.
 
-    The expected values are `tf.Tensor` and `tf.SparseTensor`.
+    The expected values are `tf.Tensor` and `tf.sparse.SparseTensor`.
 
     Returns:
       A nested structure of Python `type` objects corresponding to each
       component of an element of this dataset.
     """
-    return self._structure._to_legacy_output_classes()  # pylint: disable=protected-access
+    return nest.map_structure(
+        lambda component_spec: component_spec._to_legacy_output_classes(),  # pylint: disable=protected-access
+        self._element_spec)
 
   @property
+  @deprecation.deprecated(
+      None, "Use `tf.compat.v1.data.get_output_shapes(iterator)`.")
   def output_shapes(self):
     """Returns the shape of each component of an element of this iterator.
 
@@ -456,9 +471,13 @@ class Iterator(checkpointable.CheckpointableBase):
       A nested structure of `tf.TensorShape` objects corresponding to each
       component of an element of this dataset.
     """
-    return self._structure._to_legacy_output_shapes()  # pylint: disable=protected-access
+    return nest.map_structure(
+        lambda component_spec: component_spec._to_legacy_output_shapes(),  # pylint: disable=protected-access
+        self._element_spec)
 
   @property
+  @deprecation.deprecated(
+      None, "Use `tf.compat.v1.data.get_output_types(iterator)`.")
   def output_types(self):
     """Returns the type of each component of an element of this iterator.
 
@@ -466,17 +485,13 @@ class Iterator(checkpointable.CheckpointableBase):
       A nested structure of `tf.DType` objects corresponding to each component
       of an element of this dataset.
     """
-    return self._structure._to_legacy_output_types()  # pylint: disable=protected-access
+    return nest.map_structure(
+        lambda component_spec: component_spec._to_legacy_output_types(),  # pylint: disable=protected-access
+        self._element_spec)
 
   @property
-  def _element_structure(self):
-    """The structure of an element of this iterator.
-
-    Returns:
-      A `Structure` object representing the structure of the components of this
-        optional.
-    """
-    return self._structure
+  def element_spec(self):
+    return self._element_spec
 
   def _gather_saveables_for_checkpoint(self):
 
@@ -498,102 +513,260 @@ def _generate_shared_name(prefix):
   return "{}{}".format(prefix, uid)
 
 
-class EagerIterator(checkpointable.CheckpointableBase):
-  """An iterator producing tf.Tensor objects from a tf.data.Dataset."""
+class IteratorResourceDeleter(object):
+  """An object which cleans up an iterator resource handle.
 
-  def __init__(self, dataset):
-    """Creates a new iterator over the given dataset.
+  An alternative to defining a __del__ method on an object. Even if the parent
+  object is part of a reference cycle, the cycle will be collectable.
+  """
 
-    For example:
-    ```python
-    dataset = tf.data.Dataset.range(4)
-    for x in Iterator(dataset):
-      print(x)
-    ```
+  __slots__ = ["_deleter", "_handle", "_eager_mode"]
 
-    Tensors produced will be placed on the device on which this iterator object
-    was created.
+  def __init__(self, handle, deleter):
+    self._deleter = deleter
+    self._handle = handle
+    self._eager_mode = context.executing_eagerly()
+
+  def __del__(self):
+    # Make sure the resource is deleted in the same mode as it was created in.
+    if self._eager_mode:
+      with context.eager_mode():
+        gen_dataset_ops.delete_iterator(
+            handle=self._handle, deleter=self._deleter)
+    else:
+      with context.graph_mode():
+        gen_dataset_ops.delete_iterator(
+            handle=self._handle, deleter=self._deleter)
+
+
+@tf_export("data.Iterator", v1=[])
+@six.add_metaclass(abc.ABCMeta)
+class IteratorBase(collections_abc.Iterator, trackable.Trackable,
+                   composite_tensor.CompositeTensor):
+  """Represents an iterator of a `tf.data.Dataset`.
+
+  `tf.data.Iterator` is the primary mechanism for enumerating elements of a
+  `tf.data.Dataset`. It supports the Python Iterator protocol, which means
+  it can be iterated over using a for-loop:
+
+  >>> dataset = tf.data.Dataset.range(2)
+  >>> for element in dataset:
+  ...   print(element)
+  tf.Tensor(0, shape=(), dtype=int64)
+  tf.Tensor(1, shape=(), dtype=int64)
+
+  or by fetching individual elements explicitly via `get_next()`:
+
+  >>> dataset = tf.data.Dataset.range(2)
+  >>> iterator = iter(dataset)
+  >>> print(iterator.get_next())
+  tf.Tensor(0, shape=(), dtype=int64)
+  >>> print(iterator.get_next())
+  tf.Tensor(1, shape=(), dtype=int64)
+
+  In addition, non-raising iteration is supported via `get_next_as_optional()`,
+  which returns the next element (if available) wrapped in a
+  `tf.experimental.Optional`.
+
+  >>> dataset = tf.data.Dataset.from_tensors(42)
+  >>> iterator = iter(dataset)
+  >>> optional = iterator.get_next_as_optional()
+  >>> print(optional.has_value())
+  tf.Tensor(True, shape=(), dtype=bool)
+  >>> optional = iterator.get_next_as_optional()
+  >>> print(optional.has_value())
+  tf.Tensor(False, shape=(), dtype=bool)
+  """
+
+  @abc.abstractproperty
+  def element_spec(self):
+    """The type specification of an element of this iterator.
+
+    >>> dataset = tf.data.Dataset.from_tensors(42)
+    >>> iterator = iter(dataset)
+    >>> iterator.element_spec
+    tf.TensorSpec(shape=(), dtype=tf.int32, name=None)
+
+    Returns:
+      A nested structure of `tf.TypeSpec` objects matching the structure of an
+      element of this iterator, specifying the type of individual components.
+    """
+    raise NotImplementedError("Iterator.element_spec")
+
+  @abc.abstractmethod
+  def get_next(self):
+    """Returns a nested structure of `tf.Tensor`s containing the next element.
+
+    >>> dataset = tf.data.Dataset.from_tensors(42)
+    >>> iterator = iter(dataset)
+    >>> print(iterator.get_next())
+    tf.Tensor(42, shape=(), dtype=int32)
+
+    Returns:
+      A nested structure of `tf.Tensor` objects.
+
+    Raises:
+      `tf.errors.OutOfRangeError`: If the end of the iterator has been reached.
+    """
+    raise NotImplementedError("Iterator.get_next()")
+
+  @abc.abstractmethod
+  def get_next_as_optional(self):
+    """Returns a `tf.experimental.Optional` which contains the next element.
+
+    If the iterator has reached the end of the sequence, the returned
+    `tf.experimental.Optional` will have no value.
+
+    >>> dataset = tf.data.Dataset.from_tensors(42)
+    >>> iterator = iter(dataset)
+    >>> optional = iterator.get_next_as_optional()
+    >>> print(optional.has_value())
+    tf.Tensor(True, shape=(), dtype=bool)
+    >>> print(optional.get_value())
+    tf.Tensor(42, shape=(), dtype=int32)
+    >>> optional = iterator.get_next_as_optional()
+    >>> print(optional.has_value())
+    tf.Tensor(False, shape=(), dtype=bool)
+
+    Returns:
+      A `tf.experimental.Optional` object representing the next element.
+    """
+    raise NotImplementedError("Iterator.get_next_as_optional()")
+
+
+class OwnedIterator(IteratorBase):
+  """An iterator producing tf.Tensor objects from a tf.data.Dataset.
+
+  The iterator resource  created through `OwnedIterator` is owned by the Python
+  object and the life time of the underlying resource is tied to the life time
+  of the `OwnedIterator` object. This makes `OwnedIterator` appropriate for use
+  in eager mode and inside of tf.functions.
+  """
+
+  def __init__(self, dataset=None, components=None, element_spec=None):
+    """Creates a new iterator from the given dataset.
+
+    If `dataset` is not specified, the iterator will be created from the given
+    tensor components and element structure. In particular, the alternative for
+    constructing the iterator is used when the iterator is reconstructed from
+    it `CompositeTensor` representation.
 
     Args:
       dataset: A `tf.data.Dataset` object.
+      components: Tensor components to construct the iterator from.
+      element_spec: A nested structure of `TypeSpec` objects that
+        represents the type specification of elements of the iterator.
 
     Raises:
-      RuntimeError: When invoked without eager execution enabled.
+      ValueError: If `dataset` is not provided and either `components` or
+        `element_spec` is not provided. Or `dataset` is provided and either
+        `components` and `element_spec` is provided.
     """
+    super(OwnedIterator, self).__init__()
+    error_message = ("Either `dataset` or both `components` and "
+                     "`element_spec` need to be provided.")
 
-    if not context.executing_eagerly():
-      raise RuntimeError(
-          "{} objects can only be used when eager execution is enabled, use "
-          "tf.data.Dataset.make_initializable_iterator or "
-          "tf.data.Dataset.make_one_shot_iterator for graph construction".
-          format(type(self)))
-    self._device = context.context().device_name
-    with ops.device("/cpu:0"):
+    if dataset is None:
+      if (components is None or element_spec is None):
+        raise ValueError(error_message)
       # pylint: disable=protected-access
-      ds_variant = dataset._as_variant_tensor()
-      self._structure = structure_lib.Structure._from_legacy_structure(
-          dataset.output_types, dataset.output_shapes, dataset.output_classes)
-      self._flat_output_types = self._structure._flat_types
-      self._flat_output_shapes = self._structure._flat_shapes
-      with ops.colocate_with(ds_variant):
-        self._resource = gen_dataset_ops.anonymous_iterator(
-            output_types=self._flat_output_types,
-            output_shapes=self._flat_output_shapes)
-        gen_dataset_ops.make_iterator(ds_variant, self._resource)
-        # Delete the resource when this object is deleted
-        self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
-            handle=self._resource, handle_device=self._device)
+      self._element_spec = element_spec
+      self._flat_output_types = structure.get_flat_tensor_types(
+          self._element_spec)
+      self._flat_output_shapes = structure.get_flat_tensor_shapes(
+          self._element_spec)
+      self._iterator_resource, self._deleter = components
+    else:
+      if (components is not None or element_spec is not None):
+        raise ValueError(error_message)
+      self._create_iterator(dataset)
+
+  def _create_iterator(self, dataset):
+    # pylint: disable=protected-access
+    dataset = dataset._apply_options()
+
+    # Store dataset reference to ensure that dataset is alive when this iterator
+    # is being used. For example, `tf.data.Dataset.from_generator` registers
+    # a few py_funcs that are needed in `self._next_internal`.  If the dataset
+    # is deleted, this iterator crashes on `self.__next__(...)` call.
+    self._dataset = dataset
+
+    ds_variant = dataset._variant_tensor
+    self._element_spec = dataset.element_spec
+    self._flat_output_types = structure.get_flat_tensor_types(
+        self._element_spec)
+    self._flat_output_shapes = structure.get_flat_tensor_shapes(
+        self._element_spec)
+    with ops.colocate_with(ds_variant):
+      self._iterator_resource, self._deleter = (
+          gen_dataset_ops.anonymous_iterator_v2(
+              output_types=self._flat_output_types,
+              output_shapes=self._flat_output_shapes))
+      gen_dataset_ops.make_iterator(ds_variant, self._iterator_resource)
+      # Delete the resource when this object is deleted
+      self._resource_deleter = IteratorResourceDeleter(
+          handle=self._iterator_resource,
+          deleter=self._deleter)
 
   def __iter__(self):
     return self
 
-  def __next__(self):  # For Python 3 compatibility
-    return self.next()
+  def next(self):  # For Python 2 compatibility
+    return self.__next__()
 
   def _next_internal(self):
-    """Returns a nested structure of `tf.Tensor`s containing the next element.
-    """
-    # This runs in sync mode as iterators use an error status to communicate
-    # that there is no more data to iterate over.
-    # TODO(b/77291417): Fix
-    with context.execution_mode(context.SYNC):
-      with ops.device(self._device):
-        # TODO(ashankar): Consider removing this ops.device() contextmanager
-        # and instead mimic ops placement in graphs: Operations on resource
-        # handles execute on the same device as where the resource is placed.
-        # NOTE(mrry): Here we use the "_sync" variant of `iterator_get_next`
-        # because in eager mode this code will run synchronously on the calling
-        # thread. Therefore we do not need to make a defensive context switch
-        # to a background thread, and can achieve a small constant performance
-        # boost by invoking the iterator synchronously.
-        ret = gen_dataset_ops.iterator_get_next_sync(
-            self._resource,
+    if not context.executing_eagerly():
+      # TODO(b/169442955): Investigate the need for this colocation constraint.
+      with ops.colocate_with(self._iterator_resource):
+        ret = gen_dataset_ops.iterator_get_next(
+            self._iterator_resource,
             output_types=self._flat_output_types,
             output_shapes=self._flat_output_shapes)
+      return structure.from_compatible_tensor_list(self._element_spec, ret)
 
-      return self._structure._from_compatible_tensor_list(ret)  # pylint: disable=protected-access
+    # TODO(b/77291417): This runs in sync mode as iterators use an error status
+    # to communicate that there is no more data to iterate over.
+    with context.execution_mode(context.SYNC):
+      ret = gen_dataset_ops.iterator_get_next(
+          self._iterator_resource,
+          output_types=self._flat_output_types,
+          output_shapes=self._flat_output_shapes)
 
-  def next(self):
-    """Returns a nested structure of `tf.Tensor`s containing the next element.
-    """
+      try:
+        # Fast path for the case `self._structure` is not a nested structure.
+        return self._element_spec._from_compatible_tensor_list(ret)  # pylint: disable=protected-access
+      except AttributeError:
+        return structure.from_compatible_tensor_list(self._element_spec, ret)
+
+  @property
+  def _type_spec(self):
+    return IteratorSpec(self.element_spec)
+
+  def __next__(self):
     try:
       return self._next_internal()
     except errors.OutOfRangeError:
       raise StopIteration
 
   @property
+  @deprecation.deprecated(
+      None, "Use `tf.compat.v1.data.get_output_classes(iterator)`.")
   def output_classes(self):
     """Returns the class of each component of an element of this iterator.
 
-    The expected values are `tf.Tensor` and `tf.SparseTensor`.
+    The expected values are `tf.Tensor` and `tf.sparse.SparseTensor`.
 
     Returns:
       A nested structure of Python `type` objects corresponding to each
       component of an element of this dataset.
     """
-    return self._structure._to_legacy_output_classes()  # pylint: disable=protected-access
+    return nest.map_structure(
+        lambda component_spec: component_spec._to_legacy_output_classes(),  # pylint: disable=protected-access
+        self._element_spec)
 
   @property
+  @deprecation.deprecated(
+      None, "Use `tf.compat.v1.data.get_output_shapes(iterator)`.")
   def output_shapes(self):
     """Returns the shape of each component of an element of this iterator.
 
@@ -601,9 +774,13 @@ class EagerIterator(checkpointable.CheckpointableBase):
       A nested structure of `tf.TensorShape` objects corresponding to each
       component of an element of this dataset.
     """
-    return self._structure._to_legacy_output_shapes()  # pylint: disable=protected-access
+    return nest.map_structure(
+        lambda component_spec: component_spec._to_legacy_output_shapes(),  # pylint: disable=protected-access
+        self._element_spec)
 
   @property
+  @deprecation.deprecated(
+      None, "Use `tf.compat.v1.data.get_output_types(iterator)`.")
   def output_types(self):
     """Returns the type of each component of an element of this iterator.
 
@@ -611,50 +788,118 @@ class EagerIterator(checkpointable.CheckpointableBase):
       A nested structure of `tf.DType` objects corresponding to each component
       of an element of this dataset.
     """
-    return self._structure._to_legacy_output_types()  # pylint: disable=protected-access
+    return nest.map_structure(
+        lambda component_spec: component_spec._to_legacy_output_types(),  # pylint: disable=protected-access
+        self._element_spec)
 
   @property
-  def _element_structure(self):
-    """The structure of an element of this iterator.
+  def element_spec(self):
+    return self._element_spec
 
-    Returns:
-      A `Structure` object representing the structure of the components of this
-        optional.
-    """
-    return self._structure
-
-  def get_next(self, name=None):
-    """Returns a nested structure of `tf.Tensor`s containing the next element.
-
-    Args:
-      name: (Optional.) A name for the created operation. Currently unused.
-
-    Returns:
-      A nested structure of `tf.Tensor` objects.
-
-    Raises:
-      `tf.errors.OutOfRangeError`: If the end of the dataset has been reached.
-    """
-    del name
+  def get_next(self):
     return self._next_internal()
+
+  def get_next_as_optional(self):
+    # TODO(b/169442955): Investigate the need for this colocation constraint.
+    with ops.colocate_with(self._iterator_resource):
+      # pylint: disable=protected-access
+      return optional_ops._OptionalImpl(
+          gen_dataset_ops.iterator_get_next_as_optional(
+              self._iterator_resource,
+              output_types=structure.get_flat_tensor_types(self.element_spec),
+              output_shapes=structure.get_flat_tensor_shapes(
+                  self.element_spec)), self.element_spec)
 
   def _gather_saveables_for_checkpoint(self):
 
     def _saveable_factory(name):
-      return _IteratorSaveable(self._resource, name)
+      """Returns a SaveableObject for serialization/deserialization."""
+      policy = None
+      if self._dataset:
+        policy = self._dataset.options().experimental_external_state_policy
+      if policy:
+        return _IteratorSaveable(
+            self._iterator_resource,
+            name,
+            external_state_policy=policy)
+      else:
+        return _IteratorSaveable(self._iterator_resource, name)
 
     return {"ITERATOR": _saveable_factory}
 
 
-# TODO(b/71645805): Expose checkpointable stateful objects from dataset
-# attributes(potential).
+@tf_export("data.IteratorSpec", v1=[])
+class IteratorSpec(type_spec.TypeSpec):
+  """Type specification for `tf.data.Iterator`.
+
+  For instance, `tf.data.IteratorSpec` can be used to define a tf.function that
+  takes `tf.data.Iterator` as an input argument:
+
+  >>> @tf.function(input_signature=[tf.data.IteratorSpec(
+  ...   tf.TensorSpec(shape=(), dtype=tf.int32, name=None))])
+  ... def square(iterator):
+  ...   x = iterator.get_next()
+  ...   return x * x
+  >>> dataset = tf.data.Dataset.from_tensors(5)
+  >>> iterator = iter(dataset)
+  >>> print(square(iterator))
+  tf.Tensor(25, shape=(), dtype=int32)
+
+  Attributes:
+    element_spec: A nested structure of `TypeSpec` objects that represents the
+      type specification of the iterator elements.
+  """
+
+  __slots__ = ["_element_spec"]
+
+  def __init__(self, element_spec):
+    self._element_spec = element_spec
+
+  @property
+  def value_type(self):
+    return OwnedIterator
+
+  def _serialize(self):
+    return (self._element_spec,)
+
+  @property
+  def _component_specs(self):
+    return (
+        tensor_spec.TensorSpec([], dtypes.resource),
+        tensor_spec.TensorSpec([], dtypes.variant),
+    )
+
+  def _to_components(self, value):
+    return (value._iterator_resource, value._deleter)  # pylint: disable=protected-access
+
+  def _from_components(self, components):
+    return OwnedIterator(
+        dataset=None,
+        components=components,
+        element_spec=self._element_spec)
+
+  @staticmethod
+  def from_value(value):
+    return IteratorSpec(value.element_spec)  # pylint: disable=protected-access
+
+
+# TODO(b/71645805): Expose trackable stateful objects from dataset.
 class _IteratorSaveable(BaseSaverBuilder.SaveableObject):
   """SaveableObject for saving/restoring iterator state."""
 
-  def __init__(self, iterator_resource, name):
-    serialized_iterator = gen_dataset_ops.serialize_iterator(iterator_resource)
+  def __init__(
+      self,
+      iterator_resource,
+      name,
+      external_state_policy=distribute_options.ExternalStatePolicy.FAIL):
+    serialized_iterator = gen_dataset_ops.serialize_iterator(
+        iterator_resource, external_state_policy=external_state_policy.value)
     specs = [
-        BaseSaverBuilder.SaveSpec(serialized_iterator, "", name + "_STATE")
+        BaseSaverBuilder.SaveSpec(
+            serialized_iterator,
+            "",
+            name + "_STATE",
+            device=iterator_resource.device)
     ]
     super(_IteratorSaveable, self).__init__(iterator_resource, specs, name)
 
@@ -663,23 +908,20 @@ class _IteratorSaveable(BaseSaverBuilder.SaveableObject):
       return gen_dataset_ops.deserialize_iterator(self.op, restored_tensors[0])
 
 
+@deprecation.deprecated(
+    None, "Use `tf.data.Iterator.get_next_as_optional()` instead.")
+@tf_export("data.experimental.get_next_as_optional")
 def get_next_as_optional(iterator):
-  """Returns an `Optional` that contains the next value from the iterator.
+  """Returns a `tf.experimental.Optional` with the next element of the iterator.
 
-  If `iterator` has reached the end of the sequence, the returned `Optional`
-  will have no value.
+  If the iterator has reached the end of the sequence, the returned
+  `tf.experimental.Optional` will have no value.
 
   Args:
-    iterator: A `tf.data.Iterator` object.
+    iterator: A `tf.data.Iterator`.
 
   Returns:
-    An `Optional` object representing the next value from the iterator (if it
-    has one) or no value.
+    A `tf.experimental.Optional` object which either contains the next element
+    of the iterator (if it exists) or no value.
   """
-  # pylint: disable=protected-access
-  return optional_ops._OptionalImpl(
-      gen_dataset_ops.iterator_get_next_as_optional(
-          iterator._iterator_resource,
-          output_types=iterator._element_structure._flat_types,
-          output_shapes=iterator._element_structure._flat_shapes),
-      iterator._element_structure)
+  return iterator.get_next_as_optional()

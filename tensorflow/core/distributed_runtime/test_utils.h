@@ -30,8 +30,8 @@ namespace tensorflow {
 // testing.
 class TestWorkerInterface : public WorkerInterface {
  public:
-  void GetStatusAsync(const GetStatusRequest* request,
-                      GetStatusResponse* response,
+  void GetStatusAsync(CallOptions* opts, const GetStatusRequest* request,
+                      GetStatusResponse* response, bool fail_fast,
                       StatusCallback done) override {
     done(errors::Unimplemented("GetStatusAsync"));
   }
@@ -62,7 +62,7 @@ class TestWorkerInterface : public WorkerInterface {
   }
 
   void RunGraphAsync(CallOptions* opts, RunGraphRequestWrapper* request,
-                     MutableRunGraphResponseWrapper* repsonse,
+                     MutableRunGraphResponseWrapper* response,
                      StatusCallback done) override {
     done(errors::Unimplemented("RunGraphAsync"));
   }
@@ -70,28 +70,28 @@ class TestWorkerInterface : public WorkerInterface {
   void CleanupGraphAsync(const CleanupGraphRequest* request,
                          CleanupGraphResponse* response,
                          StatusCallback done) override {
-    done(errors::Unimplemented("RunGraphAsync"));
+    done(errors::Unimplemented("CleanupGraphAsync"));
   }
 
   void CleanupAllAsync(const CleanupAllRequest* request,
                        CleanupAllResponse* response,
                        StatusCallback done) override {
-    done(errors::Unimplemented("RunGraphAsync"));
+    done(errors::Unimplemented("CleanupAllAsync"));
   }
 
   void RecvTensorAsync(CallOptions* opts, const RecvTensorRequest* request,
                        TensorResponse* response, StatusCallback done) override {
-    done(errors::Unimplemented("RunGraphAsync"));
+    done(errors::Unimplemented("RecvTensorAsync"));
   }
 
   void LoggingAsync(const LoggingRequest* request, LoggingResponse* response,
                     StatusCallback done) override {
-    done(errors::Unimplemented("RunGraphAsync"));
+    done(errors::Unimplemented("LoggingAsync"));
   }
 
   void TracingAsync(const TracingRequest* request, TracingResponse* response,
                     StatusCallback done) override {
-    done(errors::Unimplemented("RunGraphAsync"));
+    done(errors::Unimplemented("TracingAsync"));
   }
 
   void RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
@@ -103,20 +103,20 @@ class TestWorkerInterface : public WorkerInterface {
                           const CompleteGroupRequest* request,
                           CompleteGroupResponse* response,
                           StatusCallback done) override {
-    done(errors::Unimplemented("RunGraphAsync"));
+    done(errors::Unimplemented("CompleteGroupAsync"));
   }
 
   void CompleteInstanceAsync(CallOptions* ops,
                              const CompleteInstanceRequest* request,
                              CompleteInstanceResponse* response,
                              StatusCallback done) override {
-    done(errors::Unimplemented("RunGraphAsync"));
+    done(errors::Unimplemented("CompleteInstanceAsync"));
   }
 
   void GetStepSequenceAsync(const GetStepSequenceRequest* request,
                             GetStepSequenceResponse* response,
                             StatusCallback done) override {
-    done(errors::Unimplemented("RunGraphAsync"));
+    done(errors::Unimplemented("GetStepSequenceAsync"));
   }
 };
 
@@ -152,7 +152,7 @@ class TestWorkerCache : public WorkerCacheInterface {
     }
   }
 
-  WorkerInterface* CreateWorker(const string& target) override {
+  WorkerInterface* GetOrCreateWorker(const string& target) override {
     auto it = workers_.find(target);
     if (it != workers_.end()) {
       return it->second;
@@ -161,6 +161,11 @@ class TestWorkerCache : public WorkerCacheInterface {
   }
 
   void ReleaseWorker(const string& target, WorkerInterface* worker) override {}
+
+  Status GetEagerClientCache(
+      std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
+    return errors::Unimplemented("Unimplemented.");
+  }
 
   bool GetDeviceLocalityNonBlocking(const string& device,
                                     DeviceLocality* locality) override {

@@ -20,13 +20,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
 
 namespace {
 
-class HloReachabilityTest : public HloVerifiedTestBase {};
+class HloReachabilityTest : public HloTestBase {};
 
 TEST_F(HloReachabilityTest, Reachability) {
   // Construct and test a reachability graph of the following form:
@@ -204,6 +204,37 @@ TEST_F(HloReachabilityTest, ChannelReachability) {
   EXPECT_TRUE(reachability->IsReachable(param, recv_done));
   EXPECT_FALSE(reachability->IsReachable(send, recv));
   EXPECT_FALSE(reachability->IsReachable(send_done, recv));
+}
+
+TEST_F(HloReachabilityTest, ReplaceInstructions) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test
+
+    ENTRY entry {
+      p0 = f32[28,28]{1,0} parameter(0)
+      ROOT add = f32[28,28]{1,0} add(p0, p0)
+    })")
+                    .ValueOrDie();
+  auto computation = module->entry_computation();
+  auto reachability = HloReachabilityMap::Build(computation);
+  auto* add = module->entry_computation()->root_instruction();
+  auto* p0 = add->operand(0);
+  EXPECT_TRUE(reachability->IsReachable(p0, add));
+
+  // Replacing an instruction with itself is a noop.
+  reachability->Replace(add, add);
+  EXPECT_TRUE(reachability->IsReachable(p0, add));
+
+  // Introduce a fusion instruction taking the place of `add`.
+  auto* fusion = computation->AddInstruction(HloInstruction::CreateFusion(
+      add->shape(), HloInstruction::FusionKind::kLoop, add));
+  EXPECT_FALSE(reachability->IsPresent(fusion));
+  EXPECT_TRUE(reachability->IsReachable(p0, add));
+
+  // Replace `add` with `fusion` in the readability map.
+  reachability->Replace(add, fusion);
+  EXPECT_FALSE(reachability->IsPresent(add));
+  EXPECT_TRUE(reachability->IsReachable(p0, fusion));
 }
 
 }  // namespace

@@ -1,7 +1,11 @@
 op {
   graph_op_name: "IsFinite"
   endpoint {
+    name: "math.is_finite"
+  }
+  endpoint {
     name: "debugging.is_finite"
+    deprecation_version: 2
   }
   endpoint {
     name: "is_finite"

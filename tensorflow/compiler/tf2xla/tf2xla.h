@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_TF2XLA_H_
 #define TENSORFLOW_COMPILER_TF2XLA_TF2XLA_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -30,9 +31,20 @@ namespace tensorflow {
 //
 // The computation is built in the context of the given `client`, which may
 // subsequently be used to compile or execute the computation.
-Status ConvertGraphDefToXla(const GraphDef& graph_def,
-                            const tf2xla::Config& config, xla::Client* client,
+Status ConvertGraphDefToXla(GraphDef graph_def, const tf2xla::Config& config,
+                            xla::Client* client,
                             xla::XlaComputation* computation);
+
+// Similar to ConvertGraphDefToXla, but uses MLIR and handle debug information.
+//
+// debug_info_filename: the file for the debug information proto.
+// debug_info_path_begin_marker: if not empty, file pathes in the debug
+//   information are trimmed from the beginning to the first appearance of the
+//   marker.
+Status ConvertGraphDefToXlaViaMlir(
+    GraphDef graph_def, const tf2xla::Config& config,
+    xla::XlaComputation* computation, absl::string_view debug_info_filename,
+    absl::string_view debug_info_path_begin_marker);
 
 }  // namespace tensorflow
 

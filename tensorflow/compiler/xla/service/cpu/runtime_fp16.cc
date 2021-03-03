@@ -131,3 +131,9 @@ float TF_ATTRIBUTE_WEAK __gnu_h2f_ieee(uint16 h) {
   o.set_uint(o.as_uint() | (h & 0x8000) << 16);  // sign bit
   return o.as_float();
 }
+
+uint16 TF_ATTRIBUTE_WEAK __truncdfhf2(double d) {
+  // This does a double rounding step, but it's precise enough for our use
+  // cases.
+  return __gnu_f2h_ieee(static_cast<float>(d));
+}

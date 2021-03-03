@@ -1,0 +1,59 @@
+op {
+  name: "LegacyParallelInterleaveDatasetV2"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  input_arg {
+    name: "cycle_length"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "block_length"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "buffer_output_elements"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "prefetch_input_elements"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  attr {
+    name: "deterministic"
+    type: "string"
+    default_value {
+      s: "default"
+    }
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+}

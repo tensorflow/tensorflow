@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/lib/random/random_distributions.h"
 
-#include <math.h>
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <numeric>
 #include <unordered_map>
@@ -307,7 +307,7 @@ class MockGenerator {
   explicit MockGenerator(uint64 seed) : counter_(seed) {}
   using ResultType = std::vector<uint32>;
   using ResultElementType = uint32;
-  static const int kResultElementCount = 1;
+  static constexpr int kResultElementCount = 1;
   ResultType operator()() {
     ResultType result;
     result.push_back(counter_++);

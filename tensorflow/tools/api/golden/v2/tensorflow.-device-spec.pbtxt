@@ -1,7 +1,15 @@
 path: "tensorflow.DeviceSpec"
 tf_class {
-  is_instance: "<class \'tensorflow.python.framework.device.DeviceSpec\'>"
+  is_instance: "<class \'tensorflow.python.framework.device_spec.DeviceSpecV2\'>"
   is_instance: "<type \'object\'>"
+  member {
+    name: "device_index"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "device_type"
+    mtype: "<type \'property\'>"
+  }
   member {
     name: "job"
     mtype: "<type \'property\'>"
@@ -20,15 +28,19 @@ tf_class {
   }
   member_method {
     name: "from_string"
-    argspec: "args=[\'spec\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'cls\', \'spec\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "merge_from"
+    name: "make_merged_spec"
     argspec: "args=[\'self\', \'dev\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "parse_from_string"
     argspec: "args=[\'self\', \'spec\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "replace"
+    argspec: "args=[\'self\'], varargs=None, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "to_string"

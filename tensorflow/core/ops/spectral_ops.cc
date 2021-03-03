@@ -109,39 +109,51 @@ Status RFFTShape(InferenceContext* c, const bool forward, const int rank) {
 }
 
 REGISTER_OP("RFFT")
-    .Input("input: float")
+    .Input("input: Treal")
     .Input("fft_length: int32")
-    .Output("output: complex64")
+    .Output("output: Tcomplex")
+    .Attr("Treal: {float32, float64} = DT_FLOAT")
+    .Attr("Tcomplex: {complex64, complex128} = DT_COMPLEX64")
     .SetShapeFn([](InferenceContext* c) { return RFFTShape(c, true, 1); });
 
 REGISTER_OP("IRFFT")
-    .Input("input: complex64")
+    .Input("input: Tcomplex")
     .Input("fft_length: int32")
-    .Output("output: float")
+    .Output("output: Treal")
+    .Attr("Treal: {float32, float64} = DT_FLOAT")
+    .Attr("Tcomplex: {complex64, complex128} = DT_COMPLEX64")
     .SetShapeFn([](InferenceContext* c) { return RFFTShape(c, false, 1); });
 
 REGISTER_OP("RFFT2D")
-    .Input("input: float")
+    .Input("input: Treal")
     .Input("fft_length: int32")
-    .Output("output: complex64")
+    .Output("output: Tcomplex")
+    .Attr("Treal: {float32, float64} = DT_FLOAT")
+    .Attr("Tcomplex: {complex64, complex128} = DT_COMPLEX64")
     .SetShapeFn([](InferenceContext* c) { return RFFTShape(c, true, 2); });
 
 REGISTER_OP("IRFFT2D")
-    .Input("input: complex64")
+    .Input("input: Tcomplex")
     .Input("fft_length: int32")
-    .Output("output: float")
+    .Output("output: Treal")
+    .Attr("Treal: {float32, float64} = DT_FLOAT")
+    .Attr("Tcomplex: {complex64, complex128} = DT_COMPLEX64")
     .SetShapeFn([](InferenceContext* c) { return RFFTShape(c, false, 2); });
 
 REGISTER_OP("RFFT3D")
-    .Input("input: float")
+    .Input("input: Treal")
     .Input("fft_length: int32")
-    .Output("output: complex64")
+    .Output("output: Tcomplex")
+    .Attr("Treal: {float32, float64} = DT_FLOAT")
+    .Attr("Tcomplex: {complex64, complex128} = DT_COMPLEX64")
     .SetShapeFn([](InferenceContext* c) { return RFFTShape(c, true, 3); });
 
 REGISTER_OP("IRFFT3D")
-    .Input("input: complex64")
+    .Input("input: Tcomplex")
     .Input("fft_length: int32")
-    .Output("output: float")
+    .Output("output: Treal")
+    .Attr("Treal: {float32, float64} = DT_FLOAT")
+    .Attr("Tcomplex: {complex64, complex128} = DT_COMPLEX64")
     .SetShapeFn([](InferenceContext* c) { return RFFTShape(c, false, 3); });
 
 // Deprecated ops:

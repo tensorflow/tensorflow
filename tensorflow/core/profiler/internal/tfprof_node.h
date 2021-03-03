@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -28,8 +29,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/profiler/tfprof_log.pb.h"
 #include "tensorflow/core/profiler/tfprof_options.h"
@@ -326,13 +325,13 @@ class TFGraphNode {
       (*node_.mutable_attrs())[attr.first].MergeFrom(attr.second);
       if (attr.first == "shape" && attr.second.has_shape()) {
         if (!shape_.empty()) {
-          fprintf(stderr, "Found duplicated shapes!\n");
+          absl::FPrintF(stderr, "Found duplicated shapes!\n");
           continue;
         }
         shape_ = ShapeProtoToVec(attr.second.shape());
       } else if (attr.first == "_output_shapes" && attr.second.has_list()) {
         if (!output_shapes_.empty()) {
-          fprintf(stderr, "Found duplicated output shapes!\n");
+          absl::FPrintF(stderr, "Found duplicated output shapes!\n");
           continue;
         }
         for (int i = 0; i < attr.second.list().shape_size(); ++i) {
@@ -669,7 +668,7 @@ class TFGraphNode {
       if (complete_shape) {
         return params;
       } else {
-        fprintf(stderr, "Incomplete shape.\n");
+        absl::FPrintF(stderr, "Incomplete shape.\n");
       }
     }
     return 0;

@@ -33,13 +33,19 @@ namespace tensorflow {
 // The ids of the nodes in `graph` that must be constant are returned in
 // `compile_time_const_nodes`, if `compile_time_const_nodes` is not null.
 //
-// Only propagate const-ness along edges for which `edge_filter` returns true.
-Status BackwardsConstAnalysis(const Graph& g,
-                              std::vector<bool>* compile_time_const_arg_indices,
-                              std::vector<bool>* compile_time_const_nodes,
-                              std::function<bool(const Edge&)> edge_filter =
-                                  [](const Edge& e) { return true; });
+// If `edge_filter` is non-null, only propagate const-ness along edges for which
+// `edge_filter` returns true.
+Status BackwardsConstAnalysis(
+    const Graph& g, std::vector<bool>* compile_time_const_arg_indices,
+    std::vector<bool>* compile_time_const_nodes,
+    FunctionLibraryRuntime* flib_runtime,
+    std::function<bool(const Edge&)> edge_filter_input = nullptr);
 
+// Given an op kernel and function library runtime, return all the indices of
+// inputs that need to be compile time constant.
+Status GetCompileTimeConstInputs(const OpKernel* op_kernel,
+                                 std::vector<int>* const_input_idxs,
+                                 FunctionLibraryRuntime* flib_runtime);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_CONST_ANALYSIS_H_

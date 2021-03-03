@@ -23,7 +23,6 @@ import re
 
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging
-from tensorflow.python.training import distribution_strategy_context
 
 
 def collect(val, collections, default_collections):
@@ -41,16 +40,6 @@ def collect(val, collections, default_collections):
 
 
 _INVALID_TAG_CHARACTERS = re.compile(r'[^-/\w\.]')
-
-
-def skip_summary():
-  # If using multiple replicas in distributed strategy, skip summaries on all
-  # replicas except the first one (replica_id=0).
-  # TODO(priyag): Add a new optional argument that will provide multiple
-  # alternatives to override default behavior. (e.g. run on last replica,
-  # compute sum or mean across replicas).
-  replica_context = distribution_strategy_context.get_replica_context()
-  return replica_context and replica_context.replica_id > 0
 
 
 def clean_tag(name):
@@ -105,7 +94,8 @@ def summary_scope(name, family=None, default_name=None, values=None):
   family = clean_tag(family)
   # Use family name in the scope to ensure uniqueness of scope/tag.
   scope_base_name = name if family is None else '{}/{}'.format(family, name)
-  with ops.name_scope(scope_base_name, default_name, values) as scope:
+  with ops.name_scope(
+      scope_base_name, default_name, values, skip_on_eager=False) as scope:
     if family is None:
       tag = scope.rstrip('/')
     else:

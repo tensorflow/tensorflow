@@ -15,14 +15,22 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 
+#include <algorithm>
 #include <functional>
 
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Value.h"
+#include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
+#include "tensorflow/compiler/xla/service/fusion_node_indexing_evaluation.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -32,12 +40,11 @@ namespace xla {
 
 using llvm_ir::IrArray;
 
-Status FusedIrEmitter::DefaultAction(HloInstruction* hlo) {
+Status FusedIrEmitter::DefaultAction(const HloInstruction* hlo) {
   indexed_generators_[hlo] =
       [=](const IrArray::Index& index) -> StatusOr<llvm::Value*> {
-    if (generated_value_cache_[hlo].count(index.multidim()) > 0) {
-      llvm::Value* generated_value =
-          generated_value_cache_[hlo][index.multidim()];
+    if (llvm::Value* generated_value = FindOrDefault(
+            generated_value_cache_[hlo], index.multidim(), nullptr)) {
       llvm::BasicBlock* generated_value_bb = nullptr;
       if (auto* generated_instruction =
               llvm::dyn_cast<llvm::Instruction>(generated_value)) {
@@ -58,104 +65,62 @@ Status FusedIrEmitter::DefaultAction(HloInstruction* hlo) {
       }
       VLOG(3) << "The cached generated value can't be reused, because it is in "
                  "a different BB ("
-              << llvm_ir::AsString(generated_value_bb->getName())
+              << generated_value_bb->getName().str()
               << ") from the current insertion block ("
-              << llvm_ir::AsString(b_->GetInsertBlock()->getName()) << ").";
+              << b_->GetInsertBlock()->getName().str() << ").";
     }
 
-    TF_ASSIGN_OR_RETURN(generated_value_cache_[hlo][index.multidim()],
+    TF_ASSIGN_OR_RETURN(llvm::Value* const generated_value,
                         elemental_emitter_->MakeElementGenerator(
                             hlo, indexed_generators_)(index));
-    return generated_value_cache_[hlo][index.multidim()];
+    generated_value_cache_[hlo][index.multidim()] = generated_value;
+    return generated_value;
   };
   return Status::OK();
 }
 
-Status FusedIrEmitter::HandleConstant(HloInstruction* constant) {
+Status FusedIrEmitter::HandleConstant(const HloInstruction* constant) {
+  unsigned global_address_space =
+      llvm_ir::GetGlobalMemoryAddressSpace(*module_);
   indexed_generators_[constant] = [=](const IrArray::Index& index) {
     const Literal& literal = constant->literal();
     llvm::Constant* initializer =
         llvm_ir::ConvertLiteralToIrConstant(literal, module_);
     llvm::GlobalVariable* global = new llvm::GlobalVariable(
         *b_->GetInsertBlock()->getModule(), initializer->getType(),
-        /*isConstant=*/true, llvm::GlobalValue::ExternalLinkage, initializer,
-        /*Name=*/"");
-    llvm::Constant* shape_constant = llvm::ConstantExpr::getBitCast(
-        global,
-        llvm_ir::ShapeToIrType(literal.shape(), module_)->getPointerTo());
+        /*isConstant=*/true,
+        /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
+        /*Initializer=*/initializer,
+        /*Name=*/"", /*InsertBefore=*/nullptr,
+        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
+        /*AddressSpace=*/global_address_space,
+        /*isExternallyInitialized=*/false);
+
+    global->setUnnamedAddr(llvm::GlobalVariable::UnnamedAddr::Global);
+    llvm::Constant* shape_constant =
+        llvm::ConstantExpr::getPointerBitCastOrAddrSpaceCast(
+            global,
+            llvm_ir::ShapeToIrType(literal.shape(), module_)->getPointerTo());
     return IrArray(shape_constant, constant->shape())
-        .EmitReadArrayElement(index, b_);
+        .EmitReadArrayElement(index, b_, constant->name());
   };
 
   return Status::OK();
 }
 
 Status FusedIrEmitter::HandleGetTupleElement(
-    HloInstruction* get_tuple_element) {
-  auto emit_tuple_element_ptr = [=]() -> StatusOr<llvm::Value*> {
-    const HloInstruction* tuple_operand = get_tuple_element->operand(0);
-    llvm::Value* tuple_ptr;
-    if (tuple_operand->opcode() == HloOpcode::kGetTupleElement) {
-      TF_ASSIGN_OR_RETURN(tuple_ptr, non_indexed_generators_[tuple_operand]());
-    } else {
-      if (tuple_operand->opcode() != HloOpcode::kParameter) {
-        return Unimplemented(
-            "GetTupleElement fusion currently only supports parameter or "
-            "nested"
-            "GetTupleElement as tuple operand, found an exception: %s",
-            tuple_operand->name());
-      }
-      tuple_ptr =
-          GetBasePointerForFusedParameter(tuple_operand->parameter_number());
-    }
+    const HloInstruction* get_tuple_element) {
+  return InternalError("Tuple parameters are not supported for fusion");
+}
 
-    // Lookup tuple element pointer.
-    return llvm_ir::EmitGetTupleElement(
-        get_tuple_element->shape(), get_tuple_element->tuple_index(),
-        /*alignment=*/1, tuple_ptr, b_, module_);
-  };
-
-  if (!ShapeUtil::IsTuple(get_tuple_element->shape())) {
-    indexed_generators_[get_tuple_element] =
-        [=](const IrArray::Index& index) -> StatusOr<llvm::Value*> {
-      // TODO(b/34080002) Add aliasing information to tuple element IrArray.
-      TF_ASSIGN_OR_RETURN(llvm::Value * tuple_element_ptr,
-                          emit_tuple_element_ptr());
-      return IrArray(tuple_element_ptr, get_tuple_element->shape())
-          .EmitReadArrayElement(index, b_);
-    };
-  } else {
-    non_indexed_generators_[get_tuple_element] = emit_tuple_element_ptr;
+Status FusedIrEmitter::HandleParameter(const HloInstruction* parameter) {
+  if (indexed_generators_.find(parameter) == indexed_generators_.end()) {
+    return InvalidArgument("Unbound parameter: %s", parameter->ToString());
   }
   return Status::OK();
 }
 
-Status FusedIrEmitter::HandleParameter(HloInstruction* parameter) {
-  indexed_generators_[parameter] =
-      [=](const IrArray::Index& index) -> llvm::Value* {
-    if (tiled_parameter_info_) {
-      if (llvm::Value* param_tile_buffer =
-              tiled_parameter_info_->GetBufferForParameter(
-                  parameter->parameter_number())) {
-        // TODO(jlebar): Add AA metadata to this load.  Tile buffers are global
-        // variables, so LLVM's points-to analysis doesn't help us much.  And we
-        // want the AA info to be present before address spaces are inferred
-        // (which is pretty late in the pipeline), so even if we had
-        // address-space-based AA in LLVM, it wouldn't help us much here.
-        return b_->CreateLoad(
-            b_->CreateGEP(param_tile_buffer, {index.GetConstantWithIndexType(0),
-                                              tiled_parameter_info_->x(),
-                                              tiled_parameter_info_->y()}),
-            "tiled_buffer");
-      }
-    }
-    return GetIrArrayForFusedParameter(parameter->parameter_number())
-        .EmitReadArrayElement(index, b_);
-  };
-  return Status::OK();
-}
-
-Status FusedIrEmitter::HandleTuple(HloInstruction* tuple) {
+Status FusedIrEmitter::HandleTuple(const HloInstruction* tuple) {
   absl::Span<HloInstruction* const> operands(tuple->operands());
   std::vector<llvm::Type*> operand_elemental_ir_types;
   for (HloInstruction* operand : operands) {
@@ -176,19 +141,54 @@ Status FusedIrEmitter::HandleTuple(HloInstruction* tuple) {
   return Status::OK();
 }
 
-Status FusedIrEmitter::FinishVisit(HloInstruction* root) {
-  fused_root_ = root;
-  return Status::OK();
+bool FusedIrEmitter::IsFusedIrEmitterInefficient(
+    const HloInstruction* consumer, const HloInstruction* producer) {
+  if (consumer->opcode() != HloOpcode::kFusion) {
+    return false;
+  }
+  FusionNodeIndexingEvaluation eval_consumer(consumer);
+  if (producer->opcode() != HloOpcode::kFusion) {
+    return eval_consumer.CodeDuplicationTooHigh(producer);
+  }
+  // If 'producer' is a fusion node as well, also evaluate it. Pass the
+  // evaluated duplication of the fusion node if it is merged into consumer.
+  FusionNodeIndexingEvaluation eval_producer(
+      producer, eval_consumer.EvaluateEmittedInstructions(producer));
+  return eval_producer.MaxCodeDuplicationTooHigh();
 }
 
-FusedIrEmitter::IndexedGenerator FusedIrEmitter::GetRootGenerator() const {
-  CHECK_NE(nullptr, fused_root_)
-      << "GetRootGenerator should be called after Accept.";
-  return indexed_generators_.at(fused_root_);
-}
-
-FusedIrEmitter::IndexedGenerator FusedIrEmitter::GetGenerator(
-    const HloInstruction* instruction) const {
+StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::GetGenerator(
+    const HloInstruction* instruction) {
+  std::vector<const HloInstruction*> stack;
+  stack.push_back(instruction);
+  while (!stack.empty()) {
+    const HloInstruction* instr = stack.back();
+    stack.pop_back();
+    if (indexed_generators_.count(instr)) {
+      continue;
+    }
+    for (const HloInstruction* operand : instr->operands()) {
+      stack.push_back(operand);
+    }
+    switch (instr->opcode()) {
+      case HloOpcode::kConstant:
+        TF_RETURN_IF_ERROR(HandleConstant(instr));
+        break;
+      case HloOpcode::kGetTupleElement:
+        TF_RETURN_IF_ERROR(HandleGetTupleElement(instr));
+        break;
+      case HloOpcode::kParameter:
+        TF_RETURN_IF_ERROR(HandleParameter(instr));
+        break;
+      case HloOpcode::kTuple:
+        TF_RETURN_IF_ERROR(HandleTuple(instr));
+        break;
+      default:
+        TF_RETURN_IF_ERROR(DefaultAction(instr));
+        break;
+    }
+    CHECK(indexed_generators_.count(instr));
+  }
   return indexed_generators_.at(instruction);
 }
 

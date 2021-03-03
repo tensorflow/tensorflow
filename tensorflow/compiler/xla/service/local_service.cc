@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/hlo_module_util.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -52,8 +53,10 @@ namespace xla {
   }
 
   BackendOptions backend_options;
-  backend_options.set_platform(platform).set_intra_op_parallelism_threads(
-      options.intra_op_parallelism_threads());
+  backend_options.set_platform(platform)
+      .set_intra_op_parallelism_threads(options.intra_op_parallelism_threads())
+      .set_allowed_devices(options.allowed_devices());
+
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> backend,
                       Backend::CreateBackend(backend_options));
 
@@ -92,60 +95,16 @@ absl::optional<const OpMetadata*> ParameterMetadata(
   return absl::nullopt;
 }
 
-ExecutionOptions CreateExecutionOptions(
-    const ExecutableBuildOptions& build_options,
-    const ProgramShape* program_shape) {
-  ExecutionOptions execution_options = CreateDefaultExecutionOptions();
-  if (build_options.hlo_profile().has_value()) {
-    execution_options.mutable_debug_options()->set_xla_hlo_profile(
-        *build_options.hlo_profile());
-  }
-  if (build_options.generate_hlo_graph().has_value()) {
-    execution_options.mutable_debug_options()->set_xla_generate_hlo_graph(
-        build_options.generate_hlo_graph().value());
-  }
-  if (build_options.dump_optimized_hlo_proto_to().has_value()) {
-    execution_options.mutable_debug_options()
-        ->set_xla_dump_optimized_hlo_proto_to(
-            build_options.dump_optimized_hlo_proto_to().value());
-  }
-  if (build_options.dump_unoptimized_hlo_proto_to().has_value()) {
-    execution_options.mutable_debug_options()
-        ->set_xla_dump_unoptimized_hlo_proto_to(
-            build_options.dump_unoptimized_hlo_proto_to().value());
-  }
-  if (build_options.dump_per_pass_hlo_proto_to().has_value()) {
-    execution_options.mutable_debug_options()
-        ->set_xla_dump_per_pass_hlo_proto_to(
-            build_options.dump_per_pass_hlo_proto_to().value());
-  }
-  if (build_options.result_layout() != nullptr) {
-    *execution_options.mutable_shape_with_output_layout() =
-        *build_options.result_layout();
-  } else {
-    *execution_options.mutable_shape_with_output_layout() =
-        program_shape->result();
-    LayoutUtil::SetToDefaultLayout(
-        execution_options.mutable_shape_with_output_layout());
-  }
-
-  for (const std::string& disabled_pass : build_options.disabled_hlo_passes()) {
-    execution_options.mutable_debug_options()->add_xla_disable_hlo_passes(
-        disabled_pass);
-  }
-
-  return execution_options;
-}
-
 }  // namespace
 
-StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
+StatusOr<std::vector<std::unique_ptr<Executable>>>
+LocalService::CompileExecutables(
     const XlaComputation& computation,
     const absl::Span<const Shape* const> argument_layouts,
     const ExecutableBuildOptions& build_options) {
   const HloModuleProto& proto = computation.proto();
   TF_RET_CHECK(proto.has_host_program_shape());
-  const ProgramShape& program_shape = proto.host_program_shape();
+  ProgramShape program_shape(proto.host_program_shape());
 
   // Validate incoming layouts.
   if (argument_layouts.size() != program_shape.parameters_size()) {
@@ -198,9 +157,34 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
       se::StreamExecutor * executor,
       execute_backend_->stream_executor(build_options.device_ordinal()));
 
-  return BuildExecutable(proto, std::move(module_config),
-                         execute_backend_.get(), executor,
-                         build_options.device_allocator());
+  // TODO(cjfj): Investigate why there are a couple of test failures when the
+  // single partition computations are built using `BuildExecutables`, fix it,
+  // and remove this special case (provided the performance if similar).
+  if (build_options.num_partitions() == 1) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                        BuildExecutable(proto, std::move(module_config),
+                                        execute_backend_.get(), executor,
+                                        {build_options.device_allocator(),
+                                         build_options.compile_thread_pool()},
+                                        build_options.run_backend_only()));
+    std::vector<std::unique_ptr<Executable>> executables;
+    executables.push_back(std::move(executable));
+    return executables;
+  } else {
+    std::vector<std::unique_ptr<HloModuleConfig>> module_configs;
+    module_configs.push_back(std::move(module_config));
+    // BuildExecutables uses the executors length to determine the number of
+    // cores per module, but otherwise only uses the first executor.
+    std::vector<se::StreamExecutor*> executors(build_options.num_partitions(),
+                                               executor);
+
+    return BuildExecutables(
+        /*module_protos=*/{&proto}, std::move(module_configs),
+        execute_backend_.get(), {executors},
+        Compiler::CompileOptions{build_options.device_allocator(),
+                                 build_options.compile_thread_pool()},
+        build_options.run_backend_only());
+  }
 }
 
 StatusOr<int> LocalService::ReplicaNumberToDeviceOrdinal(int replica_number) {
@@ -218,6 +202,12 @@ StatusOr<const ShapedBuffer*> LocalService::GlobalDataToShapedBuffer(
         replica_number, buffers.size());
   }
   return buffers[replica_number];
+}
+
+StatusOr<GlobalDataHandle> LocalService::RegisterReplicatedBuffers(
+    std::vector<ScopedShapedBuffer> replicated_buffers, const string& tag) {
+  return allocation_tracker_.RegisterReplicatedBuffers(
+      std::move(replicated_buffers), tag);
 }
 
 }  // namespace xla

@@ -30,9 +30,6 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class SoftmaxXentWithLogitsOp : public OpKernel {
@@ -57,8 +54,8 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
       shape_in = BCast::ToShape(bcast.output_shape());
     }
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(shape_in),
-                errors::InvalidArgument("logits and labels must be beither "
-                                        "2-dimensional, or roadcasted to "
+                errors::InvalidArgument("logits and labels must be either "
+                                        "2-dimensional, or broadcasted to be "
                                         "2-dimensional"));
 
     // loss is 1-D (one per example), and size is batch_size.
@@ -119,10 +116,6 @@ struct XentFunctorBase {
 template <typename T>
 struct XentFunctor<CPUDevice, T> : XentFunctorBase<CPUDevice, T> {};
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-struct XentFunctor<SYCLDevice, T> : XentFunctorBase<SYCLDevice, T> {};
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace functor
 
 #define REGISTER_CPU(T)                                         \
@@ -134,7 +127,8 @@ TF_CALL_half(REGISTER_CPU);
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 REGISTER_KERNEL_BUILDER(Name("SoftmaxCrossEntropyWithLogits")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<Eigen::half>("T"),
@@ -147,13 +141,7 @@ REGISTER_KERNEL_BUILDER(Name("SoftmaxCrossEntropyWithLogits")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<double>("T"),
                         SoftmaxXentWithLogitsOp<GPUDevice, double>);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("SoftmaxCrossEntropyWithLogits")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<float>("T"),
-                        SoftmaxXentWithLogitsOp<SYCLDevice, float>);
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

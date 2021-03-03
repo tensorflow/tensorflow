@@ -60,10 +60,11 @@ limitations under the License.
 
 // These are all common classes it's handy to reference with no namespace.
 using tensorflow::Flag;
-using tensorflow::Tensor;
+using tensorflow::int32;
 using tensorflow::Status;
 using tensorflow::string;
-using tensorflow::int32;
+using tensorflow::Tensor;
+using tensorflow::tstring;
 
 // Takes a file name, and loads a list of labels from it, one per line, and
 // returns a vector of the strings. It pads with empty strings so the length
@@ -106,7 +107,7 @@ static Status ReadEntireFile(tensorflow::Env* env, const string& filename,
                                         "' expected ", file_size, " got ",
                                         data.size());
   }
-  output->scalar<string>()() = string(data);
+  output->scalar<tstring>()() = tstring(data);
   return Status::OK();
 }
 

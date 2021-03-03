@@ -35,6 +35,17 @@ Status FinalizeOpDef(const OpDefBuilder& b, OpDef* op_def) {
   return s;
 }
 
+// We can create a Graph containing a namespaced Op
+TEST(AddToGraphTest, MakeGraphDefWithNamespacedOpName) {
+  OpList op_list;
+  TF_ASSERT_OK(FinalizeOpDef(OpDefBuilder("Project>SomeOp"), op_list.add_op()));
+  OpListOpRegistry registry(&op_list);
+
+  GraphDef graph_def;
+  TF_ASSERT_OK(NodeDefBuilder("node", "Project>SomeOp", &registry)
+                   .Finalize(graph_def.add_node()));
+}
+
 // Producer and consumer have default for an attr -> graph unchanged.
 TEST(RemoveNewDefaultAttrsFromGraphDefTest, NoChangeWithDefault) {
   OpList op_list;
@@ -222,6 +233,40 @@ TEST(RemoveNewDefaultAttrsFromGraphDefTest, HasFunction) {
 
   std::set<std::pair<string, string>> expected_removed({{"UsesDefault", "a"}});
   EXPECT_EQ(expected_removed, op_attr_removed);
+}
+
+TEST(StripDefaultAttributesTest, DefaultStripped) {
+  OpList op_list;
+  TF_ASSERT_OK(FinalizeOpDef(OpDefBuilder("OpName1").Attr("a: int = 12"),
+                             op_list.add_op()));
+  OpListOpRegistry registry(&op_list);
+
+  GraphDef graph_def;
+  // This adds the default attribute
+  TF_ASSERT_OK(NodeDefBuilder("op1", "OpName1", &registry)
+                   .Finalize(graph_def.add_node()));
+  ASSERT_EQ(1, graph_def.node(0).attr_size());
+  ASSERT_EQ(12, graph_def.node(0).attr().at("a").i());
+
+  StripDefaultAttributes(registry, graph_def.mutable_node());
+  ASSERT_EQ(1, graph_def.node_size());
+  ASSERT_EQ(0, graph_def.node(0).attr_size());
+}
+
+TEST(StripDefaultAttributesTest, NonDefaultNotStripped) {
+  OpList op_list;
+  TF_ASSERT_OK(FinalizeOpDef(OpDefBuilder("OpName1").Attr("a: int = 12"),
+                             op_list.add_op()));
+  OpListOpRegistry registry(&op_list);
+
+  GraphDef graph_def;
+  TF_ASSERT_OK(NodeDefBuilder("op1", "OpName1", &registry)
+                   .Attr("a", 9)
+                   .Finalize(graph_def.add_node()));
+
+  GraphDef expected = graph_def;
+  StripDefaultAttributes(registry, graph_def.mutable_node());
+  TF_EXPECT_GRAPH_EQ(expected, graph_def);
 }
 
 TEST(StrippedOpListForGraphTest, FlatTest) {

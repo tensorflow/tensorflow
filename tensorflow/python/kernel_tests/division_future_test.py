@@ -47,7 +47,7 @@ class DivisionTestCase(test.TestCase):
       tensors.append((x, y))
       def f(x, y):
         self.assertEqual(x.dtype, y.dtype)
-        self.assertEqual(x, y)
+        self.assertAllClose(x, y)
       checks.append(f)
 
     with self.cached_session() as sess:
@@ -65,7 +65,7 @@ class DivisionTestCase(test.TestCase):
                 tf_floordiv = tf_x // tf_y
                 check(floordiv, tf_floordiv)
       # Do only one sess.run for speed
-      for f, (x, y) in zip(checks, sess.run(tensors)):
+      for f, (x, y) in zip(checks, self.evaluate(tensors)):
         f(x, y)
 
 

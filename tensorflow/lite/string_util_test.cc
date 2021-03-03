@@ -14,9 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/string_util.h"
 
+#include <stdint.h>
+
+#include <string>
+
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
@@ -33,10 +37,22 @@ TEST(StringUtil, TestStringUtil) {
   t1->type = kTfLiteString;
   t1->allocation_type = kTfLiteDynamic;
 
-  char data[] = {1, 0, 0, 0, 12, 0, 0, 0, 15, 0, 0, 0, 'X', 'Y', 'Z'};
+  // String tensor with one string of length 3
+  union {
+    char raw_bytes[15];
+    struct {
+      int32_t num_strs;
+      int32_t offsets[2];
+      char str_data[3];
+    } tensor_data;
+  } data;
+  data.tensor_data = {1, {12, 15}, {'X', 'Y', 'Z'}};
 
-  interpreter.SetTensorParametersReadOnly(2, kTfLiteString, "", {1}, {}, data,
-                                          15);
+  TfLiteQuantization quant;
+  quant.type = kTfLiteNoQuantization;
+  quant.params = nullptr;
+  interpreter.SetTensorParametersReadOnly(
+      2, kTfLiteString, "", {1}, quant, data.raw_bytes, sizeof(data.raw_bytes));
   TfLiteTensor* t2 = interpreter.tensor(2);
   interpreter.AllocateTensors();
 
@@ -55,7 +71,7 @@ TEST(StringUtil, TestStringUtil) {
   new_shape->data[0] = 2;
   new_shape->data[1] = 1;
   buf0.WriteToTensor(t0, new_shape);
-  buf1.WriteToTensor(t1);
+  buf1.WriteToTensorAsVector(t1);
 
   // Check tensor shapes.
   EXPECT_EQ(t0->dims->size, 2);
@@ -85,27 +101,53 @@ TEST(StringUtil, TestStringUtil) {
   ASSERT_EQ(t2->bytes, 15);
 }
 
-TEST(StringUtil, TestAddJoinedString) {
+TEST(StringUtil, TestAddJoinedStringCharSeparator) {
   Interpreter interpreter;
   interpreter.AddTensors(1);
   TfLiteTensor* t0 = interpreter.tensor(0);
   t0->type = kTfLiteString;
   t0->allocation_type = kTfLiteDynamic;
 
-  char s0[] = "ABC";
-  char s1[] = "DEFG";
-  char s2[] = "";
-  char s3[] = "XYZ";
+  char s0[] = "";
+  char s1[] = "ABC";
+  char s2[] = "DEFG";
+  char s3[] = "";
+  char s4[] = "XYZ";
 
   DynamicBuffer buf;
-  buf.AddJoinedString({{s0, 3}, {s1, 4}, {s2, 0}, {s3, 3}}, ' ');
-  buf.WriteToTensor(t0);
+  buf.AddJoinedString({{s0, 0}, {s1, 3}, {s2, 4}, {s3, 0}, {s4, 3}}, ' ');
+  buf.WriteToTensorAsVector(t0);
 
   ASSERT_EQ(GetStringCount(t0), 1);
   StringRef str_ref;
   str_ref = GetString(t0, 0);
-  ASSERT_EQ(string(str_ref.str, str_ref.len), "ABC DEFG  XYZ");
-  ASSERT_EQ(t0->bytes, 25);
+  ASSERT_EQ(string(str_ref.str, str_ref.len), " ABC DEFG  XYZ");
+  ASSERT_EQ(t0->bytes, 26);
+}
+
+TEST(StringUtil, TestAddJoinedStringStringRefSeparator) {
+  Interpreter interpreter;
+  interpreter.AddTensors(1);
+  TfLiteTensor* t0 = interpreter.tensor(0);
+  t0->type = kTfLiteString;
+  t0->allocation_type = kTfLiteDynamic;
+
+  char s[] = " - ";
+  char s0[] = "";
+  char s1[] = "ABC";
+  char s2[] = "DEFG";
+  char s3[] = "";
+  char s4[] = "XYZ";
+
+  DynamicBuffer buf;
+  buf.AddJoinedString({{s0, 0}, {s1, 3}, {s2, 4}, {s3, 0}, {s4, 3}}, {s, 3});
+  buf.WriteToTensorAsVector(t0);
+
+  ASSERT_EQ(GetStringCount(t0), 1);
+  StringRef str_ref;
+  str_ref = GetString(t0, 0);
+  ASSERT_EQ(string(str_ref.str, str_ref.len), " - ABC - DEFG -  - XYZ");
+  ASSERT_EQ(t0->bytes, 34);
 }
 
 TEST(StringUtil, TestEmptyList) {
@@ -115,10 +157,41 @@ TEST(StringUtil, TestEmptyList) {
   t0->type = kTfLiteString;
   t0->allocation_type = kTfLiteDynamic;
   DynamicBuffer buf;
-  buf.WriteToTensor(t0);
+  buf.WriteToTensorAsVector(t0);
 
   ASSERT_EQ(GetStringCount(t0), 0);
   ASSERT_EQ(t0->bytes, 8);
+}
+
+TEST(StringUtil, TestShapes) {
+  Interpreter interpreter;
+  interpreter.AddTensors(1);
+  TfLiteTensor* t0 = interpreter.tensor(0);
+  t0->type = kTfLiteString;
+  t0->allocation_type = kTfLiteDynamic;
+  t0->dims = TfLiteIntArrayCreate(2);
+  t0->dims->data[0] = 2;
+  t0->dims->data[1] = 1;
+
+  // Not setting a new shape: number of strings must match
+  DynamicBuffer buf;
+  buf.AddString("ABC", 3);
+  buf.AddString("X", 1);
+  buf.WriteToTensor(t0, nullptr);
+
+  ASSERT_EQ(t0->dims->size, 2);
+  EXPECT_EQ(t0->dims->data[0], 2);
+  EXPECT_EQ(t0->dims->data[1], 1);
+
+  auto new_shape = TfLiteIntArrayCreate(2);
+  new_shape->data[0] = 1;
+  new_shape->data[1] = 2;
+
+  buf.WriteToTensor(t0, new_shape);
+
+  ASSERT_EQ(t0->dims->size, 2);
+  EXPECT_EQ(t0->dims->data[0], 1);
+  EXPECT_EQ(t0->dims->data[1], 2);
 }
 
 }  // namespace tflite

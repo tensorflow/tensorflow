@@ -12,19 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the SampleFromDatasets serialization."""
+"""Tests for checkpointing the SampleFromDatasets."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.ops import interleave_ops
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
-class SampleFromDatasetsSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+class SampleFromDatasetsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                       parameterized.TestCase):
 
   def _build_dataset(self, probs, num_samples):
     dataset = interleave_ops.sample_from_datasets(
@@ -36,10 +40,9 @@ class SampleFromDatasetsSerializationTest(
         seed=1813)
     return dataset.take(num_samples)
 
-  def testSerializationCore(self):
-    self.run_core_tests(
-        lambda: self._build_dataset([0.5, 0.5], 100),
-        lambda: self._build_dataset([0.25, 0.25, 0.25, 0.25], 1000), 100)
+  @combinations.generate(test_base.default_test_combinations())
+  def testCheckpointCore(self):
+    self.run_core_tests(lambda: self._build_dataset([0.5, 0.5], 100), 100)
 
 
 if __name__ == "__main__":

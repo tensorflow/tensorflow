@@ -26,12 +26,12 @@ limitations under the License.
 #include "tensorflow/cc/ops/random_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
 #include "tensorflow/cc/ops/while_loop.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -121,7 +121,7 @@ void CheckLoopConstruction(const GraphDef& graph_def) {
       if (ndef.op() == "_Recv") {
         bool has_control = false;
         for (const string& input_name : ndef.input()) {
-          if (str_util::StartsWith(input_name, "^")) {
+          if (absl::StartsWith(input_name, "^")) {
             has_control = true;
             break;
           }
@@ -129,7 +129,7 @@ void CheckLoopConstruction(const GraphDef& graph_def) {
         EXPECT_TRUE(has_control);
       }
       // Must have a control loop
-      if (str_util::StartsWith(ndef.name(), "_cloop")) {
+      if (absl::StartsWith(ndef.name(), "_cloop")) {
         if (ndef.op() == "Enter") {
           has_control_enter = true;
         }
@@ -470,13 +470,19 @@ TEST_F(GraphPartitionTest, Functions) {
   ConstructOp(in_.WithOpName("A2"), "XTimesTwo", {a1});
   ConstructOp(in_.WithOpName("B2"), "XTimesFour", {b1});
 
+  // The `Partition()` helper function uses the first letter of the op name ('A'
+  // or 'B') to choose a device for each node.
   Partition(ToGraphDef(), &partitions_);
   EXPECT_EQ(2, partitions_.size());
 
-  // Test that partition graphs inherit function library from original graph
+  // Test that partition graphs inherit function library from original graph.
   string a = "/job:a/replica:0/task:0/cpu:0";
   string b = "/job:a/replica:0/task:0/cpu:1";
-  ExpectFunctions(partitions_[a].library(), {"XTimesTwo", "XTimesFour"});
+
+  // Node "A2" is placed in part `a`, and uses only "XTimesTwo".
+  ExpectFunctions(partitions_[a].library(), {"XTimesTwo"});
+  // Node "B2" is placed in part `b`, and uses both "XTimesFour" directly,
+  // and "XTimesTwo" in the body of "XTimesFour".
   ExpectFunctions(partitions_[b].library(), {"XTimesTwo", "XTimesFour"});
 }
 

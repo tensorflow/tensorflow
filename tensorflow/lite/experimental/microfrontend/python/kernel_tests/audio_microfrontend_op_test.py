@@ -21,6 +21,7 @@ from __future__ import print_function
 import tensorflow as tf
 
 from tensorflow.lite.experimental.microfrontend.python.ops import audio_microfrontend_op as frontend_op
+from tensorflow.python.framework import ops
 
 SAMPLE_RATE = 1000
 WINDOW_SIZE = 25
@@ -32,6 +33,10 @@ SMOOTHING_BITS = 10
 
 
 class AudioFeatureGenerationTest(tf.test.TestCase):
+
+  def setUp(self):
+    super(AudioFeatureGenerationTest, self).setUp()
+    ops.disable_eager_execution()
 
   def testSimple(self):
     with self.test_session():
@@ -110,7 +115,7 @@ class AudioFeatureGenerationTest(tf.test.TestCase):
           left_context=1,
           right_context=1)
       self.assertAllEqual(
-          filterbanks.eval(),
+          self.evaluate(filterbanks),
           [[479, 425, 479, 425, 436, 378], [479, 425, 436, 378, 410, 350],
            [436, 378, 410, 350, 391, 325], [410, 350, 391, 325, 391, 325]])
 
@@ -153,7 +158,7 @@ class AudioFeatureGenerationTest(tf.test.TestCase):
           frame_stride=3,
           zero_padding=True)
       self.assertAllEqual(
-          filterbanks.eval(),
+          self.evaluate(filterbanks),
           [[0, 0, 0, 0, 479, 425], [436, 378, 410, 350, 391, 325],
            [374, 308, 362, 292, 352, 275]])
 

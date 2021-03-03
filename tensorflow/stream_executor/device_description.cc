@@ -50,14 +50,17 @@ DeviceDescription::DeviceDescription()
       clock_rate_ghz_(-1.0),
       cuda_compute_capability_major_(-1),
       cuda_compute_capability_minor_(-1),
+      rocm_amdgpu_isa_version_(-1),
+      rocm_amdgpu_gcn_arch_name_(kUndefinedString),
       numa_node_(-1),
       core_count_(-1),
       ecc_enabled_(false) {}
 
-std::unique_ptr<std::map<string, string>> DeviceDescription::ToMap() const {
-  std::unique_ptr<std::map<string, string>> owned_result{
-      new std::map<string, string>};
-  std::map<string, string> &result = *owned_result;
+std::unique_ptr<std::map<std::string, std::string>> DeviceDescription::ToMap()
+    const {
+  std::unique_ptr<std::map<std::string, std::string>> owned_result{
+      new std::map<std::string, std::string>};
+  std::map<std::string, std::string> &result = *owned_result;
   result["Device Vendor"] = device_vendor();
   result["Platform Version"] = platform_version();
   result["Driver Version"] = driver_version();
@@ -93,6 +96,8 @@ std::unique_ptr<std::map<string, string>> DeviceDescription::ToMap() const {
   result["CUDA Compute Capability"] = absl::StrCat(
       cuda_compute_capability_major_, ".", cuda_compute_capability_minor_);
 
+  result["AMDGPU GCN Arch Name"] = rocm_amdgpu_gcn_arch_name_;
+
   result["NUMA Node"] = absl::StrCat(numa_node());
   result["Core Count"] = absl::StrCat(core_count());
   result["ECC Enabled"] = absl::StrCat(ecc_enabled());
@@ -112,10 +117,20 @@ bool DeviceDescription::cuda_compute_capability(int *major, int *minor) const {
   return cuda_compute_capability_major_ != 0;
 }
 
+bool DeviceDescription::rocm_amdgpu_isa_version(int *version) const {
+  bool status = false;
+  if (rocm_amdgpu_isa_version_ > 0) {
+    *version = rocm_amdgpu_isa_version_;
+    status = true;
+  }
+  return status;
+}
+
 bool ThreadDimOk(const DeviceDescription &device_description,
                  const ThreadDim &thread_dim) {
-  auto total_threads = thread_dim.x * thread_dim.y * thread_dim.z;
-  auto threads_per_block_limit = device_description.threads_per_block_limit();
+  const int64 total_threads = thread_dim.x * thread_dim.y * thread_dim.z;
+  const int64 threads_per_block_limit =
+      device_description.threads_per_block_limit();
   if (total_threads > threads_per_block_limit) {
     VLOG(2) << "exceeded total-thread-per-block limit: " << total_threads
             << " vs limit " << threads_per_block_limit;
@@ -127,7 +142,7 @@ bool ThreadDimOk(const DeviceDescription &device_description,
             thread_dim.z <= limit.z;
   if (!ok) {
     VLOG(2) << "thread dim " << thread_dim.ToString()
-            << " exceeds limit contraints of " << limit.ToString();
+            << " exceeds limit constraints of " << limit.ToString();
   }
   return ok;
 }
@@ -137,24 +152,14 @@ uint64 DivideCeil(uint64 x, uint64 y) {
 }
 
 void CalculateDimensionality(const DeviceDescription &device_description,
-                             uint64 element_count, uint64 *threads_per_block,
-                             uint64 *block_count) {
+                             int64 element_count, int64 *threads_per_block,
+                             int64 *block_count) {
   *threads_per_block = device_description.threads_per_block_limit();
-  *block_count = DivideCeil(element_count, *threads_per_block);
+  *block_count = port::MathUtil::CeilOfRatio(element_count, *threads_per_block);
   if (*block_count == 1) {
     CHECK_LE(element_count, *threads_per_block);
     *threads_per_block = element_count;
   }
-}
-
-// Round value up to a multiple of n.
-static uint64 RoundUp(uint64 value, uint64 n) {
-  return port::MathUtil::CeilOfRatio(value, n) * n;
-}
-
-// Round value down to a multiple of n.
-static uint64 RoundDown(uint64 value, uint64 n) {
-  return port::MathUtil::FloorOfRatio(value, n) * n;
 }
 
 }  // namespace stream_executor

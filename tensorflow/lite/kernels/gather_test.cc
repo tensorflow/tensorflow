@@ -12,12 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
+#include <initializer_list>
+#include <string>
+#include <vector>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 namespace {
@@ -96,6 +102,15 @@ TEST(GatherOpTest, Test0DIndexWith0DResult) {
   EXPECT_TRUE(m.GetOutputShape().empty());
 }
 
+TEST(GatherOpTest, Test1DInput1DIndex) {
+  GatherOpModel m({TensorType_FLOAT32, {3}}, {TensorType_INT32, {1}});
+  m.SetInput<float>({1.0, 3.0, 5.0});
+  m.SetPositions<int32_t>({1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({3.0})));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
+}
+
 TEST(GatherOpTest, Test2DIndexWith2DResult) {
   GatherOpModel m({TensorType_FLOAT32, {3}}, {TensorType_INT32, {1, 2}});
   m.SetInput<float>({1.0, 2.0, 3.0});
@@ -137,6 +152,29 @@ TEST(FloatGatherOpTest, Axis1) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 3}));
 }
 
+TEST(FloatGatherOpTest, Axis10DIndex) {
+  const int axis = 1;
+  GatherOpModel m({TensorType_FLOAT32, {1, 3, 2}}, {TensorType_INT32, {}},
+                  axis);
+  m.SetInput<float>({1, 2, 3, 4, 5, 6});
+  m.SetPositions<int32_t>({1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({3, 4})));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
+}
+
+TEST(FloatGatherOpTest, Axis1Slice) {
+  const int axis = 1;
+  GatherOpModel m({TensorType_FLOAT32, {1, 4, 2}}, {TensorType_INT32, {2}},
+                  axis);
+  m.SetInput<float>({1, 2, 3, 4, 5, 6, 7, 8});
+  m.SetPositions<int32_t>({3, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray(ArrayFloatNear({7, 8, 3, 4})));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 2}));
+}
+
 TEST(FloatGatherOpTest, LastAxis) {
   const int axis = -1;
   GatherOpModel m({TensorType_FLOAT32, {1, 2, 3}}, {TensorType_INT32, {2}},
@@ -147,6 +185,17 @@ TEST(FloatGatherOpTest, LastAxis) {
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear({3, 1, 6, 4})));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 2}));
+}
+
+TEST(FloatGatherOpTest, LastAxis0DIndex) {
+  const int axis = -1;
+  GatherOpModel m({TensorType_FLOAT32, {1, 2, 3}}, {TensorType_INT32, {}},
+                  axis);
+  m.SetInput<float>({1, 2, 3, 4, 5, 6});
+  m.SetPositions<int32_t>({2});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({3, 6})));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
 }
 
 TEST(TypesGatherOpTest, Float32Int32) {
@@ -205,6 +254,44 @@ TEST(TypesGatherOpTest, Uint8Int64) {
   EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({14, 15, 133, 134}));
 }
 
+TEST(TypesGatherOpTest, Int8Int32) {
+  GatherOpModel m({TensorType_INT8, {2, 2}}, {TensorType_INT32, {2}});
+  m.SetInput<int8_t>({-13, -120, 14, 15});
+  m.SetPositions<int32_t>({1, 0});
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({14, 15, -13, -120}));
+}
+
+TEST(TypesGatherOpTest, Int8Int64) {
+  GatherOpModel m({TensorType_INT8, {2, 2}}, {TensorType_INT64, {2}});
+  m.SetInput<int8_t>({-13, -120, 14, 15});
+  m.SetPositions<int64_t>({1LL, 0LL});
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({14, 15, -13, -120}));
+}
+
+TEST(TypesGatherOpTest, Int16Int32) {
+  GatherOpModel m({TensorType_INT16, {2, 2}}, {TensorType_INT32, {2}});
+  m.SetInput<int16_t>({-13, -32000, 0, 32500});
+  m.SetPositions<int32_t>({1, 0});
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAreArray({0, 32500, -13, -32000}));
+}
+
+TEST(TypesGatherOpTest, Int16Int64) {
+  GatherOpModel m({TensorType_INT16, {2, 2}}, {TensorType_INT64, {2}});
+  m.SetInput<int16_t>({-13, -32000, 0, 32500});
+  m.SetPositions<int64_t>({1LL, 0LL});
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAreArray({0, 32500, -13, -32000}));
+}
+
 TEST(TypesGatherOpTest, Int64Int32) {
   GatherOpModel m({TensorType_INT64, {2, 2}}, {TensorType_INT32, {2}});
   m.SetInput<int64_t>({-(1LL << 34), 134LL, 14LL, 15LL});
@@ -233,11 +320,16 @@ TEST(GatherOpTest, SimpleString) {
   ASSERT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
   EXPECT_THAT(m.GetStringOutput(), ElementsAreArray({"A", "C"}));
 }
+
+TEST(GatherOpTest, 2DIndexString) {
+  GatherOpModel m({TensorType_STRING, {3}}, {TensorType_INT32, {2, 3}});
+  m.SetStringInput({"A", "B", "C"});
+  m.SetPositions<int32_t>({0, 2, 1, 1, 0, 2});
+  m.Invoke();
+  ASSERT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
+  EXPECT_THAT(m.GetStringOutput(),
+              ElementsAreArray({"A", "C", "B", "B", "A", "C"}));
+}
+
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

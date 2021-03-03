@@ -18,20 +18,19 @@ limitations under the License.
 
 #include <memory>
 
+#include "grpcpp/completion_queue.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
-
-namespace grpc {
-class CompletionQueue;
-}
+#include "tensorflow/core/lib/core/threadpool.h"
 
 namespace tensorflow {
-
 class WorkerCacheLogger;
 class WorkerInterface;
 
 WorkerInterface* NewGrpcRemoteWorker(SharedGrpcChannelPtr channel,
                                      ::grpc::CompletionQueue* completion_queue,
-                                     WorkerCacheLogger* logger);
+                                     thread::ThreadPool* callback_threadpool,
+                                     WorkerCacheLogger* logger,
+                                     const string& target);
 
 }  // namespace tensorflow
 

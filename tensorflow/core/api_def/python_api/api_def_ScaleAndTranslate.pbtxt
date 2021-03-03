@@ -1,0 +1,7 @@
+op {
+  graph_op_name: "ScaleAndTranslate"
+  visibility: HIDDEN
+  endpoint {
+    name: "image.scale_and_translate"
+  }
+}

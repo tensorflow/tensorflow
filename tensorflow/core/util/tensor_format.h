@@ -19,7 +19,9 @@ limitations under the License.
 #include <array>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -80,6 +82,9 @@ enum FilterTensorFormat {
   // FORMAT_OIHW often improves performance on GPUs.
   FORMAT_OIHW = 1,
 
+  // FORMAT_OHWI used by cuDNN for NHWC convolutions.
+  FORMAT_OHWI = 2,
+
   // OIHW_VECT_I is the most performant tensor format for cudnn6's quantized
   // int8 convolution and fused convolution. It is analogous to the NCHW_VECT_C
   // data format. It is laid out in the same order as OIHW, except that the size
@@ -88,23 +93,23 @@ enum FilterTensorFormat {
   // int32. Thus an OIHW format filter with dimensions [O, I, H, W] would have
   // dimensions [O, I/4, H, W, 4] in OIHW_VECT_I format.
   // A pre-condition of this format is that I must be a multiple of 4.
-  FORMAT_OIHW_VECT_I = 2,
+  FORMAT_OIHW_VECT_I = 3,
 };
 
 // Parse tensor format from the given string.
 // Return true if the parsing succeeds, and false if it fails.
-bool FormatFromString(const string& format_str, TensorFormat* format);
+bool FormatFromString(absl::string_view format_str, TensorFormat* format);
 
 // Parse tensor format from the given string.
 // Return true if the parsing succeeds, and false if it fails.
-bool FilterFormatFromString(const string& format_str,
+bool FilterFormatFromString(absl::string_view format_str,
                             FilterTensorFormat* format);
 
 // Convert a tensor format into string.
-string ToString(TensorFormat format);
+std::string ToString(TensorFormat format);
 
 // Convert a filter tensor format into string.
-string ToString(FilterTensorFormat format);
+std::string ToString(FilterTensorFormat format);
 
 // Returns the number of spatial dims of a tensor of rank 'num_dims' and tensor
 // format 'format'.
@@ -120,6 +125,9 @@ inline int GetTensorSpatialDims(int num_dims, TensorFormat format) {
       // Note: the VECT_W is not counted as an independent spatial dim here,
       // since it just a component of the width dimension.
       return num_dims - 3;  // Exclude N,C,VectDim.
+    default:
+      LOG(FATAL) << "Unknown format " << format;
+      return -1;  // Avoid compiler warning about missing return value
   }
 }
 
@@ -144,6 +152,9 @@ inline int GetTensorDimsFromSpatialDims(int num_spatial_dims,
     case FORMAT_NCHW_VECT_C:
     case FORMAT_NHWC_VECT_W:
       return num_spatial_dims + 3;  // Include N,C,VectDim.
+    default:
+      LOG(FATAL) << "Unknown format " << format;
+      return -1;  // Avoid compiler warning about missing return value
   }
 }
 
@@ -408,18 +419,24 @@ inline int32 GetTensorDimIndex(TensorFormat format, char dimension) {
   return GetTensorDimIndex<2>(format, dimension);
 }
 
+inline int32 GetTensorDimIndex(TensorFormat format, char dimension,
+                               int num_total_dims) {
+  int32 index = (GetTensorSpatialDims(num_total_dims, format) == 3)
+                    ? GetTensorDimIndex<3>(format, dimension)
+                    : GetTensorDimIndex<2>(format, dimension);
+  CHECK(index >= 0 && index < num_total_dims)  // Crash OK.
+      << "Invalid index from the dimension: " << index << ", " << format << ", "
+      << dimension;
+  return index;
+}
+
 // Return the element from 'dimension_attributes' that corresponds to the
 // specified 'dimension' according to 'tensor_format'.
 template <typename T>
 T GetTensorDim(gtl::ArraySlice<T> dimension_attributes,
                TensorFormat tensor_format, char dimension) {
   int index =
-      (GetTensorSpatialDims(dimension_attributes.size(), tensor_format) == 3)
-          ? GetTensorDimIndex<3>(tensor_format, dimension)
-          : GetTensorDimIndex<2>(tensor_format, dimension);
-  CHECK(index >= 0 && index < dimension_attributes.size())
-      << "Invalid index from the dimension: " << index << ", " << tensor_format
-      << ", " << dimension;
+      GetTensorDimIndex(tensor_format, dimension, dimension_attributes.size());
   return dimension_attributes[index];
 }
 
@@ -432,7 +449,9 @@ T GetFilterDim(gtl::ArraySlice<T> dimension_attribute,
                                           filter_tensor_format) == 3)
                   ? GetFilterDimIndex<3>(filter_tensor_format, dimension)
                   : GetFilterDimIndex<2>(filter_tensor_format, dimension);
-  CHECK(index >= 0 && index < dimension_attribute.size())
+  using size_type = typename gtl::ArraySlice<T>::size_type;
+  CHECK(index >= 0 &&
+        static_cast<size_type>(index) < dimension_attribute.size())
       << "Invalid index from the dimension: " << index << ", "
       << filter_tensor_format << ", " << dimension;
   return dimension_attribute[index];
@@ -476,14 +495,23 @@ inline int64 GetFilterDim(const Tensor& tensor,
   return GetFilterDim(tensor.shape(), filter_tensor_format, dimension);
 }
 
+inline void GetExplicitPaddingForDim(
+    const std::vector<int64>& explicit_paddings, TensorFormat tensor_format,
+    char dimension, int64* padding_before, int64* padding_after) {
+  int index =
+      GetTensorDimIndex(tensor_format, dimension, explicit_paddings.size() / 2);
+  *padding_before = explicit_paddings[2 * index];
+  *padding_after = explicit_paddings[2 * index + 1];
+}
+
 // Return the string that specifies the data format for convnet operations.
-string GetConvnetDataFormatAttrString();
-string GetConvnet3dDataFormatAttrString();
+std::string GetConvnetDataFormatAttrString();
+std::string GetConvnet3dDataFormatAttrString();
 
 // Return the string that specifies the filter format for convnet operations.
-string GetConvnetFilterFormatAttrString();
-string GetConvnet3dFilterFormatAttrString();
-string GetConvnetDataFormat2D3DAttrString();
+std::string GetConvnetFilterFormatAttrString();
+std::string GetConvnet3dFilterFormatAttrString();
+std::string GetConvnetDataFormat2D3DAttrString();
 
 // Returns a tensor shape for the specified format and dimension sizes.
 // Works for both 2D and 3D operations. The output shapes are as follows:
@@ -498,7 +526,8 @@ inline TensorShape ShapeFromFormat(TensorFormat format, int64 N,
   dim_sizes[GetTensorBatchDimIndex(dims, format)] = N;
   for (int dim = 0; static_cast<size_t>(dim) < spatial.size(); dim++) {
     auto dim_size = spatial[dim];
-    if (format == FORMAT_NHWC_VECT_W && dim == spatial.size() - 1) {
+    if (format == FORMAT_NHWC_VECT_W &&
+        static_cast<size_t>(dim) == spatial.size() - 1) {
       CHECK_EQ(0, dim_size % 4)
           << "FORMAT_NHWC_VECT_W requires W to be a multiple of 4, but W="
           << dim_size;

@@ -20,6 +20,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
@@ -53,8 +54,8 @@ class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::NonSerializable")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::NonSerializable")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -68,12 +69,25 @@ class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
       return "NonSerializableDatasetOp::Dataset";
     }
 
+    Status InputDatasets(
+        std::vector<const DatasetBase*>* inputs) const override {
+      inputs->push_back(input_);
+      return Status::OK();
+    }
+
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      return errors::Unimplemented(DebugString(), "::AsGraphDefInternal");
+      return errors::Unimplemented(DebugString(),
+                                   " does not support serialization.");
     }
+
+    int64 Cardinality() const override { return input_->Cardinality(); }
 
    private:
     class Iterator : public DatasetIterator<Dataset> {
@@ -82,7 +96,8 @@ class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        return dataset()->input_->MakeIterator(ctx, this, prefix(),
+                                               &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -97,8 +112,9 @@ class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
         return model::MakeKnownRatioNode(std::move(args), /*ratio=*/1);
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         return Status::OK();
       }
 
@@ -121,10 +137,13 @@ class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
 };
 
+REGISTER_KERNEL_BUILDER(Name("NonSerializableDataset").Device(DEVICE_CPU),
+                        NonSerializableDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalNonSerializableDataset").Device(DEVICE_CPU),
     NonSerializableDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

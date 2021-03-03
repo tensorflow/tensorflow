@@ -15,39 +15,26 @@
 """Implementation of the Keras API meant to be a high-level API for TensorFlow.
 
 Detailed documentation and user guides are available at
-[keras.io](https://keras.io).
+[tensorflow.org](https://www.tensorflow.org/guide/keras).
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.keras import activations
-from tensorflow.python.keras import applications
-from tensorflow.python.keras import backend
-from tensorflow.python.keras import callbacks
-from tensorflow.python.keras import constraints
-from tensorflow.python.keras import datasets
-from tensorflow.python.keras import estimator
-from tensorflow.python.keras import initializers
-from tensorflow.python.keras import layers
-from tensorflow.python.keras import losses
-from tensorflow.python.keras import metrics
+# pylint: disable=unused-import
+from tensorflow.python import tf2
+from tensorflow.python.keras import distribute
+
+# See b/110718070#comment18 for more details about this import.
 from tensorflow.python.keras import models
-from tensorflow.python.keras import optimizers
-from tensorflow.python.keras import preprocessing
-from tensorflow.python.keras import regularizers
-from tensorflow.python.keras import utils
-from tensorflow.python.keras import wrappers
-from tensorflow.python.keras.layers import Input
-from tensorflow.python.keras.models import Model
-from tensorflow.python.keras.models import Sequential
 
-from tensorflow.python.util.tf_export import tf_export
 
-__version__ = '2.2.4-tf'
+from tensorflow.python.keras.engine.input_layer import Input
+from tensorflow.python.keras.engine.sequential import Sequential
+from tensorflow.python.keras.engine.training import Model
 
-tf_export('keras.__version__').export_constant(__name__, '__version__')
+from tensorflow.python.util.tf_export import keras_export
 
-del absolute_import
-del division
-del print_function
+__version__ = '2.5.0'
+
+keras_export('keras.__version__').export_constant(__name__, '__version__')

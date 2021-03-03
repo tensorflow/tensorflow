@@ -12,13 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <functional>
-#include <type_traits>
-#include "tensorflow/lite/c/c_api_internal.h"
+#include <stddef.h>
+#include <stdint.h>
+
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/reference/binary_function.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 // TODO(b/117523611): We should factor out a binary_op and put binary ops there.
 namespace tflite {
@@ -37,25 +39,7 @@ struct OpData {
   bool requires_broadcast;
 };
 
-struct FloatMod {
-  float operator()(const float lhs, const float rhs) const {
-    return std::fmod(lhs, rhs);
-  }
-};
-
-// TODO(b/117912007): Move the implementation to reference_ops.h
 // TODO(b/117912880): Support quantization.
-template <typename T>
-T FloorMod(T input1, T input2) {
-  using ModFunc = typename std::conditional<std::is_integral<T>::value,
-                                            std::modulus<T>, FloatMod>::type;
-
-  ModFunc mod_func;
-  T trunc_mod = mod_func(input1, input2);
-  return (input1 < T(0)) == (input2 < T(0))
-             ? trunc_mod
-             : mod_func(trunc_mod + input2, input2);
-}
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   auto* data = new OpData;
@@ -74,9 +58,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Reinterprete the opaque data provided by user.
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
-  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input1;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensor1, &input1));
+  const TfLiteTensor* input2;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensor2, &input2));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   TF_LITE_ENSURE_TYPES_EQ(context, input1->type, input2->type);
 
@@ -121,12 +111,13 @@ TfLiteStatus EvalImpl(TfLiteContext* context, bool requires_broadcast,
     reference_ops::BroadcastBinaryFunction4DSlow<T, T, T>(
         GetTensorShape(input1), GetTensorData<T>(input1),
         GetTensorShape(input2), denominator_data, GetTensorShape(output),
-        GetTensorData<T>(output), FloorMod<T>);
+        GetTensorData<T>(output), reference_ops::FloorMod<T>);
   } else {
     reference_ops::BinaryFunction<T, T, T>(
         GetTensorShape(input1), GetTensorData<T>(input1),
         GetTensorShape(input2), GetTensorData<T>(input2),
-        GetTensorShape(output), GetTensorData<T>(output), FloorMod<T>);
+        GetTensorShape(output), GetTensorData<T>(output),
+        reference_ops::FloorMod<T>);
   }
 
   return kTfLiteOk;
@@ -135,9 +126,15 @@ TfLiteStatus EvalImpl(TfLiteContext* context, bool requires_broadcast,
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
-  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input1;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensor1, &input1));
+  const TfLiteTensor* input2;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensor2, &input2));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   switch (input1->type) {
     case kTfLiteInt32: {

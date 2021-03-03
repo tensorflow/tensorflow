@@ -423,7 +423,7 @@ static void VersionTest(const VersionDef& versions, const string& error) {
   // Read it back in and verify that we get the expected error
   TensorSliceReader reader(path, OpenTableTensorSliceReader);
   EXPECT_TRUE(reader.status().code() == error::INVALID_ARGUMENT &&
-              str_util::StartsWith(reader.status().error_message(), error))
+              absl::StartsWith(reader.status().error_message(), error))
       << "Expected error starting with '" << errors::InvalidArgument(error)
       << "', got '" << reader.status() << "'";
 }

@@ -12,14 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <string.h>
-#include <vector>
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include <stdint.h>
+
+#include <algorithm>
+#include <tuple>
+#include <utility>
+
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/string_util.h"
+
 namespace tflite {
 namespace ops {
 namespace builtin {
@@ -44,9 +49,14 @@ TfLiteIntArray* MultiplyShapeDims(const TfLiteIntArray& shape,
 }
 
 TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  const TfLiteTensor* multipliers = GetInput(context, node, kInputMultipliers);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
+  const TfLiteTensor* multipliers;
+  TF_LITE_ENSURE_OK(
+      context, GetInputSafe(context, node, kInputMultipliers, &multipliers));
 
   const int num_dimensions = NumDimensions(input);
   const int num_multipliers = NumElements(multipliers);
@@ -70,14 +80,26 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
-template <typename T>
-void CopyMultipleTimes(const T* in_data, int32_t in_size, int32_t multiplier,
+template <typename T, typename M>
+void CopyMultipleTimes(const T* in_data, int32_t in_size, M multiplier,
                        T* out_data) {
-  for (int i = 0; i < multiplier; ++i) {
+  for (M i = 0; i < multiplier; ++i) {
     const T* in_end = in_data + in_size;
     T* new_out_data = std::copy(in_data, in_end, out_data);
     in_data = out_data;
     out_data = new_out_data;
+  }
+}
+
+template <typename M>
+void CopyStringMultipleTimes(const TfLiteTensor* in_data, int in_data_index,
+                             const int dimension_size, M multiplier,
+                             DynamicBuffer* buffer) {
+  for (M i = 0; i < multiplier; ++i) {
+    for (int j = 0; j < dimension_size; ++j) {
+      const auto string_ref = GetString(in_data, in_data_index + j);
+      buffer->AddString(string_ref.str, string_ref.len);
+    }
   }
 }
 
@@ -109,8 +131,41 @@ std::pair<int, int> TileOneDimension(const TfLiteIntArray& in_dimensions,
   CopyMultipleTimes(out_data, total_tiled_stride_size,
                     multipliers[dimension] - 1,
                     out_data + total_tiled_stride_size);
-  return std::make_pair(total_stride_size,
-                        total_tiled_stride_size * multipliers[dimension]);
+  return std::make_pair(
+      total_stride_size,
+      static_cast<int>(total_tiled_stride_size * multipliers[dimension]));
+}
+
+template <typename M>
+std::pair<int, int> TileStringOneDimension(
+    const TfLiteIntArray& in_dimensions, const TfLiteTensor* in_data,
+    int in_data_index, const M* multipliers, DynamicBuffer* buffer,
+    int buffer_index, int dimension, TfLiteTensor* out_data) {
+  const int dimension_size = in_dimensions.data[dimension];
+  if (dimension == in_dimensions.size - 1) {
+    CopyStringMultipleTimes(in_data, in_data_index, dimension_size,
+                            multipliers[dimension], buffer);
+    return {dimension_size,
+            dimension_size * static_cast<int>(multipliers[dimension])};
+  }
+
+  int total_stride_size = 0, total_tiled_stride_size = 0;
+  for (int i = 0; i < dimension_size; ++i) {
+    int stride_size, tiled_stride_size;
+    std::tie(stride_size, tiled_stride_size) = TileStringOneDimension(
+        in_dimensions, in_data, in_data_index + total_stride_size, multipliers,
+        buffer, buffer_index + total_tiled_stride_size, dimension + 1,
+        out_data);
+    total_stride_size += stride_size;
+    total_tiled_stride_size += tiled_stride_size;
+  }
+
+  buffer->WriteToTensor(out_data, /*new_shape=*/nullptr);
+  CopyStringMultipleTimes(out_data, buffer_index, total_tiled_stride_size,
+                          multipliers[dimension] - 1, buffer);
+
+  return {total_stride_size,
+          total_tiled_stride_size * static_cast<int>(multipliers[dimension])};
 }
 
 template <typename T>
@@ -132,18 +187,43 @@ void Tile(const TfLiteIntArray& in_dimensions, const TfLiteTensor* in_data,
       break;
   }
 }
+
+void TileString(const TfLiteIntArray& in_dimensions,
+                const TfLiteTensor* in_data, const TfLiteTensor* multipliers,
+                DynamicBuffer* buffer, TfLiteTensor* out_data) {
+  // Doing recursively tiling from top to down dimension.
+  switch (multipliers->type) {
+    case kTfLiteInt32:
+      TileStringOneDimension(in_dimensions, in_data, 0,
+                             GetTensorData<int32_t>(multipliers), buffer, 0, 0,
+                             out_data);
+      break;
+    case kTfLiteInt64:
+      TileStringOneDimension(in_dimensions, in_data, 0,
+                             GetTensorData<int64_t>(multipliers), buffer, 0, 0,
+                             out_data);
+      break;
+    default:
+      break;
+  }
+}
 }  // namespace
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
 
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
 
-  const TfLiteTensor* multipliers = GetInput(context, node, kInputMultipliers);
+  const TfLiteTensor* multipliers;
+  TF_LITE_ENSURE_OK(
+      context, GetInputSafe(context, node, kInputMultipliers, &multipliers));
   // Only int32 and int64 multipliers type is supported.
   if (multipliers->type != kTfLiteInt32 && multipliers->type != kTfLiteInt64) {
     context->ReportError(context,
@@ -161,9 +241,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  const TfLiteTensor* multipliers = GetInput(context, node, kInputMultipliers);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
+  const TfLiteTensor* multipliers;
+  TF_LITE_ENSURE_OK(
+      context, GetInputSafe(context, node, kInputMultipliers, &multipliers));
 
   if (IsDynamicTensor(output)) {
     TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
@@ -182,6 +267,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt64:
       Tile<int64_t>(*(input->dims), input, multipliers, output);
       break;
+    case kTfLiteString: {
+      DynamicBuffer buffer;
+      TileString(*(input->dims), input, multipliers, &buffer, output);
+      buffer.WriteToTensor(output, /*new_shape=*/nullptr);
+      break;
+    }
     case kTfLiteBool:
       Tile<bool>(*(input->dims), input, multipliers, output);
       break;

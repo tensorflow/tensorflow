@@ -18,9 +18,10 @@ It is sometimes useful to be able to build HLO programs directly from
 TensorFlow. This file provides Tensorflow operators that mirror the semantics of
 HLO operators as closely as possible.
 
-Note: There is no promise of backward or forward compatibility for operators
-defined in this module. This is primarily because the underlying HLO operators
-do not promise backward or forward compatibility.
+Note: Most of the operators defined in this module are used by the jax2tf
+converter (see go/jax2tf for details) and are used in SavedModel produced
+by jax2tf. Hence, we need to maintain backwards compatibility for these
+operators. Please reach out to the JAX team if you want to make changes.
 """
 
 from __future__ import absolute_import
@@ -28,14 +29,18 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.compiler.tf2xla.ops import gen_xla_ops
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import special_math_ops
+from tensorflow.python.ops.numpy_ops import np_utils
 
 # TODO(phawkins): provide wrappers for all XLA operators. Currently the missing
 # ops include:
@@ -81,7 +86,8 @@ ceil = _unary_op(math_ops.ceil)
 digamma = _unary_op(math_ops.digamma)
 erf = _unary_op(math_ops.erf)
 erfc = _unary_op(math_ops.erfc)
-# TODO(phawkins): implement erfinv
+erfinv = _unary_op(math_ops.erfinv)
+ndtri = _unary_op(math_ops.ndtri)
 exp = _unary_op(math_ops.exp)
 expm1 = _unary_op(math_ops.expm1)
 floor = _unary_op(math_ops.floor)
@@ -99,6 +105,10 @@ round = _unary_op(math_ops.round)
 sin = _unary_op(math_ops.sin)
 sign = _unary_op(math_ops.sign)
 tanh = _unary_op(math_ops.tanh)
+
+# Bessel
+bessel_i0e = _unary_op(special_math_ops.bessel_i0e)
+bessel_i1e = _unary_op(special_math_ops.bessel_i1e)
 
 # Binary operators
 
@@ -194,6 +204,13 @@ shift_left = _broadcasting_binary_op(bitwise_ops.left_shift)
 shift_right_logical = _broadcasting_binary_op(_shift_right_logical_helper)
 shift_right_arithmetic = _broadcasting_binary_op(_shift_right_arithmetic_helper)
 
+igamma = _broadcasting_binary_op(math_ops.igamma)
+igamma_grad_a = _broadcasting_binary_op(gen_math_ops.igamma_grad_a)
+random_gamma_grad = _broadcasting_binary_op(gen_random_ops.random_gamma_grad)
+igammac = _broadcasting_binary_op(math_ops.igammac)
+polygamma = _broadcasting_binary_op(math_ops.polygamma)
+zeta = _broadcasting_binary_op(math_ops.zeta)
+
 
 def _binary_op(fn):
   """Wrapper that restricts `fn` to have the correct signature."""
@@ -234,6 +251,7 @@ def conv(lhs,
          dimension_numbers,
          feature_group_count=1,
          precision_config=None,
+         preferred_element_type=None,
          name=None):
   """Wraps the XLA ConvGeneralDilated operator.
 
@@ -251,6 +269,7 @@ def conv(lhs,
     dimension_numbers: a `ConvolutionDimensionNumbers` proto.
     feature_group_count: number of feature groups for grouped convolution.
     precision_config: a `xla.PrecisionConfig` proto.
+    preferred_element_type: the result `dtype`.
     name: an optional name for the operator
 
   Returns:
@@ -259,6 +278,22 @@ def conv(lhs,
   precision_config_proto = ""
   if precision_config:
     precision_config_proto = precision_config.SerializeToString()
+  needs_v2 = preferred_element_type or (lhs.dtype != rhs.dtype)
+  if preferred_element_type is None:
+    preferred_element_type = np_utils.result_type(lhs.dtype, rhs.dtype)
+  if needs_v2:
+    return gen_xla_ops.xla_conv_v2(
+        lhs,
+        rhs,
+        window_strides=window_strides,
+        padding=padding,
+        lhs_dilation=lhs_dilation,
+        rhs_dilation=rhs_dilation,
+        feature_group_count=feature_group_count,
+        dimension_numbers=dimension_numbers.SerializeToString(),
+        precision_config=precision_config_proto,
+        preferred_element_type=preferred_element_type,
+        name=name)
   return gen_xla_ops.xla_conv(
       lhs,
       rhs,
@@ -279,10 +314,26 @@ def dot(lhs, rhs, name=None):
   return math_ops.tensordot(lhs, rhs, axes=1, name=name)
 
 
-def dot_general(lhs, rhs, dimension_numbers, precision_config=None, name=None):
+def dot_general(lhs,
+                rhs,
+                dimension_numbers,
+                precision_config=None,
+                preferred_element_type=None,
+                name=None):
   precision_config_proto = ""
   if precision_config:
     precision_config_proto = precision_config.SerializeToString()
+  needs_v2 = preferred_element_type or (lhs.dtype != rhs.dtype)
+  if preferred_element_type is None:
+    preferred_element_type = np_utils.result_type(lhs.dtype, rhs.dtype)
+  if needs_v2:
+    return gen_xla_ops.xla_dot_v2(
+        lhs,
+        rhs,
+        dimension_numbers=dimension_numbers.SerializeToString(),
+        precision_config=precision_config_proto,
+        preferred_element_type=preferred_element_type,
+        name=name)
   return gen_xla_ops.xla_dot(
       lhs,
       rhs,
@@ -291,8 +342,20 @@ def dot_general(lhs, rhs, dimension_numbers, precision_config=None, name=None):
       name=name)
 
 
+def self_adjoint_eig(a, lower, max_iter, epsilon):
+  return gen_xla_ops.xla_self_adjoint_eig(a, lower, max_iter, epsilon)
+
+
+def svd(a, max_iter, epsilon, precision_config=None):
+  precision_config_proto = ""
+  if precision_config:
+    precision_config_proto = precision_config.SerializeToString()
+  return gen_xla_ops.xla_svd(a, max_iter, epsilon, precision_config_proto)
+
+
 dynamic_slice = gen_xla_ops.xla_dynamic_slice
 dynamic_update_slice = gen_xla_ops.xla_dynamic_update_slice
+einsum = gen_xla_ops.xla_einsum
 
 # TODO(phawkins): generalize tf.pad to support interior padding, and then remove
 # the XLA-specific pad operator.
@@ -313,6 +376,9 @@ def random_uniform(minval, maxval, dims, name=None):
 
 recv = gen_xla_ops.xla_recv
 reduce = gen_xla_ops.xla_reduce
+variadic_reduce = gen_xla_ops.xla_variadic_reduce
+
+ops.no_gradient("XlaVariadicReduce")
 
 
 def reduce_window(operand,
@@ -360,6 +426,32 @@ def reduce_window(operand,
       name=name)
 
 
+replica_id = gen_xla_ops.xla_replica_id
+
+# Set a static bound for the given input value as a hint to Xla compiler,
+# returns the same value.
+# Usage:
+# def f(t, p):
+#   p = xla.set_bound(p, 3) # Tells xla the constraint that p <= 3.
+#   return t[:p]            # xla knows the bound of the slice is 3.
+set_bound = gen_xla_ops.xla_set_bound
+
+
+# Make a static dimension into a xla bounded dynamic dimension. The current
+# static dimension size will become the bound and the second operand becomes the
+# dynamic size of the dimension.
+#
+# This should mostly be used for testing.
+#
+# def f():
+#   array = tf.convert_to_tensor([[1, 2, 3, 4, 5]])
+#   # Tells xla the valid size of the array is 3.
+#   dim = 0
+#   p = xla_set_dynamic_dimension_size(array, dim, 3)
+#   assert(reduce_sum(p) == 6) # xla knows only the first 3 elements are valid.
+set_dynamic_dimension_size = gen_xla_ops.xla_set_dynamic_dimension_size
+
+
 def reshape(x, new_sizes, dimensions=None, name=None):
   if dimensions is not None:
     x = array_ops.transpose(x, dimensions)
@@ -383,6 +475,64 @@ def slice(x, start_dims, limit_dims, strides):
   return x[tuple(spec)]
 
 
+sharding = gen_xla_ops.xla_sharding
+
+
+@ops.RegisterGradient("XlaSharding")
+def _sharding_grad(op, grad):
+  sharding_attr = op.get_attr("sharding")
+  grad_sharding = gen_xla_ops.xla_sharding(grad, sharding=sharding_attr)
+  # pylint: disable=protected-access
+  grad_sharding.op._set_attr("_XlaSharding",
+                             attr_value_pb2.AttrValue(s=sharding_attr))
+  return [grad_sharding]
+
+
+spmd_full_to_shard_shape = gen_xla_ops.xla_spmd_full_to_shard_shape
+spmd_shard_to_full_shape = gen_xla_ops.xla_spmd_shard_to_full_shape
+
+
+@ops.RegisterGradient("XlaSpmdFullToShardShape")
+def _spmd_full_to_shard_shape_grad(op, grad):
+  s2f = gen_xla_ops.xla_spmd_shard_to_full_shape(
+      grad,
+      manual_sharding=op.get_attr("manual_sharding"),
+      full_shape=op.inputs[0].shape.as_list())
+  return [s2f]
+
+
+@ops.RegisterGradient("XlaSpmdShardToFullShape")
+def _spmd_shard_to_full_shape_grad(op, grad):
+  f2s = gen_xla_ops.xla_spmd_full_to_shard_shape(
+      grad, manual_sharding=op.get_attr("manual_sharding"))
+  return [f2s]
+
+
 sort = gen_xla_ops.xla_sort
 key_value_sort = gen_xla_ops.xla_key_value_sort
+variadic_sort = gen_xla_ops.xla_variadic_sort
 while_loop = gen_xla_ops.xla_while
+dequantize = gen_xla_ops.xla_dequantize
+
+
+def gather(operand, start_indices, dimension_numbers, slice_sizes,
+           indices_are_sorted=False, name=None):
+  return gen_xla_ops.xla_gather(
+      operand,
+      start_indices,
+      slice_sizes=slice_sizes,
+      dimension_numbers=dimension_numbers.SerializeToString(),
+      indices_are_sorted=indices_are_sorted,
+      name=name)
+
+
+def scatter(operand, scatter_indices, updates, update_computation,
+            dimension_numbers, indices_are_sorted=False, name=None):
+  return gen_xla_ops.xla_scatter(
+      operand,
+      scatter_indices,
+      updates,
+      update_computation=update_computation,
+      dimension_numbers=dimension_numbers.SerializeToString(),
+      indices_are_sorted=indices_are_sorted,
+      name=name)

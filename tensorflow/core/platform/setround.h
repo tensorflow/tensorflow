@@ -16,7 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_SETROUND_H_
 #define TENSORFLOW_CORE_PLATFORM_SETROUND_H_
 
-#include <cfenv>
+#if defined(__ANDROID_API__) && (__ANDROID_API__ < 21)
+// The <cfenv> header is broken pre-API 21 for several NDK releases.
+#define TF_BROKEN_CFENV
+#endif
+
+#if defined(TF_BROKEN_CFENV)
+#include <fenv.h>  // NOLINT
+#else
+#include <cfenv>  // NOLINT
+#endif
 
 #include "tensorflow/core/platform/macros.h"
 

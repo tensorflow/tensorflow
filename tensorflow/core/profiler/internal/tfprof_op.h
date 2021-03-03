@@ -57,7 +57,8 @@ class TFOp : public TFMultiShow {
 
   bool ShouldShowIfExtra(const ShowMultiNode* node, const Options& opts,
                          int depth) const override {
-    if (opts.min_occurrence > node->node->graph_nodes().size()) {
+    const int max_num_graph_nodes = node->node->graph_nodes().size();
+    if (opts.min_occurrence > max_num_graph_nodes) {
       return false;
     }
     return true;

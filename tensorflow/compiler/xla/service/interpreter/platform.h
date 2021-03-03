@@ -29,15 +29,19 @@ namespace interpreter {
 
 class XlaInterpreterPlatform : public Platform {
  public:
-  XlaInterpreterPlatform(const string& name = "Interpreter",
-                         const Platform::Id& id = kXlaInterpreterPlatformId);
+  XlaInterpreterPlatform()
+      : XlaInterpreterPlatform("Interpreter", kXlaInterpreterPlatformId) {}
+  XlaInterpreterPlatform(const std::string& name, const Platform::Id& id);
   ~XlaInterpreterPlatform() override;
 
   Platform::Id id() const override;
 
   int VisibleDeviceCount() const override;
 
-  const string& Name() const override;
+  const std::string& Name() const override;
+
+  port::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
+      int ordinal) const override;
 
   port::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
 
@@ -56,7 +60,7 @@ class XlaInterpreterPlatform : public Platform {
 
  private:
   // This platform's name.
-  string name_;
+  std::string name_;
   // This platform's id.
   Platform::Id id_;
 

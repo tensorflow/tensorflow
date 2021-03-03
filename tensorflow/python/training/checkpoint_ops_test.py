@@ -18,11 +18,13 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+
 import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import partitioned_variables
@@ -33,6 +35,8 @@ from tensorflow.python.training import checkpoint_ops
 from tensorflow.python.training import saver as saver_lib
 
 
+@test_util.run_v1_only(
+    'This is to test V1 name-based checkpoints which is not supported in V2.')
 class LoadAndRemapWrappersTest(test.TestCase):
   """Tests for the functionality of the Python wrappers."""
 
@@ -47,7 +51,7 @@ class LoadAndRemapWrappersTest(test.TestCase):
       with variable_scope.variable_scope('some_scope'):
         variable_scope.get_variable(name='embeddings', shape=[5, 16],
                                     initializer=initializer)
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       saver = saver_lib.Saver()
       saver.save(sess, checkpoint_prefix, global_step=5)
     self.checkpoint_file = '{}-5'.format(checkpoint_prefix)
@@ -115,7 +119,8 @@ class LoadAndRemapWrappersTest(test.TestCase):
         axis=1)
 
     with self.cached_session():
-      self.assertAllClose(expected_remapped_matrix, remapped_matrix.eval())
+      self.assertAllClose(expected_remapped_matrix,
+                          self.evaluate(remapped_matrix))
 
   def test_load_and_remap_output_layer_weight_initializer_linear(self):
     """Tests for the output layer initializer in the linear multi-class case."""
@@ -151,9 +156,8 @@ class LoadAndRemapWrappersTest(test.TestCase):
         partitioner=partitioned_variables.fixed_size_partitioner(2))
 
     with self.cached_session():
-      variables.global_variables_initializer().run()
-      self.assertAllClose(expected_remapped_matrix,
-                          remapped_matrix.as_tensor().eval())
+      self.evaluate(variables.global_variables_initializer())
+      self.assertAllClose(expected_remapped_matrix, remapped_matrix.as_tensor())
 
   def test_load_and_remap_output_layer_weight_initializer_dnn_output(self):
     """Tests for the output layer initializer in the DNN output case."""
@@ -185,9 +189,8 @@ class LoadAndRemapWrappersTest(test.TestCase):
         partitioner=partitioned_variables.fixed_size_partitioner(2))
 
     with self.cached_session():
-      variables.global_variables_initializer().run()
-      self.assertAllClose(expected_remapped_matrix,
-                          remapped_matrix.as_tensor().eval())
+      self.evaluate(variables.global_variables_initializer())
+      self.assertAllClose(expected_remapped_matrix, remapped_matrix.as_tensor())
 
   def test_initializer_with_oov_only_partition(self):
     """Tests for the output layer initializer where one partition is all OOV."""
@@ -223,9 +226,8 @@ class LoadAndRemapWrappersTest(test.TestCase):
         partitioner=partitioned_variables.fixed_size_partitioner(2))
 
     with self.cached_session():
-      variables.global_variables_initializer().run()
-      self.assertAllClose(expected_remapped_matrix,
-                          remapped_matrix.as_tensor().eval())
+      self.evaluate(variables.global_variables_initializer())
+      self.assertAllClose(expected_remapped_matrix, remapped_matrix.as_tensor())
 
   def test_load_and_remap_linear_multiclass_initializer_default_init(self):
     """Tests where the zeros_initializer default is used for linear."""
@@ -259,9 +261,8 @@ class LoadAndRemapWrappersTest(test.TestCase):
         partitioner=partitioned_variables.fixed_size_partitioner(2))
 
     with self.cached_session():
-      variables.global_variables_initializer().run()
-      self.assertAllClose(expected_remapped_matrix,
-                          remapped_matrix.as_tensor().eval())
+      self.evaluate(variables.global_variables_initializer())
+      self.assertAllClose(expected_remapped_matrix, remapped_matrix.as_tensor())
 
   def test_load_embedding_initializer(self):
     """Tests for the load_embedding_initializer wrapper."""
@@ -293,9 +294,9 @@ class LoadAndRemapWrappersTest(test.TestCase):
         partitioner=partitioned_variables.fixed_size_partitioner(2))
 
     with self.cached_session():
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllClose(expected_remapped_embeddings,
-                          remapped_embeddings.as_tensor().eval())
+                          remapped_embeddings.as_tensor())
 
   def test_load_embedding_initializer_large_oov(self):
     """Tests for the large OOV case for load_embedding_initializer wrapper."""
@@ -339,9 +340,9 @@ class LoadAndRemapWrappersTest(test.TestCase):
         partitioner=partitioned_variables.fixed_size_partitioner(2))
 
     with self.cached_session():
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllClose(expected_remapped_embeddings,
-                          remapped_embeddings.as_tensor().eval())
+                          remapped_embeddings.as_tensor())
 
   def test_load_embedding_initializer_old_row_vocab(self):
     """Tests for load_embedding_initializer where we constrain old vocab."""
@@ -377,9 +378,10 @@ class LoadAndRemapWrappersTest(test.TestCase):
         partitioner=partitioned_variables.fixed_size_partitioner(2))
 
     with self.cached_session():
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllClose(expected_remapped_embeddings,
-                          remapped_embeddings.as_tensor().eval())
+                          remapped_embeddings.as_tensor())
+
 
 if __name__ == '__main__':
   test.main()

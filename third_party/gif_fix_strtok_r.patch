@@ -1,0 +1,15 @@
+diff -r -u ./fixed_gif_font.c ./gif_font.c
+--- ./fixed_gif_font.c	2019-09-05 11:05:25.009598262 -0700
++++ ./gif_font.c	2019-09-05 10:52:45.308389085 -0700
+@@ -11,6 +11,11 @@
+
+ #include "gif_lib.h"
+
++// Windows doesn't have strtok_r.
++#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
++#define strtok_r strtok_s
++#endif
++
+ /*****************************************************************************
+  Ascii 8 by 8 regular font - only first 128 characters are supported.
+ *****************************************************************************/

@@ -27,7 +27,6 @@ namespace tensorflow {
 #define TF_CALL_WHERE_GPU_TYPES(m) \
   TF_CALL_int8(m);                 \
   TF_CALL_uint8(m);                \
-  TF_CALL_int32(m);                \
   TF_CALL_int64(m);                \
   TF_CALL_float(m);                \
   TF_CALL_double(m);               \
@@ -42,7 +41,7 @@ struct NumTrue {
   EIGEN_ALWAYS_INLINE static Status Compute(
       OpKernelContext* ctx, const Device& d,
       typename TTypes<T>::ConstFlat input,
-      typename TTypes<TIndex>::Scalar num_true);
+      typename TTypes<TIndex>::UnalignedScalar num_true);
 };
 
 template <typename Device, int NDIM, typename T, typename TIndex>

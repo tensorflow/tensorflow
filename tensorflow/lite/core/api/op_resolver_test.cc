@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstring>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/schema/schema_conversion_utils.h"
 
 namespace tflite {
 namespace {
@@ -186,7 +187,9 @@ TEST(OpResolver, TestGetRegistrationFromOpCodeNonexistentCustom) {
   EXPECT_EQ(kTfLiteError, GetRegistrationFromOpCode(conv_code, *resolver,
                                                     reporter, &registration));
   EXPECT_EQ(nullptr, registration);
-  EXPECT_NE(0, mock_reporter.GetBufferSize());
+  // There is no error, since unresolved custom ops are checked while preparing
+  // nodes.
+  EXPECT_EQ(0, mock_reporter.GetBufferSize());
 }
 
 }  // namespace tflite

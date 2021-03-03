@@ -19,7 +19,7 @@ limitations under the License.
 // need more sophisticated syntax than that.
 //
 // Example:
-//   void func() {}
+//   void func() {
 //     FILE* fp = fopen("data.txt", "r");
 //     if (fp == nullptr) return;
 //     auto fp_cleaner = gtl::MakeCleanup([fp] { fclose(fp); });

@@ -1,15 +1,20 @@
-# TFLite Model Benchmark Tool
+# TFLite Model Benchmark Tool with C++ Binary
 
 ## Description
 
 A simple C++ binary to benchmark a TFLite model and its individual operators,
 both on desktop machines and on Android. The binary takes a TFLite model,
 generates random inputs and then repeatedly runs the model for specified number
-of runs. Aggregrate latency statistics are reported after running the benchmark.
+of runs. Aggregate latency statistics are reported after running the benchmark.
 
 The instructions below are for running the binary on Desktop and Android,
 for iOS please use the
 [iOS benchmark app](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark/ios).
+
+An experimental Android APK wrapper for the benchmark model utility offers more
+faithful execution behavior on Android (via a foreground Activity). It is
+located
+[here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark/android).
 
 ## Parameters
 
@@ -29,22 +34,126 @@ and the following optional parameters:
 *   `run_delay`: `float` (default=-1.0) \
     The delay in seconds between subsequent benchmark runs. Non-positive values
     mean use no delay.
+*   `run_frequency`: `float` (default=-1.0) \
+    The frequency of running a benchmark run as the number of prorated runs per
+    second. If the targeted rate per second cannot be reached, the benchmark
+    would start the next run immediately, trying its best to catch up. If set,
+    this will override the `run_delay` parameter. A non-positive value means
+    there is no delay between subsequent runs.
+*   `enable_op_profiling`: `bool` (default=false) \
+    Whether to enable per-operator profiling measurement.
+*   `profiling_output_csv_file`: `str` (default="") \
+    File path to export profile data to as CSV. The results are printed to
+    `stdout` if option is not set. Requires `enable_op_profiling` to be `true`
+    and the path to include the name of the output CSV; otherwise results are
+    printed to `stdout`.
+*  `verbose`: `bool` (default=false) \
+    Whether to log parameters whose values are not set. By default, only log
+    those parameters that are set by parsing their values from the commandline
+    flags.
+
+### Model input parameters
+By default, the tool will use randomized data for model inputs. The following
+parameters allow users to specify customized input values to the model when
+running the benchmark tool:
+
+*   `input_layer`: `string` \
+    A comma-separated list of input layer names, e.g. 'input1,input2'. Note all
+    inputs of the model graph need to be specified. However, the input name
+    does not need to match that encoded in the model. Additionally, the order
+    of input layer names specified here is assumed to be same with that is seen
+    by the Tensorflow Lite interpreter. This is a bit inconvenient but the
+    [visualization tool](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/visualize.py)
+    should help to find this order.
+*   `input_layer_shape`: `string` \
+    A colon-separated list of input layer shapes, where each shape is a
+    comma-separated list, e.g. '1,30:1,10'. Similar to `input_layer`, this
+    parameter also requires shapes of all inputs be specified, and the order of
+    inputs be same with that is seen by the interpreter.
+*   `input_layer_value_range`: `string` \
+    A map-like string representing value range for *integer* input layers. Each
+    item is separated by ':', and the item value consists of input layer name
+    and integer-only range values (both low and high are inclusive) separated by
+    ',', e.g. 'input1,1,2:input2,0,254'. Note that the input layer name must
+    exist in the list of names specified by `input_layer`.
+*   `input_layer_value_files`: `string` \
+    A map-like string representing files that contain input values. Each
+    item is separated by ',', and the item value consists of input layer name
+    and the file path separated by ':',
+    e.g. 'input1:file_path1,input2:file_path2'. If a input name appears in both
+    `input_layer_value_range` and `input_layer_value_files`,
+    the corresponding input value range specified by`input_layer_value_range`
+    will be ignored. The file format is binary, and the content should be either
+    a byte array or null-separated strings. Note that the inpput layer name must
+    also exist in the list of names specified by `input_layer`.
+
+### TFLite delegate parameters
+The tool supports all runtime/delegate parameters introduced by
+[the delegate registrar](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/delegates).
+The following simply lists the names of these parameters and additional notes
+where applicable. For details about each parameter, please refer to
+[this page](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/delegates/README.md#tflite-delegate-registrar).
+#### Common parameters
+* `max_delegated_partitions`: `int` (default=0)
+* `min_nodes_per_partition`:`int` (default=0)
+
+#### GPU delegate
+* `use_gpu`: `bool` (default=false)
+* `gpu_precision_loss_allowed`: `bool` (default=true)
+* `gpu_experimental_enable_quant`: `bool` (default=true)
+* `gpu_backend`: `string` (default="")
+* `gpu_wait_type`: `str` (default="")
+
+#### NNAPI delegate
+
 *   `use_nnapi`: `bool` (default=false) \
-    Whether to use [Android NNAPI](https://developer.android.com/ndk/guides/neuralnetworks/).
-    This API is available on recent Android devices.
+    Note some Android P devices will fail to use NNAPI for models in
+    `/data/local/tmp/` and this benchmark tool will not correctly use NNAPI.
+*   `nnapi_execution_preference`: `str` (default="") \
+    Should be one of: `fast_single_answer`, `sustained_speed`, `low_power`,
+    `undefined`.
+*   `nnapi_execution_priority`: `str` (default="") \
+    Note this requires Android 11+.
+*   `nnapi_accelerator_name`: `str` (default="") \
+    Note this requires Android 10+.
+*   `disable_nnapi_cpu`: `bool` (default=true)
+*   `nnapi_allow_fp16`: `bool` (default=false)
+
+#### Hexagon delegate
+* `use_hexagon`: `bool` (default=false)
+* `hexagon_profiling`: `bool` (default=false) \
+Note enabling this option will not produce profiling results outputs unless
+`enable_op_profiling` is also turned on. When both parameters are set to true,
+the profile of ops on hexagon DSP will be added to the profile table. Note that,
+the reported data on hexagon is in cycles, not in ms like on cpu.
+
+#### XNNPACK delegate
+*   `use_xnnpack`: `bool` (default=false)
+
+#### CoreML delegate
+*   `use_coreml`: `bool` (default=false)
+*   `coreml_version`: `int` (default=0)
+
+#### External delegate
+*   `external_delegate_path`: `string` (default="")
+*   `external_delegate_options`: `string` (default="")
+
+As some delegates are only available on certain platforms, when running the
+benchmark tool on a particular platform, specifying `--help` will print out all
+supported parameters.
 
 ## To build/install/run
 
 ### On Android:
 
-(0) Refer to https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android to edit the `WORKSPACE` to configure the android NDK/SDK.
+(0) Refer to https://www.tensorflow.org/lite/guide/build_android to edit the
+`WORKSPACE` to configure the android NDK/SDK.
 
 (1) Build for your specific platform, e.g.:
 
 ```
 bazel build -c opt \
-  --config=android_arm \
-  --cxxopt='--std=c++11' \
+  --config=android_arm64 \
   tensorflow/lite/tools/benchmark:benchmark_model
 ```
 
@@ -67,7 +176,18 @@ adb shell chmod +x /data/local/tmp/benchmark_model
 adb push mobilenet_quant_v1_224.tflite /data/local/tmp
 ```
 
-(5) Run the benchmark. For example:
+(5) Optionally, install Hexagon libraries on device.
+
+That step is only needed when using the Hexagon delegate.
+
+```
+bazel build --config=android_arm64 \
+  tensorflow/lite/delegates/hexagon/hexagon_nn:libhexagon_interface.so
+adb push bazel-bin/tensorflow/lite/delegates/hexagon/hexagon_nn/libhexagon_interface.so /data/local/tmp
+adb push libhexagon_nn_skel*.so /data/local/tmp
+```
+
+(6) Run the benchmark. For example:
 
 ```
 adb shell /data/local/tmp/benchmark_model \
@@ -116,19 +236,18 @@ where `f0` is the affinity mask for big cores on Pixel 2.
 Note: The affinity mask varies with the device.
 
 ## Profiling model operators
-The benchmark model binary also allows you to profile operators and give execution times of each operator. To do this,
-compile the binary with a compiler flag that enables profiling to be compiled in. Pass **--copt=-DTFLITE_PROFILING_ENABLED**
-to compile benchmark with profiling support.
-For example, to compile with profiling support on Android, add this flag to the previous command:
+The benchmark model binary also allows you to profile operators and give
+execution times of each operator. To do this, pass the flag
+`--enable_op_profiling=true` to `benchmark_model` during invocation, e.g.,
 
 ```
-bazel build -c opt \
-  --config=android_arm \
-  --cxxopt='--std=c++11' \
-  --copt=-DTFLITE_PROFILING_ENABLED \
-  tensorflow/lite/tools/benchmark:benchmark_model
+adb shell taskset f0 /data/local/tmp/benchmark_model \
+  --graph=/data/local/tmp/mobilenet_quant_v1_224.tflite \
+  --enable_op_profiling=true
 ```
-This compiles TFLite with profiling enabled, now you can run the benchmark binary like before. The binary will produce detailed statistics for each operation similar to those shown below:
+
+When enabled, the `benchmark_model` binary will produce detailed statistics for
+each operation similar to those shown below:
 
 ```
 
@@ -193,5 +312,49 @@ Memory (bytes): count=0
 31 nodes observed
 
 
-Average inference timings in us: Warmup: 83235, Init: 38467, no stats: 79760.9
+Average inference timings in us: Warmup: 83235, Init: 38467, Inference: 79760.9
+```
+
+## Benchmark multiple performance options in a single run
+
+A convenient and simple C++ binary is also provided to benchmark multiple
+performance options in a single run. This binary is built based on the
+aforementioned benchmark tool that could only benchmark a single performance
+option at a time. They share the same build/install/run process, but the BUILD
+target name of this binary is `benchmark_model_performance_options` and it takes
+some additional parameters as detailed below.
+
+### Additional Parameters
+*   `perf_options_list`: `string` (default='all') \
+    A comma-separated list of TFLite performance options to benchmark.
+*   `option_benchmark_run_delay`: `float` (default=-1.0) \
+    The delay between two consecutive runs of benchmarking performance options
+    in seconds.
+*   `random_shuffle_benchmark_runs`: `bool` (default=true) \
+    Whether to perform all benchmark runs, each of which has different
+    performance options, in a random order.
+
+## Build the benchmark tool with Tensorflow ops support
+
+You can build the benchmark tool with [Tensorflow operators support](https://www.tensorflow.org/lite/guide/ops_select).
+
+### How to build
+
+To build the tool, you need to use 'benchmark_model_plus_flex' target with
+'--config=monolithic' option.
+
+```
+bazel build -c opt \
+  --config=monolithic \
+  tensorflow/lite/tools/benchmark:benchmark_model_plus_flex
+```
+
+### How to benchmark tflite model with Tensorflow ops
+
+Tensorflow ops support just works the benchmark tool is built with Tensorflow
+ops support. It doesn't require any additional option to use it.
+
+```
+bazel-bin/tensorflow/lite/tools/benchmark/benchmark_model_plus_flex \
+  --graph=model_converted_with_TF_ops.tflite \
 ```

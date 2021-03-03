@@ -25,6 +25,10 @@ namespace xla {
 // Returns a tuple composed of the top `k` values and corresponding indices in
 // `input`.  Output values are in descending order, from largest to smallest.
 XlaOp TopK(XlaOp input, int64 k);
+// Split sort in TopK into smaller sorts.
+// Returns a tuple composed of the top `k` values and corresponding indices in
+// `input`.  Output values are in descending order, from largest to smallest.
+XlaOp TopKWithPartitions(XlaOp input, int64 k, int64 num_partitions = 1);
 
 }  // namespace xla
 

@@ -32,7 +32,7 @@ namespace {
 
 bool IsTrivialUnfusedActivationFunc(GraphTransformation* transformation,
                                     const Model& model, OperatorType op_type,
-                                    const string& input_array_name) {
+                                    const std::string& input_array_name) {
   double clamp_min;
   double clamp_max;
   switch (op_type) {
@@ -60,7 +60,7 @@ bool IsTrivialUnfusedActivationFunc(GraphTransformation* transformation,
 bool IsTrivialFusedActivationFunc(
     GraphTransformation* transformation, const Model& model,
     FusedActivationFunctionType activation_function,
-    const string& output_array_name) {
+    const std::string& output_array_name) {
   double clamp_min;
   double clamp_max;
   switch (activation_function) {

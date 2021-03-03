@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash +x
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,27 +14,50 @@
 # limitations under the License.
 # ==============================================================================
 
-set -e
+echo "========================================================================="
+echo "WARNING: This build script is deprecated and no longer maintained. Please"
+echo "         refer to the iOS build guide to learn how to build the latest   "
+echo "         version of TFLite static framework for iOS using bazel.         "
+echo "         https://www.tensorflow.org/lite/guide/build_ios                 "
+echo "========================================================================="
+sleep 5s
+
+set -ex
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR/../../../../.."
+cd "$SCRIPT_DIR/../../../.."
+
+usage() {
+  echo "Usage: $(basename "$0") [-a]"
+  echo "-a [build_arch] build for specified arch comma separate for multiple archs (eg: x86_64 arm64)"
+  echo "  default is [i386 x86_64 armv7 armv7s arm64]"
+  echo "-p enable profiling"
+  exit 1
+}
+
+profiling_args=""
+BUILD_ARCHS="i386 x86_64 armv7 armv7s arm64"
+while getopts "a:p" opt_name; do
+  case "$opt_name" in
+    a) BUILD_ARCHS="${OPTARG}";;
+    p) profiling_args='-DRUY_PROFILER';;
+    *) usage;;
+  esac
+done
+shift $(($OPTIND - 1))
 
 # Build library for supported architectures and packs them in a fat binary.
 make_library() {
-    for arch in x86_64 armv7 armv7s arm64
+    LIBS=""
+    for arch in $BUILD_ARCHS
     do
         make -f tensorflow/lite/tools/make/Makefile TARGET=ios TARGET_ARCH=${arch} \
-        -j 8
+            EXTRA_CXXFLAGS=$profiling_args -j 8 ${1}
+        LIBS="${LIBS} tensorflow/lite/tools/make/gen/ios_${arch}/lib/${2}"
     done
     mkdir -p tensorflow/lite/tools/make/gen/lib
-    lipo \
-    tensorflow/lite/tools/make/gen/ios_x86_64/lib/${1} \
-    tensorflow/lite/tools/make/gen/ios_armv7/lib/${1} \
-    tensorflow/lite/tools/make/gen/ios_armv7s/lib/${1} \
-    tensorflow/lite/tools/make/gen/ios_arm64/lib/${1} \
-    -create \
-    -output tensorflow/lite/tools/make/gen/lib/${1}
+    lipo $LIBS -create \
+    -output tensorflow/lite/tools/make/gen/lib/${2}
 }
 
-make_library libtensorflow-lite.a
-make_library benchmark-lib.a
+make_library lib libtensorflow-lite.a

@@ -65,7 +65,9 @@ TF_CALL_int8(REGISTER_POPULATION_COUNT);
 TF_CALL_uint16(REGISTER_POPULATION_COUNT);
 TF_CALL_int16(REGISTER_POPULATION_COUNT);
 TF_CALL_int32(REGISTER_POPULATION_COUNT);
+TF_CALL_uint32(REGISTER_POPULATION_COUNT);
 TF_CALL_int64(REGISTER_POPULATION_COUNT);
+TF_CALL_uint64(REGISTER_POPULATION_COUNT);
 
 #undef REGISTER_POPULATION_COUNT
 
@@ -87,7 +89,9 @@ POPCNT(uint8, 8);
 POPCNT(int16, 16);
 POPCNT(uint16, 16);
 POPCNT(int32, 32);
+POPCNT(uint32, 32);
 POPCNT(int64, 64);
+POPCNT(uint64, 64);
 
 #undef POPCNT
 
@@ -122,7 +126,7 @@ struct PopulationCount<CPUDevice, T> {
 
 }  // namespace functor
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_POPULATION_COUNT(type)                                     \
   REGISTER_KERNEL_BUILDER(                                                  \
@@ -158,6 +162,6 @@ TF_CALL_int64(DECLARE_GPU_SPEC);
 
 }  // namespace functor
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

@@ -54,7 +54,7 @@ const ApiDef::Arg* FindInputArg(StringPiece name, const ApiDef& api_def);
 
 // Produce a human-readable version of an op_def that is more concise
 // than a text-format proto.  Excludes descriptions.
-string SummarizeOpDef(const OpDef& op_def);
+std::string SummarizeOpDef(const OpDef& op_def);
 
 // Returns an error if new_op is not backwards-compatible with (more
 // accepting than) old_op.
@@ -68,8 +68,9 @@ Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
                                    const OpDef& penultimate_op,
                                    const OpDef& new_op);
 
-// Returns an error if the default value for any attr is added/removed/modified
-// in new_op compared to old_op.
+// Returns an error if the default value for any attr is removed or modified
+// in new_op compared to old_op.  Adding new default values is safe, and does
+// not raise an error.
 Status OpDefAttrDefaultsUnchanged(const OpDef& old_op, const OpDef& new_op);
 
 // Remove all docs from *op_def / *op_list.

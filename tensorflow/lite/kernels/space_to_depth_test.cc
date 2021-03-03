@@ -12,11 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
+#include <initializer_list>
+#include <vector>
+
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -50,10 +54,12 @@ class SpaceToDepthOpModel : public SingleOpModel {
   int output_;
 };
 
+#ifdef GTEST_HAS_DEATH_TEST
 TEST(SpaceToDepthOpModel, BadBlockSize) {
   EXPECT_DEATH(SpaceToDepthOpModel({TensorType_FLOAT32, {1, 2, 2, 1}}, 3),
                "Cannot allocate tensors");
 }
+#endif
 
 TEST(SpaceToDepthOpModel, Float32) {
   SpaceToDepthOpModel m({TensorType_FLOAT32, {1, 2, 2, 2}}, 2);
@@ -69,6 +75,14 @@ TEST(SpaceToDepthOpModel, Uint8) {
   m.SetInput<uint8_t>({1, 2, 3, 4});
   m.Invoke();
   EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({1, 2, 3, 4}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 4));
+}
+
+TEST(SpaceToDepthOpModel, int8) {
+  SpaceToDepthOpModel m({TensorType_INT8, {1, 2, 2, 1}}, 2);
+  m.SetInput<int8_t>({1, 2, 3, 4});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({1, 2, 3, 4}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 4));
 }
 
@@ -93,9 +107,3 @@ TEST(SpaceToDepthOpModel, Int64) {
 
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

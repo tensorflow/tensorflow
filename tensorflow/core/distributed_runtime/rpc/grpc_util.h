@@ -29,6 +29,15 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Given the total number of RPC retries attempted, return a randomized
+// amount of time to delay before retrying the request.
+//
+// The average computed backoff increases with the number of RPCs attempted.
+// See implementation for details on the calculations.
+int64 ComputeBackoffMicroseconds(int current_retry_attempt,
+                                 int64 min_delay = 1000,
+                                 int64 max_delay = 10000000);
+
 // Thin wrapper around ::grpc::ProtoBufferReader to give TensorResponse an
 // efficient byte reader from which to decode a RecvTensorResponse.
 class GrpcByteSource : public TensorResponse::Source {
@@ -121,6 +130,9 @@ bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, TensorResponse* dst);
 
 // Copy grpc buffer src to string *dst.
 bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, string* dst);
+
+// Copy grpc buffer src to tstring *dst.
+bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, tstring* dst);
 
 }  // namespace tensorflow
 

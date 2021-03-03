@@ -18,11 +18,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/save_restore_tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -101,9 +101,9 @@ class SaveV2 : public OpKernel {
 
     const int kFixedInputs = 3;  // Prefix, tensor names, shape_and_slices.
     const int num_tensors = static_cast<int>(tensor_names.NumElements());
-    const string& prefix_string = prefix.scalar<string>()();
-    const auto& tensor_names_flat = tensor_names.flat<string>();
-    const auto& shape_and_slices_flat = shape_and_slices.flat<string>();
+    const string& prefix_string = prefix.scalar<tstring>()();
+    const auto& tensor_names_flat = tensor_names.flat<tstring>();
+    const auto& shape_and_slices_flat = shape_and_slices.flat<tstring>();
 
     BundleWriter writer(Env::Default(), prefix_string);
     OP_REQUIRES_OK(context, writer.status());
@@ -112,6 +112,7 @@ class SaveV2 : public OpKernel {
     for (int i = 0; i < num_tensors; ++i) {
       const string& tensor_name = tensor_names_flat(i);
       const Tensor& tensor = context->input(i + kFixedInputs);
+      VLOG(2) << "Starting save of " << tensor_name;
 
       if (!shape_and_slices_flat(i).empty()) {
         const string& shape_spec = shape_and_slices_flat(i);
@@ -133,8 +134,28 @@ class SaveV2 : public OpKernel {
       } else {
         OP_REQUIRES_OK(context, writer.Add(tensor_name, tensor));
       }
+
+      if (VLOG_IS_ON(5)) {
+        if (tensor.dtype() == DT_FLOAT) {
+          const float* t_data = tensor.flat<float>().data();
+          float min = std::numeric_limits<float>::infinity();
+          float max = -std::numeric_limits<float>::infinity();
+          double avg = 0.0;
+          for (int i = 0; i < tensor.NumElements(); ++i) {
+            if (t_data[i] < min) min = t_data[i];
+            if (t_data[i] > max) max = t_data[i];
+            avg += t_data[i];
+          }
+          VLOG(5) << " min " << min << " max " << max << " avg "
+                  << avg / tensor.NumElements() << " total elts "
+                  << tensor.NumElements();
+        }
+      }
+
+      VLOG(2) << "Done save of " << tensor_name;
     }
     OP_REQUIRES_OK(context, writer.Finish());
+    VLOG(1) << "Done BundleWriter, prefix_string: " << prefix_string;
   }
 };
 REGISTER_KERNEL_BUILDER(Name("SaveV2").Device(DEVICE_CPU), SaveV2);
@@ -157,7 +178,7 @@ class RestoreV2 : public OpKernel {
     ValidateInputs(false /* not save op */, context, prefix, tensor_names,
                    shape_and_slices);
 
-    const string& prefix_string = prefix.scalar<string>()();
+    const string& prefix_string = prefix.scalar<tstring>()();
 
     // Intention: we plan to use the RestoreV2 op as a backward-compatible
     // reader as we upgrade to the V2 format.  This allows transparent upgrade.
@@ -212,10 +233,10 @@ class MergeV2Checkpoints : public OpKernel {
                     "Input destination_prefix should be a scalar tensor, got ",
                     destination_prefix.shape().DebugString(), " instead."));
 
-    const gtl::ArraySlice<string> input_prefixes =
-        gtl::ArraySlice<string>(checkpoint_prefixes.flat<string>());
+    const gtl::ArraySlice<tstring> input_prefixes =
+        gtl::ArraySlice<tstring>(checkpoint_prefixes.flat<tstring>());
     Env* env = Env::Default();
-    const string& merged_prefix = destination_prefix.scalar<string>()();
+    const string& merged_prefix = destination_prefix.scalar<tstring>()();
     OP_REQUIRES_OK(
         context, tensorflow::MergeBundles(env, input_prefixes, merged_prefix));
 

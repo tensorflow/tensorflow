@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/lite/core/api/op_resolver.h"
 
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/schema/schema_utils.h"
+
 namespace tflite {
 
 TfLiteStatus GetRegistrationFromOpCode(
@@ -22,12 +27,13 @@ TfLiteStatus GetRegistrationFromOpCode(
     ErrorReporter* error_reporter, const TfLiteRegistration** registration) {
   TfLiteStatus status = kTfLiteOk;
   *registration = nullptr;
-  auto builtin_code = opcode->builtin_code();
+  auto builtin_code = GetBuiltinCode(opcode);
   int version = opcode->version();
 
   if (builtin_code > BuiltinOperator_MAX ||
       builtin_code < BuiltinOperator_MIN) {
-    error_reporter->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
         "Op builtin_code out of range: %d. Are you using old TFLite binary "
         "with newer model?",
         builtin_code);
@@ -35,22 +41,25 @@ TfLiteStatus GetRegistrationFromOpCode(
   } else if (builtin_code != BuiltinOperator_CUSTOM) {
     *registration = op_resolver.FindOp(builtin_code, version);
     if (*registration == nullptr) {
-      error_reporter->Report(
-          "Didn't find op for builtin opcode '%s' version '%d'\n",
+      TF_LITE_REPORT_ERROR(
+          error_reporter,
+          "Didn't find op for builtin opcode '%s' version '%d'. "
+          "An older version of this builtin might be supported. "
+          "Are you using an old TFLite binary with a newer model?\n",
           EnumNameBuiltinOperator(builtin_code), version);
       status = kTfLiteError;
     }
   } else if (!opcode->custom_code()) {
-    error_reporter->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
         "Operator with CUSTOM builtin_code has no custom_code.\n");
     status = kTfLiteError;
   } else {
     const char* name = opcode->custom_code()->c_str();
     *registration = op_resolver.FindOp(name, version);
     if (*registration == nullptr) {
-      error_reporter->Report(
-          "Didn't find custom op for name '%s' with version %d\n", name,
-          version);
+      // Do not report error for unresolved custom op, we do the final check
+      // while preparing ops.
       status = kTfLiteError;
     }
   }

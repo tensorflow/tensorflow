@@ -24,6 +24,16 @@ then
   GOPATH=$(go env GOPATH)
 fi
 
+# convert GOPATH's Windows style to UNIX style
+if [[ $1 == "win" ]]; then
+  # eg: convert "D:\go-14;D:\go-13" to "D\go-14;D\go-13"
+  GOPATH=${GOPATH//:\\/\\}
+  # eg: convert "D\go-14;D\go-13" to "\D\go-14:\D\go-13"
+  GOPATH=\\${GOPATH//;/:\\}
+  # eg: convert "\D\go-14:\D\go-13" to "/D/go-14:/D/go-13"
+  GOPATH=${GOPATH//\\/\/}
+fi
+
 cd $(dirname $0)
 for g in $(echo "${GOPATH//:/ }"); do
     TF_DIR="${g}/src/github.com/tensorflow/tensorflow"
@@ -41,7 +51,7 @@ then
   then
     echo "Protocol buffer compiler protoc not found in PATH or in ${PROTOC}"
     echo "Perhaps build it using:"
-    echo "bazel build --config opt @protobuf_archive//:protoc"
+    echo "bazel build --config opt @com_google_protobuf//:protoc"
     exit 1
   fi
   PROTOC=$PATH_PROTOC
@@ -51,8 +61,12 @@ fi
 # Ensure that protoc-gen-go is available in $PATH
 # Since ${PROTOC} will require it.
 export PATH=$PATH:${GOPATH}/bin
-mkdir -p ./internal/proto
-${PROTOC} \
-  -I ${TF_DIR} \
-  --go_out=./internal/proto \
-  ${TF_DIR}/tensorflow/core/framework/*.proto
+mkdir -p ../vendor
+for FILE in ${TF_DIR}/tensorflow/core/framework/*.proto \
+    ${TF_DIR}/tensorflow/core/protobuf/*.proto \
+    ${TF_DIR}/tensorflow/stream_executor/*.proto; do
+  ${PROTOC} \
+    -I ${TF_DIR} \
+    --go_out=../vendor \
+    $FILE
+done

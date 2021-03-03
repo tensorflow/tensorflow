@@ -1,0 +1,12 @@
+op {
+  name: "AccumulatorNumAccumulated"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  output_arg {
+    name: "num_accumulated"
+    type: DT_INT32
+  }
+}

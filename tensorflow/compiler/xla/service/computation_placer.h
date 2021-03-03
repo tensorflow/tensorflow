@@ -18,16 +18,19 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/array2d.h"
+#include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/platform.h"
 
 namespace xla {
 
@@ -46,6 +49,17 @@ class DeviceAssignment : public Array2D<int> {
 
   int replica_count() const { return height(); }
   int computation_count() const { return width(); }
+
+  // The logical ID of a device is its (replica ID, computation ID) pair.
+  struct LogicalID {
+    int replica_id;
+    int computation_id;
+  };
+
+  // Finds the (replica ID, computation ID) pair for the given device.
+  StatusOr<LogicalID> LogicalIdForDevice(GlobalDeviceId device_id) const;
+  // Finds the replica ID for the given device.
+  StatusOr<int> ReplicaIdForDevice(GlobalDeviceId device_id) const;
 
   // Protocol buffer serialization and deserialization.
   Status Serialize(DeviceAssignmentProto* proto) const;
@@ -68,7 +82,7 @@ class ComputationPlacer {
 
   // Returns the device id assigned to the given replica and computation
   // instance for [replica_count x computation_count] setup. The returned device
-  // id must match the assignement from PlaceReplicatedComputation().
+  // id must match the assignment from PlaceReplicatedComputation().
   virtual StatusOr<int> DeviceId(int replica, int computation,
                                  int replica_count, int computation_count);
 
@@ -104,8 +118,6 @@ class ComputationPlacer {
 
   // Map from platform kind to computation placer singleton.
   static std::map<se::Platform::Id, State>* GetPlatformComputationPlacers();
-
-  se::Platform::Id platform_id_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ComputationPlacer);
 };

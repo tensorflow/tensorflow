@@ -132,7 +132,7 @@ class Buffer : public ResourceBase {
     notify_inserters_if_bounded(&lock);
   }
 
-  string DebugString() override {
+  string DebugString() const override {
     std::unique_lock<std::mutex> lock(mu_);
     return strings::StrCat("Staging size: ", buf_.size());
   }
@@ -151,7 +151,7 @@ class Buffer : public ResourceBase {
   }
 
   // Are there a limit number of elements or a memory limit
-  // configued on this buffer?
+  // configured on this buffer?
   bool IsBounded() const { return capacity_ > 0 || memory_limit_ > 0; }
 
   bool IsCapacityFull() const { return buf_.size() >= capacity_; }
@@ -170,7 +170,7 @@ class Buffer : public ResourceBase {
   std::size_t capacity_;
   std::size_t memory_limit_;
   std::size_t current_bytes_;
-  std::mutex mu_;
+  mutable std::mutex mu_;
   std::condition_variable non_empty_cond_var_;
   std::condition_variable full_cond_var_;
   std::deque<Tuple> buf_;
@@ -216,12 +216,10 @@ class StageOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("Stage").Device(DEVICE_CPU), StageOp);
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 REGISTER_KERNEL_BUILDER(Name("Stage").Device(DEVICE_GPU), StageOp);
 #endif
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("Stage").Device(DEVICE_SYCL), StageOp);
-#endif  // TENSORFLOW_USE_SYCL
 
 class UnstageOp : public OpKernel {
  public:
@@ -249,12 +247,10 @@ class UnstageOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("Unstage").Device(DEVICE_CPU), UnstageOp);
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 REGISTER_KERNEL_BUILDER(Name("Unstage").Device(DEVICE_GPU), UnstageOp);
 #endif
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("Unstage").Device(DEVICE_SYCL), UnstageOp);
-#endif  // TENSORFLOW_USE_SYCL
 
 class StagePeekOp : public OpKernel {
  public:
@@ -284,14 +280,11 @@ class StagePeekOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("StagePeek").Device(DEVICE_CPU), StagePeekOp);
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 REGISTER_KERNEL_BUILDER(
     Name("StagePeek").HostMemory("index").Device(DEVICE_GPU), StagePeekOp);
 #endif
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(
-    Name("StagePeek").HostMemory("index").Device(DEVICE_SYCL), StagePeekOp);
-#endif  // TENSORFLOW_USE_SYCL
 
 class StageSizeOp : public OpKernel {
  public:
@@ -314,14 +307,11 @@ class StageSizeOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("StageSize").Device(DEVICE_CPU), StageSizeOp);
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 REGISTER_KERNEL_BUILDER(Name("StageSize").HostMemory("size").Device(DEVICE_GPU),
                         StageSizeOp);
 #endif
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(
-    Name("StageSize").HostMemory("size").Device(DEVICE_SYCL), StageSizeOp);
-#endif  // TENSORFLOW_USE_SYCL
 
 class StageClearOp : public OpKernel {
  public:
@@ -339,11 +329,9 @@ class StageClearOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("StageClear").Device(DEVICE_CPU), StageClearOp);
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 REGISTER_KERNEL_BUILDER(Name("StageClear").Device(DEVICE_GPU), StageClearOp);
 #endif
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("StageClear").Device(DEVICE_SYCL), StageClearOp);
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

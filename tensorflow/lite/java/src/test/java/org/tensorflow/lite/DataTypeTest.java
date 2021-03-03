@@ -30,6 +30,7 @@ public final class DataTypeTest {
     assertThat(DataType.INT32.byteSize()).isEqualTo(4);
     assertThat(DataType.UINT8.byteSize()).isEqualTo(1);
     assertThat(DataType.INT64.byteSize()).isEqualTo(8);
+    assertThat(DataType.STRING.byteSize()).isEqualTo(-1);
   }
 
   @Test
@@ -37,5 +38,12 @@ public final class DataTypeTest {
     for (DataType dataType : DataType.values()) {
       assertThat(DataType.fromC(dataType.c())).isEqualTo(dataType);
     }
+  }
+
+  @Test
+  public void testINT8AndUINT8() {
+    assertThat(DataType.INT8.toStringName()).isEqualTo("byte");
+    assertThat(DataType.UINT8.toStringName()).isEqualTo("byte");
+    assertThat(DataType.INT8.toStringName()).isEqualTo(DataType.UINT8.toStringName());
   }
 }

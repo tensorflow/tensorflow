@@ -14,12 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 
+#include <limits>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/kernels/internal/common.h"
 
 namespace tflite {
 namespace {
 
+using ::testing::ElementsAreArray;
 using ::testing::Pair;
 
 template <class FloatIn, class IntOut>
@@ -380,6 +384,110 @@ TEST(QuantizationUtilTest, QuantizeMultiplierGreaterThanOne) {
   EXPECT_THAT(quantize(2), Pair(1073741824, 2));
 }
 
+#ifndef __APPLE__  // Some Apple toolchains don't support std::ldexp
+TEST(QuantizationUtilTest, QuantizeMultiplierUnderflow) {
+  auto quantize = [](double d) {
+    int32_t q;
+    int s;
+    QuantizeMultiplier(d, &q, &s);
+    return std::pair<int32_t, int>{q, s};
+  };
+
+  EXPECT_THAT(quantize(std::ldexp(1.0f, -31)), Pair(1073741824, -30));
+  EXPECT_THAT(quantize(std::ldexp(1.0f, -32)), Pair(1073741824, -31));
+  EXPECT_THAT(quantize(std::ldexp(0.99f, -32)), Pair(0, 0));
+  EXPECT_THAT(quantize(std::ldexp(1.0f, -33)), Pair(0, 0));
+}
+#endif
+
+TEST(QuantizationUtilTest, GetInvSqrtQuantizedMultiplierExp) {
+  auto inv_sqrt = [](std::int32_t input) {
+    int32_t output;
+    int output_shift;
+    GetInvSqrtQuantizedMultiplierExp(input, 1, &output, &output_shift);
+    return std::pair<int32_t, int>{output, output_shift};
+  };
+
+  const auto kInt32Max = std::numeric_limits<std::int32_t>::max();
+  EXPECT_THAT(inv_sqrt(0), Pair(kInt32Max, 0));
+  EXPECT_THAT(inv_sqrt(1), Pair(kInt32Max, 0));
+  EXPECT_THAT(inv_sqrt(2), Pair(1518498372, 0));
+  EXPECT_THAT(inv_sqrt(3), Pair(1239850284, 0));
+  EXPECT_THAT(inv_sqrt(4), Pair(1073741828, 0));
+  EXPECT_THAT(inv_sqrt(100), Pair(214748363, 0));
+  EXPECT_THAT(inv_sqrt(10000), Pair(343597361, 4));
+  EXPECT_THAT(inv_sqrt(1000000), Pair(274877901, 7));
+  EXPECT_THAT(inv_sqrt(100000000), Pair(219902323, 10));
+  EXPECT_THAT(inv_sqrt((1 << 30)), Pair(268435457, 12));
+  EXPECT_THAT(inv_sqrt(kInt32Max), Pair(189812531, 12));
+}
+
+TEST(QuantizationUtilTest, MultiplyByQuantizedMultiplierInt32) {
+  auto quant_and_multiply = [](int32_t x, double multiplier) {
+    int32_t quantized_multiplier;
+    int shift;
+    QuantizeMultiplier(multiplier, &quantized_multiplier, &shift);
+    return MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift);
+  };
+
+  EXPECT_EQ(quant_and_multiply(0, 0.1), 0);
+  EXPECT_EQ(quant_and_multiply(1, 0), 0);
+  EXPECT_EQ(quant_and_multiply(10000, 0.00097656), 10);
+  EXPECT_EQ(quant_and_multiply(10000, -0.00097656), -10);
+  EXPECT_EQ(quant_and_multiply(-10000, 0.00097656), -10);
+  EXPECT_EQ(quant_and_multiply(-10000, -0.00097656), 10);
+  EXPECT_EQ(quant_and_multiply(std::numeric_limits<int32_t>::min(), 0.00001),
+            -21475);
+  EXPECT_EQ(quant_and_multiply(std::numeric_limits<int32_t>::min(), -0.00001),
+            21475);
+  EXPECT_EQ(quant_and_multiply(std::numeric_limits<int32_t>::max(), 0.00001),
+            21475);
+  EXPECT_EQ(quant_and_multiply(std::numeric_limits<int32_t>::max(), -0.00001),
+            -21475);
+
+  // Test with maximum possible x and quantized_multiplier
+  const int32_t x = std::numeric_limits<int32_t>::max();
+  const int32_t quantized_multiplier = std::numeric_limits<int32_t>::max();
+  const int shift = -3;
+  const int32_t expected = static_cast<int32_t>(
+      TfLiteRound(static_cast<int64_t>(x) * quantized_multiplier /
+                  static_cast<double>(1ll << (31 - shift))));
+  EXPECT_EQ(MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift),
+            expected);
+  EXPECT_EQ(MultiplyByQuantizedMultiplier(-x, quantized_multiplier, shift),
+            -expected);
+}
+
+TEST(QuantizationUtilTest, MultiplyByQuantizedMultiplierInt64) {
+  auto quant_and_multiply = [](int64_t x, double multiplier) {
+    int32_t quantized_multiplier;
+    int shift;
+    QuantizeMultiplier(multiplier, &quantized_multiplier, &shift);
+    return MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift);
+  };
+
+  // Negative multipliers are not supported by the 64-bit
+  // MultiplyByQuantizedMultiplier, only use >= 0 multipliers.
+  EXPECT_EQ(quant_and_multiply(0, 0.1), 0);
+  EXPECT_EQ(quant_and_multiply(1, 0), 0);
+  EXPECT_EQ(quant_and_multiply(10000, 0.00097656), 10);
+  EXPECT_EQ(quant_and_multiply(-10000, 0.00097656), -10);
+  EXPECT_EQ(quant_and_multiply(-(1ll << 47), 0.00001), -1407385600);
+  EXPECT_EQ(quant_and_multiply((1ll << 47) - 1, 0.00001), 1407385600);
+
+  // Test with maximum possible x and quantized_multiplier
+  const int64_t x = (1ll << 47) - 1;
+  const int32_t quantized_multiplier = std::numeric_limits<int32_t>::max();
+  const int shift = -31;
+  // Expected is around 'x * quantized_multiplier / 2**(31 - shift)' ~= 65536
+  // As there is some rounding error, expected is a bit smaller.
+  const int32_t expected = 65534;
+  EXPECT_EQ(MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift),
+            expected);
+  EXPECT_EQ(MultiplyByQuantizedMultiplier(-x, quantized_multiplier, shift),
+            -expected);
+}
+
 TEST(QuantizationUtilTest, PreprocessSoftmaxScaling) {
   auto quantize = [](double beta, double scale, int integer_bits) {
     int32_t q;
@@ -406,11 +514,51 @@ TEST(QuantizationUtilTest, CalculateInputRadius) {
   EXPECT_EQ(CalculateInputRadius(4, 2), 503316480);
 }
 
+TEST(QuantizationUtilTest, QuantizeMultiplierArray) {
+  const std::vector<double> weights = {-4,    -2,   -1,  -0.5, -0.25, -0.125, 0,
+                                       0.125, 0.25, 0.5, 1,    2,     4};
+  const int size = weights.size();
+  std::vector<int32> effective_scale_significand(size);
+  std::vector<int> effective_scale_shift(size);
+  QuantizeMultiplierArray(weights.data(), size,
+                          effective_scale_significand.data(),
+                          effective_scale_shift.data());
+  const std::vector<int32> expected_effective_scale_significand = {
+      -1073741824,  // float scale = -4
+      -1073741824,  // float scale = -2
+      -1073741824,  // float scale = -1
+      -1073741824,  // float scale = -0.5
+      -1073741824,  // float scale = -0.25
+      -1073741824,  // float scale = -0.125
+      0,            // float scale = 0
+      1073741824,   // float scale = 0.125
+      1073741824,   // float scale = 0.25
+      1073741824,   // float scale = 0.5
+      1073741824,   // float scale = 1
+      1073741824,   // float scale = 2
+      1073741824,   // float scale = 4
+  };
+
+  const std::vector<int> expected_effective_scale_shift = {
+      3,   // float scale = -4
+      2,   // float scale = -2
+      1,   // float scale = -1
+      0,   // float scale = -0.5
+      -1,  // float scale = -0.25
+      -2,  // float scale = -0.125
+      0,   // float scale = 0
+      -2,  // float scale = 0.125
+      -1,  // float scale = 0.25
+      0,   // float scale = 0.5
+      1,   // float scale = 1
+      2,   // float scale = 2
+      3,   // float scale = 4
+  };
+  EXPECT_THAT(effective_scale_significand,
+              ElementsAreArray(expected_effective_scale_significand));
+  EXPECT_THAT(effective_scale_shift,
+              ElementsAreArray(expected_effective_scale_shift));
+}
+
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  // On Linux, add: tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

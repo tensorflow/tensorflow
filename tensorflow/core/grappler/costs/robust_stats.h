@@ -21,8 +21,8 @@ namespace tensorflow {
 namespace grappler {
 class RobustStats {
  public:
-  RobustStats(const std::vector<double>& values);
-  RobustStats(std::vector<double>&& values);
+  explicit RobustStats(const std::vector<double>& values);
+  explicit RobustStats(std::vector<double>&& values);
 
   double lo() const { return lo_; }
   double hi() const { return hi_; }

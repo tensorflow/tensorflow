@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/lib/io/inputbuffer.h"
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -42,7 +43,8 @@ Status InputBuffer::FillBuffer() {
   return s;
 }
 
-Status InputBuffer::ReadLine(string* result) {
+template <typename T>
+Status InputBuffer::ReadLine(T* result) {
   result->clear();
   Status s;
   do {
@@ -70,6 +72,9 @@ Status InputBuffer::ReadLine(string* result) {
   }
   return s;
 }
+
+template Status InputBuffer::ReadLine<string>(string* result);
+template Status InputBuffer::ReadLine<tstring>(tstring* result);
 
 Status InputBuffer::ReadNBytes(int64 bytes_to_read, string* result) {
   result->clear();
@@ -190,6 +195,46 @@ Status InputBuffer::Seek(int64 position) {
     file_pos_ = position;
   }
   return Status::OK();
+}
+
+Status InputBuffer::Hint(int64 bytes_to_read) {
+  if (bytes_to_read < 0) {
+    return errors::InvalidArgument("Can't read a negative number of bytes: ",
+                                   bytes_to_read);
+  }
+
+  // The internal buffer is too small. Do nothing.
+  if (bytes_to_read > size_) {
+    return Status::OK();
+  }
+
+  const int64 bytes_remain_in_buf = static_cast<int64>(limit_ - pos_);
+
+  // There are enough data in the buffer. Do nothing.
+  if (bytes_to_read <= bytes_remain_in_buf) {
+    return Status::OK();
+  }
+
+  // Additional read from file is necessary. Make some room.
+  memmove(buf_, pos_, bytes_remain_in_buf);
+  pos_ = buf_;
+  limit_ = buf_ + bytes_remain_in_buf;
+  bytes_to_read -= bytes_remain_in_buf;
+
+  // Read the remaining bytes from file.
+  StringPiece data;
+  Status s = file_->Read(file_pos_, bytes_to_read, &data, limit_);
+  if (data.data() != limit_) {
+    memmove(limit_, data.data(), data.size());
+  }
+  limit_ += data.size();
+  file_pos_ += data.size();
+
+  if (errors::IsOutOfRange(s) && data.size() == bytes_to_read) {
+    return Status::OK();
+  } else {
+    return s;
+  }
 }
 
 }  // namespace io

@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2xla/lib/qr.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/lib/qr.h"
 
 namespace tensorflow {
 namespace {
@@ -26,13 +26,10 @@ class QROp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("full_matrices", &full_matrices_));
   }
   void Compile(XlaOpKernelContext* ctx) override {
-    auto result = QRDecomposition(ctx->Input(0), full_matrices_);
-    if (!result.ok()) {
-      ctx->SetStatus(result.status());
-      return;
-    }
-    ctx->SetOutput(0, result.ValueOrDie().q);
-    ctx->SetOutput(1, result.ValueOrDie().r);
+    xla::XlaOp q, r;
+    xla::QrExplicit(ctx->Input(0), full_matrices_, q, r);
+    ctx->SetOutput(0, q);
+    ctx->SetOutput(1, r);
   }
 
  private:
@@ -41,7 +38,7 @@ class QROp : public XlaOpKernel {
   bool full_matrices_;
 };
 
-REGISTER_XLA_OP(Name("Qr").TypeConstraint("T", kFloatTypes), QROp);
+REGISTER_XLA_OP(Name("Qr"), QROp);
 
 }  // namespace
 }  // namespace tensorflow

@@ -19,21 +19,24 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+import weakref
+
 import numpy as np
+import six
 
-from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.utils.conv_utils import convert_kernel
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.utils.get_source_inputs')
+@keras_export('keras.utils.get_source_inputs')
 def get_source_inputs(tensor, layer=None, node_index=None):
   """Returns the list of input tensors necessary to compute `tensor`.
 
   Output will always be a list of tensors
   (potentially with 1 element).
 
-  Arguments:
+  Args:
       tensor: The tensor to start from.
       layer: Origin layer of the tensor. Will be
           determined via tensor._keras_history if not provided.
@@ -51,39 +54,64 @@ def get_source_inputs(tensor, layer=None, node_index=None):
     return [tensor]
   else:
     node = layer._inbound_nodes[node_index]
-    if not node.inbound_layers:
+    if node.is_input:
       # Reached an Input layer, stop recursion.
-      return node.input_tensors
+      return nest.flatten(node.input_tensors)
     else:
       source_tensors = []
-      for i in range(len(node.inbound_layers)):
-        x = node.input_tensors[i]
-        layer = node.inbound_layers[i]
-        node_index = node.node_indices[i]
-        previous_sources = get_source_inputs(x, layer, node_index)
+      for layer, node_index, _, tensor in node.iterate_inbound():
+        previous_sources = get_source_inputs(tensor, layer, node_index)
         # Avoid input redundancy.
         for x in previous_sources:
-          if x not in source_tensors:
+          if all(x is not t for t in source_tensors):
             source_tensors.append(x)
       return source_tensors
+
+
+def validate_string_arg(input_data,
+                        allowable_strings,
+                        layer_name,
+                        arg_name,
+                        allow_none=False,
+                        allow_callables=False):
+  """Validates the correctness of a string-based arg."""
+  if allow_none and input_data is None:
+    return
+  elif allow_callables and callable(input_data):
+    return
+  elif isinstance(input_data,
+                  six.string_types) and input_data in allowable_strings:
+    return
+  else:
+    allowed_args = '`None`, ' if allow_none else ''
+    allowed_args += 'a `Callable`, ' if allow_callables else ''
+    allowed_args += 'or one of the following values: %s' % (allowable_strings,)
+    raise ValueError(('The %s argument of layer %s received an invalid '
+                      'value %s. Allowed values are: %s.') %
+                     (arg_name, layer_name, input_data, allowed_args))
 
 
 def count_params(weights):
   """Count the total number of scalars composing the weights.
 
-  Arguments:
+  Args:
       weights: An iterable containing the weights on which to compute params
 
   Returns:
       The total number of scalars composing the weights
   """
-  return int(np.sum([np.prod(p.get_shape().as_list()) for p in set(weights)]))
+  unique_weights = {id(w): w for w in weights}.values()
+  weight_shapes = [w.shape.as_list() for w in unique_weights]
+  standardized_weight_shapes = [
+      [0 if w_i is None else w_i for w_i in w] for w in weight_shapes
+  ]
+  return int(sum(np.prod(p) for p in standardized_weight_shapes))
 
 
 def print_summary(model, line_length=None, positions=None, print_fn=None):
   """Prints a summary of a model.
 
-  Arguments:
+  Args:
       model: Keras model instance.
       line_length: Total length of printed lines
           (e.g. set this to adapt the display to different
@@ -110,7 +138,8 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
     nodes_by_depth = model._nodes_by_depth.values()
     nodes = []
     for v in nodes_by_depth:
-      if (len(v) > 1) or (len(v) == 1 and len(v[0].inbound_layers) > 1):
+      if (len(v) > 1) or (len(v) == 1 and
+                          len(nest.flatten(v[0].keras_inputs)) > 1):
         # if the model has multiple nodes
         # or if the nodes have multiple inbound_layers
         # the model is no longer sequential
@@ -159,6 +188,7 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
       line += ' ' * (positions[i] - len(line))
     print_fn(line)
 
+  print_fn('Model: "{}"'.format(model.name))
   print_fn('_' * line_length)
   print_row(to_display, positions)
   print_fn('=' * line_length)
@@ -166,7 +196,7 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
   def print_layer_summary(layer):
     """Prints a summary for a single layer.
 
-    Arguments:
+    Args:
         layer: target layer.
     """
     try:
@@ -177,13 +207,19 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
       output_shape = '?'
     name = layer.name
     cls_name = layer.__class__.__name__
-    fields = [name + ' (' + cls_name + ')', output_shape, layer.count_params()]
+    if not layer.built and not getattr(layer, '_is_graph_network', False):
+      # If a subclassed model has a layer that is not called in Model.call, the
+      # layer will not be built and we cannot call layer.count_params().
+      params = '0 (unused)'
+    else:
+      params = layer.count_params()
+    fields = [name + ' (' + cls_name + ')', output_shape, params]
     print_row(fields, positions)
 
   def print_layer_summary_with_connections(layer):
     """Prints a summary for a single layer (including topological connections).
 
-    Arguments:
+    Args:
         layer: target layer.
     """
     try:
@@ -195,12 +231,10 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
       if relevant_nodes and node not in relevant_nodes:
         # node is not part of the current network
         continue
-      for i in range(len(node.inbound_layers)):
-        inbound_layer = node.inbound_layers[i].name
-        inbound_node_index = node.node_indices[i]
-        inbound_tensor_index = node.tensor_indices[i]
-        connections.append(inbound_layer + '[' + str(inbound_node_index) +
-                           '][' + str(inbound_tensor_index) + ']')
+
+      for inbound_layer, node_index, tensor_index, _ in node.iterate_inbound():
+        connections.append('{}[{}][{}]'.format(inbound_layer.name, node_index,
+                                               tensor_index))
 
     name = layer.name
     cls_name = layer.__class__.__name__
@@ -229,7 +263,6 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
     else:
       print_fn('_' * line_length)
 
-  model._check_trainable_weights_consistency()
   if hasattr(model, '_collected_trainable_weights'):
     trainable_count = count_params(model._collected_trainable_weights)
   else:
@@ -243,87 +276,6 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
   print_fn('_' * line_length)
 
 
-def gather_trainable_weights(trainable, sub_layers, extra_variables):
-  """Lists the trainable weights for an object with sub-layers.
-
-  Args:
-    trainable: Whether the object collecting the variables is trainable.
-    sub_layers: A flat list of Layer objects owned by this object, to collect
-      variables from.
-    extra_variables: Any extra variables to include. Their `.trainable` property
-      is used to categorize them.
-
-  Returns:
-    A list of collected trainable weights/variables.
-  """
-  if not trainable:
-    return []
-  weights = []
-  for layer in sub_layers:
-    weights += layer.trainable_weights
-  trainable_extra_variables = [
-      v for v in extra_variables if v.trainable]
-  return weights + trainable_extra_variables
-
-
-def gather_non_trainable_weights(trainable, sub_layers, extra_variables):
-  """Lists the non-trainable weights for an object with sub-layers.
-
-  Args:
-    trainable: Whether the object collecting the variables is trainable.
-    sub_layers: A flat list of Layer objects owned by this object, to collect
-      variables from.
-    extra_variables: Any extra variables to include. Their `.trainable` property
-      is used to categorize them.
-
-  Returns:
-    A list of collected non-trainable weights/variables.
-  """
-  trainable_extra_variables = []
-  non_trainable_extra_variables = []
-  for v in extra_variables:
-    if v.trainable:
-      trainable_extra_variables.append(v)
-    else:
-      non_trainable_extra_variables.append(v)
-  weights = []
-  for layer in sub_layers:
-    weights += layer.non_trainable_weights
-  if not trainable:
-    trainable_weights = []
-    for layer in sub_layers:
-      trainable_weights += layer.trainable_weights
-    return (trainable_weights + trainable_extra_variables
-            + weights + non_trainable_extra_variables)
-  return weights + non_trainable_extra_variables
-
-
-@tf_export('keras.utils.convert_all_kernels_in_model')
-def convert_all_kernels_in_model(model):
-  """Converts all convolution kernels in a model from Theano to TensorFlow.
-
-  Also works from TensorFlow to Theano.
-
-  Arguments:
-      model: target model for the conversion.
-  """
-  # Note: SeparableConvolution not included
-  # since only supported by TF.
-  conv_classes = {
-      'Conv1D',
-      'Conv2D',
-      'Conv3D',
-      'Conv2DTranspose',
-  }
-  to_assign = []
-  for layer in model.layers:
-    if layer.__class__.__name__ in conv_classes:
-      original_kernel = K.get_value(layer.kernel)
-      converted_kernel = convert_kernel(original_kernel)
-      to_assign.append((layer.kernel, converted_kernel))
-  K.batch_set_value(to_assign)
-
-
 def convert_dense_weights_data_format(dense,
                                       previous_feature_map_shape,
                                       target_data_format='channels_first'):
@@ -335,7 +287,7 @@ def convert_dense_weights_data_format(dense,
   followed by a `Dense` layer, the weights of that `Dense` layer
   should be updated to reflect the new dimension ordering.
 
-  Arguments:
+  Args:
       dense: The target `Dense` layer.
       previous_feature_map_shape: A shape tuple of 3 integers,
           e.g. `(512, 7, 7)`. The shape of the convolutional
@@ -361,3 +313,128 @@ def convert_dense_weights_data_format(dense,
       ki = np.transpose(ki, (1, 2, 0))  # first -> last
     kernel[:, i] = np.reshape(ki, (np.prod(previous_feature_map_shape),))
   dense.set_weights([kernel, bias])
+
+
+def is_builtin_layer(layer):
+  if not getattr(layer, '_keras_api_names', None):
+    return False
+
+  # Subclasses of `Layer` that are not exported inherit the export name
+  # of the base layer class.
+  return (layer._keras_api_names != ('keras.layers.Layer',) and
+          layer._keras_api_names_v1 != ('keras.layers.Layer',))
+
+
+def cached_per_instance(f):
+  """Lightweight decorator for caching lazily constructed properties.
+
+  When to use:
+  This decorator provides simple caching with minimal overhead. It is designed
+  for properties which are expensive to compute and static over the life of a
+  class instance, and provides no mechanism for cache invalidation. Thus it is
+  best suited for lazily exposing derived properties of other static data.
+
+  For classes with custom getattr / setattr behavior (such as trackable
+  objects), storing cache results as object attributes is not performant.
+  Instead, a specialized cache can significantly reduce property lookup
+  overhead. (While still allowing the decorated property to be lazily computed.)
+  Consider the following class:
+
+  ```
+  class MyClass(object):
+    def __setattr__(self, key, value):
+      # Some expensive class specific code
+      # ...
+      # ...
+
+      super(MyClass, self).__setattr__(key, value)
+
+    @property
+    def thing(self):
+      # `thing` is expensive to compute (and may not even be requested), so we
+      # want to lazily compute it and then cache it.
+      output = getattr(self, '_thing', None)
+      if output is None:
+        self._thing = output = compute_thing(self)
+      return output
+  ```
+
+  It's also worth noting that ANY overriding of __setattr__, even something as
+  simple as:
+  ```
+    def __setattr__(self, key, value):
+      super(MyClass, self).__setattr__(key, value)
+  ```
+
+  Slows down attribute assignment by nearly 10x.
+
+  By contrast, replacing the definition of `thing` with the following sidesteps
+  the expensive __setattr__ altogether:
+
+  '''
+  @property
+  @tracking.cached_per_instance
+  def thing(self):
+    # `thing` is expensive to compute (and may not even be requested), so we
+    # want to lazily compute it and then cache it.
+    return compute_thing(self)
+  '''
+
+  Performance:
+  The overhead for this decorator is ~0.4 us / call. A much lower overhead
+  implementation (~0.085 us / call) can be achieved by using a custom dict type:
+
+  ```
+  def dict_based_cache(f):
+    class Cache(dict):
+      __slots__ = ()
+      def __missing__(self, key):
+        self[key] = output = f(key)
+        return output
+
+    return property(Cache().__getitem__)
+  ```
+
+  However, that implementation holds class instances as keys, and as a result
+  blocks garbage collection. (And modifying it to use weakref's as keys raises
+  the lookup overhead to ~0.4 us) As a result, the WeakKeyDictionary
+  implementation below turns out to be more prudent.
+
+  Args:
+    f: The function to cache.
+
+  Returns:
+    f decorated with simple caching behavior.
+  """
+
+  cache = weakref.WeakKeyDictionary()
+
+  @functools.wraps(f)
+  def wrapped(item):
+    output = cache.get(item)
+    if output is None:
+      cache[item] = output = f(item)
+    return output
+
+  wrapped.cache = cache
+  return wrapped
+
+
+def filter_empty_layer_containers(layer_list):
+  """Filter out empty Layer-like containers and uniquify."""
+  # TODO(b/130381733): Make this an attribute in base_layer.Layer.
+  existing = set()
+  to_visit = layer_list[::-1]
+  while to_visit:
+    obj = to_visit.pop()
+    if id(obj) in existing:
+      continue
+    existing.add(id(obj))
+    if hasattr(obj, '_is_layer') and not isinstance(obj, type):
+      yield obj
+    else:
+      sub_layers = getattr(obj, 'layers', None) or []
+
+      # Trackable data structures will not show up in ".layers" lists, but
+      # the layers they contain will.
+      to_visit.extend(sub_layers[::-1])

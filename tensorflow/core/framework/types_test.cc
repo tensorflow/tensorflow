@@ -26,7 +26,6 @@ namespace {
 TEST(TypesTest, DeviceTypeName) {
   EXPECT_EQ("CPU", DeviceTypeString(DeviceType(DEVICE_CPU)));
   EXPECT_EQ("GPU", DeviceTypeString(DeviceType(DEVICE_GPU)));
-  EXPECT_EQ("SYCL", DeviceTypeString(DeviceType(DEVICE_SYCL)));
 }
 
 TEST(TypesTest, kDataTypeRefOffset) {
@@ -141,8 +140,8 @@ TEST(TypesTest, ComplexTypes) {
 TEST(TypesTest, IntegerTypes) {
   for (auto dt : AllTypes()) {
     const string name = DataTypeString(dt);
-    EXPECT_EQ(DataTypeIsInteger(dt), str_util::StartsWith(name, "int") ||
-                                         str_util::StartsWith(name, "uint"))
+    EXPECT_EQ(DataTypeIsInteger(dt),
+              absl::StartsWith(name, "int") || absl::StartsWith(name, "uint"))
         << "DataTypeInteger failed for " << name;
   }
 }

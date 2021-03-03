@@ -29,10 +29,6 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-using graph_tests_utils::MakeParallelInterleaveNode;
-using graph_tests_utils::MakeParallelMapNode;
-using graph_tests_utils::MakeParseExampleNode;
-
 TEST(MakeSloppy, ParallelInterleave) {
   using test::function::NDef;
   GrapplerItem item;
@@ -45,9 +41,9 @@ TEST(MakeSloppy, ParallelInterleave) {
        NDef("block_length", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
        NDef("num_parallel_calls", "Const", {},
             {{"value", 1}, {"dtype", DT_INT32}}),
-       MakeParallelInterleaveNode("interleave", "range", "cycle_length",
-                                  "block_length", "num_parallel_calls",
-                                  "XTimesTwo", /*sloppy=*/false)},
+       graph_tests_utils::MakeParallelInterleaveV2Node(
+           "interleave", "range", "cycle_length", "block_length",
+           "num_parallel_calls", "XTimesTwo", /*sloppy=*/false)},
       // FunctionLib
       {
           test::function::XTimesTwo(),
@@ -71,8 +67,9 @@ TEST(MakeSloppy, ParallelMap) {
        NDef("range", "RangeDataset", {"start", "stop", "step"}, {}),
        NDef("num_parallel_calls", "Const", {},
             {{"value", 1}, {"dtype", DT_INT32}}),
-       MakeParallelMapNode("map", "range", "num_parallel_calls", "XTimesTwo",
-                           /*sloppy=*/false)},
+       graph_tests_utils::MakeParallelMapNode("map", "range",
+                                              "num_parallel_calls", "XTimesTwo",
+                                              /*sloppy=*/false)},
       // FunctionLib
       {
           test::function::XTimesTwo(),
@@ -96,8 +93,9 @@ TEST(MakeSloppy, ParseExampleDataset) {
        NDef("range", "RangeDataset", {"start", "stop", "step"}, {}),
        NDef("num_parallel_calls", "Const", {},
             {{"value", 1}, {"dtype", DT_INT32}}),
-       MakeParseExampleNode("parse_example", "range", "num_parallel_calls",
-                            /*sloppy=*/false)},
+       graph_tests_utils::MakeParseExampleNode("parse_example", "range",
+                                               "num_parallel_calls",
+                                               /*sloppy=*/false)},
       // FunctionLib
       {});
 
@@ -107,6 +105,87 @@ TEST(MakeSloppy, ParseExampleDataset) {
   EXPECT_TRUE(graph_utils::ContainsGraphNodeWithName("parse_example", output));
   int index = graph_utils::FindGraphNodeWithName("parse_example", output);
   EXPECT_TRUE(output.node(index).attr().at("sloppy").b());
+}
+
+TEST(ChangeDefault, ParallelInterleave) {
+  using test::function::NDef;
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("start", "Const", {}, {{"value", 0}, {"dtype", DT_INT32}}),
+       NDef("stop", "Const", {}, {{"value", 10}, {"dtype", DT_INT32}}),
+       NDef("step", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
+       NDef("range", "RangeDataset", {"start", "stop", "step"}, {}),
+       NDef("cycle_length", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
+       NDef("block_length", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
+       NDef("num_parallel_calls", "Const", {},
+            {{"value", 1}, {"dtype", DT_INT32}}),
+       graph_tests_utils::MakeParallelInterleaveV4Node(
+           "interleave", "range", "cycle_length", "block_length",
+           "num_parallel_calls", "XTimesTwo", /*deterministic=*/"default")},
+      // FunctionLib
+      {
+          test::function::XTimesTwo(),
+      });
+
+  MakeSloppy optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+  EXPECT_TRUE(graph_utils::ContainsGraphNodeWithName("interleave", output));
+  int index = graph_utils::FindGraphNodeWithName("interleave", output);
+  EXPECT_EQ(output.node(index).attr().at("deterministic").s(), "false");
+}
+
+TEST(ChangeDefault, ParallelMap) {
+  using test::function::NDef;
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("start", "Const", {}, {{"value", 0}, {"dtype", DT_INT32}}),
+       NDef("stop", "Const", {}, {{"value", 10}, {"dtype", DT_INT32}}),
+       NDef("step", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
+       NDef("range", "RangeDataset", {"start", "stop", "step"}, {}),
+       NDef("num_parallel_calls", "Const", {},
+            {{"value", 1}, {"dtype", DT_INT32}}),
+       graph_tests_utils::MakeParallelMapV2Node(
+           "map", "range", "num_parallel_calls", "XTimesTwo",
+           /*deterministic=*/"default")},
+      // FunctionLib
+      {
+          test::function::XTimesTwo(),
+      });
+
+  MakeSloppy optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+  EXPECT_TRUE(graph_utils::ContainsGraphNodeWithName("map", output));
+  int index = graph_utils::FindGraphNodeWithName("map", output);
+  EXPECT_EQ(output.node(index).attr().at("deterministic").s(), "false");
+}
+
+TEST(ChangeDefault, ParallelBatch) {
+  using test::function::NDef;
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("start", "Const", {}, {{"value", 0}, {"dtype", DT_INT32}}),
+       NDef("stop", "Const", {}, {{"value", 10}, {"dtype", DT_INT32}}),
+       NDef("step", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
+       NDef("range", "RangeDataset", {"start", "stop", "step"}, {}),
+       NDef("batch_size", "Const", {}, {{"value", 2}, {"dtype", DT_INT32}}),
+       NDef("num_parallel_calls", "Const", {},
+            {{"value", 1}, {"dtype", DT_INT32}}),
+       NDef("drop_remainder", "Const", {},
+            {{"value", false}, {"dtype", DT_BOOL}}),
+       graph_tests_utils::MakeParallelBatchNode(
+           "batch", "range", "batch_size", "num_parallel_calls",
+           "drop_remainder", /*deterministic=*/"default")},
+      // FunctionLib
+      {});
+
+  MakeSloppy optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+  EXPECT_TRUE(graph_utils::ContainsGraphNodeWithName("batch", output));
+  int index = graph_utils::FindGraphNodeWithName("batch", output);
+  EXPECT_EQ(output.node(index).attr().at("deterministic").s(), "false");
 }
 
 }  // namespace

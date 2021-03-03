@@ -40,8 +40,7 @@ Status ExtractMinMaxRecords(const string& log_file_name,
   for (const string& file_line : file_lines) {
     // We expect to find a line with components separated by semicolons, so to
     // start make sure that the basic structure is in place/
-    if (!str_util::StrContains(file_line,
-                               print_suffix + ";" + requant_prefix)) {
+    if (!absl::StrContains(file_line, print_suffix + ";" + requant_prefix)) {
       continue;
     }
     std::vector<string> line_parts = str_util::Split(file_line, ';');
@@ -53,7 +52,7 @@ Status ExtractMinMaxRecords(const string& log_file_name,
     bool min_max_found = false;
     int min_max_index;
     for (int i = 1; i < line_parts.size(); ++i) {
-      if (str_util::StartsWith(line_parts[i], requant_prefix)) {
+      if (absl::StartsWith(line_parts[i], requant_prefix)) {
         min_max_found = true;
         min_max_index = i;
       }

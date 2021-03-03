@@ -35,17 +35,16 @@ std::ostream& operator<<(std::ostream& os, const DeviceType& d) {
   return os;
 }
 
+const char* const DEVICE_DEFAULT = "DEFAULT";
 const char* const DEVICE_CPU = "CPU";
 const char* const DEVICE_GPU = "GPU";
-const char* const DEVICE_SYCL = "SYCL";
+const char* const DEVICE_TPU_SYSTEM = "TPU_SYSTEM";
 
 const std::string DeviceName<Eigen::ThreadPoolDevice>::value = DEVICE_CPU;
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 const std::string DeviceName<Eigen::GpuDevice>::value = DEVICE_GPU;
-#endif  // GOOGLE_CUDA
-#ifdef TENSORFLOW_USE_SYCL
-const std::string DeviceName<Eigen::SyclDevice>::value = DEVICE_SYCL;
-#endif  // TENSORFLOW_USE_SYCL
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace {
 string DataTypeStringInternal(DataType dtype) {
@@ -236,15 +235,39 @@ int DataTypeSize(DataType dt) {
     TF_CALL_qint16(CASE);
     TF_CALL_quint16(CASE);
 
-    // uint32 and uint64 aren't included in TF_CALL_POD_TYPES because we
-    // don't want to define kernels for them at this stage to avoid binary
-    // bloat.
-    TF_CALL_uint32(CASE);
-    TF_CALL_uint64(CASE);
     default:
       return 0;
   }
 #undef CASE
 }
+
+// Define DataTypeToEnum<T>::value.
+#define DEFINE_DATATYPETOENUM_VALUE(TYPE) \
+  constexpr DataType DataTypeToEnum<TYPE>::value;
+
+DEFINE_DATATYPETOENUM_VALUE(float);
+DEFINE_DATATYPETOENUM_VALUE(double);
+DEFINE_DATATYPETOENUM_VALUE(int32);
+DEFINE_DATATYPETOENUM_VALUE(uint32);
+DEFINE_DATATYPETOENUM_VALUE(uint16);
+DEFINE_DATATYPETOENUM_VALUE(uint8);
+DEFINE_DATATYPETOENUM_VALUE(int16);
+DEFINE_DATATYPETOENUM_VALUE(int8);
+DEFINE_DATATYPETOENUM_VALUE(tstring);
+DEFINE_DATATYPETOENUM_VALUE(complex64);
+DEFINE_DATATYPETOENUM_VALUE(complex128);
+DEFINE_DATATYPETOENUM_VALUE(int64);
+DEFINE_DATATYPETOENUM_VALUE(uint64);
+DEFINE_DATATYPETOENUM_VALUE(bool);
+DEFINE_DATATYPETOENUM_VALUE(qint8);
+DEFINE_DATATYPETOENUM_VALUE(quint8);
+DEFINE_DATATYPETOENUM_VALUE(qint16);
+DEFINE_DATATYPETOENUM_VALUE(quint16);
+DEFINE_DATATYPETOENUM_VALUE(qint32);
+DEFINE_DATATYPETOENUM_VALUE(bfloat16);
+DEFINE_DATATYPETOENUM_VALUE(Eigen::half);
+DEFINE_DATATYPETOENUM_VALUE(ResourceHandle);
+DEFINE_DATATYPETOENUM_VALUE(Variant);
+#undef DEFINE_DATATYPETOENUM_VALUE
 
 }  // namespace tensorflow

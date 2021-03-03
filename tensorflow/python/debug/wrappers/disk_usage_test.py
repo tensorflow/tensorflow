@@ -32,6 +32,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.training import monitored_session
 
 
+@test_util.run_v1_only("Sessions are not available in TF 2.x")
 class DumpingDebugWrapperDiskUsageLimitTest(test_util.TensorFlowTestCase):
 
   @classmethod

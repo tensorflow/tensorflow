@@ -62,12 +62,12 @@ Literal ConvertType(LiteralSlice literal) {
   ShapeUtil::ForEachSubshape(
       literal.shape(),
       [&](const Shape& subshape, const ShapeIndex& shape_index) {
-        if (ShapeUtil::IsArray(subshape)) {
+        if (subshape.IsArray()) {
           if (subshape.element_type() ==
               primitive_util::NativeToPrimitiveType<FromNativeT>()) {
             auto src = literal.data<FromNativeT>(shape_index);
             auto dest = result.data<ToNativeT>(shape_index);
-            for (int64 i = 0; i < src.size(); ++i) {
+            for (int64 i = 0, end = src.size(); i < end; ++i) {
               dest[i] = static_cast<ToNativeT>(src[i]);
             }
           } else {
@@ -93,9 +93,29 @@ Literal ConvertType(LiteralSlice literal) {
   return ConvertType<bfloat16, float>(bf16_literal);
 }
 
+/* static */ Literal LiteralUtil::ConvertBF16ToF64(
+    const LiteralSlice& bf16_literal) {
+  return ConvertType<bfloat16, double>(bf16_literal);
+}
+
 /* static */ Literal LiteralUtil::ConvertF32ToBF16(
     const LiteralSlice& f32_literal) {
   return ConvertType<float, bfloat16>(f32_literal);
+}
+
+/* static */ Literal LiteralUtil::ConvertF32ToF64(
+    const LiteralSlice& f32_literal) {
+  return ConvertType<float, double>(f32_literal);
+}
+
+/* static */ Literal LiteralUtil::ConvertF64ToBF16(
+    const LiteralSlice& f64_literal) {
+  return ConvertType<double, bfloat16>(f64_literal);
+}
+
+/* static */ Literal LiteralUtil::ConvertF64ToF32(
+    const LiteralSlice& f64_literal) {
+  return ConvertType<double, float>(f64_literal);
 }
 
 /* static */ Literal LiteralUtil::CreateToken() {
@@ -106,12 +126,16 @@ Literal ConvertType(LiteralSlice literal) {
   switch (primitive_type) {
     case U8:
       return LiteralUtil::CreateR0<uint8>(0);
+    case U16:
+      return LiteralUtil::CreateR0<uint16>(0);
     case U32:
       return LiteralUtil::CreateR0<uint32>(0);
     case U64:
       return LiteralUtil::CreateR0<uint64>(0);
     case S8:
       return LiteralUtil::CreateR0<int8>(0);
+    case S16:
+      return LiteralUtil::CreateR0<int16>(0);
     case S32:
       return LiteralUtil::CreateR0<int32>(0);
     case S64:
@@ -126,14 +150,13 @@ Literal ConvertType(LiteralSlice literal) {
       return LiteralUtil::CreateR0<double>(0);
     case C64:
       return LiteralUtil::CreateR0<complex64>(0);
+    case C128:
+      return LiteralUtil::CreateR0<complex128>(0);
     case PRED:
       return LiteralUtil::CreateR0<bool>(false);
-    case S16:
-    case U16:
-      LOG(FATAL) << "u16/s16 literals not yet implemented";
     case TUPLE:
       LOG(FATAL) << "tuple element type cannot take on value of 0";
-    case OPAQUE:
+    case OPAQUE_TYPE:
       LOG(FATAL) << "opaque element type cannot take on value of 0";
     default:
       LOG(FATAL) << "Unhandled primitive type " << primitive_type;
@@ -144,12 +167,16 @@ Literal ConvertType(LiteralSlice literal) {
   switch (primitive_type) {
     case U8:
       return LiteralUtil::CreateR0<uint8>(1);
+    case U16:
+      return LiteralUtil::CreateR0<uint16>(1);
     case U32:
       return LiteralUtil::CreateR0<uint32>(1);
     case U64:
       return LiteralUtil::CreateR0<uint64>(1);
     case S8:
       return LiteralUtil::CreateR0<int8>(1);
+    case S16:
+      return LiteralUtil::CreateR0<int16>(1);
     case S32:
       return LiteralUtil::CreateR0<int32>(1);
     case S64:
@@ -164,14 +191,13 @@ Literal ConvertType(LiteralSlice literal) {
       return LiteralUtil::CreateR0<double>(1);
     case C64:
       return LiteralUtil::CreateR0<complex64>(1);
+    case C128:
+      return LiteralUtil::CreateR0<complex128>(1);
     case PRED:
       return LiteralUtil::CreateR0<bool>(true);
-    case S16:
-    case U16:
-      LOG(FATAL) << "u16/s16 literals not yet implemented";
     case TUPLE:
       LOG(FATAL) << "tuple element type cannot take on value of 1";
-    case OPAQUE:
+    case OPAQUE_TYPE:
       LOG(FATAL) << "opaque element type cannot take on value of 1";
     default:
       LOG(FATAL) << "Unhandled primitive type " << primitive_type;
@@ -182,12 +208,16 @@ Literal ConvertType(LiteralSlice literal) {
   switch (primitive_type) {
     case U8:
       return LiteralUtil::CreateR0<uint8>(std::numeric_limits<uint8>::min());
+    case U16:
+      return LiteralUtil::CreateR0<uint16>(std::numeric_limits<uint16>::min());
     case U32:
       return LiteralUtil::CreateR0<uint32>(std::numeric_limits<uint32>::min());
     case U64:
       return LiteralUtil::CreateR0<uint64>(std::numeric_limits<uint64>::min());
     case S8:
       return LiteralUtil::CreateR0<int8>(std::numeric_limits<int8>::min());
+    case S16:
+      return LiteralUtil::CreateR0<int16>(std::numeric_limits<int16>::min());
     case S32:
       return LiteralUtil::CreateR0<int32>(std::numeric_limits<int32>::min());
     case S64:
@@ -200,11 +230,10 @@ Literal ConvertType(LiteralSlice literal) {
           -std::numeric_limits<double>::infinity());
     case C64:
       LOG(FATAL) << "C64 element type has no minimum value";
+    case C128:
+      LOG(FATAL) << "C128 element type has no minimum value";
     case PRED:
       return LiteralUtil::CreateR0<bool>(false);
-    case S16:
-    case U16:
-      LOG(FATAL) << "u16/s16 literals not yet implemented";
     case F16:
       return LiteralUtil::CreateR0<half>(
           static_cast<half>(-std::numeric_limits<float>::infinity()));
@@ -213,7 +242,7 @@ Literal ConvertType(LiteralSlice literal) {
           static_cast<bfloat16>(-std::numeric_limits<float>::infinity()));
     case TUPLE:
       LOG(FATAL) << "tuple element type has no minimum value";
-    case OPAQUE:
+    case OPAQUE_TYPE:
       LOG(FATAL) << "opaque element type has no minimum value";
     default:
       LOG(FATAL) << "Unhandled primitive type " << primitive_type;
@@ -224,12 +253,16 @@ Literal ConvertType(LiteralSlice literal) {
   switch (primitive_type) {
     case U8:
       return LiteralUtil::CreateR0<uint8>(std::numeric_limits<uint8>::max());
+    case U16:
+      return LiteralUtil::CreateR0<uint16>(std::numeric_limits<uint16>::max());
     case U32:
       return LiteralUtil::CreateR0<uint32>(std::numeric_limits<uint32>::max());
     case U64:
       return LiteralUtil::CreateR0<uint64>(std::numeric_limits<uint64>::max());
     case S8:
       return LiteralUtil::CreateR0<int8>(std::numeric_limits<int8>::max());
+    case S16:
+      return LiteralUtil::CreateR0<int16>(std::numeric_limits<int16>::max());
     case S32:
       return LiteralUtil::CreateR0<int32>(std::numeric_limits<int32>::max());
     case S64:
@@ -242,9 +275,6 @@ Literal ConvertType(LiteralSlice literal) {
           std::numeric_limits<double>::infinity());
     case PRED:
       return LiteralUtil::CreateR0<bool>(true);
-    case S16:
-    case U16:
-      LOG(FATAL) << "u16/s16 literals not yet implemented";
     case F16:
       return LiteralUtil::CreateR0<half>(
           static_cast<half>(std::numeric_limits<float>::infinity()));
@@ -253,10 +283,39 @@ Literal ConvertType(LiteralSlice literal) {
           static_cast<bfloat16>(std::numeric_limits<float>::infinity()));
     case TUPLE:
       LOG(FATAL) << "tuple element type has no maximum value";
-    case OPAQUE:
+    case OPAQUE_TYPE:
       LOG(FATAL) << "opaque element type has no maximum value";
     default:
       LOG(FATAL) << "Unhandled primitive type " << primitive_type;
+  }
+}
+
+/* static */ StatusOr<Literal> LiteralUtil::NanValue(
+    PrimitiveType primitive_type) {
+  switch (primitive_type) {
+    case F16:
+      return LiteralUtil::CreateR0<half>(
+          static_cast<half>(std::numeric_limits<float>::quiet_NaN()));
+    case BF16:
+      return LiteralUtil::CreateR0<bfloat16>(
+          static_cast<bfloat16>(std::numeric_limits<float>::quiet_NaN()));
+    case F32:
+      return LiteralUtil::CreateR0<float>(
+          std::numeric_limits<float>::quiet_NaN());
+    case F64:
+      return LiteralUtil::CreateR0<double>(
+          std::numeric_limits<double>::quiet_NaN());
+    case C64: {
+      float nan = std::numeric_limits<float>::quiet_NaN();
+      return LiteralUtil::CreateR0<complex64>(complex64(nan, nan));
+    }
+    case C128: {
+      double nan = std::numeric_limits<double>::quiet_NaN();
+      return LiteralUtil::CreateR0<complex128>(complex128(nan, nan));
+    }
+    default:
+      return InvalidArgument("Invalid type for NanValue: %s",
+                             PrimitiveType_Name(primitive_type));
   }
 }
 
@@ -270,7 +329,7 @@ Literal ConvertType(LiteralSlice literal) {
 
 /* static */ Literal LiteralUtil::CreateR1U8(absl::string_view value) {
   Literal literal(ShapeUtil::MakeShape(U8, {static_cast<int64>(value.size())}));
-  for (int i = 0; i < value.size(); ++i) {
+  for (int i = 0, end = value.size(); i < end; ++i) {
     literal.Set<uint8>({i}, value[i]);
   }
   return literal;
@@ -286,7 +345,7 @@ Literal ConvertType(LiteralSlice literal) {
     absl::Span<const int64> new_dimensions,
     absl::Span<const int64> minor_to_major, const LiteralSlice& literal) {
   int64 new_num_elements = 1;
-  for (int64 i = 0; i < new_dimensions.size(); ++i) {
+  for (int64 i = 0, end = new_dimensions.size(); i < end; ++i) {
     new_num_elements *= new_dimensions[i];
   }
   CHECK_EQ(ShapeUtil::ElementsIn(literal.shape()), new_num_elements);
@@ -344,6 +403,10 @@ Literal ConvertType(LiteralSlice literal) {
         new_literal.Set<complex64>(to_multi_index,
                                    literal.Get<complex64>(from_multi_index));
         break;
+      case C128:
+        new_literal.Set<complex128>(to_multi_index,
+                                    literal.Get<complex128>(from_multi_index));
+        break;
       default:
         LOG(FATAL) << "Unhandled primitive element type: "
                    << PrimitiveType_Name(literal.shape().element_type());
@@ -355,7 +418,7 @@ Literal ConvertType(LiteralSlice literal) {
 
 /* static */ Literal LiteralUtil::GetFirstScalarLiteral(
     const LiteralSlice& literal) {
-  CHECK(ShapeUtil::IsArray(literal.shape()));
+  CHECK(literal.shape().IsArray());
   CHECK_GT(ShapeUtil::ElementsIn(literal.shape()), 0);
   switch (literal.shape().element_type()) {
     case PRED:
@@ -392,6 +455,10 @@ Literal ConvertType(LiteralSlice literal) {
       return LiteralUtil::CreateR0<int64>(literal.GetFirstElement<int64>());
     case U64:
       return LiteralUtil::CreateR0<uint64>(literal.GetFirstElement<uint64>());
+
+    case C128:
+      return LiteralUtil::CreateR0<complex128>(
+          literal.GetFirstElement<complex128>());
     default:
       LOG(FATAL) << "Unhandled primitive type "
                  << literal.shape().element_type();
@@ -405,7 +472,7 @@ Literal ConvertType(LiteralSlice literal) {
     element_shapes.push_back(element->shape());
   }
   Literal literal(ShapeUtil::MakeTupleShape(element_shapes));
-  for (int i = 0; i < elements.size(); ++i) {
+  for (int i = 0, end = elements.size(); i < end; ++i) {
     TF_CHECK_OK(literal.CopyFrom(*elements[i], /*dest_shape_index=*/{i}));
   }
   return literal;
@@ -418,7 +485,7 @@ Literal ConvertType(LiteralSlice literal) {
     element_shapes.push_back(element.shape());
   }
   Literal literal(ShapeUtil::MakeTupleShape(element_shapes));
-  for (int i = 0; i < elements.size(); ++i) {
+  for (int i = 0, end = elements.size(); i < end; ++i) {
     TF_CHECK_OK(literal.CopyFrom(elements[i], /*dest_shape_index=*/{i}));
   }
   return literal;
@@ -432,7 +499,7 @@ Literal ConvertType(LiteralSlice literal) {
     element_shapes.push_back(element.shape());
   }
   Literal literal(ShapeUtil::MakeTupleShape(element_shapes));
-  for (int64 i = 0; i < elements.size(); ++i) {
+  for (int64 i = 0, end = elements.size(); i < end; ++i) {
     TF_CHECK_OK(
         literal.MoveFrom(std::move(elements[i]), /*dest_shape_index=*/{i}));
   }

@@ -34,14 +34,18 @@ namespace tensorflow {
 // empty, XlaTensor.
 class XlaDeviceAllocator : public Allocator {
  public:
-  XlaDeviceAllocator();
+  XlaDeviceAllocator(se::StreamExecutor* stream_executor);
   ~XlaDeviceAllocator() override;
 
   string Name() override;
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;
-  void GetStats(AllocatorStats* stats) override;
+  absl::optional<AllocatorStats> GetStats() override;
+
+ private:
+  // The stream executor of the device.
+  se::StreamExecutor* stream_executor_;
 };
 
 // Helper class for managing data transfers between host and XLA devices.
@@ -54,22 +58,22 @@ class XlaDeviceContext : public DeviceContext {
       std::vector<std::shared_ptr<se::Stream>> device_to_device_streams,
       xla::LocalClient* client,
       XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-      thread::ThreadPool* thread_pool);
+      thread::ThreadPool* thread_pool, bool use_fast_mem = false);
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
-                             Tensor* device_tensor,
-                             StatusCallback done) const override;
+                             Tensor* device_tensor, StatusCallback done,
+                             bool sync_dst_compute) const override;
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
                              absl::string_view tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done) override;
+  void CopyTensorInSameDevice(const Tensor* input_tensor, Device* device,
+                              Tensor* output_tensor,
+                              StatusCallback done) const override;
 
   xla::LocalClient* client() const { return client_; }
-  se::Stream* stream() const { return stream_.get(); }
+  se::Stream* stream() const override { return stream_.get(); }
   se::Stream* host_to_device_stream() const {
     return host_to_device_stream_.get();
-  }
-  se::Stream* device_to_host_stream() const {
-    return device_to_host_stream_.get();
   }
   se::Stream* device_to_device_stream(int index) const {
     return device_to_device_streams_.at(index).get();
@@ -82,6 +86,9 @@ class XlaDeviceContext : public DeviceContext {
   // Returns a device-to-device stream, in round-robin fashion.
   se::Stream* GetDeviceToDeviceStream();
 
+  Status ThenExecute(Device* device, stream_executor::Stream* stream,
+                     std::function<void()> func) override;
+
  private:
   bool UseMultipleStreams() const { return stream_ != host_to_device_stream_; }
 
@@ -92,7 +99,8 @@ class XlaDeviceContext : public DeviceContext {
   // idential to stream_, but must not be nullptr.
   std::shared_ptr<se::Stream> host_to_device_stream_;
   // The stream to use for transferring data from device to host. Can be
-  // idential to stream_, but must not be nullptr.
+  // idential to stream_. If nullptr, borrow a stream from backend for each
+  // transfer request to support out-of-order requests.
   std::shared_ptr<se::Stream> device_to_host_stream_;
   // Streams to use for transferring data directly between different devices,
   // e.g., over NVLINK.
@@ -108,8 +116,11 @@ class XlaDeviceContext : public DeviceContext {
   // Thread pool used for running closures
   thread::ThreadPool* thread_pool_;
 
+  // Whether uses TPU fast mem or not.
+  bool use_fast_mem_;
+
   absl::Mutex mu_;
-  int next_stream_ GUARDED_BY(mu_) = 0;
+  int next_stream_ TF_GUARDED_BY(mu_) = 0;
 };
 
 }  // namespace tensorflow

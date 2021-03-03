@@ -58,7 +58,7 @@ class LRNTest(xla_test.XLATestCase):
     return output
 
   def _RunAndVerify(self, dtype):
-    with self.cached_session():
+    with self.session():
       # random shape
       shape = np.random.randint(1, 16, size=4)
       # Make depth at least 2 to make it meaningful
@@ -110,7 +110,7 @@ class LRNTest(xla_test.XLATestCase):
     alpha = 1.0 * np.random.rand()
     beta = 1.0 * np.random.rand()
 
-    with self.cached_session():
+    with self.session():
       in_image = constant_op.constant(in_image_vals, shape=shape)
       out_image = constant_op.constant(out_image_vals, shape=shape)
       out_grads = constant_op.constant(out_grads_vals, shape=shape)
@@ -120,8 +120,8 @@ class LRNTest(xla_test.XLATestCase):
       with self.test_scope():
         actual = gen_nn_ops.lrn_grad(out_grads, in_image, out_image,
                                      depth_radius, bias, alpha, beta)
-      expected_val = expected.eval()
-      actual_val = actual.eval()
+      expected_val = self.evaluate(expected)
+      actual_val = self.evaluate(actual)
     self.assertAllClose(actual_val, expected_val, rtol=1e-3)
 
 

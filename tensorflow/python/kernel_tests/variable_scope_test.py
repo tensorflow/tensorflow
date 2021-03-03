@@ -83,7 +83,7 @@ class VariableScopeTest(test.TestCase):
     vs = variable_scope._get_default_variable_store()
     v = vs.get_variable("v", [1])
     v1 = vs.get_variable("v", [1])
-    self.assertEqual(v, v1)
+    self.assertIs(v, v1)
 
   @test_util.run_in_graph_and_eager_modes
   @run_inside_wrap_function_in_eager_mode
@@ -99,7 +99,7 @@ class VariableScopeTest(test.TestCase):
     # No check by default, so we can both create and get existing names.
     v = vs.get_variable("v", [1])
     v1 = vs.get_variable("v", [1])
-    self.assertEqual(v, v1)
+    self.assertIs(v, v1)
 
     # When reuse is False, we fail when variables are already there.
     vs.get_variable("w", [1], reuse=False)  # That's ok.
@@ -118,7 +118,7 @@ class VariableScopeTest(test.TestCase):
     vs.get_variable("v2", [2])
     expected_names = ["%s:0" % name for name in ["v1", "v2"]]
     self.assertEqual(
-        set(expected_names), set([v.name for v in vs._vars.values()]))
+        set(expected_names), set(v.name for v in vs._vars.values()))
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # TypeError: Expected tf.group() expected Tensor arguments not 'None' with
@@ -148,10 +148,22 @@ class VariableScopeTest(test.TestCase):
         w = variable_scope.get_variable("w", [])
         self.assertEqual(w.constraint, constraint)
 
+  @test_util.run_in_graph_and_eager_modes
+  @run_inside_wrap_function_in_eager_mode
+  def testVarScopeNestingError(self):
+    with variable_scope.variable_scope("aa"):
+      scope = variable_scope.variable_scope("bb")
+      scope.__enter__()
+      with variable_scope.variable_scope("cc"):
+        with self.assertRaises(RuntimeError):
+          scope.__exit__(None, None, None)
+      scope.__exit__(None, None, None)
+
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # TypeError: Fetch argument <tf.Variable 'string:0' shape=() dtype=string>
   # has invalid type <class '...ResourceVariable'>, must be a string or Tensor.
   # (Can not convert a ResourceVariable into a Tensor or Operation.)
+  @test_util.run_deprecated_v1
   def testStringDefaultInitializer(self):
     with self.cached_session():
       v = variable_scope.get_variable("string", shape=[], dtype=dtypes.string)
@@ -236,7 +248,9 @@ class VariableScopeTest(test.TestCase):
         _ = d2(x)
         self.assertEqual(len(d2.variables), 2)
         v3, v4 = d2.variables
-        self.assertAllEqual([v1, v2], [v3, v4])
+        self.assertIs(v1, v3)
+        self.assertIs(v2, v4)
+
       f()
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
@@ -264,6 +278,21 @@ class VariableScopeTest(test.TestCase):
       variable_scope.get_variable("v2", [], trainable=False)
       self.assertFalse(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
       self.assertFalse(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
+
+  def testEagerVariableStoreWithFunctionalLayer(self):
+    with context.eager_mode():
+      container = variable_scope.EagerVariableStore()
+      x = constant_op.constant([[2.0]])
+      with container.as_default():
+        y = core_layers.dense(x, 1, name="my_dense",
+                              kernel_initializer=init_ops.ones_initializer())
+      self.assertAllEqual(y, [[2.0]])
+      self.assertEqual(len(container.variables()), 2)
+      # Recreate the layer to test reuse.
+      with container.as_default():
+        core_layers.dense(x, 1, name="my_dense",
+                          kernel_initializer=init_ops.ones_initializer())
+      self.assertEqual(len(container.variables()), 2)
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # TypeError: Expected tf.group() expected Tensor arguments not 'None' with
@@ -308,9 +337,9 @@ class VariableScopeTest(test.TestCase):
       self.evaluate(variables_lib.global_variables_initializer())
       self.assertAllEqual(self.evaluate(x.value()), self.evaluate(y.value()))
 
-  # TODO(alive): support variable partitioning/caching in eager mode.
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # InvalidArgumentError: /job:moo/replica:0/task:0/device:CPU:0 unknown device.
+  @test_util.run_deprecated_v1
   def testVarScopeCachingDevice(self):
     with self.cached_session():
       caching_device = "/job:moo"
@@ -401,7 +430,7 @@ class VariableScopeTest(test.TestCase):
     self.evaluate(variables_lib.variables_initializer([w]))
     self.assertAllClose(self.evaluate(w.value()), 0.1)
 
-    with self.assertRaisesRegexp(ValueError, "shape"):
+    with self.assertRaisesRegex(ValueError, "shape"):
       # We disallow explicit shape specification when initializer is constant.
       variable_scope.get_variable("u", [1], initializer=init)
 
@@ -417,7 +446,7 @@ class VariableScopeTest(test.TestCase):
     self.assertEqual(t.dtype.base_dtype, dtypes.int32)
 
     # Raise error if `initializer` dtype and `dtype` are not identical.
-    with self.assertRaisesRegexp(ValueError, "don't match"):
+    with self.assertRaisesRegex(ValueError, "don't match"):
       variable_scope.get_variable("s", initializer=init, dtype=dtypes.float64)
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
@@ -425,6 +454,7 @@ class VariableScopeTest(test.TestCase):
   # invalid type <class '...ops.resource_variable_ops.ResourceVariable'>, must
   # be a string or Tensor. (Can not convert a ResourceVariable into a Tensor or
   # Operation.)
+  @test_util.run_deprecated_v1
   def testControlDeps(self):
     with self.cached_session() as sess:
       v0 = variable_scope.get_variable(
@@ -434,23 +464,24 @@ class VariableScopeTest(test.TestCase):
             "v1", [1], initializer=init_ops.constant_initializer(1))
         add = v1 + v0
       # v0 should be uninitialized.
-      with self.assertRaisesRegexp(errors.OpError, "uninitialized"):
-        sess.run(v0)
+      with self.assertRaisesRegex(errors.OpError, "uninitialized"):
+        self.evaluate(v0)
       # We should be able to initialize and run v1 without initializing
       # v0, even if the variable was created with a control dep on v0.
-      sess.run(v1.initializer)
-      self.assertEqual(1, sess.run(v1))
+      self.evaluate(v1.initializer)
+      self.assertEqual(1, self.evaluate(v1))
       # v0 should still be uninitialized.
-      with self.assertRaisesRegexp(errors.OpError, "uninitialized"):
-        sess.run(v0)
-      with self.assertRaisesRegexp(errors.OpError, "uninitialized"):
-        sess.run(add)
+      with self.assertRaisesRegex(errors.OpError, "uninitialized"):
+        self.evaluate(v0)
+      with self.assertRaisesRegex(errors.OpError, "uninitialized"):
+        self.evaluate(add)
       # If we initialize v0 we should be able to run 'add'.
-      sess.run(v0.initializer)
-      sess.run(add)
+      self.evaluate(v0.initializer)
+      self.evaluate(add)
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # AssertionError: True is not false (last assertFalse)
+  @test_util.run_deprecated_v1
   def testEnableResourceVariables(self):
     old = variable_scope._DEFAULT_USE_RESOURCE
     try:
@@ -465,6 +496,7 @@ class VariableScopeTest(test.TestCase):
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # TypeError: Fetch argument None has invalid type <type 'NoneType'>
+  @test_util.run_deprecated_v1
   def testControlFlow(self):
     with self.cached_session() as sess:
       v0 = variable_scope.get_variable(
@@ -490,19 +522,19 @@ class VariableScopeTest(test.TestCase):
       v2 = var_dict["v2"]
       # We should be able to initialize and run v1 and v2 without initializing
       # v0, even if the variable was created with a control dep on v0.
-      sess.run(v1.initializer)
-      self.assertEqual([1], sess.run(v1))
-      sess.run(v2.initializer)
-      self.assertEqual([2], sess.run(v2))
+      self.evaluate(v1.initializer)
+      self.assertEqual([1], self.evaluate(v1))
+      self.evaluate(v2.initializer)
+      self.assertEqual([2], self.evaluate(v2))
       # v0 should still be uninitialized.
-      with self.assertRaisesRegexp(errors.OpError, "uninitialized"):
-        sess.run(v0)
+      with self.assertRaisesRegex(errors.OpError, "uninitialized"):
+        self.evaluate(v0)
       # We should not be able to run 'add' yet.
-      with self.assertRaisesRegexp(errors.OpError, "uninitialized"):
-        sess.run(add)
+      with self.assertRaisesRegex(errors.OpError, "uninitialized"):
+        self.evaluate(add)
       # If we initialize v0 we should be able to run 'add'.
-      sess.run(v0.initializer)
-      sess.run(add)
+      self.evaluate(v0.initializer)
+      self.evaluate(add)
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # TypeError: Expected tf.group() expected Tensor arguments not 'None' with
@@ -649,7 +681,7 @@ class VariableScopeTest(test.TestCase):
             "testVarScopeGetOrCreateReuse_bar",
             reuse=variable_scope.AUTO_REUSE):
           _ = variable_scope.get_variable("var", [])
-        self.assertEqual(value, x.eval())
+        self.assertEqual(value, self.evaluate(x))
 
       test_value(42.)  # Variable is created.
       test_value(13.)  # Variable is reused hereafter.
@@ -767,7 +799,7 @@ class VariableScopeTest(test.TestCase):
 
         with variable_scope.variable_scope(tower_a, reuse=True):
           va2 = variable_scope.get_variable("v", [1])
-          self.assertEqual(va2, va)
+          self.assertIs(va2, va)
 
         with variable_scope.variable_scope("towerB"):
           vb = variable_scope.get_variable("v", [1])
@@ -779,7 +811,7 @@ class VariableScopeTest(test.TestCase):
 
         with variable_scope.variable_scope("towerA", reuse=True):
           va2 = variable_scope.get_variable("v", [1])
-          self.assertEqual(va2, va)
+          self.assertIs(va2, va)
 
         with variable_scope.variable_scope("foo"):
           with variable_scope.variable_scope("bar"):
@@ -787,7 +819,7 @@ class VariableScopeTest(test.TestCase):
             self.assertEqual(v.name, "root/foo/bar/v:0")
             with variable_scope.variable_scope(tower_a, reuse=True):
               va3 = variable_scope.get_variable("v", [1])
-              self.assertEqual(va, va3)
+              self.assertIs(va, va3)
 
         with self.assertRaises(ValueError):
           with variable_scope.variable_scope(tower_a, reuse=True):
@@ -1044,19 +1076,19 @@ class VariableScopeTest(test.TestCase):
   @run_inside_wrap_function_in_eager_mode
   def testAuxiliaryNameScopeIsInvalid(self):
     with self.cached_session():
-      with self.assertRaisesRegexp(TypeError, "auxiliary_name_scope"):
+      with self.assertRaisesRegex(TypeError, "auxiliary_name_scope"):
         with variable_scope.variable_scope(
             None, default_name="scope", auxiliary_name_scope="invalid"):
           pass
 
-      with self.assertRaisesRegexp(TypeError, "auxiliary_name_scope"):
+      with self.assertRaisesRegex(TypeError, "auxiliary_name_scope"):
         with variable_scope.variable_scope(
             "scope", auxiliary_name_scope="invalid"):
           pass
 
       with variable_scope.variable_scope("scope") as scope:
         pass
-      with self.assertRaisesRegexp(TypeError, "auxiliary_name_scope"):
+      with self.assertRaisesRegex(TypeError, "auxiliary_name_scope"):
         with variable_scope.variable_scope(
             scope, auxiliary_name_scope="invalid"):
           pass
@@ -1149,6 +1181,7 @@ class VariableScopeTest(test.TestCase):
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
+  @test_util.run_deprecated_v1
   def testGetCollection(self):
     with self.cached_session():
       _ = variable_scope.get_variable("testGetCollection_a", [])
@@ -1205,6 +1238,7 @@ class VariableScopeTest(test.TestCase):
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
+  @test_util.run_deprecated_v1
   def testGetTrainableVariablesWithGetVariable(self):
     with self.cached_session():
       _ = variable_scope.get_variable("testGetTrainableVariables_a", [])
@@ -1222,27 +1256,28 @@ class VariableScopeTest(test.TestCase):
             [v.name for v in scope.trainable_variables()],
             ["testGetTrainableVariables_foo/testGetTrainableVariables_b:0"])
 
-        # All other sync values sets trainable=True
-        _ = variable_scope.get_variable(
-            "testGetTrainableVariables_e", [],
-            synchronization=variable_scope.VariableSynchronization.ON_WRITE)
-        self.assertEqual([v.name for v in scope.trainable_variables()], [
-            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
-            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0"
-        ])
-
-      with self.assertRaisesRegexp(
-          ValueError, "Synchronization value can be set to "
-          "VariableSynchronization.ON_READ only for non-trainable variables. "
-          "You have specified trainable=True and "
-          "synchronization=VariableSynchronization.ON_READ."):
         _ = variable_scope.get_variable(
             "testGetTrainableVariables_e", [],
             synchronization=variable_scope.VariableSynchronization.ON_READ,
             trainable=True)
+        self.assertEqual([v.name for v in scope.trainable_variables()], [
+            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0",
+        ])
+
+        # All other sync values sets trainable=True
+        _ = variable_scope.get_variable(
+            "testGetTrainableVariables_f", [],
+            synchronization=variable_scope.VariableSynchronization.ON_WRITE)
+        self.assertEqual([v.name for v in scope.trainable_variables()], [
+            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_f:0",
+        ])
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
+  @test_util.run_deprecated_v1
   def testGetTrainableVariablesWithVariable(self):
     with self.cached_session():
       _ = variable_scope.variable(1.0, name="testGetTrainableVariables_a")
@@ -1261,29 +1296,30 @@ class VariableScopeTest(test.TestCase):
             [v.name for v in scope.trainable_variables()],
             ["testGetTrainableVariables_foo/testGetTrainableVariables_b:0"])
 
-        # All other sync values sets trainable=True
-        _ = variable_scope.variable(
-            1.0,
-            name="testGetTrainableVariables_e",
-            synchronization=variable_scope.VariableSynchronization.ON_WRITE)
-        self.assertEqual([v.name for v in scope.trainable_variables()], [
-            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
-            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0"
-        ])
-
-      with self.assertRaisesRegexp(
-          ValueError, "Synchronization value can be set to "
-          "VariableSynchronization.ON_READ only for non-trainable variables. "
-          "You have specified trainable=True and "
-          "synchronization=VariableSynchronization.ON_READ."):
         _ = variable_scope.variable(
             1.0,
             name="testGetTrainableVariables_e",
             synchronization=variable_scope.VariableSynchronization.ON_READ,
             trainable=True)
+        self.assertEqual([v.name for v in scope.trainable_variables()], [
+            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0",
+        ])
+
+        # All other sync values sets trainable=True
+        _ = variable_scope.variable(
+            1.0,
+            name="testGetTrainableVariables_f",
+            synchronization=variable_scope.VariableSynchronization.ON_WRITE)
+        self.assertEqual([v.name for v in scope.trainable_variables()], [
+            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_f:0",
+        ])
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
+  @test_util.run_deprecated_v1
   def testGetGlobalVariables(self):
     with self.cached_session():
       _ = variable_scope.get_variable("testGetGlobalVariables_a", [])
@@ -1296,6 +1332,7 @@ class VariableScopeTest(test.TestCase):
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
+  @test_util.run_deprecated_v1
   def testGetLocalVariables(self):
     with self.cached_session():
       _ = variable_scope.get_variable(
@@ -1315,6 +1352,28 @@ class VariableScopeTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   @run_inside_wrap_function_in_eager_mode
+  def testGetVariableWithInitializerWhichTakesNoArgs(self):
+    v = variable_scope.get_variable("foo", initializer=lambda: [2])
+    self.assertEqual(v.name, "foo:0")
+
+  @test_util.run_in_graph_and_eager_modes
+  @run_inside_wrap_function_in_eager_mode
+  def testGetVariableWithInitializerWhichTakesOptionalArgs(self):
+    v = variable_scope.get_variable("foo", initializer=lambda x=True: [2])
+    self.assertEqual(v.name, "foo:0")
+
+  @test_util.run_in_graph_and_eager_modes
+  @run_inside_wrap_function_in_eager_mode
+  def testGetVariableWithInitializerWhichTakesUnprovidedArgsAndNoShape(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        "The initializer passed is not valid. It should be a callable with no "
+        "arguments and the shape should not be provided or an instance of "
+        "`tf.keras.initializers.*' and `shape` should be fully defined."):
+      variable_scope.get_variable("foo", initializer=lambda x: [2])
+
+  @test_util.run_in_graph_and_eager_modes
+  @run_inside_wrap_function_in_eager_mode
   def testTwoGraphs(self):
 
     def f():
@@ -1325,7 +1384,7 @@ class VariableScopeTest(test.TestCase):
           with variable_scope.variable_scope("_"):
             pass
 
-    self.assertRaisesRegexp(ValueError, "'_' is not a valid scope name", f)
+    self.assertRaisesRegex(ValueError, "'_' is not a valid scope name", f)
 
 
 def axis0_into1_partitioner(shape=None, **unused_kwargs):
@@ -1349,6 +1408,7 @@ class VariableScopeWithPartitioningTest(test.TestCase):
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
+  @test_util.run_deprecated_v1
   def testResultNameMatchesRequested(self):
     with variable_scope.variable_scope(
         "scope0", partitioner=axis0_into2_partitioner):
@@ -1370,7 +1430,7 @@ class VariableScopeWithPartitioningTest(test.TestCase):
 
     with variable_scope.variable_scope(
         "scope0", partitioner=axis0_into3_partitioner, reuse=True):
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           "Trying to reuse partitioned variable .* but specified partitions "
           ".* and found partitions .*"):
@@ -1378,7 +1438,7 @@ class VariableScopeWithPartitioningTest(test.TestCase):
 
     with variable_scope.variable_scope(
         "scope0", partitioner=axis0_into1_partitioner, reuse=True):
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           "Trying to reuse partitioned variable .* but specified partitions "
           ".* and found partitions .*"):
@@ -1402,7 +1462,15 @@ class VariableScopeWithPartitioningTest(test.TestCase):
       v = variable_scope.get_variable("name0", shape=(3, 1, 1))
     with variable_scope.variable_scope("scope0", reuse=True):
       v_reused = variable_scope.get_variable("name0")
-    self.assertEqual(v, v_reused)
+    self.assertIs(v, v_reused)
+
+  def testNoReuseInEagerByDefault(self):
+    with context.eager_mode():
+      with variable_scope.variable_scope(
+          "scope0", partitioner=axis0_into2_partitioner):
+        v1 = variable_scope.get_variable("name0", shape=(3, 1, 1))
+        v2 = variable_scope.get_variable("name0", shape=(3, 1, 1))
+        self.assertIsNot(v1, v2)
 
   @test_util.run_in_graph_and_eager_modes
   @run_inside_wrap_function_in_eager_mode
@@ -1415,6 +1483,7 @@ class VariableScopeWithPartitioningTest(test.TestCase):
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
+  @test_util.run_deprecated_v1
   def testScalarIgnoresPartitioner(self):
     with variable_scope.variable_scope(
         "scope0", partitioner=axis0_into2_partitioner):
@@ -1459,18 +1528,20 @@ class VariableScopeWithPartitioningTest(test.TestCase):
   def testPartitionConcatenatesAlongCorrectAxisResource(self):
     self._testPartitionConcatenatesAlongCorrectAxis(use_resource=True)
 
+  def testPartitionConcatenatesAlongCorrectAxisResourceInEager(self):
+    with context.eager_mode():
+      self._testPartitionConcatenatesAlongCorrectAxis(use_resource=True)
+
 
 class VariableScopeWithCustomGetterTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   @run_inside_wrap_function_in_eager_mode
   def testNonCallableGetterFails(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 r"custom_getter .* not callable:"):
+    with self.assertRaisesRegex(ValueError, r"custom_getter .* not callable:"):
       with variable_scope.variable_scope("scope0", custom_getter=3):
         variable_scope.get_variable("name0")
-    with self.assertRaisesRegexp(ValueError,
-                                 r"custom_getter .* not callable:"):
+    with self.assertRaisesRegex(ValueError, r"custom_getter .* not callable:"):
       variable_scope.get_variable("name0", custom_getter=3)
 
   @test_util.run_in_graph_and_eager_modes
@@ -1493,8 +1564,8 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
         new_scope, reuse=True, custom_getter=custom_getter):
       v4 = variable_scope.get_variable("v3", [1])
 
-    self.assertEqual(v, v2)
-    self.assertEqual(v3, v4)
+    self.assertIs(v, v2)
+    self.assertIs(v3, v4)
     self.assertEqual(3, called[0])  # skipped one in the first new_scope
 
   @test_util.run_in_graph_and_eager_modes
@@ -1550,6 +1621,7 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
   # dtype=float32> cannot be interpreted as a Tensor. (Tensor
   # Tensor("custom_getter/add:0", shape=(1, 2, 3), dtype=float32) is not an
   # element of this graph.)
+  @test_util.run_deprecated_v1
   def testGetterThatCreatesTwoVariablesAndSumsThem(self):
 
     def custom_getter(getter, name, *args, **kwargs):
@@ -1569,7 +1641,7 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
     self.assertEqual("custom_getter/add:0", v.name)
     with self.cached_session() as sess:
       variables_lib.global_variables_initializer().run()
-      np_vars, np_v = sess.run([true_vars, v])
+      np_vars, np_v = self.evaluate([true_vars, v])
       self.assertAllClose(np_v, sum(np_vars))
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
@@ -1577,6 +1649,7 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
   # dtype=float32> cannot be interpreted as a Tensor. (Tensor
   # Tensor("sum_getter_2/add:0", shape=(1, 2, 3), dtype=float32) is not an
   # element of this graph.)
+  @test_util.run_deprecated_v1
   def testNestedCustomGetters(self):
 
     def sum_getter(getter, name, *args, **kwargs):
@@ -1614,7 +1687,7 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
 
     with self.cached_session() as sess:
       variables_lib.global_variables_initializer().run()
-      np_vars, np_v = sess.run([true_vars, v])
+      np_vars, np_v = self.evaluate([true_vars, v])
       # take products of sums of products
       self.assertAllClose(
           np_v, (((np_vars[0] * np_vars[1]) + (np_vars[2] * np_vars[3])) + (
@@ -1637,7 +1710,7 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
       with variable_scope.variable_creator_scope(creator_b):
         variable_scope.variable(1.0, name="one_name")
 
-    self.assertAllEqual(variable_names, ["forced_name"])
+    self.assertEqual(variable_names[0], "forced_name")
 
     called = [False]
 
@@ -1655,6 +1728,26 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
           synchronization=variable_scope.VariableSynchronization.ON_WRITE,
           aggregation=variable_scope.VariableAggregation.MEAN)
     self.assertTrue(called[0])
+
+  @test_util.run_in_graph_and_eager_modes
+  @run_inside_wrap_function_in_eager_mode
+  def testVariableCreatorNestingError(self):
+
+    def creator(next_creator, **kwargs):
+      return next_creator(**kwargs)
+
+    # Save the state so we can clean up at the end.
+    graph = ops.get_default_graph()
+    old_creator_stack = graph._variable_creator_stack
+
+    try:
+      scope = variable_scope.variable_creator_scope(creator)
+      scope.__enter__()
+      with variable_scope.variable_creator_scope(creator):
+        with self.assertRaises(RuntimeError):
+          scope.__exit__(None, None, None)
+    finally:
+      graph._variable_creator_stack = old_creator_stack
 
 
 class PartitionInfoTest(test.TestCase):
@@ -1731,7 +1824,7 @@ class VariableScopeMultithreadedTest(test.TestCase):
         with variable_scope.variable_scope("foo"):
           if i == 0:
             v = variable_scope.get_variable("v", [])
-            self.assertEquals("foo/v:0", v.name)
+            self.assertEqual("foo/v:0", v.name)
           else:
             # Any thread after the first one should fail to create variable
             # with the same name.
@@ -1761,7 +1854,7 @@ class VariableScopeMultithreadedTest(test.TestCase):
         with variable_scope.variable_scope("foo"):
           if i == 0:
             v = variable_scope.get_variable("v", [])
-            self.assertEquals("foo/v:0", v.name)
+            self.assertEqual("foo/v:0", v.name)
           else:
             # Any thread after the first one should fail to create variable
             # with the same name.
@@ -1801,12 +1894,12 @@ class VariableScopeMultithreadedTest(test.TestCase):
         with variable_scope.variable_scope(main_thread_scope):
           with variable_scope.variable_scope("foo"):
             v = variable_scope.get_variable("v", [])
-            self.assertEquals("main/foo/v:0", v.name)
+            self.assertEqual("main/foo/v:0", v.name)
 
         # Variable created outside main scope will not have prefix "main".
         with variable_scope.variable_scope("bar"):
           v = variable_scope.get_variable("v", [])
-          self.assertEquals("bar/v:0", v.name)
+          self.assertEqual("bar/v:0", v.name)
 
     graph = ops.get_default_graph()
     with variable_scope.variable_scope("main") as main_thread_scope:

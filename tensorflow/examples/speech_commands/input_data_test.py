@@ -23,19 +23,20 @@ import os
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.contrib.framework.python.ops import audio_ops as contrib_audio
+
 from tensorflow.examples.speech_commands import input_data
 from tensorflow.examples.speech_commands import models
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
 class InputDataTest(test.TestCase):
 
   def _getWavData(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       sample_data = tf.zeros([32000, 2])
-      wav_encoder = contrib_audio.encode_wav(sample_data, 16000)
-      wav_data = sess.run(wav_encoder)
+      wav_encoder = tf.audio.encode_wav(sample_data, 16000)
+      wav_data = self.evaluate(wav_encoder)
     return wav_data
 
   def _saveTestWavFile(self, filename, wav_data):
@@ -96,6 +97,7 @@ class InputDataTest(test.TestCase):
         input_data.which_set("foo_nohash_0.wav", 10, 10),
         input_data.which_set("foo_nohash_1.wav", 10, 10))
 
+  @test_util.run_deprecated_v1
   def testPrepareDataIndex(self):
     tmp_dir = self.get_temp_dir()
     self._saveWavFolders(tmp_dir, ["a", "b", "c"], 100)
@@ -103,11 +105,11 @@ class InputDataTest(test.TestCase):
                                                 ["a", "b"], 10, 10,
                                                 self._model_settings(), tmp_dir)
     self.assertLess(0, audio_processor.set_size("training"))
-    self.assertTrue("training" in audio_processor.data_index)
-    self.assertTrue("validation" in audio_processor.data_index)
-    self.assertTrue("testing" in audio_processor.data_index)
-    self.assertEquals(input_data.UNKNOWN_WORD_INDEX,
-                      audio_processor.word_to_index["c"])
+    self.assertIn("training", audio_processor.data_index)
+    self.assertIn("validation", audio_processor.data_index)
+    self.assertIn("testing", audio_processor.data_index)
+    self.assertEqual(input_data.UNKNOWN_WORD_INDEX,
+                     audio_processor.word_to_index["c"])
 
   def testPrepareDataIndexEmpty(self):
     tmp_dir = self.get_temp_dir()
@@ -115,7 +117,7 @@ class InputDataTest(test.TestCase):
     with self.assertRaises(Exception) as e:
       _ = input_data.AudioProcessor("", tmp_dir, 10, 10, ["a", "b"], 10, 10,
                                     self._model_settings(), tmp_dir)
-    self.assertTrue("No .wavs found" in str(e.exception))
+    self.assertIn("No .wavs found", str(e.exception))
 
   def testPrepareDataIndexMissing(self):
     tmp_dir = self.get_temp_dir()
@@ -123,8 +125,9 @@ class InputDataTest(test.TestCase):
     with self.assertRaises(Exception) as e:
       _ = input_data.AudioProcessor("", tmp_dir, 10, 10, ["a", "b", "d"], 10,
                                     10, self._model_settings(), tmp_dir)
-    self.assertTrue("Expected to find" in str(e.exception))
+    self.assertIn("Expected to find", str(e.exception))
 
+  @test_util.run_deprecated_v1
   def testPrepareBackgroundData(self):
     tmp_dir = self.get_temp_dir()
     background_dir = os.path.join(tmp_dir, "_background_noise_")
@@ -156,6 +159,7 @@ class InputDataTest(test.TestCase):
     self.assertIsNotNone(loaded_data)
     self.assertEqual(16000, len(loaded_data))
 
+  @test_util.run_deprecated_v1
   def testPrepareProcessingGraph(self):
     tmp_dir = self.get_temp_dir()
     wav_dir = os.path.join(tmp_dir, "wavs")
@@ -186,15 +190,23 @@ class InputDataTest(test.TestCase):
     self.assertIsNotNone(audio_processor.background_volume_placeholder_)
     self.assertIsNotNone(audio_processor.output_)
 
+  @test_util.run_deprecated_v1
   def testGetDataAverage(self):
     self._runGetDataTest("average", 10)
 
+  @test_util.run_deprecated_v1
   def testGetDataAverageLongWindow(self):
     self._runGetDataTest("average", 30)
 
+  @test_util.run_deprecated_v1
   def testGetDataMfcc(self):
     self._runGetDataTest("mfcc", 30)
 
+  @test_util.run_deprecated_v1
+  def testGetDataMicro(self):
+    self._runGetDataTest("micro", 20)
+
+  @test_util.run_deprecated_v1
   def testGetUnprocessedData(self):
     tmp_dir = self.get_temp_dir()
     wav_dir = os.path.join(tmp_dir, "wavs")
@@ -216,6 +228,7 @@ class InputDataTest(test.TestCase):
     self.assertEqual(10, len(result_data))
     self.assertEqual(10, len(result_labels))
 
+  @test_util.run_deprecated_v1
   def testGetFeaturesForWav(self):
     tmp_dir = self.get_temp_dir()
     wav_dir = os.path.join(tmp_dir, "wavs")

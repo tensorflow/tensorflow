@@ -13,11 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features_fake.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace cpu {
@@ -26,38 +25,7 @@ namespace {
 // Test that we don't call into Eigen with tensors too small to be aligned
 // reliably.
 
-class CpuEigenTensorAlignmentTest : public ::testing::Test {};
-
-TEST_F(CpuEigenTensorAlignmentTest, EigenDotAlignment) {
-  string hlo_string = R"(
-HloModule DotOperation
-
-ENTRY DotOperation {
-  arg0 = f32[5,256] parameter(0)
-  arg1 = f32[256,1024] parameter(1)
-  ROOT dot = f32[5,1024] dot(arg0, arg1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
-
-  HloInstruction* dot = module->entry_computation()->root_instruction();
-
-  TargetMachineFeaturesWithFakeAlignmentLogic target_machine_with_no_alignment(
-      [](int64 size) { return 1; });
-
-  EXPECT_FALSE(
-      PotentiallyImplementedAsEigenDot(*dot, target_machine_with_no_alignment));
-
-  TargetMachineFeaturesWithFakeAlignmentLogic
-      target_machine_with_full_alignment([](int64 size) {
-        return TargetMachineFeatures::kEigenExpectedTensorAlignment;
-      });
-
-  EXPECT_TRUE(PotentiallyImplementedAsEigenDot(
-      *dot, target_machine_with_full_alignment));
-}
+using CpuEigenTensorAlignmentTest = HloTestBase;
 
 TEST_F(CpuEigenTensorAlignmentTest, EigenConvAlignment) {
   string hlo_string = R"(
@@ -70,8 +38,8 @@ ENTRY ConvOperation {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* conv = module->entry_computation()->root_instruction();
 

@@ -66,7 +66,7 @@ Status EventsWriter::InitIfNeeded() {
 
   filename_ =
       strings::Printf("%s.out.tfevents.%010lld.%s%s", file_prefix_.c_str(),
-                      static_cast<int64>(time_in_seconds),
+                      static_cast<long long>(time_in_seconds),
                       port::Hostname().c_str(), file_suffix_.c_str());
 
   // Reset recordio_writer (which has a reference to recordio_file_) so final
@@ -129,18 +129,6 @@ Status EventsWriter::Flush() {
                                   num_outstanding_events_, " events to ",
                                   filename_);
   TF_RETURN_WITH_CONTEXT_IF_ERROR(recordio_file_->Sync(), "Failed to sync ",
-                                  num_outstanding_events_, " events to ",
-                                  filename_);
-
-  // The FileStillExists() condition is necessary because
-  // recordio_writer_->Sync() can return OK even if the underlying
-  // file has been deleted.  EventWriter.FileDeletionBeforeWriting
-  // demonstrates this and will fail if the FileHasDisappeared()
-  // condition is removed.
-  // Also, we deliberately attempt to Sync() before checking for a
-  // disappearing file, in case for some file system File::Exists() is
-  // false after File::Open() but before File::Sync().
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(FileStillExists(), "Failed to flush ",
                                   num_outstanding_events_, " events to ",
                                   filename_);
   VLOG(1) << "Wrote " << num_outstanding_events_ << " events to disk.";

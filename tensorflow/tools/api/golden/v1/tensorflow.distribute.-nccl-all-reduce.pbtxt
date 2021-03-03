@@ -1,0 +1,35 @@
+path: "tensorflow.distribute.NcclAllReduce"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.cross_device_ops.NcclAllReduce\'>"
+  is_instance: "<class \'tensorflow.python.distribute.cross_device_ops.AllReduceCrossDeviceOps\'>"
+  is_instance: "<class \'tensorflow.python.distribute.cross_device_ops.CrossDeviceOps\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'num_packs\'], varargs=None, keywords=None, defaults=[\'1\'], "
+  }
+  member_method {
+    name: "batch_reduce"
+    argspec: "args=[\'self\', \'reduce_op\', \'value_destination_pairs\', \'options\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "batch_reduce_implementation"
+    argspec: "args=[\'self\', \'reduce_op\', \'value_destination_pairs\', \'options\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "broadcast"
+    argspec: "args=[\'self\', \'tensor\', \'destinations\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "broadcast_implementation"
+    argspec: "args=[\'self\', \'tensor\', \'destinations\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "reduce"
+    argspec: "args=[\'self\', \'reduce_op\', \'per_replica_value\', \'destinations\', \'options\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "reduce_implementation"
+    argspec: "args=[\'self\', \'reduce_op\', \'per_replica_value\', \'destinations\', \'options\'], varargs=None, keywords=None, defaults=None"
+  }
+}

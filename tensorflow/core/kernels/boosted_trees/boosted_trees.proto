@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 package tensorflow.boosted_trees;
+
 option cc_enable_arenas = true;
 option java_outer_classname = "BoostedTreesProtos";
 option java_multiple_files = true;
@@ -12,6 +13,7 @@ message Node {
     Leaf leaf = 1;
     BucketizedSplit bucketized_split = 2;
     CategoricalSplit categorical_split = 3;
+    DenseSplit dense_split = 4;
   }
   NodeMetadata metadata = 777;
 }
@@ -28,9 +30,6 @@ message NodeMetadata {
 // Leaves can either hold dense or sparse information.
 message Leaf {
   oneof leaf {
-    // See third_party/tensorflow/contrib/decision_trees/
-    // proto/generic_tree_model.proto
-    // for a description of how vector and sparse_vector might be used.
     Vector vector = 1;
     SparseVector sparse_vector = 2;
   }
@@ -46,11 +45,28 @@ message SparseVector {
   repeated float value = 2;
 }
 
+enum SplitTypeWithDefault {
+  INEQUALITY_DEFAULT_LEFT = 0;
+  INEQUALITY_DEFAULT_RIGHT = 1;
+  EQUALITY_DEFAULT_RIGHT = 3;
+}
+
+enum DefaultDirection {
+  // Left is the default direction.
+  DEFAULT_LEFT = 0;
+  DEFAULT_RIGHT = 1;
+}
+
 message BucketizedSplit {
   // Float feature column and split threshold describing
   // the rule feature <= threshold.
   int32 feature_id = 1;
   int32 threshold = 2;
+  // If feature column is multivalent, this holds the index of the dimension
+  // for the split. Defaults to 0.
+  int32 dimension_id = 5;
+  // default direction for missing values.
+  DefaultDirection default_direction = 6;
 
   // Node children indexing into a contiguous
   // vector of nodes starting from the root.
@@ -63,6 +79,22 @@ message CategoricalSplit {
   // value.
   int32 feature_id = 1;
   int32 value = 2;
+  // If feature column is multivalent, this holds the index of the dimension
+  // for the split. Defaults to 0.
+  int32 dimension_id = 5;
+
+  // Node children indexing into a contiguous
+  // vector of nodes starting from the root.
+  int32 left_id = 3;
+  int32 right_id = 4;
+}
+
+// TODO(nponomareva): move out of boosted_trees and rename to trees.proto
+message DenseSplit {
+  // Float feature column and split threshold describing
+  // the rule feature <= threshold.
+  int32 feature_id = 1;
+  float threshold = 2;
 
   // Node children indexing into a contiguous
   // vector of nodes starting from the root.
@@ -102,7 +134,7 @@ message TreeMetadata {
 
   message PostPruneNodeUpdate {
     int32 new_node_id = 1;
-    float logit_change = 2;
+    repeated float logit_change = 2;
   }
 }
 
@@ -132,7 +164,7 @@ message TreeEnsemble {
 // DebugOutput contains outputs useful for debugging/model interpretation, at
 // the individual example-level. Debug outputs that are available to the user
 // are: 1) Directional feature contributions (DFCs) 2) Node IDs for ensemble
-// prediction path 3) Leaf node IDs.
+// prediction paths 3) Leaf node IDs.
 message DebugOutput {
   // Return the logits and associated feature splits across prediction paths for
   // each tree, for every example, at predict time. We will use these values to
@@ -141,7 +173,7 @@ message DebugOutput {
   // id.
   repeated int32 feature_ids = 1;
   repeated float logits_path = 2;
-
-  // TODO(crawles): return 2) Node IDs for ensemble prediction path 3) Leaf node
-  // IDs.
+  // Return the node_id for each leaf node we reach in our prediction path.
+  repeated int32 leaf_node_ids = 3;
+  // TODO(crawles): return 4) Node IDs for ensemble prediction path
 }

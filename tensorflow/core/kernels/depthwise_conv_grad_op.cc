@@ -18,6 +18,8 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 
+#include "tensorflow/core/framework/bounds_check.h"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -25,10 +27,9 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/kernels/cast_op.h"
 #include "tensorflow/core/kernels/conv_grad_ops.h"
 #include "tensorflow/core/kernels/depthwise_conv_op.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -37,10 +38,14 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 #if GOOGLE_CUDA
-#include "cuda/include/cudnn.h"
+#include "third_party/gpus/cudnn/cudnn.h"
+#endif
+
 #include "tensorflow/core/platform/stream_executor.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
@@ -112,13 +117,20 @@ typedef Eigen::GpuDevice GPUDevice;
       errors::InvalidArgument(                                                 \
           label, ": depth_multiplier * in_depth not equal to out_depth"));     \
   const auto stride = stride_;                                                 \
-  int64 out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;                \
-  OP_REQUIRES_OK(context,                                                      \
-                 GetWindowedOutputSize(input_rows, filter_rows, stride,        \
-                                       padding_, &out_rows, &pad_rows));       \
-  OP_REQUIRES_OK(context,                                                      \
-                 GetWindowedOutputSize(input_cols, filter_cols, stride,        \
-                                       padding_, &out_cols, &pad_cols));       \
+  int64 out_rows = 0, out_cols = 0, pad_top = 0, pad_bottom = 0, pad_left = 0, \
+        pad_right = 0;                                                         \
+  if (padding_ == Padding::EXPLICIT) {                                         \
+    GetExplicitPaddingForDim(explicit_paddings_, data_format_, 'H', &pad_top,  \
+                             &pad_bottom);                                     \
+    GetExplicitPaddingForDim(explicit_paddings_, data_format_, 'W', &pad_left, \
+                             &pad_right);                                      \
+  }                                                                            \
+  OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(                        \
+                              input_rows, filter_rows, stride_, padding_,      \
+                              &out_rows, &pad_top, &pad_bottom));              \
+  OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(                        \
+                              input_cols, filter_cols, stride_, padding_,      \
+                              &out_cols, &pad_left, &pad_right));              \
   OP_REQUIRES(                                                                 \
       context, output_rows == out_rows,                                        \
       errors::InvalidArgument(                                                 \
@@ -138,8 +150,8 @@ typedef Eigen::GpuDevice GPUDevice;
   args.filter_cols = filter_cols;                                              \
   args.depth_multiplier = depth_multiplier;                                    \
   args.stride = stride;                                                        \
-  args.pad_rows = pad_rows;                                                    \
-  args.pad_cols = pad_cols;                                                    \
+  args.pad_rows = pad_top;                                                     \
+  args.pad_cols = pad_left;                                                    \
   args.out_rows = out_rows;                                                    \
   args.out_cols = out_cols;                                                    \
   args.out_depth = out_depth;                                                  \
@@ -147,7 +159,7 @@ typedef Eigen::GpuDevice GPUDevice;
           << input_rows << ", " << input_cols << ", " << in_depth              \
           << "]; Filter: [" << filter_rows << ", " << filter_cols << ", "      \
           << in_depth << ", " << depth_multiplier << "]; stride = " << stride  \
-          << ", pad_rows = " << pad_rows << ", pad_cols = " << pad_cols        \
+          << ", pad_rows = " << pad_top << ", pad_cols = " << pad_left         \
           << ", output: [" << batch << ", " << out_rows << ", " << out_cols    \
           << ", " << out_depth << "]";
 
@@ -517,7 +529,7 @@ extern template struct LaunchConv2DBackpropInputOp<CPUDevice, Eigen::half>;
 extern template struct LaunchConv2DBackpropInputOp<CPUDevice, float>;
 extern template struct LaunchConv2DBackpropInputOp<CPUDevice, double>;
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Extern template instantiated in conv_grad_input_ops.cc.
 extern template struct LaunchConv2DBackpropInputOp<GPUDevice, Eigen::half>;
@@ -530,7 +542,7 @@ extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice,
 extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, float>;
 extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, double>;
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Kernel to compute the input backprop for depthwise convolution.
 template <typename Device, class T>
@@ -562,12 +574,35 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("explicit_paddings", &explicit_paddings_));
+    OP_REQUIRES_OK(context, CheckValidPadding(padding_, explicit_paddings_,
+                                              /*num_dims=*/4, data_format_));
 
-    // For in_depth == 1 and grouped convolutions.
-    use_cudnn_ = CanUseCudnn() && std::is_same<Device, GPUDevice>::value;
     cudnn_use_autotune_ = CudnnUseAutotune();
-    use_cudnn_grouped_conv_ = false;
     dtype_ = DataTypeToEnum<T>::value;
+#if CUDNN_VERSION >= 8000
+    // From the cuDNN release note 8.0: We’ve extended the fprop and dgrad
+    // NHWC depthwise kernels to support more combinations (filter
+    // sizes/strides) such as 5x5/1x1, 5x5/2x2, 7x7/1x1, 7x7/2x2 (in addition
+    // to what we already have, 1x1/1x1, 3x3/1x1, 3x3/2x2), which provides
+    // good performance. (https://docs.nvidia.com/deeplearning/sdk/cudnn-
+    // release-notes/rel_8.html#rel_8)
+    use_cudnn_grouped_conv_ =
+        dtype_ == DT_HALF &&
+        ((data_format_ == FORMAT_NCHW && stride_ == 1 && stride_w == 1) ||
+         (data_format_ == FORMAT_NHWC && stride_ == stride_w &&
+          (stride_ == 1 || stride_ == 2)));
+#elif CUDNN_VERSION >= 7603
+    // Use CuDNN grouped conv (input gradient) when stride = 1, input/output is
+    // NCHW and float16(half). See cudnn release note 7.6.3 (https://docs.nvidi
+    // a.com/deeplearning/sdk/cudnn-release-notes/rel_763.html#rel_763).
+    use_cudnn_grouped_conv_ = dtype_ == DT_HALF &&
+                              data_format_ == FORMAT_NCHW && stride_ == 1 &&
+                              stride_w == 1;
+#else
+    use_cudnn_grouped_conv_ = false;
+#endif
   }
 
   void Compute(OpKernelContext* context) override {
@@ -601,7 +636,13 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
 
     // If in_depth==1, this operation is just a standard convolution.
     // Depthwise convolution is a special case of cuDNN's grouped convolution.
-    bool use_cudnn = use_cudnn_ && (in_depth == 1 || use_cudnn_grouped_conv_);
+    bool use_cudnn = std::is_same<Device, GPUDevice>::value &&
+                     (in_depth == 1 ||
+                      (use_cudnn_grouped_conv_ &&
+                       IsCudnnSupportedFilterSize(/*filter_rows=*/filter_rows,
+                                                  /*filter_cols=*/filter_cols,
+                                                  /*in_depth=*/in_depth,
+                                                  /*out_depth=*/out_depth)));
 
     VLOG(2) << "DepthwiseConv2dNativeBackpropInput: "
             << " Input: [" << batch << ", " << input_rows << ", " << input_cols
@@ -609,7 +650,7 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
             << filter_cols << ", " << in_depth << ", " << depth_multiplier
             << "]; Output: [" << batch << ", " << out_rows << ", " << out_cols
             << ", " << out_depth << "], stride = " << stride_
-            << ", pad_rows = " << pad_rows << ", pad_cols = " << pad_cols
+            << ", pad_rows = " << pad_top << ", pad_cols = " << pad_left
             << ", Use cuDNN: " << use_cudnn;
 
     if (use_cudnn) {
@@ -631,9 +672,10 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
               "Failed to reshape filter tensor for grouped convolution."));
       // TODO(yangzihao): Send in arbitrary dilation rates after the dilated
       // conv is supported.
-      launcher_(context, use_cudnn_, cudnn_use_autotune_, out_backprop,
+      launcher_(context, /*use_cudnn=*/true, cudnn_use_autotune_, out_backprop,
                 reshaped_filter, /*row_dilation=*/1, /*col_dilation=*/1,
-                stride_, stride_, padding_, in_backprop, data_format_);
+                stride_, stride_, padding_, explicit_paddings_, in_backprop,
+                data_format_);
       return;
     }
 
@@ -651,12 +693,12 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
  private:
   std::vector<int32> strides_;
   Padding padding_;
+  std::vector<int64> explicit_paddings_;
   TensorFormat data_format_;
   int64 stride_;
 
   // For in_depth == 1 and grouped convolutions.
   LaunchConv2DBackpropInputOp<Device, T> launcher_;
-  bool use_cudnn_;
   bool cudnn_use_autotune_;
   DataType dtype_;
 
@@ -676,7 +718,7 @@ TF_CALL_double(REGISTER_CPU_KERNEL);
 #endif
 #undef REGISTER_CPU_KERNEL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_GPU_KERNEL(T)                                       \
   REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNativeBackpropInput") \
@@ -714,7 +756,7 @@ TF_CALL_float(REGISTER_GROUPED_CONV_KERNEL);
 TF_CALL_double(REGISTER_GROUPED_CONV_KERNEL);
 #undef REGISTER_GROUPED_CONV_KERNEL
 #endif  // CUDNN_VERSION
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Kernels to compute the gradients of the filters for depthwise convolution.
 
@@ -990,7 +1032,7 @@ extern template struct LaunchConv2DBackpropFilterOp<CPUDevice, Eigen::half>;
 extern template struct LaunchConv2DBackpropFilterOp<CPUDevice, float>;
 extern template struct LaunchConv2DBackpropFilterOp<CPUDevice, double>;
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Extern template instantiated in conv_grad_filter_ops.cc.
 extern template struct LaunchConv2DBackpropFilterOp<GPUDevice, Eigen::half>;
@@ -1003,7 +1045,7 @@ extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice,
 extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, float>;
 extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, double>;
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Kernel to compute the filter backprop for depthwise convolution.
 template <typename Device, class T>
@@ -1035,11 +1077,12 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("explicit_paddings", &explicit_paddings_));
+    OP_REQUIRES_OK(context, CheckValidPadding(padding_, explicit_paddings_,
+                                              /*num_dims=*/4, data_format_));
 
-    // For in_depth == 1 and grouped convolutions.
-    use_cudnn_ = CanUseCudnn() && std::is_same<Device, GPUDevice>::value;
     cudnn_use_autotune_ = CudnnUseAutotune();
-    use_cudnn_grouped_conv_ = false;
 
     if (std::is_same<T, Eigen::half>::value) {
       dtype_ = DT_HALF;
@@ -1050,6 +1093,14 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
     } else {
       LOG(ERROR) << "Only half, float, and double are supported.";
     }
+    // Use CuDNN grouped conv (filter gradients) when input/output is
+    // float16(half). See cudnn release note 7.6.3. (https://docs.nvidia.com/dee
+    // plearning/sdk/cudnn-release-notes/rel_763.html#rel_763)
+#if CUDNN_VERSION >= 7603
+    use_cudnn_grouped_conv_ = dtype_ == DT_HALF;
+#else
+    use_cudnn_grouped_conv_ = false;
+#endif
   }
 
   void Compute(OpKernelContext* context) override {
@@ -1082,7 +1133,13 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
 
     // If in_depth==1, this operation is just a standard convolution.
     // Depthwise convolution is a special case of cuDNN's grouped convolution.
-    bool use_cudnn = use_cudnn_ && (in_depth == 1 || use_cudnn_grouped_conv_);
+    bool use_cudnn = std::is_same<Device, GPUDevice>::value &&
+                     (in_depth == 1 ||
+                      (use_cudnn_grouped_conv_ &&
+                       IsCudnnSupportedFilterSize(/*filter_rows=*/filter_rows,
+                                                  /*filter_cols=*/filter_cols,
+                                                  /*in_depth=*/in_depth,
+                                                  /*out_depth=*/out_depth)));
 
     VLOG(2) << "DepthwiseConv2dNativeBackpropFilter: "
             << " Input: [" << batch << ", " << input_rows << ", " << input_cols
@@ -1090,7 +1147,7 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
             << filter_cols << ", " << in_depth << ", " << depth_multiplier
             << "]; Output: [" << batch << ", " << out_rows << ", " << out_cols
             << ", " << out_depth << "], stride = " << stride_
-            << ", pad_rows = " << pad_rows << ", pad_cols = " << pad_cols
+            << ", pad_rows = " << pad_top << ", pad_cols = " << pad_left
             << ", Use cuDNN: " << use_cudnn;
 
     if (use_cudnn) {
@@ -1113,18 +1170,52 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
 
       // TODO(yangzihao): Send in arbitrary dilation rates after the dilated
       // conv is supported.
-      launcher_(context, use_cudnn_, cudnn_use_autotune_, out_backprop, input,
+      launcher_(context, /*use_cudnn=*/true, cudnn_use_autotune_, out_backprop,
+                input,
                 /*row_dilation=*/1, /*col_dilation=*/1, stride_, stride_,
-                padding_, &reshaped_filter, data_format_);
+                padding_, explicit_paddings_, &reshaped_filter, data_format_);
       return;
     }
 
-    auto out_backprop_ptr = out_backprop.template flat<T>().data();
-    auto input_ptr = input.template flat<T>().data();
-    auto filter_backprop_ptr = filter_backprop->template flat<T>().data();
-    LaunchDepthwiseConvBackpropFilterOp<Device, T>()(
+    // For GPU inputs with type half, we cast inputs to float and outputs back
+    // to half, as half implementation is slow and does not use full precision
+    // accumulation in some cases.
+    constexpr bool cast_to_float = std::is_same<T, Eigen::half>::value &&
+                                   std::is_same<Device, GPUDevice>::value;
+    using U = typename std::conditional<cast_to_float, float, T>::type;
+    Tensor casted_out_backprop = out_backprop;
+    Tensor casted_input = input;
+    Tensor casted_filter_backprop = *filter_backprop;
+    const Device& device = context->template eigen_device<Device>();
+    if (cast_to_float) {
+      functor::CastFunctor<Device, float, Eigen::half> cast;
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(DT_FLOAT, out_backprop.shape(),
+                                            &casted_out_backprop));
+      cast(device, casted_out_backprop.template flat<float>(),
+           out_backprop.template flat<Eigen::half>());
+      OP_REQUIRES_OK(context, context->allocate_temp(DT_FLOAT, input.shape(),
+                                                     &casted_input));
+      cast(device, casted_input.template flat<float>(),
+           input.template flat<Eigen::half>());
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(DT_FLOAT, filter_backprop->shape(),
+                                            &casted_filter_backprop));
+    }
+
+    auto out_backprop_ptr = casted_out_backprop.template flat<U>().data();
+    auto input_ptr = casted_input.template flat<U>().data();
+    auto filter_backprop_ptr = casted_filter_backprop.template flat<U>().data();
+    LaunchDepthwiseConvBackpropFilterOp<Device, U>()(
         context, args, out_backprop_ptr, input_ptr, filter_backprop_ptr,
         data_format_);
+
+    if (cast_to_float) {
+      functor::CastFunctor<Device, Eigen::half, float> cast;
+      const Tensor& casted_filter_backprop_const = casted_filter_backprop;
+      cast(device, filter_backprop->template flat<Eigen::half>(),
+           casted_filter_backprop_const.template flat<float>());
+    }
   }
 
  protected:
@@ -1133,12 +1224,12 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
  private:
   std::vector<int32> strides_;
   Padding padding_;
+  std::vector<int64> explicit_paddings_;
   TensorFormat data_format_;
   int64 stride_;
 
   // For in_depth == 1 and grouped convolutions.
   LaunchConv2DBackpropFilterOp<Device, T> launcher_;
-  bool use_cudnn_;
   bool cudnn_use_autotune_;
   DataType dtype_;
 
@@ -1158,7 +1249,7 @@ TF_CALL_double(REGISTER_CPU_KERNEL);
 #endif
 #undef REGISTER_CPU_KERNEL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_GPU_KERNEL(T)                                        \
   REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNativeBackpropFilter") \
                               .Device(DEVICE_GPU)                     \
@@ -1195,6 +1286,6 @@ TF_CALL_float(REGISTER_GROUPED_CONV_KERNEL);
 TF_CALL_double(REGISTER_GROUPED_CONV_KERNEL);
 #undef REGISTER_GROUPED_CONV_KERNEL
 #endif  // CUDNN_VERSION
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

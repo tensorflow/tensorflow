@@ -62,14 +62,16 @@ limitations under the License.
 //
 //   When indices are out of bound, the op will not succeed.
 
+#include <stdint.h>
+
 #include <algorithm>
 #include <cmath>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -81,19 +83,23 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 5);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* ids = GetInput(context, node, 0);
+  const TfLiteTensor* ids;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &ids));
   TF_LITE_ENSURE_EQ(context, NumDimensions(ids), 1);
   TF_LITE_ENSURE_EQ(context, ids->type, kTfLiteInt32);
 
-  const TfLiteTensor* indices = GetInput(context, node, 1);
+  const TfLiteTensor* indices;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 1, &indices));
   TF_LITE_ENSURE_EQ(context, NumDimensions(indices), 2);
   TF_LITE_ENSURE_EQ(context, indices->type, kTfLiteInt32);
 
-  const TfLiteTensor* shape = GetInput(context, node, 2);
+  const TfLiteTensor* shape;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 2, &shape));
   TF_LITE_ENSURE_EQ(context, NumDimensions(shape), 1);
   TF_LITE_ENSURE_EQ(context, shape->type, kTfLiteInt32);
 
-  const TfLiteTensor* weights = GetInput(context, node, 3);
+  const TfLiteTensor* weights;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 3, &weights));
   TF_LITE_ENSURE_EQ(context, NumDimensions(weights), 1);
   TF_LITE_ENSURE_EQ(context, weights->type, kTfLiteFloat32);
 
@@ -102,12 +108,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(indices, 0),
                     SizeOfDimension(weights, 0));
 
-  const TfLiteTensor* value = GetInput(context, node, 4);
+  const TfLiteTensor* value;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 4, &value));
   TF_LITE_ENSURE(context, NumDimensions(value) >= 2);
 
   // Mark the output as a dynamic tensor.
-  TfLiteTensor* output = GetOutput(context, node, 0);
-  TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+  TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat32);
   output->allocation_type = kTfLiteDynamic;
 
   return kTfLiteOk;
@@ -138,12 +146,18 @@ void FinalizeAggregation(TfLiteCombinerType combiner, int num_elements,
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
       reinterpret_cast<TfLiteEmbeddingLookupSparseParams*>(node->builtin_data);
-  TfLiteTensor* output = GetOutput(context, node, 0);
-  const TfLiteTensor* ids = GetInput(context, node, 0);
-  const TfLiteTensor* indices = GetInput(context, node, 1);
-  const TfLiteTensor* dense_shape = GetInput(context, node, 2);
-  const TfLiteTensor* weights = GetInput(context, node, 3);
-  const TfLiteTensor* value = GetInput(context, node, 4);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+  const TfLiteTensor* ids;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &ids));
+  const TfLiteTensor* indices;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 1, &indices));
+  const TfLiteTensor* dense_shape;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 2, &dense_shape));
+  const TfLiteTensor* weights;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 3, &weights));
+  const TfLiteTensor* value;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 4, &value));
 
   const int lookup_rank = SizeOfDimension(indices, 1);
   const int embedding_rank = NumDimensions(value);
@@ -176,7 +190,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const int output_size = lookup_size * embedding_size;
   TfLiteTensorRealloc(output_size * sizeof(float), output);
 
-  tensor_utils::ZeroVector(output->data.f, output_size);
+  float* output_ptr = GetTensorData<float>(output);
+  const float* weights_ptr = GetTensorData<float>(weights);
+  const float* value_ptr = GetTensorData<float>(value);
+
+  std::fill_n(output_ptr, output_size, 0.0f);
 
   // Keep track of the current bucket for aggregation/combination.
   int current_output_offset = 0;
@@ -209,7 +227,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     if (output_offset != current_output_offset) {
       FinalizeAggregation(params->combiner, num_elements, current_total_weight,
                           current_squares_weight, embedding_size,
-                          &output->data.f[current_output_offset]);
+                          &output_ptr[current_output_offset]);
 
       // Track next bucket.
       num_elements = 0;
@@ -221,19 +239,19 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     // Add element to aggregation.
     ++num_elements;
     const int example_embedding_offset = idx * embedding_size;
-    const float w = weights->data.f[i];
+    const float w = weights_ptr[i];
     current_squares_weight += w * w;
     current_total_weight += w;
     for (int k = 0; k < embedding_size; k++) {
-      output->data.f[current_output_offset + k] +=
-          (value->data.f[example_embedding_offset + k] * w);
+      output_ptr[current_output_offset + k] +=
+          value_ptr[example_embedding_offset + k] * w;
     }
   }
 
   // Finalize last bucket.
   FinalizeAggregation(params->combiner, num_elements, current_total_weight,
                       current_squares_weight, embedding_size,
-                      &output->data.f[current_output_offset]);
+                      &GetTensorData<float>(output)[current_output_offset]);
 
   return kTfLiteOk;
 }

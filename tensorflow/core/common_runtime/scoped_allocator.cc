@@ -13,13 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/scoped_allocator.h"
+
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
+#include "tensorflow/core/platform/dynamic_annotations.h"
 
 namespace tensorflow {
 
 ScopedAllocator::ScopedAllocator(const Tensor& backing_tensor, int32 scope_id,
                                  const string& name,
-                                 const gtl::ArraySlice<Field>& fields,
+                                 const gtl::ArraySlice<Field> fields,
                                  int32 expected_call_count,
                                  ScopedAllocatorContainer* container)
     : backing_tensor_(backing_tensor),
@@ -34,7 +36,7 @@ ScopedAllocator::ScopedAllocator(const Tensor& backing_tensor, int32 scope_id,
   tbuf_->Ref();
   // Hold this until all expected_calls have been made.
   container->Ref();
-  CHECK_GE(tbuf_->size(), fields.back().offset + fields.back().bytes);
+  CHECK_GE(tbuf_->size(), fields.back().offset + fields.back().bytes_requested);
 }
 
 ScopedAllocator::~ScopedAllocator() {
@@ -56,43 +58,66 @@ ScopedAllocator::~ScopedAllocator() {
 void* ScopedAllocator::AllocateRaw(int32 field_index, size_t num_bytes) {
   VLOG(1) << "ScopedAllocator index " << id_ << " AllocateRaw "
           << "field " << field_index << " num_bytes " << num_bytes;
-  mutex_lock l(mu_);
-  if (expected_call_count_ <= 0) {
-    LOG(ERROR) << "Scoped allocator " << name_
-               << " could not satisfy request for " << num_bytes
-               << " bytes, expected uses exhausted. ";
-    return nullptr;
-  }
-
-  int32_t num_fields = static_cast<int32>(fields_.size());
-  if (field_index >= num_fields) {
-    LOG(ERROR) << "ScopedAllocator " << name_
-               << " received unexpected field number " << field_index;
-    return nullptr;
-  }
-
-  const Field& f = fields_[field_index];
-  if (num_bytes != f.bytes) {
-    LOG(ERROR) << "ScopedAllocator " << name_ << " got request for "
-               << num_bytes << " bytes from field " << field_index
-               << " which has precalculated size " << f.bytes << " and offset "
-               << f.offset;
-    return nullptr;
-  }
-
-  void* ptr = static_cast<void*>((tbuf_->template base<char>() + f.offset));
-
-  ++live_alloc_count_;
-  --expected_call_count_;
-  if (0 == expected_call_count_) {
-    for (auto& f : fields_) {
-      container_->Drop(f.scope_id, this);
+  void* ptr = nullptr;
+  const Field* field = nullptr;
+  {
+    mutex_lock l(mu_);
+    if (expected_call_count_ <= 0) {
+      LOG(ERROR) << "Scoped allocator " << name_
+                 << " could not satisfy request for " << num_bytes
+                 << " bytes, expected uses exhausted. ";
+      return nullptr;
     }
-    container_->Drop(id_, this);
-    container_->Unref();
-    container_ = nullptr;
+
+    int32_t num_fields = static_cast<int32>(fields_.size());
+    if (field_index >= num_fields) {
+      LOG(ERROR) << "ScopedAllocator " << name_
+                 << " received unexpected field number " << field_index;
+      return nullptr;
+    }
+
+    field = &fields_[field_index];
+    if (num_bytes != field->bytes_requested) {
+      LOG(ERROR) << "ScopedAllocator " << name_ << " got request for "
+                 << num_bytes << " bytes from field " << field_index
+                 << " which has precalculated size " << field->bytes_requested
+                 << " and offset " << field->offset;
+      return nullptr;
+    }
+
+    ptr = static_cast<void*>((tbuf_->template base<char>() + field->offset));
+
+    ++live_alloc_count_;
+    --expected_call_count_;
+    if (0 == expected_call_count_) {
+      for (auto& f : fields_) {
+        container_->Drop(f.scope_id, this);
+      }
+      container_->Drop(id_, this);
+      container_->Unref();
+      container_ = nullptr;
+    }
   }
-  VLOG(1) << "AllocateRaw returning " << ptr;
+  VLOG(2) << "AllocateRaw returning " << ptr << " bytes_requested "
+          << field->bytes_requested << " bytes_allocated "
+          << field->bytes_allocated;
+
+  // If there is overshoot due to alignment, let MSAN believe that the padding
+  // is initialized.  This is okay because we do not use this memory region for
+  // anything meaningful.
+  if (field->bytes_allocated > field->bytes_requested) {
+    size_t extra_bytes = field->bytes_allocated - field->bytes_requested;
+    void* extra_buf = static_cast<void*>(static_cast<char*>(ptr) +
+                                         field->bytes_allocated - extra_bytes);
+    VLOG(2) << "AllocateRaw requested " << num_bytes
+            << " bytes which is not divisible by kAllocatorAlignment="
+            << Allocator::kAllocatorAlignment << " and hence we allocated "
+            << field->bytes_allocated << ". Annotating " << extra_bytes
+            << " bytes starting at " << extra_buf
+            << " with TF_ANNOTATE_MEMORY_IS_INITIALIZED";
+    TF_ANNOTATE_MEMORY_IS_INITIALIZED(extra_buf, extra_bytes);
+  }
+
   return ptr;
 }
 

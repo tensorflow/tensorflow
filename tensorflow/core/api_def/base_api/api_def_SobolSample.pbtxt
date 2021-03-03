@@ -1,0 +1,41 @@
+op {
+  graph_op_name: "SobolSample"
+  visibility: HIDDEN
+  in_arg {
+    name: "dim"
+    description: <<END
+Positive scalar `Tensor` representing each sample's dimension.
+END
+  }
+  in_arg {
+    name: "num_results"
+    description: <<END
+Positive scalar `Tensor` of dtype int32. The number of Sobol points to return
+in the output.
+END
+  }
+  in_arg {
+    name: "skip"
+    description: <<END
+Positive scalar `Tensor` of dtype int32. The number of initial points of the
+Sobol sequence to skip.
+END
+  }
+  attr {
+    name: "dtype"
+    description: <<END
+The type of the sample. One of: `float32` or `float64`.
+END
+  }
+  out_arg {
+    name: "samples"
+    description: <<END
+`Tensor` of samples from Sobol sequence with `shape` [num_results, dim].
+END
+  }
+  summary: "Generates points from the Sobol sequence."
+  description: <<END
+Creates a Sobol sequence with `num_results` samples. Each sample has dimension
+`dim`. Skips the first `skip` samples.
+END
+}

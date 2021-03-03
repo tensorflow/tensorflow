@@ -1,0 +1,15 @@
+path: "tensorflow.keras.layers.experimental"
+tf_module {
+  member {
+    name: "EinsumDense"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RandomFourierFeatures"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "preprocessing"
+    mtype: "<type \'module\'>"
+  }
+}

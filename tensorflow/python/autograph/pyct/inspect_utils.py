@@ -21,40 +21,135 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import inspect
 import itertools
+import linecache
+import sys
+import threading
 import types
 
 import six
 
 from tensorflow.python.util import tf_inspect
 
+# This lock seems to help avoid linecache concurrency errors.
+_linecache_lock = threading.Lock()
+
 
 # These functions test negative for isinstance(*, types.BuiltinFunctionType)
 # and inspect.isbuiltin, and are generally not visible in globals().
+# TODO(mdan): Remove this.
 SPECIAL_BUILTINS = {
     'dict': dict,
+    'enumerate': enumerate,
     'float': float,
     'int': int,
     'len': len,
     'list': list,
     'print': print,
     'range': range,
-    'tuple': tuple
+    'tuple': tuple,
+    'type': type,
+    'zip': zip
 }
 
 if six.PY2:
   SPECIAL_BUILTINS['xrange'] = xrange
 
 
+def islambda(f):
+  if not tf_inspect.isfunction(f):
+    return False
+  # TODO(mdan): Look into checking the only the code object.
+  if not (hasattr(f, '__name__') and hasattr(f, '__code__')):
+    return False
+  # Some wrappers can rename the function, but changing the name of the
+  # code object is harder.
+  return (
+      (f.__name__ == '<lambda>') or (f.__code__.co_name == '<lambda>'))
+
+
+def isnamedtuple(f):
+  """Returns True if the argument is a namedtuple-like."""
+  if not (tf_inspect.isclass(f) and issubclass(f, tuple)):
+    return False
+  if not hasattr(f, '_fields'):
+    return False
+  fields = getattr(f, '_fields')
+  if not isinstance(fields, tuple):
+    return False
+  if not all(isinstance(f, str) for f in fields):
+    return False
+  return True
+
+
 def isbuiltin(f):
   """Returns True if the argument is a built-in function."""
-  if f in SPECIAL_BUILTINS.values():
+  if any(f is builtin for builtin in six.moves.builtins.__dict__.values()):
     return True
-  if isinstance(f, types.BuiltinFunctionType):
+  elif isinstance(f, types.BuiltinFunctionType):
     return True
-  if tf_inspect.isbuiltin(f):
+  elif inspect.isbuiltin(f):
     return True
-  return False
+  elif f is eval:
+    return True
+  else:
+    return False
+
+
+def isconstructor(cls):
+  """Returns True if the argument is an object constructor.
+
+  In general, any object of type class is a constructor, with the exception
+  of classes created using a callable metaclass.
+  See below for why a callable metaclass is not a trivial combination:
+  https://docs.python.org/2.7/reference/datamodel.html#customizing-class-creation
+
+  Args:
+    cls: Any
+  Returns:
+    Bool
+  """
+  return (
+      inspect.isclass(cls)
+      and not (issubclass(cls.__class__, type)
+               and hasattr(cls.__class__, '__call__')
+               and cls.__class__.__call__ is not type.__call__))
+
+
+def _fix_linecache_record(obj):
+  """Fixes potential corruption of linecache in the presence of functools.wraps.
+
+  functools.wraps modifies the target object's __module__ field, which seems
+  to confuse linecache in special instances, for example when the source is
+  loaded from a .par file (see https://google.github.io/subpar/subpar.html).
+
+  This function simply triggers a call to linecache.updatecache when a mismatch
+  was detected between the object's __module__ property and the object's source
+  file.
+
+  Args:
+    obj: Any
+  """
+  if hasattr(obj, '__module__'):
+    obj_file = inspect.getfile(obj)
+    obj_module = obj.__module__
+
+    # A snapshot of the loaded modules helps avoid "dict changed size during
+    # iteration" errors.
+    loaded_modules = tuple(sys.modules.values())
+    for m in loaded_modules:
+      if hasattr(m, '__file__') and m.__file__ == obj_file:
+        if obj_module is not m:
+          linecache.updatecache(obj_file, m.__dict__)
+
+
+def getimmediatesource(obj):
+  """A variant of inspect.getsource that ignores the __wrapped__ property."""
+  with _linecache_lock:
+    _fix_linecache_record(obj)
+    lines, lnum = inspect.findsource(obj)
+    return ''.join(inspect.getblock(lines[lnum:]))
 
 
 def getnamespace(f):
@@ -75,11 +170,15 @@ def getnamespace(f):
   freevars = six.get_function_code(f).co_freevars
   if freevars and closure:
     for name, cell in zip(freevars, closure):
-      namespace[name] = cell.cell_contents
+      try:
+        namespace[name] = cell.cell_contents
+      except ValueError:
+        # Cell contains undefined variable, omit it from the namespace.
+        pass
   return namespace
 
 
-def getqualifiedname(namespace, object_, max_depth=2):
+def getqualifiedname(namespace, object_, max_depth=5, visited=None):
   """Returns the name by which a value can be referred to in a given namespace.
 
   If the object defines a parent module, the function attempts to use it to
@@ -93,16 +192,24 @@ def getqualifiedname(namespace, object_, max_depth=2):
     object_: Any, the value to search.
     max_depth: Optional[int], a limit to the recursion depth when searching
         inside modules.
+    visited: Optional[Set[int]], ID of modules to avoid visiting.
   Returns: Union[str, None], the fully-qualified name that resolves to the value
       o, or None if it couldn't be found.
   """
-  for name, value in namespace.items():
+  if visited is None:
+    visited = set()
+
+  # Copy the dict to avoid "changed size error" during concurrent invocations.
+  # TODO(mdan): This is on the hot path. Can we avoid the copy?
+  namespace = dict(namespace)
+
+  for name in namespace:
     # The value may be referenced by more than one symbol, case in which
     # any symbol will be fine. If the program contains symbol aliases that
     # change over time, this may capture a symbol that will later point to
     # something else.
     # TODO(mdan): Prefer the symbol that matches the value type name.
-    if object_ is value:
+    if object_ is namespace[name]:
       return name
 
   # If an object is not found, try to search its parent modules.
@@ -110,22 +217,25 @@ def getqualifiedname(namespace, object_, max_depth=2):
   if (parent is not None and parent is not object_ and
       parent is not namespace):
     # No limit to recursion depth because of the guard above.
-    parent_name = getqualifiedname(namespace, parent, max_depth=0)
+    parent_name = getqualifiedname(
+        namespace, parent, max_depth=0, visited=visited)
     if parent_name is not None:
-      name_in_parent = getqualifiedname(parent.__dict__, object_, max_depth=0)
+      name_in_parent = getqualifiedname(
+          parent.__dict__, object_, max_depth=0, visited=visited)
       assert name_in_parent is not None, (
           'An object should always be found in its owner module')
       return '{}.{}'.format(parent_name, name_in_parent)
 
-  # TODO(mdan): Use breadth-first search and avoid visiting modules twice.
   if max_depth:
     # Iterating over a copy prevents "changed size due to iteration" errors.
     # It's unclear why those occur - suspecting new modules may load during
     # iteration.
-    for name, value in namespace.copy().items():
-      if tf_inspect.ismodule(value):
+    for name in namespace.keys():
+      value = namespace[name]
+      if tf_inspect.ismodule(value) and id(value) not in visited:
+        visited.add(id(value))
         name_in_module = getqualifiedname(value.__dict__, object_,
-                                          max_depth - 1)
+                                          max_depth - 1, visited)
         if name_in_module is not None:
           return '{}.{}'.format(name, name_in_module)
   return None
@@ -134,6 +244,8 @@ def getqualifiedname(namespace, object_, max_depth=2):
 def _get_unbound_function(m):
   # TODO(mdan): Figure out why six.get_unbound_function fails in some cases.
   # The failure case is for tf.keras.Model.
+  if hasattr(m, '__func__'):
+    return m.__func__
   if hasattr(m, 'im_func'):
     return m.im_func
   return m
@@ -143,7 +255,7 @@ def getdefiningclass(m, owner_class):
   """Resolves the class (e.g. one of the superclasses) that defined a method."""
   # Normalize bound functions to their respective unbound versions.
   m = _get_unbound_function(m)
-  for superclass in owner_class.__bases__:
+  for superclass in reversed(inspect.getmro(owner_class)):
     if hasattr(superclass, m.__name__):
       superclass_m = getattr(superclass, m.__name__)
       if _get_unbound_function(superclass_m) is m:
@@ -184,19 +296,15 @@ def getmethodclass(m):
     if isinstance(m.__class__, six.class_types):
       return m.__class__
 
-  # Instance method and class methods: should be bound to a non-null "self".
-  if hasattr(m, '__self__'):
-    if m.__self__ is not None:
-      # A fallback allowing methods to be actually bound to a type different
-      # than __self__. This is useful when a strong reference from the method
-      # to the object is not desired, for example when caching is involved.
-      if hasattr(m.__self__, 'ag_self_weakref__'):
-        return m.__self__.ag_self_weakref__()
-
-      return m.__self__
+  # Instance and class: return the class of "self".
+  m_self = getattr(m, '__self__', None)
+  if m_self is not None:
+    if inspect.isclass(m_self):
+      return m_self
+    return m_self.__class__
 
   # Class, static and unbound methods: search all defined classes in any
-  # namespace. This is inefficient but more robust method.
+  # namespace. This is inefficient but more robust a method.
   owners = []
   caller_frame = tf_inspect.currentframe().f_back
   try:
@@ -232,57 +340,16 @@ def getmethodclass(m):
   return None
 
 
-class SuperWrapperForDynamicAttrs(object):
-  """A wrapper that supports dynamic attribute lookup on the super object.
+def getfutureimports(entity):
+  """Detects what future imports are necessary to safely execute entity source.
 
-  For example, in the following code, `super` incorrectly reports that
-  `super(Bar, b)` lacks the `a` attribute:
+  Args:
+    entity: Any object
 
-    class Foo(object):
-      def __init__(self):
-        self.a = lambda: 1
-
-      def bar(self):
-        return hasattr(self, 'a')
-
-    class Bar(Foo):
-      def bar(self):
-        return super(Bar, self).bar()
-
-
-    b = Bar()
-    print(hasattr(super(Bar, b), 'a'))  # False
-    print(super(Bar, b).bar())          # True
-
-  A practical situation when this tends to happen is Keras model hierarchies
-  that hold references to certain layers, like this:
-
-    class MiniModel(keras.Model):
-
-      def __init__(self):
-        super(MiniModel, self).__init__()
-        self.fc = keras.layers.Dense(1)
-
-      def call(self, inputs, training=True):
-        return self.fc(inputs)
-
-    class DefunnedMiniModel(MiniModel):
-
-      def call(self, inputs, training=True):
-        return super(DefunnedMiniModel, self).call(inputs, training=training)
-
-  A side effect of this wrapper is that all attributes become visible, even
-  those created in the subclass.
+  Returns:
+    A tuple of future strings
   """
-
-  # TODO(mdan): Investigate why that happens - it may be for a reason.
-  # TODO(mdan): Probably need more overrides to make it look like super.
-
-  def __init__(self, target):
-    self._target = target
-
-  def __getattribute__(self, name):
-    target = object.__getattribute__(self, '_target')
-    if hasattr(target, name):
-      return getattr(target, name)
-    return getattr(target.__self__, name)
+  if not (tf_inspect.isfunction(entity) or tf_inspect.ismethod(entity)):
+    return tuple()
+  return tuple(sorted(name for name, value in entity.__globals__.items()
+                      if getattr(value, '__module__', None) == '__future__'))

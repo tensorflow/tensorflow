@@ -12,20 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the ConcatenateDataset serialization."""
+"""Tests for checkpointing the ConcatenateDataset."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
-class ConcatenateDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+class ConcatenateDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                       parameterized.TestCase):
 
   def _build_concatenate_dataset(self, var_array):
     input_components = (np.tile(np.array([[1], [2], [3], [4]]), 20),
@@ -36,12 +39,11 @@ class ConcatenateDatasetSerializationTest(
     return dataset_ops.Dataset.from_tensor_slices(input_components).concatenate(
         dataset_ops.Dataset.from_tensor_slices(to_concatenate_components))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testConcatenateCore(self):
     num_outputs = 9
     array = np.tile(np.array([[16], [17], [18], [19], [20]]), 15)
-    diff_array = np.array([[1], [2], [3], [4], [5]])
     self.run_core_tests(lambda: self._build_concatenate_dataset(array),
-                        lambda: self._build_concatenate_dataset(diff_array),
                         num_outputs)
 
 

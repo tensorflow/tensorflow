@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/buf_rendezvous.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/platform/unbounded_work_queue.h"
 
 namespace tensorflow {
 class CollectiveImplementation;
@@ -58,7 +59,8 @@ class CollectiveAdapter {
 
   // Generate a scalar tensor of same DataType and on the same device
   // as the backing tensor.
-  virtual Tensor Scalar(Allocator* a) const = 0;
+  virtual Tensor Scalar(Allocator* a,
+                        const AllocationAttributes& attr) const = 0;
 
   // Debugging string describing buffer location
   virtual string TBounds(const Tensor& t) const = 0;
@@ -78,9 +80,15 @@ class CollectiveAdapter {
 };
 
 // Create a CollectiveAdaptor wrapping 'output', specialized to its
-// data-type and shape.
+// data-type and shape.  If align_chunks == true then chunk size may
+// be larger than output->NumElements() / num_chunks and one or more
+// of the suffix chunks may be empty.  Chunks will be arranged to start
+// and end on alignment boundaries.  If align_chunks == false then
+// output->NumElements() % num_chunks must be 0 and all chunks will
+// have exactly the same size, ignoring alignment issues.
 CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
-                                         Allocator* allocator);
+                                         Allocator* allocator,
+                                         bool align_chunks = true);
 
 // Default implementation of CollectiveExecutor.  Delegates the actual
 // work of moving data to a class specialized for the operation type,
@@ -88,62 +96,70 @@ CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
 class BaseCollectiveExecutor : public CollectiveExecutor {
  public:
   BaseCollectiveExecutor(CollectiveExecutorMgrInterface* cem,
-                         PerStepCollectiveRemoteAccess* remote_access,
-                         int64 step_id, const DeviceMgr* dev_mgr,
-                         const string* gpu_ring_order)
+                         CollectiveRemoteAccess* remote_access, int64 step_id,
+                         const DeviceMgr* dev_mgr, const string* gpu_ring_order,
+                         std::shared_ptr<UnboundedWorkQueue> work_queue)
       : CollectiveExecutor(cem),
         step_id_(step_id),
         dev_mgr_(dev_mgr),
         remote_access_(remote_access),
-        gpu_ring_order_(gpu_ring_order) {}
+        gpu_ring_order_(gpu_ring_order),
+        work_queue_(std::move(work_queue)) {}
 
   ~BaseCollectiveExecutor() override;
 
-  void StartAbort(const Status& s) override;
+  void StartAbort(const Status& s) override TF_LOCKS_EXCLUDED(status_mu_);
 
-  void ExecuteAsync(OpKernelContext* ctx, const CollectiveParams& col_params,
+  void ExecuteAsync(OpKernelContext* ctx, const CollectiveParams* col_params,
                     const string& exec_key, StatusCallback done) override;
 
-  void CompleteParamsAsync(const string& device, CollectiveParams* cp,
+  void CompleteParamsAsync(const DeviceAttributes& device, CollectiveParams* cp,
                            CancellationManager* cancel_mgr,
                            StatusCallback done) override;
 
-  PerStepCollectiveRemoteAccess* remote_access() override {
+  CollectiveRemoteAccess* remote_access() override {
     return remote_access_.get();
   }
 
-  void RecvFromPeer(const string& peer_device, const string& peer_task,
-                    bool peer_is_local, const string& key, Device* to_device,
-                    DeviceContext* to_device_ctx,
-                    const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
-                    const DeviceLocality& client_locality, int stream_index,
-                    const StatusCallback& done) override {
-    remote_access_->RecvFromPeer(
-        peer_device, peer_task, peer_is_local, key, to_device, to_device_ctx,
-        to_alloc_attr, to_tensor, client_locality, stream_index, done);
+  void RunClosure(std::function<void()> closure) override {
+    work_queue_->Schedule(std::move(closure));
   }
 
-  void PostToPeer(const string& peer_device, const string& peer_task,
-                  const string& key, Device* from_device,
-                  DeviceContext* from_device_ctx,
-                  const AllocatorAttributes& from_alloc_attr,
-                  const Tensor* from_tensor,
-                  const DeviceLocality& client_locality,
-                  const StatusCallback& done) override {
-    remote_access_->PostToPeer(peer_device, peer_task, key, from_device,
-                               from_device_ctx, from_alloc_attr, from_tensor,
-                               client_locality, done);
-  }
+  // If we need to enforce an ordering on any portion of collective
+  // implementation, and the ordering is encoded via attribute on the collective
+  // op, this function will block until all dependencies for this collective
+  // have completed.
+  void WaitForDependencies(const CollectiveParams& col_params) override;
+  // Record that this collective has completed the portion of the implementation
+  // that needs to be ordered wrt other collectives, to unblock any of its
+  // dependent ops.
+  void UnblockDependencies(const CollectiveParams& col_params) override;
 
  protected:
   const int64 step_id_;
   const DeviceMgr* dev_mgr_;  // Not owned.
-  std::unique_ptr<PerStepCollectiveRemoteAccess> remote_access_;
+  std::unique_ptr<CollectiveRemoteAccess> remote_access_;
   const string* gpu_ring_order_;  // Not owned.
+  // Ownership of `work_queue_` is shared between `this` and
+  // `CollectiveExecutorMgr`.
+  std::shared_ptr<UnboundedWorkQueue> work_queue_;
+  mutex launch_mu_;
+  condition_variable launch_cv_;
+  // collective instance key -> number of local devices for which NCCL ops have
+  // been launched.
+  std::unordered_map<int32, int32> launched_ TF_GUARDED_BY(launch_mu_);
+  mutex status_mu_;
+  Status status_ TF_GUARDED_BY(status_mu_);
 
  private:
   Status CreateCollective(const CollectiveParams& col_params,
                           CollectiveImplementationInterface** col_impl);
+  // Check if all ops on which this collective depends on have launched.
+  bool CheckDependencies(const CollectiveParams& col_params)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(launch_mu_);
+  // Tries to return the status that is the original error. It returns the
+  // aborted status if the collective executor is aborted.
+  Status GetStatus(const Status& s) TF_LOCKS_EXCLUDED(status_mu_);
 };
 
 }  // namespace tensorflow

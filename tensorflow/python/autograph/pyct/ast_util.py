@@ -24,7 +24,7 @@ import gast
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import parser
-from tensorflow.python.util import tf_inspect
+from tensorflow.python.autograph.pyct import qual_names
 
 
 class CleanCopier(object):
@@ -82,23 +82,48 @@ class SymbolRenamer(gast.NodeTransformer):
   def __init__(self, name_map):
     self.name_map = name_map
 
-  def _process(self, node):
+  def _process_name_node(self, node):
     qn = anno.getanno(node, anno.Basic.QN)
     if qn in self.name_map:
-      new_node = gast.Name(str(self.name_map[qn]), node.ctx, None)
+      new_node = gast.Name(
+          str(self.name_map[qn]),
+          ctx=node.ctx,
+          annotation=None,
+          type_comment=None)
       # All annotations get carried over.
       for k in anno.keys(node):
         anno.copyanno(node, new_node, k)
       return new_node
     return self.generic_visit(node)
 
+  def _process_list_of_strings(self, names):
+    for i in range(len(names)):
+      qn = qual_names.QN(names[i])
+      if qn in self.name_map:
+        names[i] = str(self.name_map[qn])
+    return names
+
+  def visit_Nonlocal(self, node):
+    node.names = self._process_list_of_strings(node.names)
+    return node
+
+  def visit_Global(self, node):
+    node.names = self._process_list_of_strings(node.names)
+    return node
+
   def visit_Name(self, node):
-    return self._process(node)
+    return self._process_name_node(node)
 
   def visit_Attribute(self, node):
     if anno.hasanno(node, anno.Basic.QN):
-      return self._process(node)
-    # Attributes of dynamic objects will not have a QN.
+      return self._process_name_node(node)
+    # Renaming attributes is not supported.
+    return self.generic_visit(node)
+
+  def visit_FunctionDef(self, node):
+    qn = qual_names.QN(node.name)
+    if qn in self.name_map:
+      node.name = str(self.name_map[qn])
     return self.generic_visit(node)
 
 
@@ -117,7 +142,7 @@ def keywords_to_dict(keywords):
   keys = []
   values = []
   for kw in keywords:
-    keys.append(gast.Str(kw.arg))
+    keys.append(gast.Constant(kw.arg, kind=None))
     values.append(kw.value)
   return gast.Dict(keys=keys, values=values)
 
@@ -200,7 +225,8 @@ def matches(node, pattern):
     bool
   """
   if isinstance(pattern, str):
-    pattern = parser.parse_expression(pattern)
+    pattern = parser.parse_str(pattern)
+
   matcher = PatternMatcher(pattern)
   matcher.visit(node)
   return matcher.matches
@@ -248,7 +274,7 @@ def apply_to_single_assignments(targets, values, apply_fn):
           value_el = values.elts[i]
         else:
           idx = parser.parse_expression(str(i))
-          value_el = gast.Subscript(values, gast.Index(idx), ctx=gast.Load())
+          value_el = gast.Subscript(values, idx, ctx=gast.Load())
         apply_to_single_assignments(target_el, value_el, apply_fn)
     else:
       apply_fn(target, values)
@@ -282,12 +308,20 @@ def parallel_walk(node, other):
     n = node_stack.pop()
     o = other_stack.pop()
 
-    if (not isinstance(n, (ast.AST, gast.AST)) or
-        not isinstance(o, (ast.AST, gast.AST)) or
+    if ((not isinstance(n, (ast.AST, gast.AST, str)) and n is not None) or
+        (not isinstance(o, (ast.AST, gast.AST, str)) and n is not None) or
         n.__class__.__name__ != o.__class__.__name__):
-      raise ValueError('inconsistent nodes: {} and {}'.format(n, o))
+      raise ValueError('inconsistent nodes: {} ({}) and {} ({})'.format(
+          n, n.__class__.__name__, o, o.__class__.__name__))
 
     yield n, o
+
+    if isinstance(n, str):
+      assert isinstance(o, str), 'The check above should have ensured this'
+      continue
+    if n is None:
+      assert o is None, 'The check above should have ensured this'
+      continue
 
     for f in n._fields:
       n_child = getattr(n, f, None)
@@ -312,40 +346,3 @@ def parallel_walk(node, other):
         raise ValueError(
             'inconsistent values for field {}: {} and {}'.format(
                 f, n_child, o_child))
-
-
-class LambdaMatcher(gast.NodeVisitor):
-  """Finds nodes that match a given lambda function's signature."""
-
-  def __init__(self, lambda_fn):
-    self.lambda_fn = lambda_fn
-    self.matching_nodes = []
-
-  def visit_Lambda(self, node):
-    self.generic_visit(node)
-
-    arg_spec = tf_inspect.getfullargspec(self.lambda_fn)
-
-    node_args = tuple(arg.id for arg in node.args.args)
-    if node_args != tuple(arg_spec.args):
-      return
-
-    node_varargs = None if node.args.vararg is None else node.args.vararg.arg
-    if arg_spec.varargs != node_varargs:
-      return
-
-    node_varkw = None if node.args.kwarg is None else node.args.kwarg.arg
-    if arg_spec.varkw != node_varkw:
-      return
-
-    node_kwonlyargs = tuple(arg.id for arg in node.args.kwonlyargs)
-    if node_kwonlyargs != tuple(arg_spec.kwonlyargs):
-      return
-
-    self.matching_nodes.append(node)
-
-
-def find_matching_lambda_definitions(node, f):
-  matcher = LambdaMatcher(f)
-  matcher.visit(node)
-  return tuple(matcher.matching_nodes)

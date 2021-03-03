@@ -15,153 +15,202 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_TENSOR_UTILS_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_TENSOR_UTILS_H_
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/kernels/internal/tensor_utils_common.h"
 
 #if defined(_MSC_VER)
 #define __restrict__ __restrict
 #endif
 
 namespace tflite {
+
+// Not all backends support CpuBackendContext usage, so forward declare to avoid
+// pulling in its implementation. Use of CpuBackendContext in method
+// implementations is purely optional.
+class CpuBackendContext;
+
 namespace tensor_utils {
 
-// Limit a float input f between +abs_limit and -abs_limit.
-float Clip(float f, float abs_limit);
+// Same as the function above, but provide a scratch buffer for the
+// int8 x int8 -> int32 and a CpuBackendContext for the accumulator
+// computation.
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch,
+    int32_t* __restrict__ scratch, float* __restrict__ result,
+    CpuBackendContext* __restrict__ context);
 
-// Checks if all entries of vector are zero.
-bool IsZeroVector(const float* vector, int v_size);
+// Same as the function above except that can make use of cached row sums.
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, const float* per_channel_scale,
+    const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
+    bool* compute_row_sums, CpuBackendContext* context);
 
-// Quantizes a buffer of floating point values using a symmetric quantization
-// (i.e. linear quantization without an offset) to 8-bit signed integers.
-// It also outputs the range (min, max) of the floating point buffer, and the
-// scaling factor used to quantize the values.
-void SymmetricQuantizeFloats(const float* values, const int size,
-                             int8_t* quantized_values, float* min_value,
-                             float* max_value, float* scaling_factor);
+// Same as the function above, but provides separate scaling factor for the
+// matrix and the vectors. The scaling factors are multiplied in the
+// scaling_factor_scratch buffer.
+inline void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float matrix_scaling_factor,
+    const float* vector_scaling_factors, int n_batch,
+    float* __restrict__ result, const float* per_channel_scale,
+    const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
+    bool* compute_row_sums, float* scaling_factor_scratch,
+    CpuBackendContext* context) {
+  for (int b = 0; b < n_batch; ++b) {
+    scaling_factor_scratch[b] =
+        vector_scaling_factors[b] * matrix_scaling_factor;
+  }
+  MatrixBatchVectorMultiplyAccumulate(matrix, m_rows, m_cols, vectors,
+                                      scaling_factor_scratch, n_batch, result,
+                                      per_channel_scale, input_offset, scratch,
+                                      row_sums, compute_row_sums, context);
+}
 
 // Multiplies a matrix by a "batched" vector (i.e. a matrix with a batch
 // dimension composed by input vectors independent from each other). The result
 // of the multiplication is accumulated to the passed result buffer.
 // More specifically, for a matrix M of shape [n, i] and a batched-vector
 // of shape [i, batch] it will first compute the product of shape [n, batch].
-// This product will be accumulated to the result buffer, using a stride value
-// provided in result_stride (the number of elements between consecutive result
-// values). For example result_stride = 1, will cause the output to look like
-// this:
-// [O_1, 0_2, ... O_rows]
-// but result_stride = 3, will cause it to be arranged like this in memory:
-// [O_1, x, x, 0_2, x, x, ..., O_rows]
-void MatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
-                                         int m_cols, const float* vector,
-                                         int n_batch, float* result,
-                                         int result_stride);
-
-// Same as the function above, but for values quantized using symmetric
-// quantization (e.g. by calling SymmetricQuantizeFloats).
-// The passed scaling factors is a buffer of the quantization scaling factors
-// that will be used to dequentize the products into the final result buffer.
-// These scaling factors are the multiplication of the matrix scaling factor
-// by the vector's scaling factor, one per batch (i.e. this allows quantizing
-// each batch in the batch-vector matrix independently).
+// This product will be accumulated to the result buffer,
+// Parameters:
+//     - input: batch vector of size n_batch * n_input
+//     - bias:  vector of size b_input
+//     - input_to_gate_weights: matrix of size n_input * n_output
+//     - multiplier: scalar
+//     - shift: scalar
+//     - n_batch: the batch size
+//     - n_input: the input size
+//     - n_output: the output size
+//     - output_zp: the zero point of the output.
+//     - scratch: batch vector of size n_batch * n_output
+//     - output: the 16 bit output
+// Notes:
+//     - this is used for gate matmul: for non-cifg it is for input, forget,
+//       cell, output gates; for cifg, it is for forget, cell, output gates.
+//     - multiplier and shift combined gives the scale.
+//     - assumes input zero point is 0.
+//     - scratch is created for optimization purpose only.
+// TODO(b/152066492): this can be removed if some future optimization
+// work makes it unnecessary.
 void MatrixBatchVectorMultiplyAccumulate(
-    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, float* __restrict__ result, int result_stride);
+    const int8_t* input, const int32_t* bias,
+    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
+    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
+    int32_t* scratch, int16_t* output, CpuBackendContext* context);
 
-// Cwise product of two vectors.
-void VectorVectorCwiseProduct(const float* vector1, const float* vector2,
-                              int v_size, float* result);
+// Multiplies a matrix by a "batched" vector (i.e. a matrix with a batch
+// dimension composed by input vectors independent from each other). The result
+// of the multiplication is accumulated to the passed result buffer.
+// More specifically, for a matrix M of shape [n, i] and a batched-vector
+// of shape [i, batch] it will first compute the product of shape [n, batch].
+// This product will be accumulated to the result buffer,
+// Parameters:
+//     - input: batch vector of size n_batch * n_input
+//     - bias:  vector of size b_input
+//     - input_to_gate_weights: matrix of size n_input * n_output
+//     - multiplier: scalar
+//     - shift: scalar
+//     - n_batch: the batch size
+//     - n_input: the input size
+//     - n_output: the output size
+//     - output_zp: the zero point of the output.
+//     - scratch: batch vector of size n_batch * n_output
+//     - output: the 8 bit output
+// Notes:
+//     - this is used for projection matmul.
+//     - multiplier and shift combined gives the scale.
+//     - assumes input zero point is 0.
+//     - scratch is created for optimization purpose only.
+// TODO(b/152066492): this can be removed if some future optimization
+// work makes it unnecessary.
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* input, const int32_t* bias,
+    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
+    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
+    int32_t* scratch, int8_t* output, CpuBackendContext* context);
 
-// Cwise product and accumulate of two vectors. Since it's a MAC opertation, the
-// assumption here is that result array is initialized to valid values.
-void VectorVectorCwiseProductAccumulate(const float* vector1,
-                                        const float* vector2, int v_size,
-                                        float* result);
+// Apply Rectified Linear to elements of a vector.
+inline void ApplyReluToVector(const float* __restrict__ vector, int v_size,
+                              float* __restrict__ result) {
+  for (int v = 0; v < v_size; v++) {
+    result[v] = std::max(0.0f, vector[v]);
+  }
+}
 
-// Dot product of two vectors.
-float VectorVectorDotProduct(const float* vector1, const float* vector2,
-                             int v_size);
+// Apply Rectified Linear 1 (cap to [-1;1]) to elements of a vector
+inline void ApplyRelu1ToVector(const float* __restrict__ vector, int v_size,
+                               float* __restrict__ result) {
+  for (int v = 0; v < v_size; v++) {
+    result[v] = std::max(-1.0f, std::min(vector[v], 1.0f));
+  }
+}
 
-// Dot product of two batch vectors of size n_batch * v_size:
-// vector1 = [x_1_1, x_1_2, ..., x_1_vsize,
-//            x_2_1, x_2_2, ..., x_2_vsize,
-//            ...
-//            x_nbatch_1,..., x_nbatch_vsize]
-// vector2 = [y_1_1, y_1_2, ..., y_1_vsize,
-//            y_2_1, y_2_2, ..., y_2_vsize,
-//            ...
-//            y_nbatch_1,..., y_nbatch_vsize]
-// Then result will be a vector of n_batch size which will be saved with a
-// stride of result_stride in memory starting from 'result':
-// [x_1_1 * y_1_1 + x_1_2 * y_1_2 + ... + x_1_vsize * y_1_vsize,
-//  x_2_1 * y_2_1 + x_2_2 * y_2_2 + ... + x_2_vsize * y_2_vsize,
-//  ...
-//  x_nbatch_1 * y_nbatch_1 + ... + x_nbatch_vsize * y_nbatch_vsize]
-void BatchVectorBatchVectorDotProduct(const float* vector1,
-                                      const float* vector2, int v_size,
-                                      int n_batch, float* result,
-                                      int result_stride);
+// Apply Rectified Linear 6 (cap to [0;6]) to elements of a vector
+inline void ApplyRelu6ToVector(const float* __restrict__ vector, int v_size,
+                               float* __restrict__ result) {
+  for (int v = 0; v < v_size; v++) {
+    result[v] = std::max(0.0f, std::min(vector[v], 6.0f));
+  }
+}
 
-// Cwise product of a vector and a batch-vector.
-void VectorBatchVectorCwiseProduct(const float* vector, int v_size,
-                                   const float* batch_vector, int n_batch,
-                                   float* result);
+// Apply tanh to elements of a vector
+inline void ApplyTanhToVector(const float* __restrict__ vector, int v_size,
+                              float* __restrict__ result) {
+  using VectorMap = Eigen::Map<Eigen::Vector<float, Eigen::Dynamic>>;
+  VectorMap input_map(const_cast<float* __restrict__>(vector), v_size);
+  VectorMap output_map(result, v_size);
+  output_map.array() = input_map.array().tanh();
+}
 
-// Cwise product and accumulate of a vector and a batch-vector. Since it's a MAC
-// operation, the assumption here is that result array is initialized to valid
-// values.
-void VectorBatchVectorCwiseProductAccumulate(const float* vector, int v_size,
-                                             const float* batch_vector,
-                                             int n_batch, float* result);
-
-// Add another vector for each batch in the batch vector.
-void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
-                          float* batch_vector);
-
-// Batch vector initialization with another vector.
-void VectorBatchVectorAssign(const float* vector, int v_size, int n_batch,
-                             float* batch_vector);
+// Apply signbit to elements of a vector
+inline void ApplySignbitToVector(const float* __restrict__ vector, int v_size,
+                                 float* __restrict__ result) {
+  for (int v = 0; v < v_size; v++) {
+    result[v] = std::signbit(vector[v]);
+  }
+}
 
 // Apply sigmoid to elements of a vector.
-void ApplySigmoidToVector(const float* vector, int v_size, float* result);
+inline void ApplySigmoidToVector(const float* __restrict__ vector, int v_size,
+                                 float* __restrict__ result) {
+  using VectorMap = Eigen::Map<Eigen::Vector<float, Eigen::Dynamic>>;
+  VectorMap input_map(const_cast<float* __restrict__>(vector), v_size);
+  VectorMap output_map(result, v_size);
+  output_map.array() = input_map.array().logistic();
+}
 
-// Apply activation function to elements of a vector.
-void ApplyActivationToVector(const float* vector, int v_size,
-                             TfLiteFusedActivation activation, float* result);
+// Apply appropriate activation function to elements of a vector.
+inline void ApplyActivationToVector(const float* __restrict__ vector,
+                                    int v_size,
+                                    TfLiteFusedActivation activation,
+                                    float* __restrict__ result) {
+  switch (activation) {
+    case kTfLiteActNone:
+      return;
+    case kTfLiteActRelu:
+      return ApplyReluToVector(vector, v_size, result);
+    case kTfLiteActReluN1To1:
+      return ApplyRelu1ToVector(vector, v_size, result);
+    case kTfLiteActRelu6:
+      return ApplyRelu6ToVector(vector, v_size, result);
+    case kTfLiteActTanh:
+      return ApplyTanhToVector(vector, v_size, result);
+    case kTfLiteActSignBit:
+      return ApplySignbitToVector(vector, v_size, result);
+    case kTfLiteActSigmoid:
+      return ApplySigmoidToVector(vector, v_size, result);
+  }
+}
 
-// Copy vector to another vector.
-void CopyVector(const float* vector, int v_size, float* result);
-
-// Compute "1.0f - elements of vector" (used in CIFG).
-void Sub1Vector(const float* vector, int v_size, float* result);
-
-// Fill vector with 0.f.
-void ZeroVector(float* vector, int v_size);
-
-// Multiply all elements of vector with a scalar.
-void VectorScalarMultiply(const int8_t* vector, int v_size, float scale,
-                          float* result);
-
-// Clip elements of a vector using a abs_limit value.
-void ClipVector(const float* vector, int v_size, float abs_limit,
-                float* result);
-
-// Shift left a vector in place with v_size size.
-void VectorShiftLeft(float* vector, int v_size, float shift_value);
-
-// Reduce-sum on a float input vector:
-// input_vector: float pointer to input vector.
-// output_vector: float pointer to vector.
-// output_size: output vector size.
-// reduction_size: number of consecutive elements from input vector which are
-// added to get one element of output.
-void ReductionSumVector(const float* input_vector, float* output_vector,
-                        int output_size, int reduction_size);
-
-// Layer norm for each batch.
-// normalization_epsilon is added to avoid divergence.
-void MeanStddevNormalization(const float* input_vector, float* output_vector,
-                             int v_size, int n_batch,
-                             float normalization_epsilon);
 }  // namespace tensor_utils
 }  // namespace tflite
 

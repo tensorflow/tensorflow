@@ -154,8 +154,8 @@ TEST_F(DynamicPartitionOpTest, Error_IndexOutOfRange) {
                            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14});
   AddInputFromArray<int32>(TensorShape({5}), {0, 2, 99, 2, 2});
   Status s = RunOpKernel();
-  EXPECT_TRUE(str_util::StrContains(s.ToString(),
-                                    "partitions[2] = 99 is not in [0, 4)"))
+  EXPECT_TRUE(
+      absl::StrContains(s.ToString(), "partitions[2] = 99 is not in [0, 4)"))
       << s;
 }
 
@@ -188,15 +188,19 @@ static Graph* DynamicPartition(int num_partitions, int dim) {
   return g;
 }
 
-#define BM_DYNAMIC_PARTITION(DEVICE, T, num)                            \
-  static void BM_##DEVICE##_dynpart_##T##_##num(int iters, int dim) {   \
-    const int64 items = ((128 << 20) / sizeof(T));                      \
-    const int64 tot = static_cast<int64>(iters) * items;                \
-    testing::ItemsProcessed(tot);                                       \
-    testing::UseRealTime();                                             \
-    test::Benchmark(#DEVICE, DynamicPartition<T>(num, dim)).Run(iters); \
-  }                                                                     \
-  BENCHMARK(BM_##DEVICE##_dynpart_##T##_##num)->Arg(1)->Arg(256)
+#define BM_DYNAMIC_PARTITION(DEVICE, T, num)                          \
+  static void BM_##DEVICE##_dynpart_##T##_##num(                      \
+      ::testing::benchmark::State& state) {                           \
+    const int dim = state.range(0);                                   \
+                                                                      \
+    const int64 items = ((128 << 20) / sizeof(T));                    \
+    test::Benchmark(#DEVICE, DynamicPartition<T>(num, dim),           \
+                    /*old_benchmark_api=*/false)                      \
+        .Run(state);                                                  \
+    const int64 tot = static_cast<int64>(state.iterations()) * items; \
+    state.SetItemsProcessed(tot);                                     \
+  }                                                                   \
+  BENCHMARK(BM_##DEVICE##_dynpart_##T##_##num)->UseRealTime()->Arg(1)->Arg(256)
 
 BM_DYNAMIC_PARTITION(cpu, float, 2);
 BM_DYNAMIC_PARTITION(cpu, float, 100);

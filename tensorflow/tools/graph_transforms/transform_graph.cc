@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 #if !defined(PLATFORM_WINDOWS)
 #include <pwd.h>
+#include <unistd.h>
 #endif
 
 namespace tensorflow {
@@ -286,7 +287,7 @@ Status ShouldIgnoreErrors(const TransformFuncParameters& transform_params,
   if (transform_params.count("ignore_errors") &&
       (!transform_params.at("ignore_errors").empty())) {
     const string& ignore_errors_string =
-        str_util::Lowercase(transform_params.at("ignore_errors").at(0));
+        absl::AsciiStrToLower(transform_params.at("ignore_errors").at(0));
     if (ignore_errors_string == "true") {
       *ignore_errors = true;
     } else if (ignore_errors_string == "false") {

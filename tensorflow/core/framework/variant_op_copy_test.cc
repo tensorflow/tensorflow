@@ -244,7 +244,7 @@ TEST(VariantOpCopyTest, CreateConstOnGPUFailsGracefully) {
   // Create the input StoredTensorValue and serialize it.
   StoredTensorValue from;
   from.stored = Tensor(DT_STRING, TensorShape({}));
-  from.stored.scalar<string>()() = "hi";
+  from.stored.scalar<tstring>()() = "hi";
   VariantTensorData data;
   data.set_type_name(from.TypeName());
   from.Encode(&data);
@@ -260,8 +260,8 @@ TEST(VariantOpCopyTest, CreateConstOnGPUFailsGracefully) {
   ClientSession session(root);
   std::vector<Tensor> outputs;
   Status s = session.Run({create_const}, &outputs);
-  EXPECT_TRUE(str_util::StrContains(s.error_message(),
-                                    "GPU copy from non-DMA string tensor"))
+  EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                "GPU copy from non-DMA string tensor"))
       << s.ToString();
 }
 
@@ -292,7 +292,7 @@ TEST(VariantOpCopyTest, CreateCopyCPUToCPU) {
 TEST(VariantOpCopyTest, CreateCopyCPUToCPUString) {
   Scope root = Scope::NewRootScope().WithDevice("/cpu:0");
   Tensor t_str(DT_STRING, TensorShape({}));
-  t_str.scalar<string>()() = "hi";
+  t_str.scalar<tstring>()() = "hi";
   Output create_op = CreateTestVariant(root, t_str);
   Output identity = ops::Identity(root, create_op);
 
@@ -309,7 +309,7 @@ TEST(VariantOpCopyTest, CreateCopyCPUToCPUString) {
     EXPECT_EQ("StoredTensorValue", r1.TypeName());
     const StoredTensorValue* v1 = r1.get<StoredTensorValue>();
     EXPECT_NE(v1, nullptr);
-    EXPECT_EQ("hi", v1->stored.scalar<string>()());
+    EXPECT_EQ("hi", v1->stored.scalar<tstring>()());
   }
 }
 
@@ -356,7 +356,7 @@ TEST(VariantOpCopyTest, CreateCopyCPUToGPUStringFailsSafely) {
   Scope root = Scope::NewRootScope().WithDevice("/cpu:0");
   Scope with_gpu = root.WithDevice("/gpu:0");
   Tensor t_str(DT_STRING, TensorShape({}));
-  t_str.scalar<string>()() = "hi";
+  t_str.scalar<tstring>()() = "hi";
   Output create_op = CreateTestVariant(root, t_str);
   Output identity = ops::Identity(with_gpu, create_op);
 
@@ -367,9 +367,9 @@ TEST(VariantOpCopyTest, CreateCopyCPUToGPUStringFailsSafely) {
   Status err = session.Run({create_op, identity}, &outputs);
   EXPECT_EQ(err.code(), errors::Code::INVALID_ARGUMENT);
   EXPECT_TRUE(
-      str_util::StrContains(err.error_message(),
-                            "During Variant Host->Device Copy: non-DMA-copy "
-                            "attempted of tensor type: string"))
+      absl::StrContains(err.error_message(),
+                        "During Variant Host->Device Copy: non-DMA-copy "
+                        "attempted of tensor type: string"))
       << err.error_message();
 }
 

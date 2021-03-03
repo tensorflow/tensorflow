@@ -17,72 +17,140 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-def _map_parallelization_test_cases():
-  """Generates test cases for the MapParallelization optimization."""
-
-  identity = lambda x: x
-  increment = lambda x: x + 1
-
+def _test_combinations():
   def assert_greater(x):
     assert_op = control_flow_ops.Assert(math_ops.greater(x, -1), [x])
     with ops.control_dependencies([assert_op]):
       return x
 
-  def random(_):
-    return random_ops.random_uniform([],
-                                     minval=0,
-                                     maxval=10,
-                                     dtype=dtypes.int64,
-                                     seed=42)
+  cases = [
+      ("Identity", lambda x: x, True),
+      ("Increment", lambda x: x + 1, True),
+      ("AssertGreater", assert_greater, True),
+  ]
 
-  def assert_with_random(x):
-    x = assert_greater(x)
-    return random(x)
+  def reduce_fn(x, y):
+    name, function, should_optimize = y
+    return x + combinations.combine(
+        function=combinations.NamedObject(name, function),
+        should_optimize=should_optimize)
 
-  return (("Identity", identity, True), ("Increment", increment, True),
-          ("AssertGreater", assert_greater, True), ("Random", random, False),
-          ("AssertWithRandom", assert_with_random, False))
+  return functools.reduce(reduce_fn, cases, [])
 
 
 class MapParallelizationTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  @parameterized.named_parameters(*_map_parallelization_test_cases())
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         _test_combinations()))
   def testMapParallelization(self, function, should_optimize):
     next_nodes = ["ParallelMap"] if should_optimize else ["Map"]
     dataset = dataset_ops.Dataset.range(5).apply(
-        optimization.assert_next(next_nodes)).map(function)
+        testing.assert_next(next_nodes)).map(function)
     options = dataset_ops.Options()
-    options.experimental_map_parallelization = True
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.map_parallelization = True
     dataset = dataset.with_options(options)
-    iterator = dataset.make_one_shot_iterator()
-    get_next = iterator.get_next()
+    self.assertDatasetProduces(
+        dataset, expected_output=[function(x) for x in range(5)])
 
-    with self.test_session() as sess:
-      for x in range(5):
-        result = sess.run(get_next)
-        # No need to run the pipeline if it was not optimized.  Also the results
-        # might be hard to check because of random.
-        if not should_optimize:
-          return
-        r = function(x)
-        self.assertAllEqual(r, result)
+  @combinations.generate(test_base.default_test_combinations())
+  def testCapturedConstant(self):
+    captured_t = constant_op.constant(42, dtype=dtypes.int64)
+    def fn(x):
+      return x + captured_t
+    dataset = dataset_ops.Dataset.range(5).apply(
+        testing.assert_next(["ParallelMap"])).map(fn)
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.map_parallelization = True
+    dataset = dataset.with_options(options)
+    self.assertDatasetProduces(
+        dataset, expected_output=[x + 42 for x in range(5)])
 
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+  @combinations.generate(test_base.default_test_combinations())
+  def testCapturedVariable(self):
+    captured_t = variables.Variable(42, dtype=dtypes.int64)
+    def fn(x):
+      return x + captured_t
+    dataset = dataset_ops.Dataset.range(5).apply(
+        testing.assert_next(["Map"])).map(fn)
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.map_parallelization = True
+    dataset = dataset.with_options(options)
+    self.evaluate(variables.global_variables_initializer())
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[x + 42 for x in range(5)],
+        requires_initialization=True)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(apply_autotune=[None, True, False])))
+  def testAutotuneOption(self, apply_autotune):
+    next_nodes = ["ParallelMap"] if (apply_autotune is not False) else ["Map"]  # pylint: disable=g-bool-id-comparison
+    dataset = dataset_ops.Dataset.range(4).apply(
+        testing.assert_next(next_nodes)).map(lambda x: x + 2)
+
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.map_parallelization = True
+    if apply_autotune is not None:
+      options.experimental_optimization.autotune = apply_autotune
+    dataset = dataset.with_options(options)
+    self.assertDatasetProduces(dataset, expected_output=[2, 3, 4, 5])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNoParallelizationInsideInterleave(self):
+
+    def func(i):
+      ds = dataset_ops.Dataset.range(i).apply(testing.assert_next(
+          ["Map"])).map(lambda x: x + 1)
+      return ds
+
+    dataset = dataset_ops.Dataset.range(1, 4).interleave(
+        map_func=func, cycle_length=2, block_length=2)
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.map_parallelization = True
+    dataset = dataset.with_options(options)
+
+    self.assertDatasetProduces(dataset, expected_output=[1, 1, 2, 1, 2, 3])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNoParallelizationInsideFlatMap(self):
+
+    def func(i):
+      ds = dataset_ops.Dataset.range(i).apply(testing.assert_next(
+          ["Map"])).map(lambda x: x + 1)
+      return ds
+
+    dataset = dataset_ops.Dataset.range(1, 4).flat_map(map_func=func)
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.map_parallelization = True
+    dataset = dataset.with_options(options)
+
+    self.assertDatasetProduces(dataset, expected_output=[1, 1, 2, 1, 2, 3])
 
 
 if __name__ == "__main__":

@@ -18,24 +18,30 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.compiler.tf2xla.python import xla
 from tensorflow.compiler.xla import xla_data_pb2
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
 
 
-class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
+class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
 
   def _assertOpOutputMatchesExpected(self, op, args, expected,
                                      equality_fn=None):
-    with self.test_session() as session:
+    with self.session() as session:
       with self.test_scope():
         placeholders = [
             array_ops.placeholder(dtypes.as_dtype(arg.dtype), arg.shape)
@@ -75,6 +81,25 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
           lambda x: xla.broadcast(x, (7, 42)),
           args=(v,),
           expected=np.tile(v, (7, 42, 1, 1)))
+
+  @test_util.disable_mlir_bridge('Not supported yet')
+  def testGather(self):
+    operand = np.arange(10, dtype=np.int32).reshape([2, 5])
+    start_indices = np.array([2], np.int32)
+    slice_sizes = np.array([1, 3], np.int32)
+
+    def gather(operand, start_indices):
+      dimension_numbers = xla_data_pb2.GatherDimensionNumbers()
+      dimension_numbers.offset_dims.extend([1])
+      dimension_numbers.collapsed_slice_dims.extend([0])
+      dimension_numbers.start_index_map.extend([0])
+      dimension_numbers.index_vector_dim = 1
+      return xla.gather(operand, start_indices, dimension_numbers, slice_sizes)
+
+    self._assertOpOutputMatchesExpected(
+        gather,
+        args=(operand, start_indices),
+        expected=np.array([[5, 6, 7]]))
 
   def testShiftRightLogical(self):
     self._assertOpOutputMatchesExpected(
@@ -180,6 +205,35 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
               ],
               dtype=dtype))
 
+  def testDotGeneralInt8xInt8ToInt32(self):
+
+    def dot_fn(lhs, rhs):
+      dnums = xla_data_pb2.DotDimensionNumbers()
+      dnums.lhs_contracting_dimensions.append(2)
+      dnums.rhs_contracting_dimensions.append(1)
+      dnums.lhs_batch_dimensions.append(0)
+      dnums.rhs_batch_dimensions.append(0)
+      return xla.dot_general(
+          lhs, rhs, dimension_numbers=dnums, preferred_element_type=np.int32)
+
+    lhs = np.array([
+        [[1, 2], [3, 4]],
+        [[5, 6], [7, 8]],
+    ], dtype=np.int8)
+    rhs = np.array([
+        [[1, 2, 3], [4, 5, 6]],
+        [[7, 8, 9], [10, 11, 12]],
+    ],
+                   dtype=np.int8)
+    self._assertOpOutputMatchesExpected(
+        dot_fn,
+        args=(lhs, rhs),
+        expected=np.array([
+            [[9, 12, 15], [19, 26, 33]],
+            [[95, 106, 117], [129, 144, 159]],
+        ],
+                          dtype=np.int32))
+
   def testNeg(self):
     for dtype in self.numeric_types - {np.uint8, np.int8}:
       self._assertOpOutputMatchesExpected(
@@ -206,6 +260,111 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
                [7, 7, 7, 7, 7], [7, 2, 3, 7, 7], [7, 7, 7, 7, 7]],
               dtype=dtype))
 
+  def testPadNegative(self):
+    for dtype in self.numeric_types:
+
+      def pad_fn(x):
+        return xla.pad(
+            x,
+            padding_value=7,
+            padding_low=[0, -1],
+            padding_high=[1, -2],
+            padding_interior=[1, 2])
+
+      self._assertOpOutputMatchesExpected(
+          pad_fn,
+          args=(np.arange(6, dtype=np.int32).astype(dtype).reshape([2, 3]),),
+          expected=np.array(
+              [[7, 7, 1, 7], [7, 7, 7, 7], [7, 7, 4, 7], [7, 7, 7, 7]],
+              dtype=dtype))
+
+  def testPadShapeInference(self):
+    a = array_ops.placeholder(np.float32, shape=(2, 3))
+
+    c = xla.pad(
+        a,
+        padding_value=7,
+        padding_low=[2, 1],
+        padding_high=[1, 2],
+        padding_interior=[1, 4])
+
+    self.assertEqual(c.shape, tensor_shape.TensorShape([6, 14]))
+
+    c = xla.pad(
+        a,
+        padding_value=7,
+        padding_low=[2, -2],
+        padding_high=[1, -2],
+        padding_interior=[1, 2])
+
+    self.assertEqual(c.shape, tensor_shape.TensorShape([6, 3]))
+
+    # 0-sized input dimension and interior padding
+    c = xla.pad(
+        array_ops.placeholder(np.float32, shape=(2, 0)),
+        padding_value=7,
+        padding_low=[2, 1],
+        padding_high=[1, 1],
+        padding_interior=[1, 2])
+
+    self.assertEqual(c.shape, tensor_shape.TensorShape([6, 2]))
+
+    with self.assertRaisesRegex(
+        ValueError, 'padding_value input must be scalar, found rank 1 '):
+      xla.pad(
+          a,
+          padding_value=[0, 1],
+          padding_low=[0, 0],
+          padding_high=[0, 0],
+          padding_interior=[0, 0])
+
+    with self.assertRaisesRegex(ValueError,
+                                'padding_low must be a 1D tensor of size 2 '):
+      xla.pad(
+          a,
+          padding_value=7,
+          padding_low=[0, 0, 0],
+          padding_high=[0, 0],
+          padding_interior=[0, 0])
+
+    with self.assertRaisesRegex(ValueError,
+                                'padding_high must be a 1D tensor of size 2 '):
+      xla.pad(
+          a,
+          padding_value=7,
+          padding_low=[0, 0],
+          padding_high=[0, 0, 0],
+          padding_interior=[0, 0])
+
+    with self.assertRaisesRegex(
+        ValueError, 'padding_interior must be a 1D tensor of size 2 '):
+      xla.pad(
+          a,
+          padding_value=7,
+          padding_low=[0, 0],
+          padding_high=[0, 0],
+          padding_interior=[0])
+
+    with self.assertRaisesRegex(
+        ValueError,
+        'padding_interior must contain only non-negative values, found -2 '):
+      xla.pad(
+          a,
+          padding_value=7,
+          padding_low=[0, 0],
+          padding_high=[0, 0],
+          padding_interior=[-2, 0])
+
+    with self.assertRaisesRegex(
+        ValueError, 'resulting padded dimension has negative size -1 '):
+      xla.pad(
+          a,
+          padding_value=7,
+          padding_low=[-3, 0],
+          padding_high=[0, 0],
+          padding_interior=[0, 0])
+
+  @test_util.disable_mlir_bridge('Not supported yet')
   def testReduce(self):
     for dtype in set(self.numeric_types).intersection(
         set([dtypes.bfloat16.as_numpy_dtype, np.float32])):
@@ -256,6 +415,79 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
           args=(np.arange(12, dtype=np.int32).astype(dtype).reshape([3, 4]),),
           expected=np.array([0, 45, 120, 231], dtype=dtype))
 
+  @test_util.disable_mlir_bridge('Not supported yet')
+  def testVariadicReduce(self):
+    for dtype in set(self.numeric_types).intersection(
+        set([np.float32, np.complex64])):
+
+      @def_function.function
+      def kahan_sum_reducer(t0, t1):
+        (s0, c0), (s1, c1) = t0, t1
+        s0minusc = s0 - (c0 + c1)
+        t = s1 + s0minusc
+        c = (t - s1) - s0minusc
+        s = t
+        return s, c
+
+      def kahan_sum_reduction(dims, output_idx):
+
+        def fn(x):
+          arg = array_ops.zeros([], dtype)  # pylint: disable=cell-var-from-loop
+          reducer = kahan_sum_reducer.get_concrete_function(
+              (arg, arg), (arg, arg))
+
+          return xla.variadic_reduce(
+              (x, array_ops.zeros_like(x)),
+              init_value=(arg, arg),
+              dimensions_to_reduce=dims,
+              reducer=reducer)[output_idx]
+
+        return fn
+
+      xs = np.array([1e5, np.pi, -1e5, np.exp(1.)])
+      xs = np.array([xs, xs[::-1] / 3, xs / 7], dtype)
+      self._assertOpOutputMatchesExpected(
+          kahan_sum_reduction(dims=[], output_idx=0),
+          args=(xs,), expected=xs)
+      self._assertOpOutputMatchesExpected(
+          kahan_sum_reduction(dims=[], output_idx=1),
+          args=(xs,), expected=np.zeros_like(xs))
+      shuffle_indices = np.argsort(np.random.randn(xs.shape[0]))
+      self._assertOpOutputMatchesExpected(
+          kahan_sum_reduction(dims=[0], output_idx=0),
+          args=(xs[shuffle_indices],),
+          expected=np.array([np.exp(1) / 3 + 1e5 * 8 / 7,
+                             np.pi * 8 / 7 - 1e5 / 3,
+                             -1e5 * 8 / 7 + np.pi / 3,
+                             np.exp(1) * 8 / 7 + 1e5 / 3], dtype=dtype))
+      error_term_equality = functools.partial(self.assertAllClose, atol=.005)
+      self._assertOpOutputMatchesExpected(
+          kahan_sum_reduction(dims=[0], output_idx=1),
+          args=(xs[shuffle_indices],), expected=np.zeros_like(xs[0]),
+          equality_fn=error_term_equality)
+      shuffle_indices = np.argsort(np.random.randn(xs.shape[1]))
+      self._assertOpOutputMatchesExpected(
+          kahan_sum_reduction(dims=[1], output_idx=0),
+          args=(xs[:, shuffle_indices],),
+          expected=np.array([np.pi + np.exp(1.),
+                             (np.pi + np.exp(1.)) / 3,
+                             (np.pi + np.exp(1.)) / 7], dtype=dtype))
+      self._assertOpOutputMatchesExpected(
+          kahan_sum_reduction(dims=[1], output_idx=1),
+          args=(xs[:, shuffle_indices],), expected=np.zeros_like(xs[:, 0]),
+          equality_fn=error_term_equality)
+      # Now, shuffle both dims.
+      xs = xs[np.argsort(np.random.randn(xs.shape[0]))]
+      xs = xs[:, np.argsort(np.random.randn(xs.shape[1]))]
+      self._assertOpOutputMatchesExpected(
+          kahan_sum_reduction(dims=[0, 1], output_idx=0),
+          args=(xs,), expected=dtype((np.pi + np.exp(1.)) * 31 / 21))
+      self._assertOpOutputMatchesExpected(
+          kahan_sum_reduction(dims=[0, 1], output_idx=1),
+          args=(xs,), expected=dtype(0),
+          equality_fn=error_term_equality)
+
+  @test_util.disable_mlir_bridge('Not supported yet')
   def testSelectAndScatter(self):
     for dtype in set(self.numeric_types).intersection(
         set([dtypes.bfloat16.as_numpy_dtype, np.float32])):
@@ -309,32 +541,109 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
                         [[673, 674], [683, 684], [693, 694]]]),
               dtype=dtype))
 
+  @test_util.disable_mlir_bridge('Error handling')
   def testDynamicSliceWithIncorrectStartIndicesShape(self):
-    with self.test_session() as session:
+    with self.session() as session:
       with self.test_scope():
         output = xla.dynamic_slice(
             np.arange(1000, dtype=np.int32).reshape([10, 10, 10]),
             np.array([5, 7]), np.array([2, 3, 4]))
       with self.assertRaises(errors.InvalidArgumentError) as invalid_arg_error:
         session.run(output)
-      self.assertRegexpMatches(
+      self.assertRegex(
           invalid_arg_error.exception.message,
-          (r'^start_indices must be a vector with length equal to input rank, '
+          (r'start_indices must be a vector with length equal to input rank, '
            r'but input rank is 3 and start_indices has shape \[2\].*'))
 
+  @test_util.disable_mlir_bridge('Error handling')
   def testDynamicSliceWithIncorrectSizeIndicesShape(self):
-    with self.test_session() as session:
+    with self.session() as session:
       with self.test_scope():
         output = xla.dynamic_slice(
             np.arange(1000, dtype=np.int32).reshape([10, 10, 10]),
             np.array([5, 7, 3]), np.array([2, 3]))
       with self.assertRaises(errors.InvalidArgumentError) as invalid_arg_error:
         session.run(output)
-      self.assertRegexpMatches(
+      self.assertRegex(
           invalid_arg_error.exception.message,
-          (r'^size_indices must be a vector with length equal to input rank, '
+          (r'size_indices must be a vector with length equal to input rank, '
            r'but input rank is 3 and size_indices has shape \[2\].*'))
 
 
+class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
+
+  def testDotDifferentNumberOfContractingDimensions(self):
+    a = array_ops.placeholder(np.float32, shape=(4, 4, 4, 4))
+    b = array_ops.placeholder(np.float32, shape=(4, 4, 4, 4))
+
+    dim_nums = xla_data_pb2.DotDimensionNumbers()
+    dim_nums.lhs_contracting_dimensions.append(2)
+    dim_nums.rhs_contracting_dimensions.append(2)
+    dim_nums.rhs_contracting_dimensions.append(3)
+
+    with self.assertRaisesRegex(ValueError,
+                                'Must specify the same number of contracting '
+                                'dimensions for lhs and rhs. Got: 1 and 2'):
+      xla.dot_general(a, b, dim_nums)
+
+  def testDotDifferentContractingDimensionsSizes(self):
+    a = array_ops.placeholder(np.float32, shape=(2, 2, 2, 2))
+    b = array_ops.placeholder(np.float32, shape=(4, 4, 4, 4))
+
+    dim_nums = xla_data_pb2.DotDimensionNumbers()
+    dim_nums.lhs_contracting_dimensions.append(2)
+    dim_nums.rhs_contracting_dimensions.append(3)
+
+    with self.assertRaisesRegex(ValueError,
+                                'Contracting dimension sizes do not match. '
+                                'Got: 2 and 4'):
+      xla.dot_general(a, b, dim_nums)
+
+  def testDotDifferentNumberOfBatchDimensions(self):
+    a = array_ops.placeholder(np.float32, shape=(4, 4, 4, 4))
+    b = array_ops.placeholder(np.float32, shape=(4, 4, 4, 4))
+
+    dim_nums = xla_data_pb2.DotDimensionNumbers()
+    dim_nums.lhs_batch_dimensions.append(2)
+    dim_nums.rhs_batch_dimensions.append(2)
+    dim_nums.rhs_batch_dimensions.append(3)
+
+    with self.assertRaisesRegex(ValueError,
+                                'Must specify the same number of batch '
+                                'dimensions for lhs and rhs. Got: 1 and 2'):
+      xla.dot_general(a, b, dim_nums)
+
+  def testDotDifferentBatchDimensionsSizes(self):
+    a = array_ops.placeholder(np.float32, shape=(2, 2, 2, 2))
+    b = array_ops.placeholder(np.float32, shape=(4, 4, 4, 2))
+
+    dim_nums = xla_data_pb2.DotDimensionNumbers()
+    dim_nums.lhs_contracting_dimensions.append(2)
+    dim_nums.rhs_contracting_dimensions.append(3)
+    dim_nums.lhs_batch_dimensions.append(0)
+    dim_nums.rhs_batch_dimensions.append(0)
+
+    with self.assertRaisesRegex(ValueError,
+                                'Batch dimension sizes do not match. '
+                                'Got: 2 and 4'):
+      xla.dot_general(a, b, dim_nums)
+
+  def testDotShapeInference(self):
+    a = array_ops.placeholder(np.float32, shape=(1, 2, 3, 4))
+    b = array_ops.placeholder(np.float32, shape=(4, 3, 2, 1))
+
+    dim_nums = xla_data_pb2.DotDimensionNumbers()
+    dim_nums.lhs_contracting_dimensions.append(1)
+    dim_nums.rhs_contracting_dimensions.append(2)
+    dim_nums.lhs_batch_dimensions.append(3)
+    dim_nums.rhs_batch_dimensions.append(0)
+
+    c = xla.dot_general(a, b, dim_nums)
+    self.assertEqual(c.shape, tensor_shape.TensorShape([4, 1, 3, 3, 1]))
+
+
 if __name__ == '__main__':
+  # This test is using Tensorflow sessions which are not compatible with eager
+  # mode.
+  ops.disable_eager_execution()
   googletest.main()

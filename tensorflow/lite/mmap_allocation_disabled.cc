@@ -13,15 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/allocation.h"
-
 #include <cassert>
+
+#include "tensorflow/lite/allocation.h"
 
 namespace tflite {
 
 MMAPAllocation::MMAPAllocation(const char* filename,
                                ErrorReporter* error_reporter)
-    : Allocation(error_reporter), mmapped_buffer_(nullptr) {
+    : MMAPAllocation(error_reporter, -1) {}
+
+MMAPAllocation::MMAPAllocation(int fd, ErrorReporter* error_reporter)
+    : MMAPAllocation(error_reporter, -1) {}
+
+MMAPAllocation::MMAPAllocation(ErrorReporter* error_reporter, int owned_fd)
+    : Allocation(error_reporter, Allocation::Type::kMMap),
+      mmapped_buffer_(nullptr) {
   // The disabled variant should never be created.
   assert(false);
 }

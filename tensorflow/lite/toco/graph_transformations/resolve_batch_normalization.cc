@@ -40,6 +40,13 @@ namespace toco {
   const auto& multiplier_array = model->GetArray(bn_op->inputs[2]);
   const auto& offset_array = model->GetArray(bn_op->inputs[3]);
 
+  // This graph transformation needs to address constant buffers below, so
+  // we need to exit early if these buffers don't exist yet (i.e. if the params
+  // haven't yet been resolved as constants) and will process it once they have.
+  if (!mean_array.buffer || !multiplier_array.buffer || !offset_array.buffer) {
+    return ::tensorflow::Status::OK();
+  }
+
   CHECK(IsConstantParameterArray(*model, bn_op->inputs[1]) &&
         IsConstantParameterArray(*model, bn_op->inputs[2]) &&
         IsConstantParameterArray(*model, bn_op->inputs[3]))
@@ -52,22 +59,17 @@ namespace toco {
   CHECK(multiplier_array.data_type == ArrayDataType::kFloat);
   CHECK(offset_array.data_type == ArrayDataType::kFloat);
 
-  // This graph transformations will need to address constant buffers below,
-  // so we need to exit early if these buffers don't exist (i.e. if the params
-  // haven't yet been resolved as constants).
-  if (!mean_array.buffer || !multiplier_array.buffer || !offset_array.buffer) {
-    return ::tensorflow::Status::OK();
-  }
-
   // Create the new Mul, Add operators
   auto* mul_op = new MulOperator;
   auto* add_op = new AddOperator;
-  const string mul_name =
+  const std::string mul_name =
       AvailableArrayName(*model, bn_op->outputs[0] + "_mul");
-  const string add_name =
+  const std::string add_name =
       AvailableArrayName(*model, bn_op->outputs[0] + "_add");
-  const string mul_param_name = AvailableArrayName(*model, mul_name + "_param");
-  const string add_param_name = AvailableArrayName(*model, add_name + "_param");
+  const std::string mul_param_name =
+      AvailableArrayName(*model, mul_name + "_param");
+  const std::string add_param_name =
+      AvailableArrayName(*model, add_name + "_param");
   mul_op->inputs = {bn_op->inputs[0], mul_param_name};
   mul_op->outputs = {mul_name};
   add_op->inputs = {mul_name, add_param_name};
@@ -123,12 +125,12 @@ namespace toco {
       multiplier_array.GetBuffer<ArrayDataType::kFloat>().data;
   const auto& offset_float_data =
       offset_array.GetBuffer<ArrayDataType::kFloat>().data;
-
-  CHECK(mul_float_data.size() == buffer_size);
-  CHECK(add_float_data.size() == buffer_size);
-  CHECK(mean_float_data.size() == buffer_size);
-  CHECK(multiplier_float_data.size() == buffer_size);
-  CHECK(offset_float_data.size() == buffer_size);
+  size_t buffer_size_for_compare = buffer_size;
+  CHECK(mul_float_data.size() == buffer_size_for_compare);
+  CHECK(add_float_data.size() == buffer_size_for_compare);
+  CHECK(mean_float_data.size() == buffer_size_for_compare);
+  CHECK(multiplier_float_data.size() == buffer_size_for_compare);
+  CHECK(offset_float_data.size() == buffer_size_for_compare);
 
   for (int i = 0; i < buffer_size; i++) {
     mul_float_data[i] = multiplier_float_data[i];
@@ -136,14 +138,7 @@ namespace toco {
         offset_float_data[i] - mean_float_data[i] * multiplier_float_data[i];
   }
 
-  // Remove the old param arrays
-  DeleteArrayIfUsedOnce(bn_op->inputs[1], model);
-  DeleteArrayIfUsedOnce(bn_op->inputs[2], model);
-  DeleteArrayIfUsedOnce(bn_op->inputs[3], model);
-
-  // Remove the old operator
-  DCHECK_EQ(bn_it->get(), bn_op);
-  model->operators.erase(bn_it);
+  DeleteOpAndArrays(model, bn_op);
 
   *modified = true;
   return ::tensorflow::Status::OK();

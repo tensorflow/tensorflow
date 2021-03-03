@@ -23,11 +23,16 @@ namespace tensorflow {
 #if !defined(__ANDROID_TYPES_SLIM__)
 
 REGISTER6(BinaryOp, CPU, "Equal", functor::equal_to, int32, int64, complex64,
-          complex128, string, bool);
-#if GOOGLE_CUDA
+          complex128, tstring, bool);
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
+    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER6(BinaryOp, GPU, "Equal", functor::equal_to, int8, int16, int64,
           complex64, complex128, bool);
-#endif  // GOOGLE_CUDA
+#else
+REGISTER2(BinaryOp, GPU, "Equal", functor::equal_to, complex64, complex128);
+#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #endif  // !defined(__ANDROID_TYPES_SLIM__)
 

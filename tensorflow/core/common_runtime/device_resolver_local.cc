@@ -15,35 +15,34 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
-void DeviceResolverLocal::GetDeviceLocalitiesAsync(
-    const CollInstanceParams& ci_params,
-    std::vector<DeviceLocality>* localities, const StatusCallback& done) {
-  localities->clear();
-  for (const string& device_name : ci_params.device_names) {
-    Device* dev;
-    Status s = dev_mgr_->LookupDevice(device_name, &dev);
-    if (!s.ok()) {
-      done(s);
-      return;
-    }
-    localities->push_back(dev->attributes().locality());
+Status DeviceResolverLocal::GetDeviceAttributes(const string& device,
+                                                DeviceAttributes* attributes) {
+  Device* dev;
+  // LookupDevice returns InvalidArgument if the device is not found.
+  Status s = dev_mgr_->LookupDevice(device, &dev);
+  if (errors::IsInvalidArgument(s)) {
+    return errors::NotFound(device, " not found");
+  } else if (!s.ok()) {
+    return s;
   }
-  done(Status::OK());
+  *attributes = dev->attributes();
+  return Status::OK();
 }
 
-void DeviceResolverLocal::GetLocalityAsync(const string& device,
-                                           const string& task,
-                                           DeviceLocality* locality,
-                                           const StatusCallback& done) {
-  Device* dev;
-  Status s = dev_mgr_->LookupDevice(device, &dev);
-  if (s.ok()) {
-    *locality = dev->attributes().locality();
-  }
-  done(s);
+Status DeviceResolverLocal::GetAllDeviceAttributes(
+    const string& task, std::vector<DeviceAttributes>* attributes) {
+  return errors::Internal(
+      "GetTaskCached is not supposed to be called in local collectives");
+}
+
+Status DeviceResolverLocal::UpdateDeviceAttributes(
+    const std::vector<DeviceAttributes>& attributes) {
+  return errors::Internal(
+      "UpdateDeviceAttributes shouldn't be called with local collectives");
 }
 
 }  // namespace tensorflow

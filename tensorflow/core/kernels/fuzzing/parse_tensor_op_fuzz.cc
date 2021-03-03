@@ -25,7 +25,7 @@ class FuzzParseTensor : public FuzzSession {
   void BuildGraph(const Scope& scope) final {
     using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
     // The serialized proto.
-    auto input = Placeholder(scope.WithOpName("input1"), DT_STRING);
+    auto input = Placeholder(scope.WithOpName("input"), DT_STRING);
 
     (void)ParseTensor(scope.WithOpName("output"), input, DT_FLOAT);
   }
@@ -41,6 +41,8 @@ class FuzzParseTensor : public FuzzSession {
     // remainder of the fuzzer testing. Of course, this duplicates some work
     // but it's better than repeating the investigation whenever Autofuzz
     // detects another similar OOM.
+    // After adding `-fsanitize=null` to ASAN (cl/317376103), the memory
+    // footprint increased, so we lower the maximum threshold to 2^18.
     string as_string = string(reinterpret_cast<const char*>(data), size);
     TensorProto proto;
     if (!ParseProtoUnlimited(&proto, as_string)) {
@@ -53,7 +55,7 @@ class FuzzParseTensor : public FuzzSession {
     }
     TensorShape shape(proto.tensor_shape());
     const int64 num_elements = shape.num_elements();
-    const int64 max_num_elements = 1 << 20;
+    const int64 max_num_elements = 1 << 18;
     if (num_elements > max_num_elements) {
       LOG(WARNING) << "Requiring a tensor with too many elements\n";
       return;
@@ -61,9 +63,8 @@ class FuzzParseTensor : public FuzzSession {
 
     // Now we can do the actual fuzz implementation
     Tensor input_tensor(tensorflow::DT_STRING, TensorShape({}));
-    input_tensor.scalar<string>()() = as_string;
-    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
-    RunOneInput(input_tensor).IgnoreError();
+    input_tensor.scalar<tstring>()() = as_string;
+    RunInputs({{"input", input_tensor}});
   }
 };
 

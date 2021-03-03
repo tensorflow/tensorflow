@@ -27,6 +27,10 @@ namespace window_util {
 // to 1.
 Window MakeWindow(absl::Span<const int64> sizes);
 
+// Creates a window with the given sizes in the dimensions and given strides.
+Window MakeWindow(absl::Span<const int64> sizes,
+                  absl::Span<const int64> strides);
+
 // Creates a padding config with symmetrical padding in each dimension, of value
 // given by sizes; e.g. {0, 1, 2} would create a R3 padding config that had zero
 // pixels of padding in dimension 0, one pixel of padding symmetrically, on each
@@ -55,11 +59,15 @@ bool HasBaseDilation(const Window& window);
 bool HasWindowDilation(const Window& window);
 bool HasDilation(const Window& window);
 
-bool HasWindowReversal(const Window& window);
+// Returns true if the window overlaps.
+bool HasOverlappingWindow(const Window& window);
 
-// Returns true if the given logical dimension is inactive in the sense that it
-// has window bound 1, no striding and no padding.
-bool IsInactiveWindowDimension(const Window& window, int64 logical_dim);
+bool HasWindowReversal(const Window& window);
+bool AllOrNoneReversed(const Window& window);
+
+// Returns true if the provided window dimension is trivial in the sense that it
+// has window bound 1, no striding, no padding and no dilation.
+bool IsTrivialWindowDimension(const WindowDimension& window_dimension);
 
 // Returns the new bound after dilation.
 //

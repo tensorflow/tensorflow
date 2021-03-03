@@ -14,18 +14,60 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
+
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
-#include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 
 namespace xla {
+namespace gpu {
+
+// Creating dummy data structure needed to initialize a GpuDummyCompiler
+PLATFORM_DEFINE_ID(kDummyTestId);
+constexpr char kDummyTriple[] = "dummy-triple";
+constexpr char kDummyLayout[] = "e";
+
+// This class is a dummy implementation of GpuCompiler and is targeted for unit
+// test only
+class GpuDummyCompiler : public GpuCompiler {
+ public:
+  GpuDummyCompiler() : GpuCompiler(kDummyTestId, kDummyTriple, kDummyLayout) {}
+
+  Status OptimizeHloConvolutionCanonicalization(
+      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      se::DeviceMemoryAllocator* device_allocator) {
+    return Status::OK();
+  }
+
+  Status OptimizeHloPostLayoutAssignment(
+      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      se::DeviceMemoryAllocator* device_allocator) {
+    return Status::OK();
+  }
+
+  GpuVersion GetGpuVersion(se::StreamExecutor*) override {
+    return std::make_pair(0, 0);
+  }
+
+  StatusOr<std::pair<std::string, std::vector<uint8>>> CompileTargetBinary(
+      const HloModuleConfig& module_config, llvm::Module* llvm_module,
+      GpuVersion gpu_version, se::StreamExecutor* stream_exec, bool relocatable,
+      const HloModule* debug_module) {
+    std::vector<uint8> compiled_results;
+    return std::pair<std::string, std::vector<uint8>>(
+        "", std::move(compiled_results));
+  }
+};
+}  // namespace gpu
+
 namespace {
 
 class LLVMCompilerTest : public ::testing::Test {
@@ -68,7 +110,7 @@ class LLVMCompilerTest : public ::testing::Test {
     builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
 
-    auto hlo_module = CreateNewModule();
+    auto hlo_module = CreateNewVerifiedModule();
     hlo_module->AddEntryComputation(builder.Build());
 
     compiler->SetPreOptimizationHook(pre_opt_hook);
@@ -90,7 +132,7 @@ class LLVMCompilerTest : public ::testing::Test {
     builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
 
-    std::unique_ptr<HloModule> hlo_module = CreateNewModule();
+    std::unique_ptr<HloModule> hlo_module = CreateNewVerifiedModule();
     hlo_module->AddEntryComputation(builder.Build());
 
     auto module_group = absl::make_unique<HloModuleGroup>("test_module_group");
@@ -108,13 +150,8 @@ class LLVMCompilerTest : public ::testing::Test {
 
  private:
   Platform *FindPlatform() {
-    for (Platform *platform :
-         PlatformUtil::GetSupportedPlatforms().ConsumeValueOrDie()) {
-      if (platform->Name() == platform_name_) {
-        return platform;
-      }
-    }
-    return nullptr;
+    auto status_or_platform = PlatformUtil::GetPlatform(platform_name_);
+    return status_or_platform.ok() ? status_or_platform.ValueOrDie() : nullptr;
   }
 
   string platform_name_;
@@ -124,10 +161,13 @@ class LLVMCompilerTest : public ::testing::Test {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 
-  static std::unique_ptr<HloModule> CreateNewModule() {
+  std::unique_ptr<HloModule> CreateNewVerifiedModule() {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsFromFlags());
-    return absl::make_unique<HloModule>(TestName(), config);
+    return absl::make_unique<VerifiedHloModule>(
+        TestName(), config, /*verifier_layout_sensitive=*/false,
+        /*allow_mixed_precision_in_hlo_verifier=*/true,
+        backend_->compiler()->ShapeSizeBytesFunction());
   }
 };
 
@@ -138,7 +178,7 @@ class CpuCompilerTest : public LLVMCompilerTest {
 
 class GpuCompilerTest : public LLVMCompilerTest {
  public:
-  GpuCompilerTest() : LLVMCompilerTest("CUDA") {}
+  GpuCompilerTest() : LLVMCompilerTest("GPU") {}
 };
 
 TEST_F(CpuCompilerTest, HooksTest) {
@@ -147,7 +187,7 @@ TEST_F(CpuCompilerTest, HooksTest) {
 }
 
 TEST_F(GpuCompilerTest, HooksTest) {
-  gpu::NVPTXCompiler compiler;
+  gpu::GpuDummyCompiler compiler;
   TestCompilerHooks(&compiler);
 }
 
@@ -156,8 +196,8 @@ TEST_F(CpuCompilerTest, CpuMultiModuleCompilation) {
   TestMultiModuleCompilation(&compiler);
 }
 
-TEST_F(GpuCompilerTest, NVPTXMultiModuleCompilation) {
-  gpu::NVPTXCompiler compiler;
+TEST_F(GpuCompilerTest, GpuMultModuleCompilation) {
+  gpu::GpuDummyCompiler compiler;
   TestMultiModuleCompilation(&compiler);
 }
 }  // namespace

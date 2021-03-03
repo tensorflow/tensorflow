@@ -53,10 +53,12 @@ TEST_F(CpuNoAliasTest, Concat) {
   HloInstruction* concat2 =
       builder.AddInstruction(HloInstruction::CreateConcatenate(
           ShapeUtil::MakeShape(F32, {2, 6}), {concat1, param_x}, 1));
+  HloInstruction* add = builder.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(F32, {2, 6}), HloOpcode::kAdd, concat2, concat2));
 
   std::unique_ptr<HloComputation> computation = builder.Build();
 
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   // Now that we have an HLO module, build an llvm_ir::AliasAnalysis for it.
@@ -75,12 +77,12 @@ TEST_F(CpuNoAliasTest, Concat) {
   // the buffers in the HLO module.  We'll inspect these loads to ensure that
   // they have the expected alias information.
   llvm::Module ir_module("test", context);
-  llvm::Function* func = llvm::cast<llvm::Function>(
-      ir_module.getOrInsertFunction("test_fn", llvm::Type::getVoidTy(context)));
+  llvm::Function* func = llvm::dyn_cast<llvm::Function>(
+      ir_module.getOrInsertFunction("test_fn", llvm::Type::getVoidTy(context))
+          .getCallee());
   llvm::BasicBlock* bb = llvm::BasicBlock::Create(context, "body", func);
   llvm::IRBuilder<> b(bb);
   auto* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
-  llvm_ir::IrArray::Index zero2D({zero, zero});
 
   llvm::ArrayType* array2d_type = llvm::ArrayType::get(
       llvm::ArrayType::get(llvm::Type::getFloatTy(context), 100), 100);
@@ -90,7 +92,8 @@ TEST_F(CpuNoAliasTest, Concat) {
         ir_module.getOrInsertGlobal("param_x", array2d_type);
     llvm_ir::IrArray param_x_array(param_x_val, param_shape);
     aa.AddAliasingInformationToIrArray(*param_x, &param_x_array);
-    param_x_array.EmitReadArrayElement(zero2D, &b)
+    llvm_ir::IrArray::Index zero_2d({zero, zero}, param_shape, zero->getType());
+    param_x_array.EmitReadArrayElement(zero_2d, &b)
         ->setName("read_param_x_array");
   }
 
@@ -100,7 +103,8 @@ TEST_F(CpuNoAliasTest, Concat) {
     auto shape = ShapeUtil::MakeShape(F32, {2, 4});
     llvm_ir::IrArray concat1_array(concat1_val, shape);
     aa.AddAliasingInformationToIrArray(*concat1, &concat1_array);
-    concat1_array.EmitReadArrayElement(zero2D, &b)
+    llvm_ir::IrArray::Index zero_2d({zero, zero}, shape, zero->getType());
+    concat1_array.EmitReadArrayElement(zero_2d, &b)
         ->setName("read_concat1_array");
   }
 
@@ -110,8 +114,18 @@ TEST_F(CpuNoAliasTest, Concat) {
     auto shape = ShapeUtil::MakeShape(F32, {2, 6});
     llvm_ir::IrArray concat2_array(concat2_val, shape);
     aa.AddAliasingInformationToIrArray(*concat2, &concat2_array);
-    concat2_array.EmitReadArrayElement(zero2D, &b)
+    llvm_ir::IrArray::Index zero_2d({zero, zero}, shape, zero->getType());
+    concat2_array.EmitReadArrayElement(zero_2d, &b)
         ->setName("read_concat2_array");
+  }
+
+  {
+    llvm::Value* concat2_val = ir_module.getOrInsertGlobal("add", array2d_type);
+    auto shape = ShapeUtil::MakeShape(F32, {2, 6});
+    llvm_ir::IrArray add_array(concat2_val, shape);
+    aa.AddAliasingInformationToIrArray(*add, &add_array);
+    llvm_ir::IrArray::Index zero_2d({zero, zero}, shape, zero->getType());
+    add_array.EmitReadArrayElement(zero_2d, &b)->setName("read_add_array");
   }
 
   // Check the AA info in the loads.
@@ -119,6 +133,7 @@ TEST_F(CpuNoAliasTest, Concat) {
     CHECK: %read_param_x_array = load {{.*}} !noalias [[param_x_noalias:![0-9]+]]
     CHECK: %read_concat1_array = load {{.*}} !alias.scope [[concat1_scope:![0-9]+]], !noalias [[concat1_noalias:![0-9]+]]
     CHECK: %read_concat2_array = load {{.*}} !alias.scope [[concat1_noalias]], !noalias [[concat1_scope]]
+    CHECK: %read_add_array = load {{.*}} !alias.scope [[concat1_noalias]]{{$}}
     CHECK-DAG: [[buf_size32:![0-9]+]] = !{!"buffer:{{.*}} size:32
     CHECK-DAG: [[buf_size48:![0-9]+]] = !{!"buffer:{{.*}} size:48
     CHECK-DAG: [[param_x_noalias]] = !{[[buf_size48]], [[buf_size32]]}

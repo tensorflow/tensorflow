@@ -18,6 +18,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -113,6 +115,13 @@ Status LogicalBufferAnalysis::HandleGetTupleElement(HloInstruction*) {
   return Status::OK();
 }
 
+Status LogicalBufferAnalysis::HandleAddDependency(
+    HloInstruction* add_dependency) {
+  // AddDependency just forwards the value of its zero-th operand and does not
+  // create buffers.
+  return Status::OK();
+}
+
 Status LogicalBufferAnalysis::HandleCopy(HloInstruction* copy) {
   // The top-level buffer (index={}) for kCopy is newly created, but all other
   // buffers (in the case of a tuple shape) come from the operand
@@ -152,6 +161,21 @@ Status LogicalBufferAnalysis::HandleSend(HloInstruction* send) {
   return Status::OK();
 }
 
+Status LogicalBufferAnalysis::HandleCopyStart(HloInstruction* copy_start) {
+  // CopyStart defines the tuple, target buffer at index {0}, and context at
+  // index {2}.
+  NewLogicalBuffer(copy_start, /*index=*/{});
+  NewLogicalBuffer(copy_start, /*index=*/{0});
+  NewLogicalBuffer(copy_start, /*index=*/{2});
+  return Status::OK();
+}
+
+Status LogicalBufferAnalysis::HandleCopyDone(HloInstruction* copy_done) {
+  // The output of CopyDone aliases with operand {0}. CopyDone doesn't create
+  // any buffers.
+  return Status::OK();
+}
+
 Status LogicalBufferAnalysis::HandleTuple(HloInstruction* tuple) {
   // A Tuple instruction only creates the top-level buffer.
   NewLogicalBuffer(tuple, /*index=*/{});
@@ -162,6 +186,21 @@ Status LogicalBufferAnalysis::HandleTupleSelect(HloInstruction* tuple_select) {
   // Select allocates a new buffer and then shallow copies the on_true or
   // on_false buffer into this new buffer.
   NewLogicalBuffer(tuple_select, /*index=*/{});
+  return Status::OK();
+}
+
+Status LogicalBufferAnalysis::HandleCustomCall(HloInstruction* custom_call) {
+  auto ccall = Cast<HloCustomCallInstruction>(custom_call);
+  absl::flat_hash_set<ShapeIndex> aliased_outputs;
+  for (const auto& pair : ccall->output_to_operand_aliasing()) {
+    aliased_outputs.insert(pair.first);
+  }
+  ShapeUtil::ForEachSubshape(ccall->shape(),
+                             [&](const Shape& shape, const ShapeIndex& index) {
+                               if (!aliased_outputs.contains(index)) {
+                                 NewLogicalBuffer(custom_call, index);
+                               }
+                             });
   return Status::OK();
 }
 

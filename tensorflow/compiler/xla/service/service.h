@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/channel_tracker.h"
 #include "tensorflow/compiler/xla/service/compilation_cache.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/execution_tracker.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 
@@ -52,7 +53,7 @@ class ServiceOptions {
   ServiceOptions& set_platform(se::Platform* platform);
   se::Platform* platform() const;
 
-  // Set the number of replicas to use when compiling replicated
+  // Set the default number of replicas to use when compiling replicated
   // programs.
   ServiceOptions& set_number_of_replicas(int number_of_replicas);
   int number_of_replicas() const;
@@ -61,10 +62,17 @@ class ServiceOptions {
   ServiceOptions& set_intra_op_parallelism_threads(int num_threads);
   int intra_op_parallelism_threads() const;
 
+  // Sets the allowed_devices set for selectively constructing stream executors
+  // on the platform.
+  ServiceOptions& set_allowed_devices(
+      const absl::optional<std::set<int>>& allowed_devices);
+  const absl::optional<std::set<int>>& allowed_devices() const;
+
  private:
   se::Platform* platform_ = nullptr;
   int number_of_replicas_ = 1;
   int intra_op_parallelism_threads_ = -1;
+  absl::optional<std::set<int>> allowed_devices_;
 };
 
 // The XLA service object, which is the same across all platforms. It maintains
@@ -175,13 +183,22 @@ class Service : public ServiceInterface {
   const Backend& backend() const { return *execute_backend_; }
   Backend* mutable_backend() { return execute_backend_.get(); }
 
+  // Create a Hlo module config for the given program shape and arguments.
+  // aot_options is optional; if not given a default is used.
+  StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
+      const ProgramShape& program_shape,
+      absl::Span<const Shape* const> argument_shapes,
+      const ExecutionOptions* execution_options,
+      const AotCompilationOptions* aot_options = nullptr);
+
  private:
   // A private overload for Service itself, used by other methods within this
   // class.
   StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
       absl::Span<const ShapedBuffer* const> arguments,
-      const ExecutionOptions& execution_options);
+      const ExecutionOptions& execution_options,
+      const AotCompilationOptions* aot_options = nullptr);
 
   // Prepare the executors for executing parallel.
   StatusOr<std::vector<se::StreamExecutor*>> GetExecutors(
@@ -210,13 +227,6 @@ class Service : public ServiceInterface {
       absl::Span<const GlobalDataHandle* const> arguments,
       absl::Span<se::StreamExecutor* const> stream_executors) const;
 
-  // Create a Hlo module config for the given program shape and arguments.
-  // execution_options is optional; if not given a default is used.
-  StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
-      const ProgramShape& program_shape,
-      absl::Span<const Shape* const> argument_shapes,
-      const ExecutionOptions* execution_options);
-
   // Builds an Executable for the given parameters.
   //
   // If device_allocator is not null, the compiler may use it to allocate temp
@@ -225,8 +235,8 @@ class Service : public ServiceInterface {
   StatusOr<std::unique_ptr<Executable>> BuildExecutable(
       const HloModuleProto& module_proto,
       std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
-      se::StreamExecutor* executor,
-      DeviceMemoryAllocator* device_allocator = nullptr);
+      se::StreamExecutor* executor, const Compiler::CompileOptions& options,
+      bool run_backend_only = false);
 
   // Same as BuildExecutable() above, but builds a list of Executables for the
   // given computations that may interact with each other.
@@ -234,7 +244,7 @@ class Service : public ServiceInterface {
       const std::vector<const HloModuleProto*>& module_protos,
       std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
       Backend* backend, std::vector<std::vector<se::StreamExecutor*>> executors,
-      DeviceMemoryAllocator* device_allocator);
+      const Compiler::CompileOptions& options, bool run_backend_only = false);
 
   // Runs the given executable with the given arguments and register the result
   // in the allocation tracker. The handle of the result from the tracker is
@@ -242,8 +252,9 @@ class Service : public ServiceInterface {
   // ExecutionProfile object which will be filled in with profile data.
   StatusOr<GlobalDataHandle> ExecuteAndRegisterResult(
       Executable* executable,
-      const absl::Span<const std::vector<const ShapedBuffer*>> arguments,
-      Backend* backend, const string& result_tag, ExecutionProfile* profile);
+      absl::Span<const std::vector<const ShapedBuffer*>> arguments,
+      Backend* backend, const DeviceHandle& device_handle,
+      const string& result_tag, ExecutionProfile* profile);
 
   // Runs the given executables with the given arguments and register the result
   // from each executable in the allocation tracker. The handles of the result
@@ -265,10 +276,6 @@ class Service : public ServiceInterface {
   // represents a set of physical devices for the replicas.
   StatusOr<std::vector<se::StreamExecutor*>> Replicas(
       const Backend& backend, const DeviceHandle& device_handle) const;
-
-  // Dumps the (unoptimized) module given if the corresponding DebugOptions
-  // field has been set.
-  Status MaybeDumpUnoptimizedHloModule(const HloModule& module) const;
 
   // Returns the device handle that represents the replicated device for a
   // single computation that is not model-parallelized.

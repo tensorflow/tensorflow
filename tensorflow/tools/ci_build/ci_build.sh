@@ -73,14 +73,20 @@ CI_TENSORFLOW_SUBMODULE_PATH="${CI_TENSORFLOW_SUBMODULE_PATH:-.}"
 CI_COMMAND_PREFIX=("${CI_COMMAND_PREFIX[@]:-${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/with_the_same_user "\
 "${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/configured ${CONTAINER_TYPE}}")
 
-# cmake (CPU) builds do not require configuration.
-if [[ "${CONTAINER_TYPE}" == "cmake" ]]; then
+# cmake (CPU) and micro builds do not require configuration.
+if [[ "${CONTAINER_TYPE}" == "cmake" ]] || [[ "${CONTAINER_TYPE}" == "micro" ]]; then
   CI_COMMAND_PREFIX=("")
 fi
 
 # Use nvidia-docker if the container is GPU.
 if [[ "${CONTAINER_TYPE}" == gpu* ]]; then
   DOCKER_BINARY="nvidia-docker"
+  if [[ -z `which ${DOCKER_BINARY}` ]]; then
+    # No nvidia-docker; fall back on docker to allow build operations that
+    # require CUDA but don't require a GPU to run.
+    echo "Warning: nvidia-docker not found in PATH. Falling back on 'docker'."
+    DOCKER_BINARY="docker"
+  fi
 else
   DOCKER_BINARY="docker"
 fi
@@ -105,7 +111,8 @@ fi
 
 # Add extra params for rocm devices and libraries for ROCm container.
 if [[ "${CONTAINER_TYPE}" == "rocm" ]]; then
-  ROCM_EXTRA_PARAMS="--device=/dev/kfd --device=/dev/dri --group-add video"
+  ROCM_EXTRA_PARAMS="--device=/dev/kfd --device=/dev/dri --group-add video \
+  --cap-add=SYS_PTRACE --security-opt seccomp=unconfined --shm-size 16G"
 else
   ROCM_EXTRA_PARAMS=""
 fi
@@ -155,7 +162,7 @@ mkdir -p ${WORKSPACE}/bazel-ci_build-cache
 # By default we cleanup - remove the container once it finish running (--rm)
 # and share the PID namespace (--pid=host) so the process inside does not have
 # pid 1 and SIGKILL is propagated to the process inside (jenkins can kill it).
-${DOCKER_BINARY} run --rm --pid=host \
+${DOCKER_BINARY} run --rm --name ${DOCKER_IMG_NAME} --pid=host \
     -v ${WORKSPACE}/bazel-ci_build-cache:${WORKSPACE}/bazel-ci_build-cache \
     -e "CI_BUILD_HOME=${WORKSPACE}/bazel-ci_build-cache" \
     -e "CI_BUILD_USER=$(id -u -n)" \

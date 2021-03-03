@@ -17,7 +17,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
-#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -31,56 +30,42 @@ namespace {
 class DeviceResolverLocalTest : public ::testing::Test {
  protected:
   DeviceResolverLocalTest() {
-    ConfigProto cp;
     SessionOptions options;
     string task_name = "/job:localhost/replica:0/task:0";
     auto* device_count = options.config.mutable_device_count();
     device_count->insert({"CPU", NUM_DEVS});
-    TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name, &devices_));
-    device_mgr_.reset(new DeviceMgr(devices_));
+    std::vector<std::unique_ptr<Device>> devices;
+    TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name, &devices));
+    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
     drl_.reset(new DeviceResolverLocal(device_mgr_.get()));
   }
 
-  std::vector<Device*> devices_;
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<DeviceResolverLocal> drl_;
 };
 
-TEST_F(DeviceResolverLocalTest, GetDeviceLocalitiesKnown) {
-  CollectiveParams cp;
-  std::vector<DeviceLocality> localities;
-  cp.instance.device_names.push_back(
-      "/job:localhost/replica:0/task:0/device:CPU:1");
-  cp.instance.device_names.push_back(
-      "/job:localhost/replica:0/task:0/device:CPU:2");
-  Notification note;
-  Status status;
-  drl_->GetDeviceLocalitiesAsync(cp.instance, &localities,
-                                 [this, &note, &status](const Status& s) {
-                                   status = s;
-                                   note.Notify();
-                                 });
-  note.WaitForNotification();
-  TF_EXPECT_OK(status);
-  EXPECT_EQ(2, localities.size());
+TEST_F(DeviceResolverLocalTest, GetDeviceAttributesKnown) {
+  DeviceAttributes attributes;
+  TF_EXPECT_OK(drl_->GetDeviceAttributes(
+      "/job:localhost/replica:0/task:0/device:CPU:1", &attributes));
+  EXPECT_EQ(attributes.name(), "/job:localhost/replica:0/task:0/device:CPU:1");
 }
 
-TEST_F(DeviceResolverLocalTest, GetDeviceLocalitiesUnknown) {
-  CollectiveParams cp;
-  std::vector<DeviceLocality> localities;
-  // In some builds there may be 1 GPU, but there should never be 9.
-  cp.instance.device_names.push_back(
-      "/job:localhost/replica:0/task:0/device:GPU:9");
-  Notification note;
-  Status status;
-  drl_->GetDeviceLocalitiesAsync(cp.instance, &localities,
-                                 [this, &note, &status](const Status& s) {
-                                   status = s;
-                                   note.Notify();
-                                 });
-  note.WaitForNotification();
-  EXPECT_FALSE(status.ok());
-  EXPECT_EQ(0, localities.size());
+TEST_F(DeviceResolverLocalTest, GetDeviceAttributesUnknown) {
+  DeviceAttributes attributes;
+  EXPECT_TRUE(errors::IsNotFound(drl_->GetDeviceAttributes(
+      "/job:localhost/replica:0/task:0/device:CPU:9", &attributes)));
+}
+
+TEST_F(DeviceResolverLocalTest, GetAllDeviceAttributes) {
+  std::vector<DeviceAttributes> attributes;
+  EXPECT_TRUE(errors::IsInternal(
+      drl_->GetAllDeviceAttributes(/*task*/ "", &attributes)));
+}
+
+TEST_F(DeviceResolverLocalTest, UpdateDeviceAttributes) {
+  std::vector<DeviceAttributes> attributes;
+  EXPECT_TRUE(errors::IsInternal(drl_->UpdateDeviceAttributes(attributes)));
 }
 
 }  // namespace

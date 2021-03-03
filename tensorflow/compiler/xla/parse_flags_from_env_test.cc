@@ -19,10 +19,12 @@ limitations under the License.
 
 #include <stdio.h>
 #include <stdlib.h>
+
 #include <vector>
 
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/platform/test.h"
@@ -37,20 +39,7 @@ static void TestParseFlagsFromEnv(const char* msg) {
   // Initialize module under test.
   int* pargc;
   std::vector<char*>* pargv;
-  ResetFlagsFromEnvForTesting(&pargc, &pargv);
-
-  // Ensure that environment variable can be parsed when
-  // no flags are expected.
-  std::vector<tensorflow::Flag> empty_flag_list;
-  bool parsed_ok = ParseFlagsFromEnv(empty_flag_list);
-  CHECK(parsed_ok) << msg;
-  const std::vector<char*>& argv_first = *pargv;
-  CHECK_NE(argv_first[0], nullptr) << msg;
-  int i = 0;
-  while (argv_first[i] != nullptr) {
-    i++;
-  }
-  CHECK_EQ(i, *pargc) << msg;
+  ResetFlagsFromEnvForTesting("TF_XLA_FLAGS", &pargc, &pargv);
 
   // Check that actual flags can be parsed.
   bool simple = false;
@@ -65,7 +54,7 @@ static void TestParseFlagsFromEnv(const char* msg) {
       tensorflow::Flag("single_quoted", &single_quoted, ""),
       tensorflow::Flag("double_quoted", &double_quoted, ""),
   };
-  parsed_ok = ParseFlagsFromEnv(flag_list);
+  bool parsed_ok = ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", flag_list);
   CHECK_EQ(*pargc, 1) << msg;
   const std::vector<char*>& argv_second = *pargv;
   CHECK_NE(argv_second[0], nullptr) << msg;
@@ -86,14 +75,14 @@ static const char kTestFlagString[] =
     "--single_quoted='single quoted \\\\ \n \"' "
     "--double_quoted=\"double quoted \\\\ \n '\\\"\" ";
 
-// Test that the environent variable is parsed correctly.
+// Test that the environment variable is parsed correctly.
 TEST(ParseFlagsFromEnv, Basic) {
   // Prepare environment.
-  setenv("TF_XLA_FLAGS", kTestFlagString, true /*overwrite*/);
+  tensorflow::setenv("TF_XLA_FLAGS", kTestFlagString, true /*overwrite*/);
   TestParseFlagsFromEnv("(flags in environment variable)");
 }
 
-// Test that a file named by the environent variable is parsed correctly.
+// Test that a file named by the environment variable is parsed correctly.
 TEST(ParseFlagsFromEnv, File) {
   // environment variables where  tmp dir may be specified.
   static const char* kTempVars[] = {"TEST_TMPDIR", "TMP"};
@@ -116,7 +105,7 @@ TEST(ParseFlagsFromEnv, File) {
   CHECK_EQ(ferror(fp), 0) << "writes failed to " << tmp_file;
   fclose(fp);
   // Prepare environment.
-  setenv("TF_XLA_FLAGS", tmp_file.c_str(), true /*overwrite*/);
+  tensorflow::setenv("TF_XLA_FLAGS", tmp_file.c_str(), true /*overwrite*/);
   TestParseFlagsFromEnv("(flags in file)");
   unlink(tmp_file.c_str());
 }
@@ -138,8 +127,11 @@ TEST(ParseFlagsFromEnv, EnvAndFlag) {
       {"--int_flag=3", "--int_flag=2", "2\n"},  // flag beats environment
   };
   for (int i = 0; i != TF_ARRAYSIZE(test); i++) {
-    if (test[i].env != nullptr) {
-      setenv("TF_XLA_FLAGS", test[i].env, true /*overwrite*/);
+    if (test[i].env == nullptr) {
+      // Might be set from previous tests.
+      tensorflow::unsetenv("TF_XLA_FLAGS");
+    } else {
+      tensorflow::setenv("TF_XLA_FLAGS", test[i].env, /*overwrite=*/true);
     }
     tensorflow::SubProcess child;
     std::vector<string> argv;
@@ -150,10 +142,17 @@ TEST(ParseFlagsFromEnv, EnvAndFlag) {
     }
     child.SetProgram(binary_name, argv);
     child.SetChannelAction(tensorflow::CHAN_STDOUT, tensorflow::ACTION_PIPE);
+    child.SetChannelAction(tensorflow::CHAN_STDERR, tensorflow::ACTION_PIPE);
     CHECK(child.Start()) << "test " << i;
     string stdout_str;
-    int child_status = child.Communicate(nullptr, &stdout_str, nullptr);
-    CHECK_EQ(child_status, 0) << "test " << i;
+    string stderr_str;
+    int child_status = child.Communicate(nullptr, &stdout_str, &stderr_str);
+    CHECK_EQ(child_status, 0) << "test " << i << "\nstdout\n"
+                              << stdout_str << "\nstderr\n"
+                              << stderr_str;
+    // On windows, we get CR characters. Remove them.
+    stdout_str.erase(std::remove(stdout_str.begin(), stdout_str.end(), '\r'),
+                     stdout_str.end());
     CHECK_EQ(stdout_str, test[i].expected_value) << "test " << i;
   }
 }
@@ -167,11 +166,12 @@ int main(int argc, char* argv[]) {
   xla::int32 int_flag = 1;
   const std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("recursing", &recursing,
-                       "Whether the binary is being invoked recusively."),
+                       "Whether the binary is being invoked recursively."),
       tensorflow::Flag("int_flag", &int_flag, "An integer flag to test with"),
   };
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  bool parse_ok = xla::ParseFlagsFromEnv(flag_list);
+  bool parse_ok =
+      xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", flag_list);
   if (!parse_ok) {
     LOG(QFATAL) << "can't parse from environment\n" << usage;
   }

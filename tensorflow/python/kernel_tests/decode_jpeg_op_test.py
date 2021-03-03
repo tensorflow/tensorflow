@@ -30,9 +30,8 @@ from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
-
-prefix_path = 'third_party/tensorflow/core/lib/jpeg/testdata'
 
 
 class DecodeJpegBenchmark(test.Benchmark):
@@ -64,7 +63,15 @@ class DecodeJpegBenchmark(test.Benchmark):
     """
     ops.reset_default_graph()
 
-    image_file_path = os.path.join(prefix_path, image_name)
+    image_file_path = resource_loader.get_path_to_datafile(
+        os.path.join('core', 'lib', 'jpeg', 'testdata', image_name))
+
+    # resource_loader does not seem to work well under benchmark runners.
+    # So if the above path is not available, try another way to access the file:
+    if not os.path.exists(image_file_path):
+      image_file_path = resource_loader.get_path_to_datafile(
+          os.path.join(
+              '..', '..', 'core', 'lib', 'jpeg', 'testdata', image_name))
 
     if tile is None:
       image_content = variable_scope.get_variable(
@@ -80,7 +87,7 @@ class DecodeJpegBenchmark(test.Benchmark):
           initializer=image_ops.encode_jpeg(tiled_image))
 
     with session.Session() as sess:
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       images = []
       for _ in xrange(parallelism):
         if crop_window is None:
@@ -105,11 +112,11 @@ class DecodeJpegBenchmark(test.Benchmark):
 
       for _ in xrange(3):
         # Skip warm up time.
-        sess.run(r)
+        self.evaluate(r)
 
       start_time = time.time()
       for _ in xrange(num_iters):
-        sess.run(r)
+        self.evaluate(r)
       end_time = time.time()
     return end_time - start_time
 

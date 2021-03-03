@@ -35,6 +35,22 @@ extern const char kXlaTokenInputNodesAttrName[];
 // node has side-effect dependency on current graph's token input.
 extern const char kXlaTokenArgNodeName[];
 
+// This node have XlaRecvAtHost/XlaSendFromHost in its associated functions.
+extern const char kXlaHasHostTransferAttrName[];
+
+// This attribute is the replica id for an outside compilation node node.
+extern const char kXlaReplicaIdAttrName[];
+
+// This node is a Placeholder node added for tail outside compilation.
+extern const char kXlaIsPlaceholderForTailOcAttrName[];
+
+// This attribute is the original node name for this node.
+extern const char kXlaOriginalOutsideCompilationNodeName[];
+
+// Sets device ordinal attribute for nodes with attribute
+// `kXlaHasHostTransferAttrName`.
+Status SetDeviceOrdinalAttributeForNode(Node* node, int device_ordinal);
+
 // Calculates side-effect dependencies for the graph's token output.
 // Returns a set of node names representing these dependencies.
 std::set<std::string> CalculateTokenInputsForOutputToken(const Graph& g);

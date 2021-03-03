@@ -1,12 +1,16 @@
 path: "tensorflow.debugging"
 tf_module {
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "Assert"
     argspec: "args=[\'condition\', \'data\', \'summarize\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "assert_all_finite"
-    argspec: "args=[\'t\', \'msg\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'t\', \'msg\', \'name\', \'x\', \'message\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "assert_equal"
@@ -78,7 +82,11 @@ tf_module {
   }
   member_method {
     name: "assert_scalar"
-    argspec: "args=[\'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'tensor\', \'name\', \'message\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "assert_shapes"
+    argspec: "args=[\'shapes\', \'data\', \'summarize\', \'message\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "assert_type"
@@ -87,6 +95,18 @@ tf_module {
   member_method {
     name: "check_numerics"
     argspec: "args=[\'tensor\', \'message\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "disable_check_numerics"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "enable_check_numerics"
+    argspec: "args=[\'stack_height_limit\', \'path_length_limit\'], varargs=None, keywords=None, defaults=[\'30\', \'50\'], "
+  }
+  member_method {
+    name: "get_log_device_placement"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "is_finite"
@@ -111,5 +131,9 @@ tf_module {
   member_method {
     name: "is_strictly_increasing"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "set_log_device_placement"
+    argspec: "args=[\'enabled\'], varargs=None, keywords=None, defaults=None"
   }
 }

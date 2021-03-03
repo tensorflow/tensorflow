@@ -1,0 +1,22 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -o - | FileCheck %s
+
+node {
+  name: "input0"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+versions {
+  producer: 29
+  min_consumer: 12
+}
+
+# Verify that functions from the library are properly imported.
+
+# CHECK-LABEL:  func @main() {
+# CHECK:    "tf.Placeholder"
+# CHECK-NOT: _output_shapes

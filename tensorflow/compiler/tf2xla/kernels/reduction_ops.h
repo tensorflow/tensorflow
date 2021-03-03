@@ -48,13 +48,14 @@ class XlaReductionOp : public XlaOpKernel {
                             const xla::XlaOp& scalar_rhs) = 0;
 
   // Applies a transformation to the output of the reduction. The desired
-  // computation should be added to 'builder'. Argument 'reduce_output' is the
-  // output of the reduction. 'num_elements_reduced' is the number of elements
-  // that contributed to the reduction. Returns the transformed reduction
-  // output, Defaults to returning 'reduce_output' unchanged.
-  virtual xla::XlaOp BuildFinalizer(xla::XlaBuilder* builder,
-                                    const xla::XlaOp& reduce_output,
-                                    int64 num_elements_reduced);
+  // computation should be added to 'builder'. Argument 'input' is the original
+  // input of the reduction; 'reduce_output' is the output of the reduction.
+  // Returns the transformed reduction output. Defaults to returning
+  // 'reduce_output' converted to the input type.
+  virtual xla::XlaOp BuildFinalizer(
+      xla::XlaBuilder* builder, const xla::XlaOp& input,
+      const xla::XlaOp& reduce_output,
+      const std::vector<int64>& dimensions_to_reduce);
 
   void Compile(XlaOpKernelContext* ctx) override;
 

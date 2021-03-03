@@ -13,9 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/kernels/internal/reference/floor.h"
+
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
@@ -26,31 +29,56 @@ namespace floor {
 constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
 
+enum KernelType {
+  kReference,
+  kGenericOptimized,
+};
+
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-  TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
   output->type = input->type;
   TfLiteIntArray* output_size = TfLiteIntArrayCopy(input->dims);
   return context->ResizeTensor(context, output, output_size);
 }
 
+template <KernelType type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
-  optimized_ops::Floor(GetTensorShape(input), GetTensorData<float>(input),
-                       GetTensorShape(output), GetTensorData<float>(output));
+  if (type == kGenericOptimized) {
+    optimized_ops::Floor(GetTensorShape(input), GetTensorData<float>(input),
+                         GetTensorShape(output), GetTensorData<float>(output));
+  } else {
+    reference_ops::Floor(GetTensorShape(input), GetTensorData<float>(input),
+                         GetTensorShape(output), GetTensorData<float>(output));
+  }
 
   return kTfLiteOk;
 }
 }  // namespace floor
 
+TfLiteRegistration* Register_FLOOR_REF() {
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr, floor::Prepare,
+                                 floor::Eval<floor::kReference>};
+  return &r;
+}
+
 TfLiteRegistration* Register_FLOOR() {
   static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr, floor::Prepare, floor::Eval};
+                                 /*free=*/nullptr, floor::Prepare,
+                                 floor::Eval<floor::kGenericOptimized>};
   return &r;
 }
 

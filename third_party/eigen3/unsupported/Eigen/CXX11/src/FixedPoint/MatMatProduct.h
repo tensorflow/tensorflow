@@ -37,6 +37,14 @@ struct scalar_product_traits<QInt8, QUInt8> {
   typedef QInt32 ReturnType;
 };
 
+// Accumulate the product of QUInt8 inputs with Qint8 inputs on 32 bits
+// to prevent overflows
+template <>
+struct scalar_product_traits<QUInt8, QInt8> {
+  enum { Defined = 1 };
+  typedef QInt32 ReturnType;
+};
+
 // Description of the product implementation. It's pretty simple now since
 // nothing is vectorized yet.
 // This definition tackle the case where both lhs and rhs are encoded using

@@ -22,11 +22,15 @@
 #include <fstream>
 #include <iostream>
 #include <queue>
+#include <vector>
 
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
-#include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/op_resolver.h"
+#include "tensorflow/lite/string_util.h"
+#if TFLITE_USE_GPU_DELEGATE
+#include "tensorflow/lite/delegates/gpu/metal_delegate.h"
+#endif
 
 #define LOG(x) std::cerr
 
@@ -34,7 +38,12 @@ namespace {
 
 // If you have your own model, modify this to the file name, and make sure
 // you've added the file to your app resources too.
+#if TFLITE_USE_GPU_DELEGATE
+// GPU Delegate only supports float model now.
 NSString* model_file_name = @"mobilenet_v1_1.0_224";
+#else
+NSString* model_file_name = @"mobilenet_quant_v1_224";
+#endif
 NSString* model_file_type = @"tflite";
 // If you have your own model, point this to the labels file.
 NSString* labels_file_name = @"labels";
@@ -151,7 +160,12 @@ void ProcessInputWithQuantizedModel(
 - (void)teardownAVCapture;
 @end
 
-@implementation CameraExampleViewController
+@implementation CameraExampleViewController {
+  std::unique_ptr<tflite::FlatBufferModel> model;
+  tflite::ops::builtin::BuiltinOpResolver resolver;
+  std::unique_ptr<tflite::Interpreter> interpreter;
+  TfLiteDelegate* delegate;
+}
 
 - (void)setupAVCapture {
   NSError* error = nil;
@@ -326,7 +340,15 @@ void ProcessInputWithQuantizedModel(
   NSLog(@"Time: %.4lf, avg: %.4lf, count: %d", end - start, total_latency / total_count,
         total_count);
 
-  const int output_size = 1000;
+  // read output size from the output sensor
+  const int output_tensor_index = interpreter->outputs()[0];
+  TfLiteTensor* output_tensor = interpreter->tensor(output_tensor_index);
+  TfLiteIntArray* output_dims = output_tensor->dims;
+  if (output_dims->size != 2 || output_dims->data[0] != 1) {
+    LOG(FATAL) << "Output of the model is in invalid format.";
+  }
+  const int output_size = output_dims->data[1];
+
   const int kNumResults = 5;
   const float kThreshold = 0.1f;
 
@@ -336,11 +358,11 @@ void ProcessInputWithQuantizedModel(
     uint8_t* quantized_output = interpreter->typed_output_tensor<uint8_t>(0);
     int32_t zero_point = input_tensor->params.zero_point;
     float scale = input_tensor->params.scale;
-    float output[output_size];
+    std::vector<float> output(output_size);
     for (int i = 0; i < output_size; ++i) {
       output[i] = (quantized_output[i] - zero_point) * scale;
     }
-    GetTopN(output, output_size, kNumResults, kThreshold, &top_results);
+    GetTopN(output.data(), output_size, kNumResults, kThreshold, &top_results);
   } else {
     float* output = interpreter->typed_output_tensor<float>(0);
     GetTopN(output, output_size, kNumResults, kThreshold, &top_results);
@@ -363,6 +385,11 @@ void ProcessInputWithQuantizedModel(
 }
 
 - (void)dealloc {
+#if TFLITE_USE_GPU_DELEGATE
+  if (delegate) {
+    DeleteGpuDelegate(delegate);
+  }
+#endif
   [self teardownAVCapture];
 }
 
@@ -384,10 +411,18 @@ void ProcessInputWithQuantizedModel(
   model->error_reporter();
   LOG(INFO) << "resolved reporter";
 
-  tflite::ops::builtin::BuiltinOpResolver resolver;
   LoadLabels(labels_file_name, labels_file_type, &labels);
 
   tflite::InterpreterBuilder(*model, resolver)(&interpreter);
+
+#if TFLITE_USE_GPU_DELEGATE
+  GpuDelegateOptions options;
+  options.allow_precision_loss = true;
+  options.wait_type = GpuDelegateOptions::WaitType::kActive;
+  delegate = NewGpuDelegate(&options);
+  interpreter->ModifyGraphWithDelegate(delegate);
+#endif
+
   // Explicitly resize the input tensor.
   {
     int input = interpreter->inputs()[0];

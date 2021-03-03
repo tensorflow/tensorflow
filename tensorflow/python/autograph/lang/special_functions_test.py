@@ -35,8 +35,8 @@ class SpecialFunctionsTest(test.TestCase):
     tensor_one = special_functions.match_staging_level(1, some_tensor)
     python_one = special_functions.match_staging_level(1, 1)
     with self.cached_session() as sess:
-      self.assertTrue(tensor_util.is_tensor(tensor_one))
-      self.assertAllEqual(sess.run(tensor_one), 1)
+      self.assertTrue(tensor_util.is_tf_type(tensor_one))
+      self.assertAllEqual(self.evaluate(tensor_one), 1)
       self.assertEqual(python_one, 1)
 
   def test_tensor_list_empty_list(self):
@@ -45,29 +45,29 @@ class SpecialFunctionsTest(test.TestCase):
                                       element_shape=())
     sl = list_ops.tensor_list_stack(l, element_dtype=dtypes.int32)
     with self.cached_session() as sess:
-      self.assertAllEqual(sess.run(sl), [])
+      self.assertAllEqual(self.evaluate(sl), [])
 
     l = special_functions.tensor_list((),
                                       element_dtype=dtypes.int32,
                                       element_shape=())
     sl = list_ops.tensor_list_stack(l, element_dtype=dtypes.int32)
     with self.cached_session() as sess:
-      self.assertAllEqual(sess.run(sl), [])
+      self.assertAllEqual(self.evaluate(sl), [])
 
   def test_tensor_list_tensor(self):
     l = special_functions.tensor_list(
         constant_op.constant([], dtype=dtypes.int32))
     sl = list_ops.tensor_list_stack(l, element_dtype=dtypes.int32)
     with self.cached_session() as sess:
-      self.assertAllEqual(sess.run(sl), [])
+      self.assertAllEqual(self.evaluate(sl), [])
 
   def test_tensor_list_unsupported_initializer(self):
-    with self.assertRaisesRegexp(ValueError, 'unknown type'):
+    with self.assertRaisesRegex(ValueError, 'unknown type'):
       special_functions.tensor_list(np.array([1, 2, 3]))
 
   def test_tensor_list_empty_list_no_type(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'element_dtype and element_shape are required'):
+    with self.assertRaisesRegex(ValueError,
+                                'element_dtype and element_shape are required'):
       special_functions.tensor_list([])
 
   def test_tensor_list_from_elements(self):
@@ -76,7 +76,7 @@ class SpecialFunctionsTest(test.TestCase):
     l = special_functions.tensor_list(elements)
     sl = list_ops.tensor_list_stack(l, element_dtype=dtypes.int32)
     with self.cached_session() as sess:
-      self.assertAllEqual(sess.run(sl), [[1, 2], [3, 4]])
+      self.assertAllEqual(self.evaluate(sl), [[1, 2], [3, 4]])
 
   def test_tensor_list_array_from_elements(self):
     elements = [constant_op.constant([1, 2]), constant_op.constant([3, 4])]
@@ -84,7 +84,7 @@ class SpecialFunctionsTest(test.TestCase):
     l = special_functions.tensor_list(elements, use_tensor_array=True)
     sl = l.stack()
     with self.cached_session() as sess:
-      self.assertAllEqual(sess.run(sl), [[1, 2], [3, 4]])
+      self.assertAllEqual(self.evaluate(sl), [[1, 2], [3, 4]])
 
   def test_stack(self):
     self.assertEqual(special_functions.stack(1, strict=False), 1)
@@ -104,7 +104,7 @@ class SpecialFunctionsTest(test.TestCase):
     l = list_ops.tensor_list_from_tensor(
         t, element_shape=constant_op.constant([], dtype=dtypes.int32))
     self.assertTrue(
-        tensor_util.is_tensor(
+        tensor_util.is_tf_type(
             special_functions.stack(l, element_dtype=dtypes.float32)))
 
 

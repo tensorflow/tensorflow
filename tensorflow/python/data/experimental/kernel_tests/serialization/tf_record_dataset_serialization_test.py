@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the TFRecordDataset serialization."""
+"""Tests for checkpointing the TFRecordDataset."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -21,15 +21,19 @@ import gzip
 import os
 import zlib
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
-from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import readers as core_readers
+from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
-class TFRecordDatasetSerializationTest(
+class TFRecordDatasetCheckpointTest(
     reader_dataset_ops_test_base.TFRecordDatasetTestBase,
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
 
   def _build_iterator_graph(self,
                             num_epochs,
@@ -62,6 +66,7 @@ class TFRecordDatasetSerializationTest(
         filenames, compression_type,
         buffer_size=buffer_size).repeat(num_epochs).batch(batch_size)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testTFRecordWithoutBufferCore(self):
     num_epochs = 5
     batch_size = num_epochs
@@ -70,29 +75,29 @@ class TFRecordDatasetSerializationTest(
     self.run_core_tests(
         lambda: self._build_iterator_graph(num_epochs, batch_size,
                                            buffer_size=0),
-        lambda: self._build_iterator_graph(num_epochs * 2, batch_size),
         num_outputs)
     self.run_core_tests(
-        lambda: self._build_iterator_graph(num_epochs, buffer_size=0), None,
+        lambda: self._build_iterator_graph(num_epochs, buffer_size=0),
         num_outputs * batch_size)
     # pylint: enable=g-long-lambda
 
+  @combinations.generate(test_base.default_test_combinations())
   def testTFRecordWithBufferCore(self):
     num_epochs = 5
     num_outputs = num_epochs * self._num_files * self._num_records
     self.run_core_tests(lambda: self._build_iterator_graph(num_epochs),
-                        lambda: self._build_iterator_graph(num_epochs * 2),
                         num_outputs)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testTFRecordWithCompressionCore(self):
     num_epochs = 5
     num_outputs = num_epochs * self._num_files * self._num_records
     self.run_core_tests(
         lambda: self._build_iterator_graph(num_epochs, compression_type="ZLIB"),
-        lambda: self._build_iterator_graph(num_epochs * 2), num_outputs)
+        num_outputs)
     self.run_core_tests(
         lambda: self._build_iterator_graph(num_epochs, compression_type="GZIP"),
-        lambda: self._build_iterator_graph(num_epochs * 2), num_outputs)
+        num_outputs)
 
 
 if __name__ == "__main__":

@@ -13,17 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
-
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
+
+#include <algorithm>
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/strings/scanner.h"
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/scanner.h"
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/env_var.h"
 
 #define CHECK_CURL_OK(expr) CHECK_EQ(expr, CURLE_OK)
 
@@ -124,10 +126,16 @@ CurlHttpRequest::CurlHttpRequest(LibCurl* libcurl, Env* env)
   curl_ = libcurl_->curl_easy_init();
   CHECK(curl_ != nullptr) << "Couldn't initialize a curl session.";
 
-  // NOTE: CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt is configured by
-  //       default in //third_party:curl.BUILD and can be customized via an
-  //       environment variable.
-
+  // NOTE: The cURL CA bundle path is, by default, set to
+  //   etc/ssl/certs/ca-certificates.crt in tensorflow/third_party/curl.BUILD.
+  //   It can be customized with the CURL_CA_BUNDLE environment variable.
+  //   See also: https://curl.haxx.se/libcurl/c/CURLOPT_CAINFO.html.
+  std::string value = "";
+  TF_CHECK_OK(ReadStringFromEnvVar("CURL_CA_BUNDLE", "", &value));
+  if (!value.empty()) {
+    CHECK_CURL_OK(
+        libcurl_->curl_easy_setopt(curl_, CURLOPT_CAINFO, value.c_str()));
+  }
   CHECK_CURL_OK(
       libcurl_->curl_easy_setopt(curl_, CURLOPT_VERBOSE, kVerboseOutput));
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(
@@ -137,9 +145,12 @@ CurlHttpRequest::CurlHttpRequest(LibCurl* libcurl, Env* env)
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_NOSIGNAL, 1L));
 
   // TODO(b/74351157): Enable HTTP/2.
+  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_HTTP_VERSION,
+                                           CURL_HTTP_VERSION_1_1));
 
   // Set up the progress meter.
-  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_NOPROGRESS, 0ULL));
+  CHECK_CURL_OK(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_NOPROGRESS, uint64{0}));
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_XFERINFODATA, this));
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_XFERINFOFUNCTION,
                                            &CurlHttpRequest::ProgressCallback));
@@ -157,7 +168,9 @@ CurlHttpRequest::~CurlHttpRequest() {
     libcurl_->curl_slist_free_all(resolve_list_);
   }
   if (put_body_) {
-    fclose(put_body_);
+    if (fclose(put_body_) != 0) {
+      LOG(ERROR) << "fclose() failed: " << strerror(errno);
+    }
   }
   if (curl_) {
     libcurl_->curl_easy_cleanup(curl_);
@@ -228,7 +241,9 @@ Status CurlHttpRequest::SetPutFromFile(const string& body_filepath,
   is_method_set_ = true;
   method_ = RequestMethod::kPut;
   if (put_body_) {
-    fclose(put_body_);
+    if (fclose(put_body_) != 0) {
+      LOG(ERROR) << "fclose() failed: " << strerror(errno);
+    }
   }
   put_body_ = fopen(body_filepath.c_str(), "r");
   if (!put_body_) {
@@ -395,7 +410,7 @@ size_t CurlHttpRequest::HeaderCallback(const void* ptr, size_t size,
           .OneLiteral(": ")
           .GetResult(&value, &name)) {
     string str_value(value);
-    str_util::StripTrailingWhitespace(&str_value);
+    absl::StripTrailingAsciiWhitespace(&str_value);
     that->response_headers_[string(name)] = str_value;
   }
   return size * nmemb;
@@ -479,13 +494,16 @@ Status CurlHttpRequest::Send() {
 
     // INVALID_ARGUMENT indicates a problem with how the request is constructed.
     case 400:  // Bad Request
+    case 406:  // Not Acceptable
     case 411:  // Length Required
+    case 414:  // URI Too Long
       result = errors::InvalidArgument(get_error_message());
       break;
 
     // PERMISSION_DENIED indicates an authentication or an authorization issue.
     case 401:  // Unauthorized
     case 403:  // Forbidden
+    case 407:  // Proxy Authorization Required
       result = errors::PermissionDenied(get_error_message());
       break;
 
@@ -591,7 +609,7 @@ int CurlHttpRequest::ProgressCallback(void* this_object, curl_off_t dltotal,
 
     double starttransfer_time = -1;
     const auto starttransfer_time_status = that->libcurl_->curl_easy_getinfo(
-        that->curl_, CURLINFO_PRETRANSFER_TIME, &starttransfer_time);
+        that->curl_, CURLINFO_STARTTRANSFER_TIME, &starttransfer_time);
 
     LOG(ERROR) << "The transmission  of request " << this_object
                << " (URI: " << that->uri_ << ") has been stuck at "
@@ -638,6 +656,13 @@ Status CurlHttpRequest::CURLcodeToStatus(CURLcode code,
     }
     return errors::FailedPrecondition(
         strings::StrCat(error_message, overflow_message));
+  }
+  // Domain resolution errors and certificate problems aren't going to improve
+  // on retry, so we return a FailedPrecondition (as the caller must take action
+  // before this can succeed).
+  if (code == CURLE_COULDNT_RESOLVE_HOST || code == CURLE_SSL_CACERT_BADFILE) {
+    return errors::FailedPrecondition(
+        strings::StrCat(error_message, error_buffer));
   }
   // Return Unavailable to retry by default. There may be other permanent
   // failures that should be distinguished.

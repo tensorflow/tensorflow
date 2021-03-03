@@ -76,6 +76,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/kernel_cache_config.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
@@ -178,8 +179,8 @@ class KernelBase {
   KernelCacheConfig GetPreferredCacheConfig() const;
 
   void set_name(absl::string_view name);
-  const string &name() const { return name_; }
-  const string &demangled_name() const { return demangled_name_; }
+  const std::string &name() const { return name_; }
+  const std::string &demangled_name() const { return demangled_name_; }
 
  private:
   // The StreamExecutor that loads this kernel object.
@@ -188,8 +189,8 @@ class KernelBase {
   // Implementation delegated to for platform-specific functionality.
   std::unique_ptr<internal::KernelInterface> implementation_;
 
-  string name_;
-  string demangled_name_;
+  std::string name_;
+  std::string demangled_name_;
 
   KernelMetadata metadata_;
 
@@ -392,19 +393,22 @@ class KernelArgsArrayBase {
 template <size_t kNumArgs>
 class KernelArgsArray : public KernelArgsArrayBase {
  public:
-  explicit KernelArgsArray()
-      : total_shared_memory_bytes_(0),
-        number_of_argument_addresses_(0),
-        number_of_shared_memory_arguments_(0) {}
+  static constexpr int kMaxGenericArgSize = 8;
 
   // Adds an argument to the list.
-  //
-  // Note that the address of the argument is stored, so the input must not go
-  // out of scope before the instance of this class that calls this method does.
   template <typename T>
   void add_argument(const T &arg) {
-    argument_addresses_[number_of_argument_addresses_] =
-        static_cast<const void *>(&arg);
+    static_assert(sizeof(T) <= kMaxGenericArgSize,
+                  "Please adjust kMaxGenericArgSize");
+    static_assert(std::is_pod<T>::value, "Only pod types supported!");
+    char *generic_arg_storage =
+        &generic_arguments_[number_of_generic_arguments_++ *
+                            kMaxGenericArgSize];
+
+    CHECK_EQ(reinterpret_cast<uintptr_t>(generic_arg_storage) % alignof(T), 0);
+    std::memcpy(generic_arg_storage, &arg, sizeof(T));
+
+    argument_addresses_[number_of_argument_addresses_] = generic_arg_storage;
     argument_sizes_[number_of_argument_addresses_] = sizeof(arg);
     ++number_of_argument_addresses_;
   }
@@ -463,6 +467,10 @@ class KernelArgsArray : public KernelArgsArrayBase {
   // Addresses for non-shared-memory arguments.
   std::array<const void *, kNumArgs> argument_addresses_;
 
+  // Storage for arguments of templated type.
+  alignas(kMaxGenericArgSize)
+      std::array<char, kNumArgs * kMaxGenericArgSize> generic_arguments_;
+
   // Sizes for non-shared-memory arguments.
   std::array<size_t, kNumArgs> argument_sizes_;
 
@@ -473,14 +481,17 @@ class KernelArgsArray : public KernelArgsArrayBase {
   std::array<size_t, kNumArgs> shared_memory_indices_;
 
   // Total of all shared memory sizes.
-  size_t total_shared_memory_bytes_;
+  size_t total_shared_memory_bytes_ = 0;
 
   // Number of significant entries in argument_addresses_ and argument_sizes_.
-  size_t number_of_argument_addresses_;
+  size_t number_of_argument_addresses_ = 0;
 
   // Number of significant entries in shared_memory_bytes_ and
   // shared_memory_indices_.
-  size_t number_of_shared_memory_arguments_;
+  size_t number_of_shared_memory_arguments_ = 0;
+
+  // The number of generic arguments that have been added to generic_arguments_.
+  size_t number_of_generic_arguments_ = 0;
 };
 
 // Typed variant of KernelBase, like a typed device function pointer. See the
@@ -525,15 +536,18 @@ class TypedKernel : public KernelBase {
   // structure.
   void PackParams(KernelArgsArray<kNumberOfParameters> *args,
                   Params &... params) const {
-    PackOneParam(args, params...);
+    PackOneParamFromList(args, params...);
   }
 
   template <typename T, typename... RestOfParams>
-  void PackOneParam(KernelArgsArray<kNumberOfParameters> *args, const T &arg,
-                    const RestOfParams &... rest) const {
+  void PackOneParamFromList(KernelArgsArray<kNumberOfParameters> *args,
+                            const T &arg, const RestOfParams &... rest) const {
     PackOneParam(args, arg);
-    PackOneParam(args, rest...);
+    PackOneParamFromList(args, rest...);
   }
+
+  // Base case for variadic template expansion - nothing to do!
+  void PackOneParamFromList(KernelArgsArray<kNumberOfParameters> *args) const {}
 
   // Packs one (non-DeviceMemoryBase) parameter into the arg and sizes array.
   // The enable_if<> is for excluding DeviceMemoryBase args, which have a
@@ -580,9 +594,6 @@ class TypedKernel : public KernelBase {
           nullptr) const {
     args->add_shared_bytes(arg.size());
   }
-
-  // Base case for variadic template expansion - nothing to do!
-  void PackOneParam(KernelArgsArray<kNumberOfParameters> *args) const {}
 
   SE_DISALLOW_COPY_AND_ASSIGN(TypedKernel);
 };

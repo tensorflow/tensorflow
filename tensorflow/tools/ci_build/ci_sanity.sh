@@ -36,7 +36,12 @@ die() {
 
 num_cpus() {
   # Get the number of CPUs
-  N_CPUS=$(grep -c ^processor /proc/cpuinfo)
+  if [[ -f /proc/cpuinfo ]]; then
+    N_CPUS=$(grep -c ^processor /proc/cpuinfo)
+  else
+    # Fallback method
+    N_CPUS=`getconf _NPROCESSORS_ONLN`
+  fi
   if [[ -z ${N_CPUS} ]]; then
     die "ERROR: Unable to determine the number of CPUs"
   fi
@@ -85,76 +90,65 @@ get_py_files_to_check() {
 # Subfunctions for substeps
 # Run pylint
 do_pylint() {
-  # Usage: do_pylint (PYTHON2 | PYTHON3) [--incremental]
+  # Usage: do_pylint [--incremental]
   #
   # Options:
-  #   --incremental  Performs check on only the python files changed in the
-  #                  last non-merge git commit.
+  #   --incremental  Performs check only if there are python files that changed
+  #                  since last non-merge git commit. We always check all Python
+  #                  files if one changed to capture the case when a function
+  #                  signature changes affects unchanged files.
 
-  # Use this list to whitelist pylint errors
-  ERROR_WHITELIST="^tensorflow/python/framework/function_test\.py.*\[E1123.*noinline "\
-"^tensorflow/python/platform/default/_gfile\.py.*\[E0301.*non-iterator "\
-"^tensorflow/python/platform/default/_googletest\.py.*\[E0102.*function\salready\sdefined "\
-"^tensorflow/python/feature_column/feature_column_test\.py.*\[E0110.*abstract-class-instantiated "\
-"^tensorflow/contrib/layers/python/layers/feature_column\.py.*\[E0110.*abstract-class-instantiated "\
-"^tensorflow/contrib/eager/python/evaluator\.py.*\[E0202.*method-hidden "\
-"^tensorflow/contrib/eager/python/metrics_impl\.py.*\[E0202.*method-hidden "\
-"^tensorflow/contrib/rate/rate\.py.*\[E0202.*method-hidden "\
-"^tensorflow/python/platform/gfile\.py.*\[E0301.*non-iterator "\
-"^tensorflow/python/keras/callbacks\.py.*\[E1133.*not-an-iterable "\
-"^tensorflow/python/keras/engine/base_layer.py.*\[E0203.*access-member-before-definition "\
-"^tensorflow/python/keras/layers/recurrent\.py.*\[E0203.*access-member-before-definition "\
-"^tensorflow/python/kernel_tests/constant_op_eager_test.py.*\[E0303.*invalid-length-returned "\
-"^tensorflow/python/keras/utils/data_utils.py.*\[E1102.*not-callable"
-
-  echo "ERROR_WHITELIST=\"${ERROR_WHITELIST}\""
-
-  if [[ $# != "1" ]] && [[ $# != "2" ]]; then
-    echo "Invalid syntax when invoking do_pylint"
-    echo "Usage: do_pylint (PYTHON2 | PYTHON3) [--incremental]"
-    return 1
-  fi
-
-  if [[ $1 == "PYTHON2" ]]; then
-    PYLINT_BIN="python -m pylint"
-  elif [[ $1 == "PYTHON3" ]]; then
-    PYLINT_BIN="python3 -m pylint"
-  else
-    echo "Unrecognized python version (PYTHON2 | PYTHON3): $1"
-    return 1
-  fi
-
-  if [[ "$2" == "--incremental" ]]; then
+  # Validate arguments, see if we can do no work
+  if [[ $# == 1 ]] && [[ "$1" == "--incremental" ]]; then
     PYTHON_SRC_FILES=$(get_py_files_to_check --incremental)
 
     if [[ -z "${PYTHON_SRC_FILES}" ]]; then
       echo "do_pylint will NOT run due to --incremental flag and due to the "\
 "absence of Python code changes in the last commit."
       return 0
-    else
-      # For incremental builds, we still check all Python files in cases there
-      # are function signature changes that affect unchanged Python files.
-      PYTHON_SRC_FILES=$(get_py_files_to_check)
     fi
-  elif [[ -z "$2" ]]; then
-    PYTHON_SRC_FILES=$(get_py_files_to_check)
-  else
+  elif [[ $# != 0 ]]; then
     echo "Invalid syntax for invoking do_pylint"
-    echo "Usage: do_pylint (PYTHON2 | PYTHON3) [--incremental]"
+    echo "Usage: do_pylint [--incremental]"
     return 1
   fi
 
+  # Get all Python files, regardless of mode.
+  PYTHON_SRC_FILES=$(get_py_files_to_check)
+
+  # Something happened. TF no longer has Python code if this branch is taken
   if [[ -z ${PYTHON_SRC_FILES} ]]; then
     echo "do_pylint found no Python files to check. Returning."
     return 0
   fi
 
+  # Now that we know we have to do work, check if `pylint` is installed
+  PYLINT_BIN="python3.8 -m pylint"
+
+  echo ""
+  echo "check whether pylint is available or not."
+  echo ""
+  ${PYLINT_BIN} --version
+  if [[ $? -eq 0 ]]
+  then
+    echo ""
+    echo "pylint available, proceeding with pylint sanity check."
+    echo ""
+  else
+    echo ""
+    echo "pylint not available."
+    echo ""
+    return 1
+  fi
+
+  # Configure pylint using the following file
   PYLINTRC_FILE="${SCRIPT_DIR}/pylintrc"
 
   if [[ ! -f "${PYLINTRC_FILE}" ]]; then
     die "ERROR: Cannot find pylint rc file at ${PYLINTRC_FILE}"
   fi
 
+  # Run pylint in parallel, after some disk setup
   NUM_SRC_FILES=$(echo ${PYTHON_SRC_FILES} | wc -w)
   NUM_CPUS=$(num_cpus)
 
@@ -165,15 +159,19 @@ do_pylint() {
   PYLINT_START_TIME=$(date +'%s')
   OUTPUT_FILE="$(mktemp)_pylint_output.log"
   ERRORS_FILE="$(mktemp)_pylint_errors.log"
-  NONWL_ERRORS_FILE="$(mktemp)_pylint_nonwl_errors.log"
+  PERMIT_FILE="$(mktemp)_pylint_permit.log"
+  FORBID_FILE="$(mktemp)_pylint_forbid.log"
 
   rm -rf ${OUTPUT_FILE}
   rm -rf ${ERRORS_FILE}
-  rm -rf ${NONWL_ERRORS_FILE}
-  touch ${NONWL_ERRORS_FILE}
+  rm -rf ${PERMIT_FILE}
+  rm -rf ${FORBID_FILE}
 
+  # When running, filter to only contain the error code lines. Removes module
+  # header, removes lines of context that show up from some lines.
+  # Also, don't redirect stderr as this would hide pylint fatal errors.
   ${PYLINT_BIN} --rcfile="${PYLINTRC_FILE}" --output-format=parseable \
-      --jobs=${NUM_CPUS} ${PYTHON_SRC_FILES} > ${OUTPUT_FILE} 2>&1
+      --jobs=${NUM_CPUS} ${PYTHON_SRC_FILES} | grep '\[[CEFW]' > ${OUTPUT_FILE}
   PYLINT_END_TIME=$(date +'%s')
 
   echo ""
@@ -192,32 +190,45 @@ do_pylint() {
   # W0622 redefined-builtin
   grep -E '(\[E|\[W0311|\[W0312|\[C0330|\[C0301|\[C0326|\[W0611|\[W0622)' ${OUTPUT_FILE} > ${ERRORS_FILE}
 
-  N_ERRORS=0
-  while read -r LINE; do
-    IS_WHITELISTED=0
-    for WL_REGEX in ${ERROR_WHITELIST}; do
-      if echo ${LINE} | grep -q "${WL_REGEX}"; then
-        echo "Found a whitelisted error:"
-        echo "  ${LINE}"
-        IS_WHITELISTED=1
-      fi
-    done
+  # Split the pylint reported errors into permitted ones and those we want to
+  # block submit on until fixed.
+  # We use `${ALLOW_LIST_FILE}` to record the errors we temporarily accept. Goal
+  # is to make that file only contain errors caused by difference between
+  # internal and external versions.
+  ALLOW_LIST_FILE="${SCRIPT_DIR}/pylint_allowlist"
 
-    if [[ ${IS_WHITELISTED} == "0" ]]; then
-      echo "${LINE}" >> ${NONWL_ERRORS_FILE}
-      echo "" >> ${NONWL_ERRORS_FILE}
-      ((N_ERRORS++))
-    fi
-  done <${ERRORS_FILE}
+  if [[ ! -f "${ALLOW_LIST_FILE}" ]]; then
+    die "ERROR: Cannot find pylint allowlist file at ${ALLOW_LIST_FILE}"
+  fi
+
+  # We can split with just 2 grep invocations
+  grep    -f ${ALLOW_LIST_FILE} ${ERRORS_FILE} > ${PERMIT_FILE}
+  grep -v -f ${ALLOW_LIST_FILE} ${ERRORS_FILE} > ${FORBID_FILE}
+
+  # Determine counts of errors
+  N_PERMIT_ERRORS=$(wc -l ${PERMIT_FILE} | cut -d' ' -f1)
+  N_FORBID_ERRORS=$(wc -l ${FORBID_FILE} | cut -d' ' -f1)
+
+  # First print all allowed errors
+  echo ""
+  if [[ ${N_PERMIT_ERRORS} != 0 ]]; then
+    echo "Found ${N_PERMIT_ERRORS} allowlisted pylint errors:"
+    cat ${PERMIT_FILE}
+  fi
+
+  # Now, print the errors we should fix
+  echo ""
+  if [[ ${N_FORBID_ERRORS} != 0 ]]; then
+    echo "Found ${N_FORBID_ERRORS} non-allowlisted pylint errors:"
+    cat ${FORBID_FILE}
+  fi
 
   echo ""
-  if [[ ${N_ERRORS} != 0 ]]; then
-    echo "FAIL: Found ${N_ERRORS} non-whitelited pylint errors:"
-    cat "${NONWL_ERRORS_FILE}"
+  if [[ ${N_FORBID_ERRORS} != 0 ]]; then
+    echo "FAIL: Found ${N_FORBID_ERRORS} non-allowlisted errors and ${N_PERMIT_ERRORS} allowlisted errors"
     return 1
   else
-    echo "PASS: No non-whitelisted pylint errors were found."
-    return 0
+    echo "PASS: Found only ${N_PERMIT_ERRORS} allowlisted errors"
   fi
 }
 
@@ -294,7 +305,7 @@ do_buildifier(){
 
   rm -rf ${BUILDIFIER_OUTPUT_FILE}
 
-  buildifier -showlog -v -mode=check \
+  buildifier -v -mode=check \
     ${BUILD_FILES} 2>&1 | tee ${BUILDIFIER_OUTPUT_FILE}
   BUILDIFIER_END_TIME=$(date +'%s')
 
@@ -305,7 +316,7 @@ do_buildifier(){
   if [[ -s ${BUILDIFIER_OUTPUT_FILE} ]]; then
     echo "FAIL: buildifier found errors and/or warnings in above BUILD files."
     echo "buildifier suggested the following changes:"
-    buildifier -showlog -v -mode=diff ${BUILD_FILES}
+    buildifier -v -mode=diff -diff_command=diff ${BUILD_FILES}
     echo "Please fix manually or run buildifier <file> to auto-fix."
     return 1
   else
@@ -327,7 +338,7 @@ do_external_licenses_check(){
   TMP_FILE="$(mktemp)_tmp.log"
 
   echo "Getting external dependencies for ${BUILD_TARGET}"
- bazel query "attr('licenses', 'notice', deps(${BUILD_TARGET}))" --keep_going > "${TMP_FILE}" 2>&1
+ bazel cquery "attr('licenses', 'notice', deps(${BUILD_TARGET}))" --keep_going > "${TMP_FILE}" 2>&1
  cat "${TMP_FILE}" \
   | grep -e "^\/\/" -e "^@" \
   | grep -E -v "^//tensorflow" \
@@ -338,7 +349,7 @@ do_external_licenses_check(){
 
   echo
   echo "Getting list of external licenses mentioned in ${LICENSES_TARGET}."
-  bazel query "deps(${LICENSES_TARGET})" --keep_going > "${TMP_FILE}" 2>&1
+  bazel cquery "deps(${LICENSES_TARGET})" --keep_going > "${TMP_FILE}" 2>&1
  cat "${TMP_FILE}" \
   | grep -e "^\/\/" -e "^@" \
   | grep -E -v "^//tensorflow" \
@@ -354,14 +365,39 @@ do_external_licenses_check(){
 
   EXTERNAL_LICENSES_CHECK_END_TIME=$(date +'%s')
 
-  # Blacklist
+  # Denylist
   echo ${MISSING_LICENSES_FILE}
-  grep -e "@bazel_tools//third_party/" -e "@com_google_absl//absl" -e "@org_tensorflow//" -e "@com_github_googlecloudplatform_google_cloud_cpp//google" -v ${MISSING_LICENSES_FILE} > temp.txt
+  grep \
+    -e "@bazel_tools//platforms" \
+    -e "@bazel_tools//third_party/" \
+    -e "@bazel_tools//tools" \
+    -e "@local" \
+    -e "@com_google_absl//absl" \
+    -e "@org_tensorflow//" \
+    -e "@com_github_googlecloudplatform_google_cloud_cpp//google" \
+    -e "@com_github_grpc_grpc//src/compiler" \
+    -e "@platforms//os" \
+    -e "@ruy//" \
+    -v ${MISSING_LICENSES_FILE} > temp.txt
   mv temp.txt ${MISSING_LICENSES_FILE}
 
-  # Whitelist
+  # Allowlist
   echo ${EXTRA_LICENSE_FILE}
-  grep -e "@bazel_tools//src" -e "@bazel_tools//tools/" -e "@com_google_absl//" -e "//external" -e "@local" -e "@com_github_googlecloudplatform_google_cloud_cpp//" -e "@embedded_jdk//" -v ${EXTRA_LICENSES_FILE} > temp.txt
+  grep \
+    -e "//third_party/mkl" \
+    -e "//third_party/mkl_dnn" \
+    -e "@bazel_tools//src" \
+    -e "@bazel_tools//platforms" \
+    -e "@bazel_tools//tools/" \
+    -e "@org_tensorflow//tensorflow" \
+    -e "@com_google_absl//" \
+    -e "//external" \
+    -e "@local" \
+    -e "@com_github_googlecloudplatform_google_cloud_cpp//" \
+    -e "@embedded_jdk//" \
+    -e "^//$" \
+    -e "@ruy//" \
+    -v ${EXTRA_LICENSES_FILE} > temp.txt
   mv temp.txt ${EXTRA_LICENSES_FILE}
 
 
@@ -375,9 +411,10 @@ do_external_licenses_check(){
     if [[ -s ${MISSING_LICENSES_FILE} ]] ; then
       echo "Missing the licenses for the following external dependencies:"
       cat ${MISSING_LICENSES_FILE}
+      echo "Please add the license(s) to ${LICENSES_TARGET}."
     fi
     if [[ -s ${EXTRA_LICENSES_FILE} ]] ; then
-      echo "Please remove the licenses for the following external dependencies:"
+      echo "Please remove the licenses for the following external dependencies from target ${LICENSES_TARGET}."
       cat ${EXTRA_LICENSES_FILE}
     fi
     rm -rf ${EXTERNAL_DEPENDENCIES_FILE}
@@ -434,17 +471,30 @@ cmd_status(){
 }
 
 # Run bazel build --nobuild to test the validity of the BUILD files
-# TODO(mikecase): Remove TF Lite exclusion from this list. Exclusion is
-# necessary since the @androidsdk WORKSPACE dependency is commented
-# out by default in TF WORKSPACE file.
 do_bazel_nobuild() {
   BUILD_TARGET="//tensorflow/..."
-  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/java/demo/app/..."
-  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/examples/android/..."
-  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/schema/..."
+  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/..."
   BUILD_CMD="bazel build --nobuild ${BAZEL_FLAGS} -- ${BUILD_TARGET}"
 
   ${BUILD_CMD}
+
+  cmd_status \
+    "This is due to invalid BUILD files."
+}
+
+do_bazel_deps_query() {
+  local BUILD_TARGET='//tensorflow/...'
+  # Android targets tend to depend on an Android runtime being available.
+  # Exclude until the sanity test has such a runtime available.
+  #
+  # TODO(mikecase): Remove TF Lite exclusion from this list. Exclusion is
+  # necessary since the @androidsdk WORKSPACE dependency is commented out by
+  # default in TF WORKSPACE file.
+  local BUILD_TARGET="${BUILD_TARGET}"' - kind("android_*", //tensorflow/...)'
+
+  # We've set the flag noimplicit_deps as a workaround for
+  # https://github.com/bazelbuild/bazel/issues/10544
+  bazel query ${BAZEL_FLAGS} --noimplicit_deps -- "deps($BUILD_TARGET)" > /dev/null
 
   cmd_status \
     "This is due to invalid BUILD files."
@@ -530,19 +580,80 @@ do_check_load_py_test() {
   python check_load_py_test.py
 }
 
-do_check_futures_test() {
-  cd "$ROOT_DIR/tensorflow/tools/test"
-  python check_futures_test.py
-}
-
 do_check_file_name_test() {
   cd "$ROOT_DIR/tensorflow/tools/test"
   python file_name_test.py
 }
 
+# Check that TARGET does not depend on DISALLOWED_DEP.
+_check_no_deps() {
+  TARGET="$1"
+  DISALLOWED_DEP="$2"
+  EXTRA_FLAG="$3"
+
+  TMP_FILE="$(mktemp)_tmp.log"
+  echo "Checking ${TARGET} does not depend on ${DISALLOWED_DEP} ..."
+  bazel cquery ${EXTRA_FLAG} "somepath(${TARGET}, ${DISALLOWED_DEP})" --keep_going> "${TMP_FILE}" 2>&1
+  if cat "${TMP_FILE}" | grep "Empty query results"; then
+      echo "Success."
+  else
+      cat "${TMP_FILE}"
+      echo
+      echo "ERROR: Found path from ${TARGET} to disallowed dependency ${DISALLOWED_DEP}."
+      echo "See above for path."
+      rm "${TMP_FILE}"
+      exit 1
+  fi
+  rm "${TMP_FILE}"
+}
+
+_do_pip_no_cuda_deps_check() {
+  EXTRA_FLAG="$1"
+  DISALLOWED_CUDA_DEPS=("@local_config_cuda//cuda:cudart"
+        "@local_config_cuda//cuda:cublas"
+        "@local_config_cuda//cuda:cuda_driver"
+        "@local_config_cuda//cuda:cudnn"
+        "@local_config_cuda//cuda:curand"
+        "@local_config_cuda//cuda:cusolver"
+        "@local_config_cuda//cuda:cusparse"
+        "@local_config_tensorrt//:tensorrt")
+  for cuda_dep in "${DISALLOWED_CUDA_DEPS[@]}"
+  do
+   _check_no_deps "//tensorflow/tools/pip_package:build_pip_package" "${cuda_dep}" "${EXTRA_FLAG}"
+   RESULT=$?
+
+   if [[ ${RESULT} != "0" ]]; then
+    exit 1
+   fi
+  done
+}
+
+do_pip_no_cuda_deps_check_ubuntu() {
+  _do_pip_no_cuda_deps_check "--@local_config_cuda//:enable_cuda"
+}
+
+do_pip_no_cuda_deps_check_windows() {
+  _do_pip_no_cuda_deps_check "--@local_config_cuda//:enable_cuda --define framework_shared_object=false"
+}
+
+do_configure_test() {
+  for WITH_CUDA in 1 0
+  do
+    export TF_NEED_CUDA=${WITH_CUDA}
+    export CUDNN_INSTALL_PATH="/usr/local/cudnn"
+    export PYTHON_BIN_PATH=$(which python3.8)
+    yes "" | ${PYTHON_BIN_PATH} configure.py
+
+    RESULT=$?
+    if [[ ${RESULT} != "0" ]]; then
+     exit 1
+    fi
+  done
+}
+
 # Supply all sanity step commands and descriptions
-SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_check_futures_test" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check" "do_check_file_name_test")
-SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "Check that python files have certain __future__ imports" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links" "Check file names for cases")
+SANITY_STEPS=("do_configure_test" "do_pylint" "do_buildifier" "do_bazel_nobuild" "do_bazel_deps_query" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check" "do_check_file_name_test" "do_pip_no_cuda_deps_check_ubuntu" "do_pip_no_cuda_deps_check_windows")
+SANITY_STEPS_DESC=("Run ./configure" "Python 3 pylint" "buildifier check" "bazel nobuild" "bazel query" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links" "Check file names for cases" "Check Ubuntu gpu pip package does not depend on cuda shared libraries" "Check Windows gpu pip package does not depend on cuda shared libraries")
 
 INCREMENTAL_FLAG=""
 DEFAULT_BAZEL_CONFIGS=""
@@ -598,22 +709,36 @@ done
 # Print summary of build results
 COUNTER=0
 echo "==== Summary of sanity check results ===="
+TESTCASE_XML=''
 while [[ ${COUNTER} -lt "${#SANITY_STEPS[@]}" ]]; do
   INDEX=COUNTER
   ((INDEX++))
 
   echo "${INDEX}. ${SANITY_STEPS[COUNTER]}: ${SANITY_STEPS_DESC[COUNTER]}"
+  TESTCASE_XML="${TESTCASE_XML} <testcase name=\"${SANITY_STEPS_DESC[COUNTER]}\" status=\"run\" classname=\"\" time=\"0\">"
+
   if [[ ${STEP_EXIT_CODES[COUNTER]} == "0" ]]; then
     printf "  ${COLOR_GREEN}PASS${COLOR_NC}\n"
   else
     printf "  ${COLOR_RED}FAIL${COLOR_NC}\n"
+    TESTCASE_XML="${TESTCASE_XML} <failure message=\"\" type=\"\"/>"
   fi
+
+  TESTCASE_XML="${TESTCASE_XML} </testcase>"
 
   ((COUNTER++))
 done
 
 echo
 echo "${FAIL_COUNTER} failed; ${PASS_COUNTER} passed."
+
+mkdir -p "${KOKORO_ARTIFACTS_DIR}/${KOKORO_JOB_NAME}/summary"
+echo '<?xml version="1.0" encoding="UTF-8"?>'\
+  '<testsuites name="1"  tests="1" failures="0" errors="0" time="0">'\
+  '<testsuite name="Kokoro Summary" tests="'"$((FAIL_COUNTER + PASS_COUNTER))"\
+  '" failures="'"${FAIL_COUNTER}"'" errors="0" time="0">'\
+  "${TESTCASE_XML}"'</testsuite></testsuites>'\
+  > "${KOKORO_ARTIFACTS_DIR}/${KOKORO_JOB_NAME}/summary/sponge_log.xml"
 
 echo
 if [[ ${FAIL_COUNTER} == "0" ]]; then

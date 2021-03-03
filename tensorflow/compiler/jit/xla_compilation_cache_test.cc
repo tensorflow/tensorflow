@@ -14,8 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/jit/xla_compilation_cache.h"
+
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace {
@@ -49,6 +53,56 @@ TEST(XlaCompilationCacheTest, SignatureEquality) {
     }
   }
 }
+
+TEST(XlaCompilationCacheTest, TestDisabledXlaCompilation) {
+  NameAttrList fn;
+  fn.set_name("afunction");
+
+  DisableXlaCompilation();
+
+  xla::LocalClient* client = xla::ClientLibrary::LocalClientOrDie();
+  DeviceType device_type = DeviceType(DEVICE_CPU_XLA_JIT);
+
+  const XlaCompiler::CompilationResult* compilation_result;
+  xla::LocalExecutable* executable;
+
+  auto cache = new XlaCompilationCache(client, device_type);
+  core::ScopedUnref cache_ref(cache);
+
+  Status status = cache->Compile(XlaCompiler::Options{}, fn, {},
+                                 XlaCompiler::CompileOptions{},
+                                 XlaCompilationCache::CompileMode::kStrict,
+                                 &compilation_result, &executable);
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(
+      absl::StrContains(status.error_message(), "XLA compilation disabled"));
+}
+
+void BM_BuildSignature(::testing::benchmark::State& state) {
+  const int n_args = state.range(0);
+
+  NameAttrList fn;
+  fn.set_name("afunction");
+  for (int i = 0; i < n_args; i++) {
+    (*fn.mutable_attr())[absl::StrCat("T", i)].set_type(DT_FLOAT);
+  }
+  std::vector<XlaCompiler::Argument> args(n_args);
+  for (int i = 0; i < n_args; i++) {
+    args[i].kind = (((i % 3) == 0) ? XlaCompiler::Argument::kConstant
+                                   : XlaCompiler::Argument::kParameter);
+    args[i].type = DT_INT32;
+    args[i].shape = TensorShape({4, 0});
+    args[i].constant_value = Tensor(DT_INT32, {4, 0});
+  }
+
+  for (auto i : state) {
+    xla::StatusOr<XlaCompilationCache::Signature> s =
+        XlaCompilationCache::BuildSignature(fn, args);
+    CHECK(s.ok());
+    XlaCompilationCache::Signature sig = std::move(s.ValueOrDie());
+  }
+}
+BENCHMARK(BM_BuildSignature)->Arg(0)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
 
 }  // namespace
 }  // namespace tensorflow

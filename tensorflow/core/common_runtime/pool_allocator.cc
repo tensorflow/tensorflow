@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -126,8 +127,9 @@ void* PoolAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
     delete pr;
     return PrepareChunk(r, alignment, num_bytes);
   } else {
-    void* ptr = allocator_->Alloc(kPoolAlignment, num_bytes);
-    return PrepareChunk(ptr, alignment, num_bytes);
+    size_t bytes_received;
+    void* ptr = allocator_->Alloc(kPoolAlignment, num_bytes, &bytes_received);
+    return PrepareChunk(ptr, alignment, bytes_received);
   }
 }
 
@@ -255,10 +257,17 @@ void PoolAllocator::EvictOne() {
   }
 }
 
-void* BasicCPUAllocator::Alloc(size_t alignment, size_t num_bytes) {
+void* BasicCPUAllocator::Alloc(size_t alignment, size_t num_bytes,
+                               size_t* bytes_received) {
   void* ptr = nullptr;
+  *bytes_received = num_bytes;
   if (num_bytes > 0) {
-    ptr = port::AlignedMalloc(num_bytes, static_cast<int>(alignment));
+    if (numa_node_ == port::kNUMANoAffinity) {
+      ptr = port::AlignedMalloc(num_bytes, static_cast<int>(alignment));
+    } else {
+      ptr =
+          port::NUMAMalloc(numa_node_, num_bytes, static_cast<int>(alignment));
+    }
     VisitAlloc(ptr, numa_node_, num_bytes);
   }
   return ptr;
@@ -267,7 +276,11 @@ void* BasicCPUAllocator::Alloc(size_t alignment, size_t num_bytes) {
 void BasicCPUAllocator::Free(void* ptr, size_t num_bytes) {
   if (num_bytes > 0) {
     VisitFree(ptr, numa_node_, num_bytes);
-    port::AlignedFree(ptr);
+    if (numa_node_ == port::kNUMANoAffinity) {
+      port::AlignedFree(ptr);
+    } else {
+      port::NUMAFree(ptr, num_bytes);
+    }
   }
 }
 }  // namespace tensorflow

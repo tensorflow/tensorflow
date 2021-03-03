@@ -36,13 +36,23 @@ class RangeOp : public OpKernel {
     const Tensor& start_in = context->input(0);
     const Tensor& limit_in = context->input(1);
     const Tensor& delta_in = context->input(2);
-    OP_REQUIRES(context, IsLegacyScalar(start_in.shape()),
+    // TODO(rmlarsen): Disallow legacy use of length-1 vectors as scalars.
+    OP_REQUIRES(context,
+                TensorShapeUtils::IsScalar(start_in.shape()) ||
+                    (TensorShapeUtils::IsVector(start_in.shape()) &&
+                     start_in.shape().dim_size(0) == 1),
                 errors::InvalidArgument("start must be a scalar, not shape ",
                                         start_in.shape().DebugString()));
-    OP_REQUIRES(context, IsLegacyScalar(limit_in.shape()),
+    OP_REQUIRES(context,
+                TensorShapeUtils::IsScalar(limit_in.shape()) ||
+                    (TensorShapeUtils::IsVector(limit_in.shape()) &&
+                     limit_in.shape().dim_size(0) == 1),
                 errors::InvalidArgument("limit must be a scalar, not shape ",
                                         limit_in.shape().DebugString()));
-    OP_REQUIRES(context, IsLegacyScalar(delta_in.shape()),
+    OP_REQUIRES(context,
+                TensorShapeUtils::IsScalar(delta_in.shape()) ||
+                    (TensorShapeUtils::IsVector(delta_in.shape()) &&
+                     delta_in.shape().dim_size(0) == 1),
                 errors::InvalidArgument("delta must be a scalar, not shape ",
                                         delta_in.shape().DebugString()));
     const T start = start_in.scalar<T>()();
@@ -89,28 +99,20 @@ class RangeOp : public OpKernel {
 
 #define REGISTER_CPU_KERNEL(T) REGISTER_KERNEL(DEVICE_CPU, T)
 #define REGISTER_GPU_KERNEL(T) REGISTER_KERNEL(DEVICE_GPU, T)
-#ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(T) REGISTER_KERNEL(DEVICE_SYCL, T)
-TF_CALL_float(REGISTER_SYCL_KERNEL);
-TF_CALL_double(REGISTER_SYCL_KERNEL);
-TF_CALL_int32(REGISTER_SYCL_KERNEL);
-TF_CALL_int64(REGISTER_SYCL_KERNEL);
-#undef REGISTER_SYCL_KERNEL
-#endif  // TENSORFLOW_USE_SYCL
 
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 TF_CALL_int32(REGISTER_CPU_KERNEL);
 TF_CALL_int64(REGISTER_CPU_KERNEL);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 TF_CALL_float(REGISTER_GPU_KERNEL);
 TF_CALL_double(REGISTER_GPU_KERNEL);
 TF_CALL_int32(REGISTER_GPU_KERNEL);
 TF_CALL_int64(REGISTER_GPU_KERNEL);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #undef REGISTER_KERNEL
 #undef REGISTER_CPU_KERNEL
@@ -143,11 +145,12 @@ class LinSpaceOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape({num}), &out));
     auto flat = out->flat<T>();
-    if (num == 1) {
-      flat(0) = start;
-    } else {
+    flat(0) = start;
+    if (num > 1) {
       const T step = (stop - start) / (num - 1);
-      for (Tnum i = 0; i < num; ++i) flat(i) = start + step * i;
+      for (Tnum i = 1; i < num - 1; ++i) flat(i) = start + step * i;
+      // Ensure final value == stop; float arithmetic won't guarantee this.
+      flat(num - 1) = stop;
     }
   }
 };
@@ -178,12 +181,6 @@ TF_CALL_float(REGISTER_GPU_KERNEL);
 TF_CALL_double(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
-#ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(T) REGISTER_KERNEL_ALL_NUMS(DEVICE_SYCL, T)
-TF_CALL_float(REGISTER_SYCL_KERNEL);
-TF_CALL_double(REGISTER_SYCL_KERNEL);
-#undef REGISTER_SYCL_KERNEL
-#endif  // TENSORFLOW_USE_SYCL
 
 #undef REGISTER_CPU_KERNEL
 #undef REGISTER_KERNEL_ALL_NUMS

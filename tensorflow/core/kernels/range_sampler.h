@@ -200,7 +200,7 @@ class UnigramSampler : public RangeSampler {
   void Update(gtl::ArraySlice<int64> values) override;
 
  private:
-  ThreadUnsafeUnigramSampler unsafe_sampler_ GUARDED_BY(mu_);
+  ThreadUnsafeUnigramSampler unsafe_sampler_ TF_GUARDED_BY(mu_);
   mutable mutex mu_;
 };
 

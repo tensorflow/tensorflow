@@ -12,13 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/toco/toco_port.h"
+
 #include <cstring>
 
-#include "tensorflow/lite/toco/toco_port.h"
-#include "tensorflow/lite/toco/toco_types.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/toco/toco_types.h"
 
 #if defined(__ANDROID__) && defined(__ARM_ARCH_7A__)
 namespace std {
@@ -28,12 +30,12 @@ double round(double x) { return ::round(x); }
 
 namespace toco {
 namespace port {
-void CopyToBuffer(const string& src, char* dest) {
+void CopyToBuffer(const std::string& src, char* dest) {
   memcpy(dest, src.data(), src.size());
 }
 
 #ifdef PLATFORM_GOOGLE
-void CopyToBuffer(const Cord& src, char* dest) { src.CopyToArray(dest); }
+void CopyToBuffer(const absl::Cord& src, char* dest) { src.CopyToArray(dest); }
 #endif
 }  // namespace port
 }  // namespace toco
@@ -57,6 +59,11 @@ void InitGoogle(const char* usage, int* argc, char*** argv, bool remove_flags) {
   ::InitGoogle(usage, argc, argv, remove_flags);
 }
 
+void InitGoogleWasDoneElsewhere() {
+  // Nothing need be done since ::CheckInitGoogleIsDone() is aware of other
+  // possible initialization entry points.
+}
+
 void CheckInitGoogleIsDone(const char* message) {
   ::CheckInitGoogleIsDone(message);
 }
@@ -64,7 +71,7 @@ void CheckInitGoogleIsDone(const char* message) {
 namespace file {
 
 // Conversion to our wrapper Status.
-tensorflow::Status ToStatus(const ::util::Status& uts) {
+tensorflow::Status ToStatus(const absl::Status& uts) {
   if (!uts.ok()) {
     return tensorflow::Status(
         tensorflow::errors::Code(::util::RetrieveErrorCode(uts)),
@@ -79,7 +86,7 @@ toco::port::file::Options ToOptions(const ::file::Options& options) {
   return Options();
 }
 
-tensorflow::Status Writable(const string& filename) {
+tensorflow::Status Writable(const std::string& filename) {
   File* f = nullptr;
   const auto status = ::file::Open(filename, "w", &f, ::file::Defaults());
   if (f) {
@@ -88,28 +95,30 @@ tensorflow::Status Writable(const string& filename) {
   return ToStatus(status);
 }
 
-tensorflow::Status Readable(const string& filename,
+tensorflow::Status Readable(const std::string& filename,
                             const file::Options& options) {
   return ToStatus(::file::Readable(filename, ::file::Defaults()));
 }
 
-tensorflow::Status Exists(const string& filename,
+tensorflow::Status Exists(const std::string& filename,
                           const file::Options& options) {
   auto status = ::file::Exists(filename, ::file::Defaults());
   return ToStatus(status);
 }
 
-tensorflow::Status GetContents(const string& filename, string* contents,
+tensorflow::Status GetContents(const std::string& filename,
+                               std::string* contents,
                                const file::Options& options) {
   return ToStatus(::file::GetContents(filename, contents, ::file::Defaults()));
 }
 
-tensorflow::Status SetContents(const string& filename, const string& contents,
+tensorflow::Status SetContents(const std::string& filename,
+                               const std::string& contents,
                                const file::Options& options) {
   return ToStatus(::file::SetContents(filename, contents, ::file::Defaults()));
 }
 
-string JoinPath(const string& a, const string& b) {
+std::string JoinPath(const std::string& a, const std::string& b) {
   return ::file::JoinPath(a, b);
 }
 
@@ -151,6 +160,8 @@ constexpr int kFileWriteFlags = O_CREAT | O_WRONLY;
 #endif  // _WIN32
 
 static bool port_initialized = false;
+
+void InitGoogleWasDoneElsewhere() { port_initialized = true; }
 
 void InitGoogle(const char* usage, int* argc, char*** argv, bool remove_flags) {
   if (!port_initialized) {

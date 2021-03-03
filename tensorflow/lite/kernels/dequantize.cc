@@ -12,15 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <string.h>
-#include <vector>
+#include "tensorflow/lite/kernels/dequantize.h"
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
+#include <stddef.h>
+
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -57,7 +55,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   OpContext op_context(context, node);
 
-  TF_LITE_ENSURE(context, op_context.input->type == kTfLiteUInt8);
+  TF_LITE_ENSURE(context, op_context.input->type == kTfLiteUInt8 ||
+                              op_context.input->type == kTfLiteInt8 ||
+                              op_context.input->type == kTfLiteInt16 ||
+                              op_context.input->type == kTfLiteFloat16);
+
+  if (op_context.input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, op_context.input->params.zero_point, 0);
+  }
 
   op_context.output->type = kTfLiteFloat32;
   // If the input tensor is constant, we can persist the dequantized value in
@@ -69,6 +74,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                TfLiteIntArrayCopy(op_context.input->dims));
 }
 
+template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
   OpContext op_context(context, node);
@@ -77,30 +83,41 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteOk;
   }
 
-  tflite::DequantizationParams op_params;
-  op_params.zero_point = op_context.input->params.zero_point;
-  op_params.scale = op_context.input->params.scale;
-  optimized_ops::Dequantize(op_params, GetTensorShape(op_context.input),
-                            GetTensorData<uint8_t>(op_context.input),
-                            GetTensorShape(op_context.output),
-                            GetTensorData<float>(op_context.output));
+  auto status = DequantizeImpl<kernel_type>(context, node, op_context.input,
+                                            op_context.output);
+  if (status != kTfLiteOk) {
+    return status;
+  }
 
   if (IsConstantTensor(op_context.input)) {
     op_data->float_dequantized_weights_initialized = true;
   }
-
   return kTfLiteOk;
 }
 
 }  // namespace dequantize
 
 TfLiteRegistration* Register_DEQUANTIZE_OPT() {
-  static TfLiteRegistration r = {dequantize::Init, dequantize::Free,
-                                 dequantize::Prepare, dequantize::Eval};
+  static TfLiteRegistration r = {
+      dequantize::Init, dequantize::Free, dequantize::Prepare,
+      dequantize::Eval<dequantize::kGenericOptimized>};
   return &r;
 }
 
-TfLiteRegistration* Register_DEQUANTIZE() { return Register_DEQUANTIZE_OPT(); }
+TfLiteRegistration* Register_DEQUANTIZE_REF() {
+  static TfLiteRegistration r = {dequantize::Init, dequantize::Free,
+                                 dequantize::Prepare,
+                                 dequantize::Eval<dequantize::kReference>};
+  return &r;
+}
+
+TfLiteRegistration* Register_DEQUANTIZE() {
+#ifdef USE_NEON
+  return Register_DEQUANTIZE_OPT();
+#else
+  return Register_DEQUANTIZE_REF();
+#endif
+}
 
 }  // namespace builtin
 }  // namespace ops

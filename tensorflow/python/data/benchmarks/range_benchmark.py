@@ -17,53 +17,33 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
-
-from tensorflow.python.client import session
+from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.platform import test
-
-_NUMPY_RANDOM_SEED = 42
 
 
-class RangeBenchmark(test.Benchmark):
+class RangeBenchmark(benchmark_base.DatasetBenchmarkBase):
   """Benchmarks for `tf.data.Dataset.range()`."""
 
-  def _benchmarkRangeHelper(self, modeling_enabled):
-    num_elements = 10000000 if modeling_enabled else 50000000
+  def _benchmark_range(self, num_elements, autotune, benchmark_id):
     options = dataset_ops.Options()
-    options.experimental_autotune = modeling_enabled
+    options.experimental_optimization.autotune = autotune
+    dataset = dataset_ops.Dataset.range(num_elements)
+    dataset = dataset.with_options(options)
 
-    # Use `Dataset.skip()` and `Dataset.take()` to perform the iteration in
-    # C++, and focus on the minimal overheads (excluding Python invocation
-    # costs).
-    dataset = dataset_ops.Dataset.range(num_elements).skip(
-        num_elements - 1).take(1).with_options(options)
-    iterator = dataset.make_initializable_iterator()
-    next_element = iterator.get_next()
+    self.run_and_report_benchmark(
+        dataset,
+        num_elements=num_elements,
+        extras={
+            "model_name": "range.benchmark.%d" % benchmark_id,
+        },
+        name="modeling_%s" % ("on" if autotune else "off"))
 
-    with session.Session() as sess:
-      # Run once to warm up the session caches.
-      sess.run(iterator.initializer)
-      sess.run(next_element)
+  def benchmark_range_with_modeling(self):
+    self._benchmark_range(num_elements=10000000, autotune=True, benchmark_id=1)
 
-      # Run once for timing.
-      sess.run(iterator.initializer)
-      start = time.time()
-      sess.run(next_element)
-      end = time.time()
-
-      time_per_element = (end - start) / num_elements
-      print("Average time per element (%s modeling): %f nanoseconds" % (
-          "with" if modeling_enabled else "without", time_per_element * 1e9))
-      self.report_benchmark(iters=num_elements, wall_time=time_per_element,
-                            name="benchmark_tf_data_dataset_range%s"
-                            % ("_with_modeling" if modeling_enabled else ""))
-
-  def benchmarkRange(self):
-    for modeling_enabled in [False, True]:
-      self._benchmarkRangeHelper(modeling_enabled)
+  def benchmark_range_without_modeling(self):
+    self._benchmark_range(num_elements=50000000, autotune=False, benchmark_id=2)
 
 
 if __name__ == "__main__":
-  test.main()
+  benchmark_base.test.main()

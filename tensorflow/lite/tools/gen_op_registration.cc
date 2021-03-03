@@ -12,12 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/tools/gen_op_registration.h"
+
 #include <string>
 #include <vector>
 
 #include "re2/re2.h"
 #include "tensorflow/lite/model.h"
-#include "tensorflow/lite/tools/gen_op_registration.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 
 namespace tflite {
 
@@ -29,17 +31,27 @@ string NormalizeCustomOpName(const string& op) {
 }
 
 void ReadOpsFromModel(const ::tflite::Model* model,
-                      std::vector<string>* builtin_ops,
-                      std::vector<string>* custom_ops) {
+                      tflite::RegisteredOpMap* builtin_ops,
+                      tflite::RegisteredOpMap* custom_ops) {
   if (!model) return;
   auto opcodes = model->operator_codes();
   if (!opcodes) return;
   for (const auto* opcode : *opcodes) {
-    if (opcode->builtin_code() != ::tflite::BuiltinOperator_CUSTOM) {
-      builtin_ops->push_back(
-          tflite::EnumNameBuiltinOperator(opcode->builtin_code()));
+    const int version = opcode->version();
+    auto builtin_code = GetBuiltinCode(opcode);
+    if (builtin_code != ::tflite::BuiltinOperator_CUSTOM) {
+      auto iter_and_bool = builtin_ops->insert(
+          std::make_pair(tflite::EnumNameBuiltinOperator(builtin_code),
+                         std::make_pair(version, version)));
+      auto& versions = iter_and_bool.first->second;
+      versions.first = std::min(versions.first, version);
+      versions.second = std::max(versions.second, version);
     } else {
-      custom_ops->push_back(opcode->custom_code()->c_str());
+      auto iter_and_bool = custom_ops->insert(std::make_pair(
+          opcode->custom_code()->c_str(), std::make_pair(version, version)));
+      auto& versions = iter_and_bool.first->second;
+      versions.first = std::min(versions.first, version);
+      versions.second = std::max(versions.second, version);
     }
   }
 }

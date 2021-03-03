@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace tensorflow {
 

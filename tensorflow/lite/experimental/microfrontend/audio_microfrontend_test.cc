@@ -14,12 +14,14 @@ limitations under the License.
 ==============================================================================*/
 // Unit test for TFLite Micro Frontend op.
 
+#include "tensorflow/lite/experimental/microfrontend/audio_microfrontend.h"
+
 #include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
+#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/model.h"
@@ -27,9 +29,6 @@ limitations under the License.
 namespace tflite {
 namespace ops {
 namespace custom {
-
-TfLiteRegistration* Register_AUDIO_MICROFRONTEND();
-
 namespace {
 
 using ::testing::ElementsAreArray;
@@ -140,13 +139,16 @@ class BaseMicroFrontendTest : public ::testing::Test {
 
     // Mimic padding behaviour with zero_padding = true.
     std::vector<int> output_flattened;
-    for (int anchor = 0; anchor < output.size();
+    int anchor;
+    for (anchor = 0; anchor < output.size();
          anchor += micro_frontend->num_frame_stride()) {
-      for (int frame = anchor - micro_frontend->num_left_context();
+      int frame;
+      for (frame = anchor - micro_frontend->num_left_context();
            frame <= anchor + micro_frontend->num_right_context(); ++frame) {
         if (frame < 0 || frame >= output.size()) {
           // Padding with zeros.
-          for (int j = 0; j < num_frequency_per_frame; ++j) {
+          int j;
+          for (j = 0; j < num_frequency_per_frame; ++j) {
             output_flattened.push_back(0.0);
           }
         } else {

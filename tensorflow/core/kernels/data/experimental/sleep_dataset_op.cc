@@ -15,14 +15,12 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/util/ptr_util.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
-
-// See documentation in ../ops/dataset_ops.cc for a high-level
-// description of the following op.
 
 class SleepDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -55,7 +53,7 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return MakeUnique<Iterator>(
+      return absl::make_unique<Iterator>(
           Iterator::Params{this, strings::StrCat(prefix, "::Sleep")});
     }
 
@@ -67,6 +65,18 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
     }
 
     string DebugString() const override { return "SleepDatasetOp::Dataset"; }
+
+    int64 Cardinality() const override { return input_->Cardinality(); }
+
+    Status InputDatasets(
+        std::vector<const DatasetBase*>* inputs) const override {
+      inputs->push_back(input_);
+      return Status::OK();
+    }
+
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -93,16 +103,41 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
       explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params) {}
 
+      ~Iterator() override {
+        {
+          mutex_lock l(mu_);
+          cancelled_ = true;
+        }
+        if (deregister_fn_) {
+          deregister_fn_();
+        }
+      }
+
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+            ctx->cancellation_manager(),
+            [this]() {
+              mutex_lock l(mu_);
+              cancelled_ = true;
+            },
+            &deregister_fn_));
+        return dataset()->input_->MakeIterator(ctx, this, prefix(),
+                                               &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
+        mutex_lock l(mu_);
         RecordStop(ctx);
-        ctx->env()->SleepForMicroseconds(dataset()->sleep_microseconds_);
+        bool cancelled = mu_.AwaitWithDeadline(
+            Condition(&cancelled_),
+            EnvTime::NowNanos() +
+                dataset()->sleep_microseconds_ * EnvTime::kMicrosToNanos);
         RecordStart(ctx);
+        if (cancelled) {
+          return errors::Cancelled("Operation was cancelled");
+        }
         return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
       }
 
@@ -113,8 +148,9 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
                                          /*ratio=*/1);
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
-        return SaveInput(writer, input_impl_);
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
+        return SaveInput(ctx, writer, input_impl_);
       }
 
       Status RestoreInternal(IteratorContext* ctx,
@@ -122,8 +158,10 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
         return RestoreInput(ctx, reader, input_impl_);
       }
 
-     private:
-      std::unique_ptr<IteratorBase> input_impl_;
+      mutex mu_;
+      std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
+      bool cancelled_ TF_GUARDED_BY(mu_) = false;
+      std::function<void()> deregister_fn_;
     };
 
     const DatasetBase* const input_;
@@ -132,9 +170,25 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
   };
 };
 
+REGISTER_KERNEL_BUILDER(Name("SleepDataset").Device(DEVICE_CPU),
+                        SleepDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalSleepDataset").Device(DEVICE_CPU),
                         SleepDatasetOp);
 
+REGISTER_KERNEL_BUILDER(Name("SleepDataset")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("sleep_microseconds")
+                            .HostMemory("input_dataset")
+                            .HostMemory("handle"),
+                        SleepDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("ExperimentalSleepDataset")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("sleep_microseconds")
+                            .HostMemory("input_dataset")
+                            .HostMemory("handle"),
+                        SleepDatasetOp);
+
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

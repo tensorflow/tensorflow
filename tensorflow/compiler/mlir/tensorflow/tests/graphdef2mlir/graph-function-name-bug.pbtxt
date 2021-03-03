@@ -1,0 +1,128 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -o - | FileCheck %s
+
+# This test is tailored to reproduce b/141617294. In particular, the function
+# library contains "foo1", "foo2", ..., "foo20", from which "foo1" and "foo11"
+# were mapped to the same name "foo110" in the bug.
+node {
+  name: "unnamed"
+  op: "foo1"
+}
+node {
+  name: "unnamed1"
+  op: "foo11"
+}
+library {
+  function {
+    signature {
+      name: "foo1"
+    }
+  }
+  function {
+    signature {
+      name: "foo2"
+    }
+  }
+  function {
+    signature {
+      name: "foo3"
+    }
+  }
+  function {
+    signature {
+      name: "foo4"
+    }
+  }
+  function {
+    signature {
+      name: "foo5"
+    }
+  }
+  function {
+    signature {
+      name: "foo6"
+    }
+  }
+  function {
+    signature {
+      name: "foo7"
+    }
+  }
+  function {
+    signature {
+      name: "foo8"
+    }
+  }
+  function {
+    signature {
+      name: "foo9"
+    }
+  }
+  function {
+    signature {
+      name: "foo10"
+    }
+  }
+  function {
+    signature {
+      name: "foo11"
+    }
+  }
+  function {
+    signature {
+      name: "foo12"
+    }
+  }
+  function {
+    signature {
+      name: "foo13"
+    }
+  }
+  function {
+    signature {
+      name: "foo14"
+    }
+  }
+  function {
+    signature {
+      name: "foo15"
+    }
+  }
+  function {
+    signature {
+      name: "foo16"
+    }
+  }
+  function {
+    signature {
+      name: "foo17"
+    }
+  }
+  function {
+    signature {
+      name: "foo18"
+    }
+  }
+  function {
+    signature {
+      name: "foo19"
+    }
+  }
+  function {
+    signature {
+      name: "foo20"
+    }
+  }
+}
+versions {
+  producer: 29
+  min_consumer: 12
+}
+
+# Verify that functions from the library are properly imported.
+
+# CHECK-LABEL:  func @main() {
+# CHECK:    "tf.LegacyCall"() {_disable_call_shape_inference = false, device = "", f = @foo110}
+# CHECK:    "tf.LegacyCall"() {_disable_call_shape_inference = false, device = "", f = @foo111}
+
+# CHECK-LABEL:  func private @foo110()
+# CHECK-LABEL:  func private @foo111()

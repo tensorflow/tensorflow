@@ -23,14 +23,19 @@ namespace tensorflow {
 struct MyRandomPODType {};
 
 TEST(AbiTest, AbiDemangleTest) {
-  EXPECT_EQ(port::MaybeAbiDemangle(MakeTypeIndex<int>().name()), "int");
+  EXPECT_EQ(port::MaybeAbiDemangle(TypeIndex::Make<int>().name()), "int");
 
-  EXPECT_EQ(port::MaybeAbiDemangle(MakeTypeIndex<MyRandomPODType>().name()),
-            "tensorflow::MyRandomPODType");
+#ifdef PLATFORM_WINDOWS
+  const char pod_type_name[] = "struct tensorflow::MyRandomPODType";
+#else
+  const char pod_type_name[] = "tensorflow::MyRandomPODType";
+#endif
+  EXPECT_EQ(port::MaybeAbiDemangle(TypeIndex::Make<MyRandomPODType>().name()),
+            pod_type_name);
 
   EXPECT_EQ(
-      port::MaybeAbiDemangle("help!  i'm caught in a C++ mangle factoryasdf"),
-      "help!  i'm caught in a C++ mangle factoryasdf");
+      port::MaybeAbiDemangle("help! i'm caught in a C++ mangle factoryasdf"),
+      "help! i'm caught in a C++ mangle factoryasdf");
 }
 
 }  // namespace tensorflow

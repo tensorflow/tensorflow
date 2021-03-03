@@ -78,33 +78,28 @@ class TileOp : public XlaOpKernel {
       ctx->SetOutput(0, input);
       return;
     }
+    std::vector<int64> dynamic_multiples;
+    ctx->set_dynamic_dimension_is_minus_one(true);
+    // The multiplier can be a dynamic value.
+    OP_REQUIRES_OK(
+        ctx, ctx->ConstantInputAsIntVector("multiples", &dynamic_multiples));
 
-    bool can_tile_with_implicit_broadcast = true;
-    for (int i = 0; i < input_dims; ++i) {
-      int64 multiple = multiples[i];
-      // If the multiple and input dimension are not 1, then tile cannot be
-      // implemented with a single hlo broadcast.
-      if (multiple != 1 && input_shape.dim_size(i) != 1) {
-        can_tile_with_implicit_broadcast = false;
+    auto result_or = BroadcastTo(ctx->Input("input"), output_dims);
+
+    OP_REQUIRES_OK(ctx, result_or.status());
+    auto result = result_or.ValueOrDie();
+    for (int64 i = 0; i < dynamic_multiples.size(); ++i) {
+      // If a dimension is dynamic, call set-dimension-size on the output.
+      if (dynamic_multiples[i] == -1) {
+        auto dynamic_dim_size =
+            xla::Slice(ctx->Input("multiples"), {i}, {i + 1}, {1});
+        dynamic_dim_size = xla::Reshape(dynamic_dim_size, {});
+        dynamic_dim_size = xla::ConvertElementType(dynamic_dim_size, xla::S32);
+        result = xla::SetDimensionSize(result, dynamic_dim_size, i);
       }
     }
 
-    if (can_tile_with_implicit_broadcast) {
-      // Create a constant Zero the size of the output shape to leverage binary
-      // operation broadcast semantics.
-      auto broadcasted_zero = xla::Broadcast(
-          XlaHelpers::Zero(ctx->builder(), ctx->input_type(0)), output_dims);
-      if (ctx->input_type(0) == DT_BOOL) {
-        ctx->SetOutput(0, xla::Or(broadcasted_zero, input));
-      } else {
-        ctx->SetOutput(0, xla::Add(broadcasted_zero, input));
-      }
-      return;
-    }
-
-    auto result = BroadcastTo(ctx->Input("input"), output_dims);
-    OP_REQUIRES_OK(ctx, result.status());
-    ctx->SetOutput(0, result.ValueOrDie());
+    ctx->SetOutput(0, result);
   }
 
  private:

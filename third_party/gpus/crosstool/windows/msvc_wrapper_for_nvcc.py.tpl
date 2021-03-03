@@ -28,6 +28,7 @@ import subprocess
 import re
 import sys
 import pipes
+import tempfile
 
 # Template values set by cuda_autoconf.
 CPU_COMPILER = ('%{cpu_compiler}')
@@ -36,7 +37,6 @@ GCC_HOST_COMPILER_PATH = ('%{gcc_host_compiler_path}')
 NVCC_PATH = '%{nvcc_path}'
 NVCC_VERSION = '%{cuda_version}'
 NVCC_TEMP_DIR = "%{nvcc_tmp_dir}"
-supported_cuda_compute_capabilities = [ %{cuda_compute_capabilities} ]
 
 def Log(s):
   print('gpus/crosstool: {0}'.format(s))
@@ -46,7 +46,7 @@ def GetOptionValue(argv, option):
   """Extract the list of values for option from options.
 
   Args:
-    option: The option whose value to extract, without the leading '/'.
+    option: The option whose value to extract.
 
   Returns:
     1. A list of values, either directly following the option,
@@ -55,8 +55,9 @@ def GetOptionValue(argv, option):
     2. The leftover options.
   """
 
-  parser = ArgumentParser(prefix_chars='/')
-  parser.add_argument('/' + option, nargs='*', action='append')
+  parser = ArgumentParser(prefix_chars='-/')
+  parser.add_argument(option, nargs='*', action='append')
+  option = option.lstrip('-/').replace('-', '_')
   args, leftover = parser.parse_known_args(argv)
   if args and vars(args)[option]:
     return (sum(vars(args)[option], []), leftover)
@@ -110,54 +111,82 @@ def InvokeNvcc(argv, log=False):
 
   out_file = [ f for f in argv if f.startswith('/Fo') ]
   if len(out_file) != 1:
-    raise Error('Please sepecify exactly one output file for cuda compilation.')
+    raise Error('Please specify exactly one output file for cuda compilation.')
   out = ['-o', out_file[0][len('/Fo'):]]
 
   nvcc_compiler_options, argv = GetNvccOptions(argv)
 
-  opt_option, argv = GetOptionValue(argv, 'O')
-  opt = ['-g', '-G']
+  opt_option, argv = GetOptionValue(argv, '/O')
+  opt = ['-g']
   if (len(opt_option) > 0 and opt_option[0] != 'd'):
     opt = ['-O2']
 
-  include_options, argv = GetOptionValue(argv, 'I')
+  include_options, argv = GetOptionValue(argv, '/I')
   includes = ["-I " + include for include in include_options]
 
-  defines, argv = GetOptionValue(argv, 'D')
+  defines, argv = GetOptionValue(argv, '/D')
   defines = ['-D' + define for define in defines]
 
-  undefines, argv = GetOptionValue(argv, 'U')
+  undefines, argv = GetOptionValue(argv, '/U')
   undefines = ['-U' + define for define in undefines]
 
-  # The rest of the unrecongized options should be passed to host compiler
+  fatbin_options, argv = GetOptionValue(argv, '-Xcuda-fatbinary')
+  fatbin_options = ['--fatbin-options=' + option for option in fatbin_options]
+
+  # The rest of the unrecognized options should be passed to host compiler
   host_compiler_options = [option for option in argv if option not in (src_files + out_file)]
 
   m_options = ["-m64"]
 
   nvccopts = ['-D_FORCE_INLINES']
-  for capability in supported_cuda_compute_capabilities:
-    capability = capability.replace('.', '')
-    nvccopts += [r'-gencode=arch=compute_%s,"code=sm_%s,compute_%s"' % (
-        capability, capability, capability)]
+  compute_capabilities, argv = GetOptionValue(argv, "--cuda-gpu-arch")
+  for capability in compute_capabilities:
+    capability = capability[len('sm_'):]
+    nvccopts += [
+        r'-gencode=arch=compute_%s,"code=sm_%s"' % (capability, capability)
+    ]
+  compute_capabilities, argv = GetOptionValue(argv, '--cuda-include-ptx')
+  for capability in compute_capabilities:
+    capability = capability[len('sm_'):]
+    nvccopts += [
+        r'-gencode=arch=compute_%s,"code=compute_%s"' % (capability, capability)
+    ]
+  _, argv = GetOptionValue(argv, '--no-cuda-include-ptx')
+
+  # nvcc doesn't respect the INCLUDE and LIB env vars from MSVC,
+  # so we explicity specify the system include paths and library search paths.
+  if 'INCLUDE' in os.environ:
+    nvccopts += [('--system-include="%s"' % p) for p in os.environ['INCLUDE'].split(";")]
+  if 'LIB' in os.environ:
+    nvccopts += [('--library-path="%s"' % p) for p in os.environ['LIB'].split(";")]
+
   nvccopts += nvcc_compiler_options
   nvccopts += undefines
   nvccopts += defines
   nvccopts += m_options
-  nvccopts += ['--compiler-options="' + " ".join(host_compiler_options) + '"']
+  nvccopts += fatbin_options
+  nvccopts += ['--compiler-options=' + ",".join(host_compiler_options)]
   nvccopts += ['-x', 'cu'] + opt + includes + out + ['-c'] + src_files
-  # If we don't specify --keep-dir, nvcc will generate intermediate files under TEMP
-  # Put them under NVCC_TEMP_DIR instead, then Bazel can ignore files under NVCC_TEMP_DIR during dependency check
+  # Specify a unique temp directory for nvcc to generate intermediate files,
+  # then Bazel can ignore files under NVCC_TEMP_DIR during dependency check
   # http://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#options-for-guiding-compiler-driver
   # Different actions are sharing NVCC_TEMP_DIR, so we cannot remove it if the directory already exists.
   if os.path.isfile(NVCC_TEMP_DIR):
     os.remove(NVCC_TEMP_DIR)
   if not os.path.exists(NVCC_TEMP_DIR):
     os.makedirs(NVCC_TEMP_DIR)
-  nvccopts += ['--keep', '--keep-dir', NVCC_TEMP_DIR]
-  cmd = [NVCC_PATH] + nvccopts
+  # Provide a unique dir for each compiling action to avoid conflicts.
+  tempdir = tempfile.mkdtemp(dir = NVCC_TEMP_DIR)
+  nvccopts += ['--keep', '--keep-dir', tempdir]
   if log:
-    Log(cmd)
-  proc = subprocess.Popen(cmd,
+    Log([NVCC_PATH] + nvccopts)
+
+  # Store command line options in a file to avoid hitting the character limit.
+  optsfile = tempfile.NamedTemporaryFile(mode='w', dir=tempdir, delete=False)
+  optsfile.write("\n".join(nvccopts))
+  optsfile.close()
+
+  proc = subprocess.Popen([NVCC_PATH, "--options-file", optsfile.name],
                           stdout=sys.stdout,
                           stderr=sys.stderr,
                           env=os.environ.copy(),

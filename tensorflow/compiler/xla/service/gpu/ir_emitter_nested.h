@@ -39,12 +39,11 @@ namespace gpu {
 //
 class IrEmitterNested : public IrEmitter {
  public:
-  // Constructs an LLVM IR emitter for a nested HLO computation. `function` is
-  // the containing IR function this emitter produces IR to. See
-  // IrEmitter::IrEmitter for the meanings of other arguments.
-  IrEmitterNested(const HloModuleConfig& hlo_module_config,
-                  const HloComputation& nested_computation,
-                  IrEmitterContext* ir_emitter_context);
+  static StatusOr<std::unique_ptr<IrEmitterNested>> Create(
+      const HloModuleConfig& hlo_module_config,
+      const HloComputation& nested_computation,
+      IrEmitterContext* ir_emitter_context);
+
   IrEmitterNested(const IrEmitterNested&) = delete;
   IrEmitterNested& operator=(const IrEmitterNested&) = delete;
 
@@ -58,11 +57,18 @@ class IrEmitterNested : public IrEmitter {
       const HloInstruction& hlo,
       const llvm_ir::ElementGenerator& body_emitter) override;
 
- private:
-  llvm::Function* EmitBasePointersForNestedComputation(
-      const HloComputation& nested_computation,
-      std::vector<const HloInstruction*>* io_hlos);
+  // Generate the code for the computation passed in the constructor.
+  Status CodegenNestedComputation();
 
+ private:
+  // Constructs an LLVM IR emitter for a nested HLO computation. `function` is
+  // the containing IR function this emitter produces IR to. See
+  // IrEmitter::IrEmitter for the meanings of other arguments.
+  IrEmitterNested(const HloModuleConfig& hlo_module_config,
+                  const HloComputation& nested_computation,
+                  IrEmitterContext* ir_emitter_context);
+
+  const HloComputation& nested_computation_;
   llvm::Function* emitted_function_;
 };
 

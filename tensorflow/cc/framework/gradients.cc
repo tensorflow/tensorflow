@@ -13,19 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/cc/framework/gradients.h"
+
 #include <deque>
 #include <vector>
 
 #include "tensorflow/cc/framework/grad_op_registry.h"
-#include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/framework/while_gradients.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/while_context.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/macros.h"
@@ -96,7 +97,7 @@ class SymbolicGradientBuilder {
   // Used to identify nodes at which to stop backprop.
   std::unordered_set<int> GetStopBackpropNodes(
       const std::vector<bool>& reachable_nodes,
-      std::unordered_set<int> output_nodes);
+      const std::unordered_set<int>& output_nodes) const;
 
   const Scope& scope_;
   const ops::GradOpRegistry* registry_;
@@ -167,7 +168,6 @@ Status SymbolicGradientBuilder::BackpropAlongEdge(const Output& dst_grad,
 std::vector<bool> SymbolicGradientBuilder::GetReachableNodes() {
   std::vector<bool> reachable_nodes(scope_.graph()->num_node_ids(), false);
   std::deque<Node*> queue;
-  std::vector<bool> visited(scope_.graph()->num_node_ids(), false);
   for (const Output& out : outputs_) {
     if (!reachable_nodes[out.node()->id()]) {
       queue.push_back(out.node());
@@ -180,10 +180,10 @@ std::vector<bool> SymbolicGradientBuilder::GetReachableNodes() {
     queue.pop_front();
     for (const Edge* e : n->in_edges()) {
       if (e->IsControlEdge()) continue;
-      if (visited[e->src()->id()]) continue;
-      queue.push_back(e->src());
-      reachable_nodes[e->src()->id()] = true;
-      visited[e->src()->id()] = true;
+      if (!reachable_nodes[e->src()->id()]) {
+        queue.push_back(e->src());
+        reachable_nodes[e->src()->id()] = true;
+      }
     }
   }
   return reachable_nodes;
@@ -191,7 +191,7 @@ std::vector<bool> SymbolicGradientBuilder::GetReachableNodes() {
 
 std::unordered_set<int> SymbolicGradientBuilder::GetStopBackpropNodes(
     const std::vector<bool>& reachable_nodes,
-    std::unordered_set<int> output_nodes) {
+    const std::unordered_set<int>& output_nodes) const {
   // Output nodes that get transitively consumed by other `outputs_` are stored
   // in `internal_outputs`.
   std::unordered_set<int> internal_outputs;
@@ -201,9 +201,9 @@ std::unordered_set<int> SymbolicGradientBuilder::GetStopBackpropNodes(
   // `output_` node was encountered, pair.second will be nullptr.
   std::deque<std::pair<Node*, Node*>> queue;
   for (const Output& nout : inputs_) {
-    if (visited.find(nout.node()) == visited.end()) {
+    auto const& pair = visited.insert(nout.node());
+    if (pair.second) {
       queue.push_back(std::make_pair(nout.node(), static_cast<Node*>(nullptr)));
-      visited.insert(nout.node());
     }
   }
   // BFS from nodes in 'inputs_' along out edges for the entire graph. Internal
@@ -217,22 +217,23 @@ std::unordered_set<int> SymbolicGradientBuilder::GetStopBackpropNodes(
     for (const Edge* e : n->out_edges()) {
       // If a node is not reachable from outputs_, we can stop.
       if (e->IsControlEdge() || !reachable_nodes[e->dst()->id()]) continue;
-      if (visited.find(e->dst()) != visited.end()) continue;
 
-      int node_id = e->dst()->id();
-      Node* last_output_node = p.second;
-      if (output_nodes.find(node_id) != output_nodes.end()) {
-        // We reached an output node.
-        if (last_output_node != nullptr) {
-          // If we had already found an output node on this path so we mark
-          // it as an internal output.
-          internal_outputs.insert(last_output_node->id());
+      auto const& pair = visited.insert(e->dst());
+      if (pair.second) {
+        int node_id = e->dst()->id();
+        Node* last_output_node = p.second;
+        if (output_nodes.find(node_id) != output_nodes.end()) {
+          // We reached an output node.
+          if (last_output_node != nullptr) {
+            // If we had already found an output node on this path so we mark
+            // it as an internal output.
+            internal_outputs.insert(last_output_node->id());
+          }
+          // Mark this newly found output node to insert in the queue.
+          last_output_node = e->dst();
         }
-        // Mark this newly found output node to insert in the queue.
-        last_output_node = e->dst();
+        queue.push_back(std::make_pair(e->dst(), last_output_node));
       }
-      queue.push_back(std::make_pair(e->dst(), last_output_node));
-      visited.insert(e->dst());
     }
   }
   // Finally, we set stop_backprop_nodes to all output_nodes that aren't also
@@ -286,9 +287,9 @@ Status SymbolicGradientBuilder::Initialize() {
     std::unordered_set<Node*> visited;
     std::deque<Node*> queue;
     for (const Output& nout : inputs_) {
-      if (visited.find(nout.node()) == visited.end()) {
+      auto const& pair = visited.insert(nout.node());
+      if (pair.second) {
         queue.push_back(nout.node());
-        visited.insert(nout.node());
       }
     }
 
@@ -309,9 +310,9 @@ Status SymbolicGradientBuilder::Initialize() {
           // we don't expect it to receive a backpropagated gradient.
           // It will not be counted in num_expected_backprops.
           if (e->IsControlEdge() || !reachable_nodes[e->dst()->id()]) continue;
-          if (visited.find(e->dst()) == visited.end()) {
+          auto const& pair = visited.insert(e->dst());
+          if (pair.second) {
             queue.push_back(e->dst());
-            visited.insert(e->dst());
           }
           ++num_expected_backprops;
         }
@@ -346,8 +347,8 @@ Status SymbolicGradientBuilder::SumGradients(const Output& src, Output* grad) {
         "Unable to find backprop list for node.id ", src.node()->name());
   }
   const auto& grads = iter->second;
-  // Filter any backproped 'NoGradient' Outputs from 'grads' (if needed).
-  // Return any valid backproped gradients that remain after filtering,
+  // Filter any backpropped 'NoGradient' Outputs from 'grads' (if needed).
+  // Return any valid backpropped gradients that remain after filtering,
   // or 'NoGradient' otherwise.
   std::vector<Output> grads_to_keep;
   for (const Output& o : grads) {
@@ -424,7 +425,7 @@ Status SymbolicGradientBuilder::ProcessWhileLoop(Node* exit_node,
   // Backprop along the in edges to the while loop (i.e. the inputs to the enter
   // nodes)
   DCHECK_EQ(dx.size(), while_ctx->enter_nodes().size());
-  for (int i = 0; i < dx.size(); ++i) {
+  for (int i = 0, end = dx.size(); i < end; ++i) {
     Node* enter_node = while_ctx->enter_nodes()[i];
     for (const Edge* e : enter_node->in_edges()) {
       if (e->IsControlEdge()) continue;
@@ -488,7 +489,7 @@ Status SymbolicGradientBuilder::AddGradients() {
     // All loop-specific control flow ops should have been handled above
     DCHECK(!n->IsEnter() && !n->IsNextIteration()) << n->DebugString();
 
-    const size_t num_no_grad = no_grad_dy_indices.size();
+    const int num_no_grad = no_grad_dy_indices.size();
     if (IsPrimitiveOpWithNoGrad(n->type_string()) || num_no_grad == num_y) {
       // No grad defined for this op, or all outputs returned 'NoGradient':
       // Backprop 'NoGradient' along the in edges.
@@ -519,17 +520,17 @@ Status SymbolicGradientBuilder::AddGradients() {
     // Backprop along the in edges.
     // TODO(andydavis) Find cleaner way to map each grad output returned by
     // gradient function to the src node/output to which it should be
-    // backproped. Maybe grad functions can return a vector of Output pairs to
+    // backpropped. Maybe grad functions can return a vector of Output pairs to
     // make this association explicit.
-    size_t dx_index = 0;
     for (const Edge* e : n->in_edges()) {
       if (e->IsControlEdge()) continue;
-      if (dx_index == dx.size()) {
+      size_t dx_index = e->dst_input();
+      if (dx_index >= dx.size()) {
         return errors::Internal(
             "Invalid gradient output index: ", dx_index, " size: ", dx.size());
       }
       TF_RETURN_IF_ERROR(
-          BackpropAlongEdge(dx[dx_index++], {e->src(), e->src_output()}));
+          BackpropAlongEdge(dx[dx_index], {e->src(), e->src_output()}));
     }
   }
 

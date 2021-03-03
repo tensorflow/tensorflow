@@ -63,5 +63,31 @@ int OpInputPortIdToArgId(const NodeDef& node, const OpDef& op, int port_id) {
   return OpPortIdToArgId(node, op.input_arg(), port_id);
 }
 
+bool HasSingleFanoutNode(const GraphView& graph_view, const NodeDef* node,
+                         int port) {
+  const auto output = GraphView::OutputPort(node, port);
+  return graph_view.GetFanout(output).size() <= 1;
+}
+
+bool HasFanouts(const GraphView& graph_view, const NodeDef* node, int port) {
+  const auto output = GraphView::OutputPort(node, port);
+  return !graph_view.GetFanout(output).empty();
+}
+
+bool HasControlFanin(const GraphView& graph_view, const NodeDef* node) {
+  const auto control_port = GraphView::InputPort(node, Graph::kControlSlot);
+  return !graph_view.GetFanin(control_port).empty();
+}
+
+bool HasControlFanout(const GraphView& graph_view, const NodeDef* node) {
+  const auto control_port = GraphView::OutputPort(node, Graph::kControlSlot);
+  return !graph_view.GetFanout(control_port).empty();
+}
+
+bool HasControlFaninOrFanout(const GraphView& graph_view, const NodeDef* node) {
+  return HasControlFanin(graph_view, node) ||
+         HasControlFanout(graph_view, node);
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow

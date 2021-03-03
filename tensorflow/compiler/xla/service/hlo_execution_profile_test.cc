@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -29,7 +28,7 @@ using ::testing::ContainsRegex;
 class HloExecutionProfileTest : public HloTestBase {};
 
 TEST_F(HloExecutionProfileTest, Basic) {
-  auto hlo_module = ParseHloString(R"(
+  auto hlo_module = ParseAndReturnVerifiedModule(R"(
   HloModule test_module
   ENTRY entry_computation {
     lhs = f32[30,30]{1,0} parameter(0)
@@ -45,7 +44,7 @@ TEST_F(HloExecutionProfileTest, Basic) {
 
   auto shape_size_function = [&](const Shape& shape) {
     const int64 pointer_size = 8;
-    if (ShapeUtil::IsOpaque(shape)) {
+    if (shape.IsOpaque()) {
       return pointer_size;
     }
     return ShapeUtil::ByteSizeOf(shape, pointer_size);
@@ -65,11 +64,14 @@ TEST_F(HloExecutionProfileTest, Basic) {
   execution_profile.SetCyclesTakenBy(add_instruction, add_cycles);
   execution_profile.SetCyclesTakenBy(dot_instruction, dot_cycles);
 
-  EXPECT_THAT(execution_profile.ToString(
-                  backend().default_stream_executor()->GetDeviceDescription()),
-              AllOf(ContainsRegex(StrCat(dot_cycles, R"(\b.*%)",
+  float clock_rate_ghz = backend()
+                             .default_stream_executor()
+                             ->GetDeviceDescription()
+                             .clock_rate_ghz();
+  EXPECT_THAT(execution_profile.ToString(clock_rate_ghz),
+              AllOf(ContainsRegex(StrCat(dot_cycles, " cycles.*%",
                                          dot_instruction->name())),
-                    ContainsRegex(StrCat(add_cycles, R"(\b.*%)",
+                    ContainsRegex(StrCat(add_cycles, " cycles.*%",
                                          add_instruction->name()))));
 }
 }  // namespace

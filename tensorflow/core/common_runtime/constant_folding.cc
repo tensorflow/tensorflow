@@ -13,17 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/common_runtime/constant_folding.h"
+
 #include <algorithm>
 #include <atomic>
 #include <set>
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/core/common_runtime/constant_folding.h"
-
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor.h"
-#include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
@@ -44,6 +44,8 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+
+const char kScopedAllocatorAttrName[] = "_scoped_allocator";
 
 // Test to see if the Op is one that turns into a constant when its
 // inputs' shapes are known.
@@ -217,6 +219,7 @@ bool IsConstantFoldable(
     const std::unordered_map<string, std::vector<PartialTensorShape>>*
         shape_map,
     const std::function<bool(const Node*)>& consider,
+    int64 max_constant_size_in_bytes,
     std::unordered_map<const Node*, std::vector<Tensor>>*
         shape_replacement_map) {
   if (n->IsConstant()) {
@@ -230,6 +233,20 @@ bool IsConstantFoldable(
   }
   if (consider && !consider(n)) {
     return false;
+  }
+  if (shape_map != nullptr) {
+    // We can skip the node if an output is known to be oversized.
+    auto shape_it = shape_map->find(n->name());
+    if (shape_it != shape_map->end()) {
+      for (int64 i = 0; i < shape_it->second.size(); ++i) {
+        const auto& out_shape = shape_it->second[i];
+        if (out_shape.IsFullyDefined() &&
+            out_shape.num_elements() * DataTypeSize(n->output_type(i)) >
+                max_constant_size_in_bytes) {
+          return false;
+        }
+      }
+    }
   }
   if (n->IsControlFlow() || n->IsSend() || n->IsRecv()) {
     return false;
@@ -256,6 +273,15 @@ bool IsConstantFoldable(
   if (!KernelDefAvailable(DeviceType(DEVICE_CPU), n->def())) {
     return false;
   }
+  // Do not constant fold nodes which will be allocated by ScopedAllocator.
+  // This is because the constant-folding graph will not contain the
+  // `_ScopedAllocator` node, and that is necessary to be able to run a node
+  // that will use this allocator.
+  if (n->attrs().Find(kScopedAllocatorAttrName) != nullptr) {
+    VLOG(2) << "Skip node [" << n->DebugString()
+            << "] for constant folding due to scoped allocator";
+    return false;
+  }
   return true;
 }
 
@@ -269,6 +295,7 @@ void ConsiderConstantFoldableNode(
     std::unordered_map<const Node*, std::vector<Tensor>>* shape_replacement_map,
     bool* internal_node_inserted) {
   if (IsConstantFoldable(n, opts.shape_map, opts.consider,
+                         opts.max_constant_size_in_bytes,
                          shape_replacement_map)) {
     // A node is constant provided all of its non-control incoming Tensors come
     // from constant nodes, or it's a shape Op with statically known inputs in
@@ -327,14 +354,15 @@ void FindConstantFoldableNodes(
         shape_replacement_map) {
   bool internal_node_inserted = false;
   // Walk the nodes in data flow order.
-  ReverseDFS(*graph, nullptr,
-             [nodes, constant_control_deps, shape_replacement_map,
-              &internal_node_inserted, &opts](Node* n) {
-               ConsiderConstantFoldableNode(
-                   n, opts, nodes, constant_control_deps, shape_replacement_map,
-                   &internal_node_inserted);
-             },
-             NodeComparatorName());
+  ReverseDFS(
+      *graph, nullptr,
+      [nodes, constant_control_deps, shape_replacement_map,
+       &internal_node_inserted, &opts](Node* n) {
+        ConsiderConstantFoldableNode(n, opts, nodes, constant_control_deps,
+                                     shape_replacement_map,
+                                     &internal_node_inserted);
+      },
+      NodeComparatorName());
   // If we have inserted just leaf level nodes, then there is nothing to fold.
   if (!internal_node_inserted) {
     nodes->clear();
@@ -418,7 +446,7 @@ Graph* GetConstantGraph(
     const Graph* orig_graph, const std::vector<Node*>& nodes,
     const std::unordered_map<const Node*, std::vector<Tensor>>&
         shape_replacement_map,
-    std::map<NodeAndOutput, Node*>* tensors_to_fetch,
+    std::map<NodeAndOutput, NodeAndOutput>* tensors_to_fetch,
     const ConstantFoldNameGenerator& generate_new_name) {
   Graph* constant_graph = new Graph(orig_graph->op_registry());
   std::unordered_map<Node*, std::vector<Node*>> node_map;
@@ -440,7 +468,7 @@ Graph* GetConstantGraph(
         if (added_nodes.second.size() == 1) {
           tensors_to_fetch->insert(
               {{added_nodes.second[0], out_edge->src_output()},
-               added_nodes.first});
+               {added_nodes.first, out_edge->src_output()}});
         } else {
           // The node had multiple outputs and was replaced by a
           // vector of constants, so the NodeAndOutput is the 0th
@@ -448,7 +476,7 @@ Graph* GetConstantGraph(
           // output of the added node as in the standard case above.
           tensors_to_fetch->insert(
               {{added_nodes.second[out_edge->src_output()], 0},
-               added_nodes.first});
+               {added_nodes.first, out_edge->src_output()}});
         }
       }
     }
@@ -464,17 +492,17 @@ Graph* GetConstantGraph(
 // 'control_deps' is the set of nodes that should be control predecessors of the
 // new constant node.
 bool ReplaceTensorWithConstant(
-    Graph* graph, Device* partition_device, NodeAndOutput tensor,
+    Graph* graph, const Device* partition_device, NodeAndOutput tensor,
     const Tensor& constant, const gtl::FlatSet<Node*>& control_deps,
     int64 max_constant_size_in_bytes,
     const ConstantFoldNameGenerator& generate_new_name) {
   // Be conservative when replacing a tensor with a constant, when not
   // running on CPU.
   // 1) Do not replace another constant.
-  // 2) If the destination tensor is not an int32 tensor, and has HOST_MEMORY
-  // constraint, do not replace it.
-  // 3) If the destination tensor is an int32 tensor, and has DEVICE_MEMORY
-  // constraint, do not replace it.
+  // 2) If the destination tensor or any other tensor from the same node is not
+  // an int32 tensor, and has HOST_MEMORY constraint, do not replace it.
+  // 3) If the destination tensor or any other tensor from the same node is an
+  // int32 tensor, and has DEVICE_MEMORY constraint, do not replace it.
   // 4) If the size of the constant in bytes is too large (>
   // max_constant_in_bytes), do not replace it. This prevents the size of the
   // Graph from growing too large.
@@ -490,16 +518,20 @@ bool ReplaceTensorWithConstant(
                                ? DeviceType{partition_device->device_type()}
                                : DEVICE_CPU;
   if (partition_device && device_type != DEVICE_CPU) {
-    MemoryType memory_type;
-    if (!MemoryTypeForOutput(device_type, graph, tensor.first, tensor.second,
-                             &memory_type)
+    MemoryTypeVector input_mvec;
+    MemoryTypeVector output_mvec;
+    if (!MemoryTypesForNode(graph->op_registry(), device_type,
+                            tensor.first->def(), &input_mvec, &output_mvec)
              .ok()) {
       return false;
     }
-    bool is_int32 = tensor.first->output_type(tensor.second) == DT_INT32;
-    if ((memory_type == HOST_MEMORY && !is_int32) ||
-        (memory_type == DEVICE_MEMORY && is_int32)) {
-      return false;
+    for (int i = 0; i < output_mvec.size(); i++) {
+      MemoryType memory_type = output_mvec[i];
+      bool is_int32 = tensor.first->output_type(i) == DT_INT32;
+      if ((memory_type == HOST_MEMORY && !is_int32) ||
+          (memory_type == DEVICE_MEMORY && is_int32)) {
+        return false;
+      }
     }
   }
   if (constant.TotalBytes() > max_constant_size_in_bytes) {
@@ -557,7 +589,8 @@ bool ReplaceTensorWithConstant(
 
 Status ConstantFold(const ConstantFoldingOptions& opts,
                     FunctionLibraryRuntime* function_library, Env* env,
-                    Device* partition_device, Graph* graph, bool* was_mutated) {
+                    const Device* partition_device, Graph* graph,
+                    bool* was_mutated) {
   // TensorFlow flushes denormals to zero and rounds to nearest, so we do
   // the same here.
   port::ScopedFlushDenormal flush;
@@ -584,7 +617,7 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
     return Status::OK();
   }
 
-  std::map<NodeAndOutput, Node*> tensors_to_fetch;
+  std::map<NodeAndOutput, NodeAndOutput> tensors_to_fetch;
   std::unique_ptr<Graph> constant_graph(
       GetConstantGraph(graph, constant_foldable_nodes, shape_replacement_map,
                        &tensors_to_fetch, generate_new_name));
@@ -603,17 +636,18 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
   std::vector<NodeAndOutput> tensors_to_replace;
   // Sorting the nodes based on the name gives us a stable ordering between runs
   // for the same graph.
-  std::vector<std::pair<NodeAndOutput, Node*>> tensors_to_fetch_sorted(
+  std::vector<std::pair<NodeAndOutput, NodeAndOutput>> tensors_to_fetch_sorted(
       tensors_to_fetch.begin(), tensors_to_fetch.end());
   std::sort(tensors_to_fetch_sorted.begin(), tensors_to_fetch_sorted.end(),
-            [](const std::pair<NodeAndOutput, Node*>& n1,
-               const std::pair<NodeAndOutput, Node*>& n2) {
-              return n1.first.first->name() < n2.first.first->name();
+            [](const std::pair<NodeAndOutput, NodeAndOutput>& n1,
+               const std::pair<NodeAndOutput, NodeAndOutput>& n2) {
+              return std::tie(n1.first.first->name(), n1.first.second) <
+                     std::tie(n2.first.first->name(), n2.first.second);
             });
   for (auto n : tensors_to_fetch_sorted) {
     tensors_to_fetch_names.push_back(
         strings::StrCat(n.first.first->name(), ":", n.first.second));
-    tensors_to_replace.push_back({n.second, n.first.second});
+    tensors_to_replace.push_back(n.second);
   }
 
   auto graph_runner = std::unique_ptr<GraphRunner>(new GraphRunner(env));

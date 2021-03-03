@@ -1,0 +1,111 @@
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto2";
+
+package tflite.evaluation;
+
+option cc_enable_arenas = true;
+option java_multiple_files = true;
+option java_package = "tflite.evaluation";
+
+// Defines the preprocesing steps available.
+//
+// Next ID: 5
+message ImagePreprocessingStepParams {
+  oneof params {
+    CroppingParams cropping_params = 1;
+    ResizingParams resizing_params = 2;
+    PaddingParams padding_params = 3;
+    NormalizationParams normalization_params = 4;
+  }
+}
+
+// Defines the size of an image.
+//
+// Next ID: 3
+message ImageSize {
+  // Width of the image.
+  required uint32 width = 1;
+  // Height of the image.
+  required uint32 height = 2;
+}
+
+// Defines parameters for central-cropping.
+//
+// Next ID: 4
+message CroppingParams {
+  oneof params {
+    // Fraction for central-cropping.
+    // A central cropping-fraction of 0.875 is considered best for Inception
+    // models, hence the default value. See:
+    // https://github.com/tensorflow/tpu/blob/master/models/experimental/inception/inception_preprocessing.py#L296
+    // Set to 0 to disable cropping.
+    float cropping_fraction = 1 [default = 0.875];
+    // The target size after cropping.
+    ImageSize target_size = 2;
+  }
+  // Crops to a square image.
+  optional bool square_cropping = 3;
+}
+
+// Defines parameters for bilinear central-resizing.
+//
+// Next ID: 3
+message ResizingParams {
+  // Size of the image after resizing.
+  required ImageSize target_size = 1;
+  // If this flag is true, the resize function will preserve the image's aspect
+  // ratio. Note that in this case, the size of output image may not equal to
+  // the target size defined above.
+  required bool aspect_preserving = 2;
+}
+
+// Defines parameters for central-padding.
+//
+// Next ID: 4
+message PaddingParams {
+  oneof params {
+    // Size of the image after padding.
+    ImageSize target_size = 1;
+    // Pads to a square image.
+    bool square_padding = 2;
+  }
+  // Padding value.
+  required int32 padding_value = 3;
+}
+
+// Defines parameters for normalization.
+// The normalization formula is: output = (input - mean) * scale.
+//
+// Next ID: 4
+message NormalizationParams {
+  message PerChannelMeanValues {
+    // The mean values of r channel.
+    required float r_mean = 1;
+    // The mean values of g channel.
+    required float g_mean = 2;
+    // The mean values of b channel.
+    required float b_mean = 3;
+  }
+  oneof mean {
+    // Channelwise mean value.
+    float channelwise_mean = 1;
+    // Per-Channel mean values.
+    PerChannelMeanValues means = 2;
+  }
+  // Scale value in the normalization.
+  required float scale = 3 [default = 1.0];
+}

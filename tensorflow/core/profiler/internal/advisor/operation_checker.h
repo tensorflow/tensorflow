@@ -17,6 +17,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_ADVISOR_OPERATION_CHECKER_H_
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_ADVISOR_OPERATION_CHECKER_H_
 
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/profiler/internal/advisor/checker.h"
 
 namespace tensorflow {
@@ -30,8 +31,8 @@ class OperationChecker : public Checker {
   AdviceProto::Checker Check(const AdvisorOptionsProto::CheckerOption& options,
                              const TFStats* stats) override {
     if (!stats) {
-      fprintf(stderr, "Missing profiles (e.g. graph, run_meta). Skip %s\n",
-              name().c_str());
+      absl::FPrintF(
+          stderr, "Missing profiles (e.g. graph, run_meta). Skip %s\n", name());
       return reports_;
     }
     bool use_batch_norm = false;

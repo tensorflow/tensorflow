@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import importlib
 import types
+from tensorflow.python.platform import tf_logging as logging
 
 
 class LazyLoader(types.ModuleType):
@@ -31,16 +32,24 @@ class LazyLoader(types.ModuleType):
   """
 
   # The lint error here is incorrect.
-  def __init__(self, local_name, parent_module_globals, name):  # pylint: disable=super-on-old-class
+  def __init__(self, local_name, parent_module_globals, name, warning=None):  # pylint: disable=super-on-old-class
     self._local_name = local_name
     self._parent_module_globals = parent_module_globals
+    self._warning = warning
 
     super(LazyLoader, self).__init__(name)
 
   def _load(self):
+    """Load the module and insert it into the parent's globals."""
     # Import the target module and insert it into the parent's namespace
     module = importlib.import_module(self.__name__)
     self._parent_module_globals[self._local_name] = module
+
+    # Emit a warning if one was specified
+    if self._warning:
+      logging.warning(self._warning)
+      # Make sure to only warn once.
+      self._warning = None
 
     # Update this object's dict so that if someone keeps a reference to the
     #   LazyLoader, lookups are efficient (__getattr__ is only called on lookups

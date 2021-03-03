@@ -34,7 +34,7 @@ class FactOp : public tensorflow::OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(
                                 0, tensorflow::TensorShape(), &output_tensor));
     using tensorflow::string;
-    auto output = output_tensor->template scalar<string>();
+    auto output = output_tensor->template scalar<tensorflow::tstring>();
 
     output() = "0! == 1";
   }

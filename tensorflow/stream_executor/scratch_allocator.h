@@ -27,16 +27,12 @@ namespace stream_executor {
 
 class Stream;
 
-// Interface that allows stream operations (e.g.
-// Stream::ThenConvolveWithScratch) to optionally request scratch space be
-// allocated in order to speed up the operation being enqueued.
+// Interface for "scratch" allocator for device memory, which deallocates all
+// buffers it has allocated at destruction. Returned memory pointers are not
+// owning.
 //
-// Note that the caller is responsible for deallocating the scratch space at a
-// known-safe point, when all scratch-memory-consuming kernels are known for
-// sure to have finished; e.g. at stream synchronization time. This is different
-// from a traditional C++ object allocator, where the client is responsible for
-// releasing. (Conceptually, scratch memory is a form of "temporary" device
-// memory allocation.)
+// Used by stream operations (e.g. Stream::ThenConvolveWithScratch) to
+// optionally request scratch space to speed up the operation.
 class ScratchAllocator {
  public:
   virtual ~ScratchAllocator();
@@ -45,14 +41,14 @@ class ScratchAllocator {
   // bytes. This information may be used to help select an algorithm.
   //
   // Returns values < 0 to indicate that there is no recommended limit.
-  virtual int64 GetMemoryLimitInBytes(Stream* stream) = 0;
+  virtual int64 GetMemoryLimitInBytes() = 0;
 
   // Returns an allocation on byte_size bytes for use in an operation on stream.
   //
   // This is a temporary allocation, and the caller is responsible for
   // deallocating at some known-safe point. See the class comment above.
   virtual port::StatusOr<DeviceMemory<uint8>> AllocateBytes(
-      Stream* stream, int64 byte_size) = 0;
+      int64 byte_size) = 0;
 };
 
 // Allocates a single temporary memory allocation -- this memory is deallocated
@@ -64,14 +60,14 @@ class ScratchAllocator {
 // thread will request the scratch allocation).
 class OneTimeScratchAllocator : public ScratchAllocator {
  public:
-  OneTimeScratchAllocator();
+  explicit OneTimeScratchAllocator(Stream* stream);
   ~OneTimeScratchAllocator() override;
-  int64 GetMemoryLimitInBytes(Stream* stream) override;
-  port::StatusOr<DeviceMemory<uint8>> AllocateBytes(Stream* stream,
-                                                    int64 byte_size) override;
+  int64 GetMemoryLimitInBytes() override;
+  port::StatusOr<DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override;
 
  private:
   std::unique_ptr<TemporaryDeviceMemory<uint8>> temporary_;
+  Stream* stream_;
 
   SE_DISALLOW_COPY_AND_ASSIGN(OneTimeScratchAllocator);
 };

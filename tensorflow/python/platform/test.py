@@ -13,13 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Testing.
-
-See the [Testing](https://tensorflow.org/api_guides/python/test) guide.
-
-Note: `tf.test.mock` is an alias to the python `mock` or `unittest.mock`
-depending on the python version.
-"""
+"""Testing."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -46,9 +40,9 @@ from tensorflow.python.util.tf_export import tf_export
 if sys.version_info.major == 2:
   import mock                # pylint: disable=g-import-not-at-top,unused-import
 else:
-  from unittest import mock  # pylint: disable=g-import-not-at-top
+  from unittest import mock  # pylint: disable=g-import-not-at-top,g-importing-member
 
-tf_export('test.mock')(mock)
+tf_export(v1=['test.mock'])(mock)
 
 # Import Benchmark class
 Benchmark = _googletest.Benchmark  # pylint: disable=invalid-name
@@ -64,7 +58,7 @@ def main(argv=None):
   return _googletest.main(argv)
 
 
-@tf_export('test.get_temp_dir')
+@tf_export(v1=['test.get_temp_dir'])
 def get_temp_dir():
   """Returns a temporary directory for use during tests.
 
@@ -76,7 +70,7 @@ def get_temp_dir():
   return _googletest.GetTempDir()
 
 
-@tf_export('test.test_src_dir_path')
+@tf_export(v1=['test.test_src_dir_path'])
 def test_src_dir_path(relative_path):
   """Creates an absolute test srcdir path given a relative path.
 
@@ -94,3 +88,21 @@ def test_src_dir_path(relative_path):
 def is_built_with_cuda():
   """Returns whether TensorFlow was built with CUDA (GPU) support."""
   return _test_util.IsGoogleCudaEnabled()
+
+
+@tf_export('test.is_built_with_rocm')
+def is_built_with_rocm():
+  """Returns whether TensorFlow was built with ROCm (GPU) support."""
+  return _test_util.IsBuiltWithROCm()
+
+
+@tf_export('test.is_built_with_gpu_support')
+def is_built_with_gpu_support():
+  """Returns whether TensorFlow was built with GPU (i.e. CUDA or ROCm) support."""
+  return is_built_with_cuda() or is_built_with_rocm()
+
+
+@tf_export('test.is_built_with_xla')
+def is_built_with_xla():
+  """Returns whether TensorFlow was built with XLA support."""
+  return _test_util.IsBuiltWithXLA()

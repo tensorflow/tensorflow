@@ -29,8 +29,8 @@ BufferValue::BufferValue(HloInstruction* instruction, const ShapeIndex& index,
                          Id id)
     : id_(id) {
   const Shape& shape = ShapeUtil::GetSubshape(instruction->shape(), index);
-  is_array_ = ShapeUtil::IsArray(shape);
-  is_tuple_ = ShapeUtil::IsTuple(shape);
+  is_array_ = shape.IsArray();
+  is_tuple_ = shape.IsTuple();
 }
 
 BufferValue::~BufferValue() {}
@@ -59,7 +59,7 @@ LogicalBufferProto BufferValue::ToProto(const SizeFunction& size_fn) const {
       ToLocationProto(*instruction(), index());
   proto.mutable_defined_at()->Swap(&proto_location);
   if (has_color()) {
-    proto.set_color(color().value());
+    proto.set_color(color());
   }
   return proto;
 }

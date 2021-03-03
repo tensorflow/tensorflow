@@ -19,7 +19,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_ENCAPSULATE_UTIL_H_
 #define TENSORFLOW_COMPILER_JIT_ENCAPSULATE_UTIL_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 
@@ -27,22 +29,13 @@ namespace tensorflow {
 // a list of PartialTensorShape objects.
 extern const char kXlaInferredShapesAttrName[];
 
-// Infer output shapes for outside compilation nodes which have output data
-// edges to XLA computation nodes. These shapes will be used later by XLA
-// compiler as output shapes of the outside compilation's XlaHostCompute op.
-// XLA computation nodes will be mark by attr `xla_computation_attr_name`;
-// outside compilation nodes will be marked by both attr
-// `xla_computation_attr_name` and `outside_compilation_attr_name`.
-//
-// Those outside compilation nodes will be marked with attribute
-// `kXlaInferredShapesAttrName`.
+// Infers output shapes for all nodes in graph `g`. The output shapes will be
+// stored in node attribute `kXlaInferredShapesAttrName`.
 //
 // We have to perform shape inference before encapsulation because after
 // encapsulation, some nodes will be encapsulated into function call, and shape
 // inference does not handle function call at the moment.
-Status PerformStaticShapeInferenceBeforeEncapsulation(
-    Graph* g, const string& xla_computation_attr_name,
-    const string& outside_compilation_attr_name);
+Status PerformStaticShapeInferenceBeforeEncapsulation(Graph* g);
 
 // Attribute indicating that some ops in this node's XLA computation has control
 // dependency on this node. Attribute value will always be "true".
@@ -52,68 +45,42 @@ extern const char kXlaConnectedToXlaComputationAttrName[];
 // this node's XLA computation. Attribute value will always be "true".
 extern const char kXlaConnectedFromXlaComputationAttrName[];
 
-// Attribute indicating that some ops in other XLA computation has control
-// dependency on this node. Attribute value will be a list of string (XLA
-// computation names).
-extern const char kXlaConnectedToOtherXlaComputationAttrName[];
-
-// Attribute indicating that this node has control dependency on some ops in
-// other XLA computation. Attribute value will be a list of string (XLA
-// computation names).
-extern const char kXlaConnectedFromOtherXlaComputationAttrName[];
-
-// Attribute indicating that this node has control dependencies on some other
-// nodes. Attribute value will be a list of string (node names).
-extern const char kXlaControlDependenciesAttrName[];
-
-// Attribute indicating that this is an Identity node added to act as a bridge
-// between different XLA computations. Attribute value will be string (source
-// node name).
-extern const char kBridgeSourceNodeAttrName[];
-
 // Attribute indicating that this is an Placeholder node added to act as a
 // temporary input node for an outside compilation node. Attribute value will be
 // string (original input node name).
-extern const char kOutsideCompilationToHostOriginalNodeAttrName[];
+extern const char kOutsideCompilationOriginalNodeAttrName[];
 
 // Attribute indicating that this is an Placeholder node added to act as a
 // temporary input node for an outside compilation node. Attribute value will be
 // int (src_output for original edge).
-extern const char kOutsideCompilationToHostSrcOutputAttrName[];
+extern const char kOutsideCompilationSrcOutputAttrName[];
 
-// Attribute indicating that this is an Placeholder node added to act as a
-// temporary input node for an host node. Attribute value will be string
-// (original input node name).
-extern const char kHostToOutsideCompilationOriginalNodeAttrName[];
+// Attribute indicating that this node has control dependencies on some other
+// nodes within the same XLA cluster. Attribute value will be a list of string
+// (node names).
+extern const char kXlaControlDependenciesWithinXlaClusterAttrName[];
 
-// Attribute indicating that this is an Placeholder node added to act as a
-// temporary input node for a host node. Attribute value will be int (src_output
-// for original edge).
-extern const char kHostToOutsideCompilationSrcOutputAttrName[];
+// Attribute indicating that this node is an outside compilation node which is
+// lifted out of If/While/function node. Attribute value will always be boolean
+// value "true".
+extern const char kXlaIsLiftedArgAttrName[];
 
-// Preprocesses the graph for encapsulation. It will perform the following
-// operations in order:
-//
-// 1a. For control edges between outside compilation and its XLA computation,
-//     add attr "kXlaConnected{From, To}XlaComputationAttrName = true" to the
-//     outside compilation node.
-// 1b. For control edges between outside compilation and another XLA
-//     computation, add attr "kXlaConnected{From, To}OtherXlaComputationAttrName
-//     = XLA computation node name" to the outside compilation node.
-// 1c. For control edges between different outside compilations, remove the edge
-//     and add attr "kXlaControlDependenciesAttrName = src node name" to dst
-//     node.
-// 1d. For control edges between outside compilation and host computation,
-//     remove the edge and add attr "kXlaControlDependenciesAttrName = src node
-//     name" to dst node.
-// 2. For data edges between different XLA computations, if either src or dst
-//    is outside compilation, add an Identity node in between the edge. The
-//    identity node will have attr kBridgeSourceNodeAttrName.
-// 3. For data edges between outside compilation and host computation, remove
-//    the edge and create a Placeholder node as dst node's input.
-Status PreprocessForEncapsulation(Graph* g,
-                                  const string& xla_computation_attr_name,
-                                  const string& outside_compilation_attr_name);
+// Attribute indicating that this node is a Placeholder node for an _Arg node
+// lifted out of If/While/function node. Attribute value will be a string, which
+// is the outside compilation cluster name sending the lifted arg node to host.
+extern const char kXlaLiftedArgOutsideCompilationAttrName[];
+
+// Attribute indicating that this is an IdentityN node receiving inputs for a
+// outside compilation Placeholder node (the original outside compilation node
+// is moved out of TPU computation, and we left a Placeholder node there).
+// Attribute value will be a string, which is the outside compilation cluster
+// name for the outside compilation Placeholder node.
+extern const char kXlaOutsideCompilationInputsAttrName[];
+
+// Attribute indicating that this is a Placeholder node for an _Arg node used in
+// outside compilation. We should not move this node out of XLA computation.
+// Attribute value will always be boolean value "true".
+extern const char kXlaIsPlaceholderForArg[];
 
 // Information for XLA computation.
 struct XlaClusterInfo {
@@ -146,26 +113,44 @@ struct XlaClusterInfo {
   const std::map<string, int> host_compute_core;
 };
 
-// Postprocesses the graph for encapsulation. This function reverts what
-// `PreprocessForEncapsulation` did. It will perform the following operations in
-// order:
-//
-// 1. Remove Placeholder nodes between outside compilation and host computation
-//     (created in `PreprocessForEncapsulation` step 3).
-// 2. Remove Identity nodes created in `PreprocessForEncapsulation` step 2.
-// 3a. Reconnect control edges between different outside compilations (marked by
-//     `PreprocessForEncapsulation` step 1c) and control edges between outside
-//     compilation and host computation (marked by `PreprocessForEncapsulation`
-//     step 1d).
-// 3b. Reconnect control edges between outside compilation and another XLA
-//     computation (marked by `PreprocessForEncapsulation` step 1b).
-// Notice that control edges marked by `PreprocessForEncapsulation` step 1a are
-// not handled here. They are handled in `RewriteOutsideCompilationSubgraphFn`.
-Status PostprocessForEncapsulation(
-    Graph* g, const string& xla_computation_attr_name,
-    const string& outside_compilation_attr_name,
-    const std::unordered_map<string, XlaClusterInfo>& clusters);
+// Finds dependencies between outside compilation clusters, including both data
+// dependencies and control dependencies. cluster_deps maps the name name of an
+// outside compilation cluster to a set of names of outside compilation clusters
+// that it depends on.
+stream_executor::port::StatusOr<
+    std::unique_ptr<absl::flat_hash_map<string, std::vector<string>>>>
+OutsideCompilationClusterDependencies(
+    const Graph* g, const string& outside_compilation_attr_name);
 
+// Preprocesses edges within the same XLA cluster. It will perform the following
+// operations in order:
+//
+// 0.  Remove edges from source node to outside compilation nodes, and edges
+//     from outside compilation nodes to sink node.
+// 1a. For edges between different outside compilation clusters, remove the edge
+//     and add attr "kXlaControlDependenciesWithinXlaClusterAttrName = src node
+//     name" to dst node.
+// 1b. For control edges between outside compilation and its XLA computation,
+//     add attr "kXlaConnected{From, To}XlaComputationAttrName = true" to the
+//     outside compilation node.
+// 2.  For data edges between different outside compilations, remove the edge
+//     and create a Placeholder node as dst node's input.
+Status PreprocessEdgesBetweenOutsideCompilations(
+    Graph* g, const string& outside_compilation_attr_name);
+
+// Postprocesses edges within the same XLA cluster. This function reverts what
+// `PreprocessEdgesBetweenOutsideCompilations` did. It will perform the
+// following operations in order:
+//
+// 1. Remove Placeholder nodes between different outside compilations (created
+//    in `PreprocessEdgesBetweenOutsideCompilations` step 2).
+// 2a. Reconnect control edges between different outside compilations (marked by
+//     `PreprocessEdgesBetweenOutsideCompilations` step 1a).
+// Notice that control edges marked by
+// `PreprocessEdgesBetweenOutsideCompilations` step 1b are not handled here.
+// They are handled in `RewriteOutsideCompilationSubgraphFn`.
+Status PostprocessEdgesBetweenOutsideCompilations(
+    Graph* g, const string& outside_compilation_attr_name);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_ENCAPSULATE_UTIL_H_

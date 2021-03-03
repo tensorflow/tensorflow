@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,8 +16,11 @@ limitations under the License.
 
 #include "flatbuffers/flexbuffers.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/lite/context.h"
+#include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/toco/tflite/op_version.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
 #include "tensorflow/lite/toco/tflite/types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
@@ -37,9 +40,11 @@ using ::tflite::BuiltinOperator_CUSTOM;
 using ::tflite::BuiltinOperator_MAX;
 using ::tflite::BuiltinOperator_MIN;
 using ::tflite::CreateBuffer;
+using ::tflite::CreateMetadata;
 using ::tflite::CreateModel;
 using ::tflite::CreateOperator;
 using ::tflite::CreateTensor;
+using ::tflite::Metadata;
 using ::tflite::Operator;
 using ::tflite::OperatorCode;
 using ::tflite::SubGraph;
@@ -48,8 +53,8 @@ using ::tflite::Tensor;
 namespace {
 
 // Check if a TensorFlow Op is a control flow op by its name.
-bool IsControlFlowOp(const string& tensorflow_op) {
-  // Technically this is equalivent to `::tensorflow::Node::IsControlFlow()`.
+bool IsControlFlowOp(const std::string& tensorflow_op) {
+  // Technically this is equivalent to `::tensorflow::Node::IsControlFlow()`.
   // It requires to construct a `::tensorflow::Graph` to use that helper
   // function, so we simply hardcode the list of control flow ops here.
   if (tensorflow_op == "Switch" || tensorflow_op == "RefSwitch" ||
@@ -63,12 +68,12 @@ bool IsControlFlowOp(const string& tensorflow_op) {
   return false;
 }
 
-// Check if a TensorFlow Op is unsupportred by the Flex runtime.
-bool IsUnsupportedFlexOp(const string& tensorflow_op) {
+// Check if a TensorFlow Op is unsupported by the Flex runtime.
+bool IsUnsupportedFlexOp(const std::string& tensorflow_op) {
   if (IsControlFlowOp(tensorflow_op)) {
     return true;
   }
-  // `HashTableV2` isn't supported for now since it requires an additinonal
+  // `HashTableV2` isn't supported for now since it requires an additional
   // initialization step.
   // TODO(b/117651199): Support `HashTableV2` with Flex runtime.
   if (tensorflow_op == "HashTableV2") {
@@ -78,14 +83,14 @@ bool IsUnsupportedFlexOp(const string& tensorflow_op) {
 }
 
 // Map from operator name to TF Lite enum value, for all builtins.
-const std::map<string, BuiltinOperator>& GetBuiltinOpsMap() {
-  static std::map<string, BuiltinOperator>* builtin_ops = nullptr;
+const std::map<std::string, BuiltinOperator>& GetBuiltinOpsMap() {
+  static std::map<std::string, BuiltinOperator>* builtin_ops = nullptr;
   if (builtin_ops == nullptr) {
-    builtin_ops = new std::map<string, BuiltinOperator>();
+    builtin_ops = new std::map<std::string, BuiltinOperator>();
 
     for (int i = BuiltinOperator_MIN; i <= BuiltinOperator_MAX; ++i) {
       BuiltinOperator op = static_cast<BuiltinOperator>(i);
-      string name = EnumNameBuiltinOperator(op);
+      std::string name = EnumNameBuiltinOperator(op);
       if (op != BuiltinOperator_CUSTOM && !name.empty()) {
         (*builtin_ops)[name] = op;
       }
@@ -95,10 +100,10 @@ const std::map<string, BuiltinOperator>& GetBuiltinOpsMap() {
 }
 
 void WriteModelToString(const flatbuffers::FlatBufferBuilder& builder,
-                        string* file_contents) {
+                        std::string* file_contents) {
   const uint8_t* buffer = builder.GetBufferPointer();
   int size = builder.GetSize();
-  *file_contents = string(reinterpret_cast<const char*>(buffer), size);
+  *file_contents = std::string(reinterpret_cast<const char*>(buffer), size);
 }
 
 }  // Anonymous namespace.
@@ -106,16 +111,17 @@ void WriteModelToString(const flatbuffers::FlatBufferBuilder& builder,
 namespace details {
 
 OperatorKey::OperatorKey(
-    const ::toco::Operator& op,
+    const ::toco::OperatorSignature& op_signature,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type,
     bool enable_select_tf_ops) {
   // Get the op name (by Toco definition).
-  string name = HelpfulOperatorTypeName(op);
+  const ::toco::Operator& op = *op_signature.op;
+  std::string name = HelpfulOperatorTypeName(op);
 
   bool is_builtin = false;
   const auto& builtin_ops = GetBuiltinOpsMap();
   if (ops_by_type.count(op.type) != 0) {
-    version_ = ops_by_type.at(op.type)->GetVersion(op);
+    version_ = ops_by_type.at(op.type)->GetVersion(op_signature);
     name = ops_by_type.at(op.type)->name();
     is_builtin = (builtin_ops.count(name) > 0);
   }
@@ -126,7 +132,6 @@ OperatorKey::OperatorKey(
     type_ = builtin_ops.at(name);
     return;
   }
-
   // The logic below is all for custom ops or Flex ops.
   is_custom_op_ = true;
   type_ = BuiltinOperator_CUSTOM;
@@ -142,7 +147,7 @@ OperatorKey::OperatorKey(
       is_flex_op_ = true;
       flex_tensorflow_op_ = tensorflow_op;
       custom_code_ =
-          string(::tflite::kFlexCustomCodePrefix) + flex_tensorflow_op_;
+          std::string(::tflite::kFlexCustomCodePrefix) + flex_tensorflow_op_;
     } else {
       custom_code_ = tensorflow_op;
     }
@@ -154,10 +159,10 @@ OperatorKey::OperatorKey(
     is_flex_op_ = true;
     flex_tensorflow_op_ = name;
     custom_code_ =
-        string(::tflite::kFlexCustomCodePrefix) + flex_tensorflow_op_;
+        std::string(::tflite::kFlexCustomCodePrefix) + flex_tensorflow_op_;
   } else {
     // If Flex is disabled or the original TensorFlow NodeDef isn't available,
-    // we produce a custom op. This gives developers a chance to implemenr
+    // we produce a custom op. This gives developers a chance to implement
     // custom ops.
     custom_code_ = name;
   }
@@ -171,7 +176,7 @@ OperatorKey::OperatorKey(
 
 void LoadTensorsMap(const Model& model, TensorsMap* tensors_map) {
   // First find a list of unique array names.
-  std::set<string> names;
+  std::set<std::string> names;
   for (const auto& array_pair : model.GetArrayMap()) {
     names.insert(array_pair.first);
   }
@@ -191,7 +196,8 @@ void LoadOperatorsMap(
   // First find a list of unique operator types.
   std::set<OperatorKey> keys;
   for (const auto& op : model.operators) {
-    keys.insert(OperatorKey(*op, ops_by_type, enable_select_tf_ops));
+    const toco::OperatorSignature op_signature = {op.get(), &model};
+    keys.insert(OperatorKey(op_signature, ops_by_type, enable_select_tf_ops));
   }
   // Now assign indices to them and fill in the map.
   int index = 0;
@@ -205,23 +211,25 @@ void LoadOperatorsMap(
 
 Offset<Vector<Offset<Tensor>>> ExportTensors(
     const Model& model, const details::TensorsMap& tensors_map,
-    FlatBufferBuilder* builder, std::vector<const Array*>* buffers_to_write,
+    FlatBufferBuilder* builder,
+    std::vector<Offset<Vector<uint8_t>>>* buffers_to_write,
     const std::set<int32_t>& variable_tensor_indices) {
   // In the end we will need to produce a vector sorted by the indices of the
   // tensors in the tensors_map.
   std::map<int, Offset<Tensor>> ordered_tensors;
 
   for (const auto& array_pair : model.GetArrayMap()) {
-    const string& tensor_name = array_pair.first;
+    const std::string& tensor_name = array_pair.first;
     const toco::Array& array = *array_pair.second;
 
     int buffer_index = buffers_to_write->size();
     auto type = DataType::Serialize(array.data_type);
-    buffers_to_write->push_back(&array);
+    buffers_to_write->push_back(DataBuffer::Serialize(array, builder));
 
     std::vector<int> shape;
     if (array.has_shape()) {
-      for (int d : array.shape().dims()) {
+      shape.reserve(array.shape().dims().size());
+      for (const auto& d : array.shape().dims()) {
         shape.push_back(d);
       }
     }
@@ -276,7 +284,7 @@ Offset<Vector<int32_t>> ExportOutputTensors(
     const Model& model, const details::TensorsMap& tensors_map,
     FlatBufferBuilder* builder) {
   std::vector<int32_t> outputs;
-  for (const string& output : model.flags.output_arrays()) {
+  for (const std::string& output : model.flags.output_arrays()) {
     outputs.push_back(tensors_map.at(output));
   }
   return builder->CreateVector<int32_t>(outputs);
@@ -288,10 +296,10 @@ Offset<Vector<Offset<OperatorCode>>> ExportOperatorCodes(
     const details::OperatorsMap& operators_map, FlatBufferBuilder* builder,
     const ExportParams& params) {
   // Map from operator name to TF Lite enum value, for all builtins.
-  std::map<string, BuiltinOperator> builtin_ops;
+  std::map<std::string, BuiltinOperator> builtin_ops;
   for (int i = BuiltinOperator_MIN; i <= BuiltinOperator_MAX; ++i) {
     BuiltinOperator op = static_cast<BuiltinOperator>(i);
-    string name = EnumNameBuiltinOperator(op);
+    std::string name = EnumNameBuiltinOperator(op);
     if (op != BuiltinOperator_CUSTOM && !name.empty()) {
       builtin_ops[name] = op;
     }
@@ -302,8 +310,9 @@ Offset<Vector<Offset<OperatorCode>>> ExportOperatorCodes(
   std::map<int, Offset<OperatorCode>> ordered_opcodes;
 
   for (const auto& op : model.operators) {
-    const details::OperatorKey operator_key =
-        details::OperatorKey(*op, ops_by_type, params.enable_select_tf_ops);
+    const toco::OperatorSignature op_signature = {op.get(), &model};
+    const details::OperatorKey operator_key = details::OperatorKey(
+        op_signature, ops_by_type, params.enable_select_tf_ops);
     int op_index = operators_map.at(operator_key);
 
     flatbuffers::Offset<flatbuffers::String> custom_code = 0;
@@ -332,22 +341,27 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
     std::set<int32_t>* variable_tensor_indices, const ExportParams& params) {
   variable_tensor_indices->clear();
 
+  auto is_tflite_builtin = [](const BaseOperator* op) {
+    const auto& tflite_builtins = GetBuiltinOpsMap();
+    return (op && tflite_builtins.find(op->name()) != tflite_builtins.end());
+  };
+
   // The operators are in execution order, so we just follow tf.mini order.
   std::vector<Offset<Operator>> op_vector;
   for (const auto& op : model.operators) {
     std::vector<int32_t> inputs;
-    for (const string& input : op->inputs) {
+    for (const std::string& input : op->inputs) {
       // -1 is the ID for optional tensor in TFLite output
       int id = model.IsOptionalArray(input) ? -1 : tensors_map.at(input);
       inputs.push_back(id);
     }
     std::vector<int32_t> outputs;
-    for (const string& output : op->outputs) {
+    for (const std::string& output : op->outputs) {
       outputs.push_back(tensors_map.at(output));
     }
-
-    const auto key =
-        details::OperatorKey(*op, ops_by_type, params.enable_select_tf_ops);
+    const toco::OperatorSignature op_signature = {op.get(), &model};
+    const auto key = details::OperatorKey(op_signature, ops_by_type,
+                                          params.enable_select_tf_ops);
     int op_index = operators_map.at(key);
 
     auto tflite_op_it = ops_by_type.find(op->type);
@@ -360,12 +374,24 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
     auto options = Options::Custom(0);
 
     std::vector<bool> mutating_input_variables;
-    if (tflite_op) {
+
+    // It is conceivable that an op is exportable via Serialize() but does not
+    // have a corresponding TFLITE builtin. In that case, when flex mode is
+    // enabled we should export it as a flex op, not as a native.
+    bool export_as_flex_op = !is_tflite_builtin(tflite_op) &&
+                             key.is_flex_op() &&
+                             !op->tensorflow_node_def.empty();
+    if (export_as_flex_op) {
+      auto fbb = WriteFlexOpOptions(op->tensorflow_node_def);
+      if (fbb) {
+        options = Options::Custom(builder->CreateVector(fbb->GetBuffer()));
+      }
+    } else if (tflite_op) {
       options = tflite_op->Serialize(*op, builder);
       mutating_input_variables = tflite_op->GetMutatingInputVariables(*op);
 
       if (!mutating_input_variables.empty()) {
-        for (int i = 0; i < op->inputs.size(); ++i) {
+        for (uint32_t i = 0; i < op->inputs.size(); ++i) {
           if (!mutating_input_variables[i]) {
             continue;
           }
@@ -373,12 +399,13 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
           variable_tensor_indices->insert(variable_tensor_index);
         }
       }
-    } else if (key.is_flex_op() && !op->tensorflow_node_def.empty()) {
-      auto fbb = WriteFlexOpOptions(op->tensorflow_node_def);
-      if (fbb) {
-        options = Options::Custom(builder->CreateVector(fbb->GetBuffer()));
-      }
+    } else {
+      // We don't know much about this op. It doesn't have a serializer and
+      // it is not supposed to be exported as a flex op. We will treat it as
+      // a regular custom op: we will still create an operator for it, but it
+      // will not have any 'options'.
     }
+
     // The only supported CustomOptionFormat is FLEXBUFFERS now.
     op_vector.push_back(CreateOperator(
         *builder, op_index, builder->CreateVector(inputs),
@@ -391,29 +418,72 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
 }
 
 Offset<Vector<Offset<Buffer>>> ExportBuffers(
-    const Model& model, const std::vector<const Array*>& buffers_to_write,
+    const Model& model,
+    const std::vector<Offset<Vector<uint8_t>>>& buffers_to_write,
     FlatBufferBuilder* builder) {
   std::vector<Offset<Buffer>> buffer_vector;
-  size_t index = 0;
-  for (const Array* array_ptr : buffers_to_write) {
-    const Array& array = *array_ptr;
-    Offset<Vector<uint8_t>> data_buffer = DataBuffer::Serialize(array, builder);
-    buffer_vector.push_back(CreateBuffer(*builder, data_buffer));
-    index++;
+  buffer_vector.reserve(buffers_to_write.size());
+  for (const auto buffer : buffers_to_write) {
+    buffer_vector.push_back(CreateBuffer(*builder, buffer));
   }
   return builder->CreateVector(buffer_vector);
 }
 
-tensorflow::Status Export(const Model& model, string* output_file_contents,
+tensorflow::Status Export(const Model& model, std::string* output_file_contents,
                           const ExportParams& params) {
   const auto ops_by_type = BuildOperatorByTypeMap(params.enable_select_tf_ops);
   return Export(model, output_file_contents, params, ops_by_type);
 }
 
+void ParseControlFlowErrors(std::set<std::string>* custom_ops,
+                            std::vector<std::string>* error_msgs) {
+  std::set<std::string> unsupported_control_flow_ops;
+  // Check if unsupported ops contains control flow ops. It's impossible
+  // to implement these ops as custom ops at the moment.
+  for (const auto& op : *custom_ops) {
+    if (IsControlFlowOp(op)) {
+      unsupported_control_flow_ops.insert(op);
+    }
+  }
+  if (!unsupported_control_flow_ops.empty()) {
+    error_msgs->push_back(absl::StrCat(
+        "TensorFlow Lite currently doesn't support control flow ops: ",
+        absl::StrJoin(unsupported_control_flow_ops, ", "), ".",
+        " We are working on supporting control flow ops, please see github "
+        "issue at "
+        "https://github.com/tensorflow/tensorflow/issues/28485."));
+  }
+  // Remove control flow ops from `custom_ops` set so that they won't be
+  // reported again in later messages.
+  for (const auto& op : unsupported_control_flow_ops) {
+    custom_ops->erase(op);
+  }
+}
+
+// Exports a string buffer that contains the model's minimum required runtime
+// version.
+void ExportModelVersionBuffer(
+    const Model& model, std::vector<Offset<Vector<uint8_t>>>* buffers_to_write,
+    FlatBufferBuilder* builder) {
+  const std::string min_runtime = GetMinimumRuntimeVersionForModel(model);
+  buffers_to_write->push_back(builder->CreateVector(
+      reinterpret_cast<const uint8_t*>(min_runtime.data()),
+      min_runtime.size()));
+}
+
 tensorflow::Status Export(
-    const Model& model, string* output_file_contents,
+    const Model& model, std::string* output_file_contents,
     const ExportParams& params,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type) {
+  for (const std::string& input_array : model.GetInvalidInputArrays()) {
+    if (model.HasArray(input_array)) {
+      return tensorflow::errors::InvalidArgument(
+          absl::StrCat("Placeholder ", input_array,
+                       " should be specified by "
+                       "input_arrays."));
+    }
+  }
+
   flatbuffers::FlatBufferBuilder builder(/*initial_size=*/10240);
 
   details::TensorsMap tensors_map;
@@ -423,9 +493,9 @@ tensorflow::Status Export(
   details::LoadOperatorsMap(model, &operators_map, ops_by_type,
                             params.enable_select_tf_ops);
 
-  std::vector<const Array*> buffers_to_write;
-  Array empty_array;
-  buffers_to_write.push_back(&empty_array);
+  std::vector<Offset<Vector<uint8_t>>> buffers_to_write;
+  // Insert an empty buffer to the beginning of the list.
+  buffers_to_write.push_back(0);
 
   auto op_codes =
       ExportOperatorCodes(model, ops_by_type, operators_map, &builder, params);
@@ -440,11 +510,11 @@ tensorflow::Status Export(
   }
 
   // The set of used builtin ops.
-  std::set<string> builtin_ops;
+  std::set<std::string> builtin_ops;
   // The set of custom ops (not including Flex ops).
-  std::set<string> custom_ops;
+  std::set<std::string> custom_ops;
   // The set of Flex ops which are not supported.
-  std::set<string> unsupported_flex_ops;
+  std::set<std::string> unsupported_flex_ops;
 
   for (const auto& it : operators_map) {
     const details::OperatorKey& key = it.first;
@@ -462,22 +532,6 @@ tensorflow::Status Export(
 
   if (!custom_ops.empty()) {
     if (!params.allow_custom_ops) {
-      // Remove ExpandDims and ReorderAxes from unimplemented list unless they
-      // compose the list. Both ops are removed during graph transformations.
-      // However, if an op is unimplemented earlier in the model, the graph
-      // transformation is unable to run because the output shape is not
-      // defined. This causes unnecessary confusion during model conversion
-      // time.
-      std::set<string> custom_ops_final;
-      for (const auto& op_type : custom_ops) {
-        if (op_type != "ReorderAxes" && op_type != "ExpandDims") {
-          custom_ops_final.insert(op_type);
-        }
-      }
-      if (custom_ops_final.empty()) {
-        custom_ops_final = custom_ops;
-      }
-
       auto please_report_bug_message = []() {
         return "We are continually in the process of adding support to "
                "TensorFlow Lite for more ops. It would be helpful if you could "
@@ -487,52 +541,63 @@ tensorflow::Status Export(
                "40-tflite-op-request.md\n and pasting the following:\n\n";
       };
 
-      if (params.enable_select_tf_ops) {
-        return tensorflow::errors::InvalidArgument(absl::StrCat(
-            please_report_bug_message(),
-            "Some of the operators in the model are not supported by "
-            "the standard TensorFlow Lite runtime and are not recognized by "
-            "TensorFlow. If you have a custom "
-            "implementation for them you can disable this error with "
-            "--allow_custom_ops, or by setting allow_custom_ops=True "
-            "when calling tf.lite.TFLiteConverter(). Here is a list "
-            "of builtin operators you are using: ",
-            absl::StrJoin(builtin_ops, ", "),
-            ". Here is a list "
-            "of operators for which you will need custom implementations: ",
-            absl::StrJoin(custom_ops_final, ", "), "."));
-      } else {
-        return tensorflow::errors::InvalidArgument(absl::StrCat(
-            please_report_bug_message(),
-            "Some of the operators in the model are not supported by "
-            "the standard TensorFlow Lite runtime. If those are native "
-            "TensorFlow operators, you might be able to use the extended "
-            "runtime by passing --enable_select_tf_ops, or by setting "
-            "target_ops=TFLITE_BUILTINS,SELECT_TF_OPS when calling "
-            "tf.lite.TFLiteConverter(). Otherwise, if you have a "
-            "custom implementation for them you can disable this error with "
-            "--allow_custom_ops, or by setting allow_custom_ops=True "
-            "when calling tf.lite.TFLiteConverter(). Here is a list "
-            "of builtin operators you are using: ",
-            absl::StrJoin(builtin_ops, ", "),
-            ". Here is a list "
-            "of operators for which you will need custom implementations: ",
-            absl::StrJoin(custom_ops_final, ", "), "."));
-      }
-    }
+      std::vector<std::string> error_msgs;
+      ParseControlFlowErrors(&custom_ops, &error_msgs);
 
-    std::set<string> unsupported_control_flow_ops;
-    // Check if unsupported ops contains control flow ops. It's impossible
-    // to implement these ops as custom ops at the moment.
-    for (const auto& op : custom_ops) {
-      if (IsControlFlowOp(op)) {
-        unsupported_control_flow_ops.insert(op);
+      // Remove ExpandDims and ReorderAxes from unimplemented list unless they
+      // compose the list. Both ops are removed during graph transformations.
+      // However, if an op is unimplemented earlier in the model, the graph
+      // transformation is unable to run because the output shape is not
+      // defined. This causes unnecessary confusion during model conversion
+      // time.
+      std::set<std::string> custom_ops_final;
+      for (const auto& op_type : custom_ops) {
+        if (op_type != "ReorderAxes" && op_type != "ExpandDims") {
+          custom_ops_final.insert(op_type);
+        }
       }
-    }
-    if (!unsupported_control_flow_ops.empty()) {
-      return tensorflow::errors::InvalidArgument(absl::StrCat(
-          "TensorFlow Lite currently doesn't support control flow ops: ",
-          absl::StrJoin(unsupported_control_flow_ops, ", "), "."));
+      if (custom_ops_final.empty()) {
+        custom_ops_final = custom_ops;
+      }
+
+      if (!custom_ops_final.empty()) {
+        if (params.enable_select_tf_ops) {
+          error_msgs.push_back(absl::StrCat(
+              "Some of the operators in the model are not supported by "
+              "the standard TensorFlow Lite runtime and are not recognized "
+              "by "
+              "TensorFlow. If you have a custom "
+              "implementation for them you can disable this error with "
+              "--allow_custom_ops, or by setting allow_custom_ops=True "
+              "when calling tf.lite.TFLiteConverter(). Here is a list "
+              "of builtin operators you are using: ",
+              absl::StrJoin(builtin_ops, ", "),
+              ". Here is a list "
+              "of operators for which you will need custom implementations: ",
+              absl::StrJoin(custom_ops_final, ", "), "."));
+        } else {
+          error_msgs.push_back(absl::StrCat(
+              "Some of the operators in the model are not supported by "
+              "the standard TensorFlow Lite runtime. If those are native "
+              "TensorFlow operators, you might be able to use the extended "
+              "runtime by passing --enable_select_tf_ops, or by setting "
+              "target_ops=TFLITE_BUILTINS,SELECT_TF_OPS when calling "
+              "tf.lite.TFLiteConverter(). Otherwise, if you have a "
+              "custom implementation for them you can disable this error "
+              "with "
+              "--allow_custom_ops, or by setting allow_custom_ops=True "
+              "when calling tf.lite.TFLiteConverter(). Here is a list "
+              "of builtin operators you are using: ",
+              absl::StrJoin(builtin_ops, ", "),
+              ". Here is a list "
+              "of operators for which you will need custom implementations: ",
+              absl::StrJoin(custom_ops_final, ", "), "."));
+        }
+      }
+      if (!error_msgs.empty()) {
+        return tensorflow::errors::InvalidArgument(absl::StrCat(
+            please_report_bug_message(), absl::StrJoin(error_msgs, " ")));
+      }
     }
   }
 
@@ -557,14 +622,32 @@ tensorflow::Status Export(
                                  /* name */ 0);
   std::vector<flatbuffers::Offset<SubGraph>> subgraphs = {subgraph};
 
+  // TODO(wangtz): offline memory planning for activation Tensors.
+  if (!params.allow_dynamic_tensors) {
+    return tensorflow::errors::Unimplemented(
+        "Unsupported flag: allow_dynamic_tensors. Offline memory planning is "
+        "not implemented yet.");
+  }
+
+  // Write the minimum required runtime version into metadata.
+  auto metadata =
+      CreateMetadata(builder, builder.CreateString("min_runtime_version"),
+                     buffers_to_write.size());
+  ExportModelVersionBuffer(model, &buffers_to_write, &builder);
+  std::vector<flatbuffers::Offset<Metadata>> metadatas = {metadata};
+
   auto buffers = ExportBuffers(model, buffers_to_write, &builder);
   auto description = builder.CreateString("TOCO Converted.");
+
   auto new_model_location =
       CreateModel(builder, TFLITE_SCHEMA_VERSION, op_codes,
-                  builder.CreateVector(subgraphs), description, buffers);
+                  builder.CreateVector(subgraphs), description, buffers,
+                  /* metadata_buffer */ 0, builder.CreateVector(metadatas));
   ::tflite::FinishModelBuffer(builder, new_model_location);
 
-  if (params.quantize_weights) {
+  if (params.quantize_weights == QuantizedBufferType::NONE) {
+    WriteModelToString(builder, output_file_contents);
+  } else {
     // Call the quantize_weights tool.
     LOG(INFO) << "Quantizing TFLite model after conversion to flatbuffer. "
                  "dump_graphviz will only output the model before this "
@@ -573,14 +656,21 @@ tensorflow::Status Export(
     flatbuffers::FlatBufferBuilder q_builder(/*initial_size=*/10240);
     const uint8_t* buffer = builder.GetBufferPointer();
     const ::tflite::Model* input_model = ::tflite::GetModel(buffer);
-    if (::tflite::optimize::QuantizeWeights(&q_builder, input_model) !=
-        kTfLiteOk) {
+    ::tflite::optimize::BufferType quantized_type;
+    if (params.quantize_weights == QuantizedBufferType::INT8) {
+      quantized_type = ::tflite::optimize::BufferType::QUANTIZED_INT8;
+    } else if (params.quantize_weights == QuantizedBufferType::FLOAT16) {
+      quantized_type = ::tflite::optimize::BufferType::QUANTIZED_FLOAT16;
+    } else {
+      return tensorflow::errors::InvalidArgument(
+          "Quantized type not recognized");
+    }
+    if (::tflite::optimize::QuantizeWeights(&q_builder, input_model,
+                                            quantized_type) != kTfLiteOk) {
       return tensorflow::errors::InvalidArgument(
           "Quantize weights transformation failed.");
     }
     WriteModelToString(q_builder, output_file_contents);
-  } else {
-    WriteModelToString(builder, output_file_contents);
   }
 
   return tensorflow::Status();

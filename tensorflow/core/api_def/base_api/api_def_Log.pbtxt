@@ -3,5 +3,12 @@ op {
   summary: "Computes natural logarithm of x element-wise."
   description: <<END
 I.e., \\(y = \log_e x\\).
+
+Example:
+
+```python
+x = tf.constant([0, 0.5, 1, 5])
+tf.math.log(x) ==> [-inf, -0.6931472,  0. ,  1.609438]
+```
 END
 }

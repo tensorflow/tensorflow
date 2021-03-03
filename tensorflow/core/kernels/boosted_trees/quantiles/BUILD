@@ -1,14 +1,24 @@
 # Description:
 #   This directory contains common quantile utilities used in boosted_trees.
+
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 package(
     default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+filegroup(
+    name = "weighted_quantiles_hdrs",
+    srcs = [
+        "quantile_stream_resource.h",
+        "weighted_quantiles_buffer.h",
+        "weighted_quantiles_stream.h",
+        "weighted_quantiles_summary.h",
+    ],
+)
 
 # Quantiles
 

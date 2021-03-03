@@ -1,0 +1,203 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-graph-as-function -tf-control-output-arrays=var1_add,var2_add -o - | FileCheck %s
+# RUN: not tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-graph-as-function -tf-control-output-arrays=var1_add,var1_add -o - 2>&1 | FileCheck %s --check-prefix=UNIQUE
+# RUN: not tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-graph-as-function -tf-control-output-arrays=var3_add -o - 2>&1 | FileCheck %s --check-prefix=MISSING
+
+node {
+  name: "arg0"
+  op: "_Arg"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 0
+    }
+  }
+}
+node {
+  name: "arg1"
+  op: "_Arg"
+  attr {
+    key: "T"
+    value {
+      type: DT_RESOURCE
+    }
+  }
+  attr {
+    key: "_handle_dtypes"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "_handle_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 1
+    }
+  }
+}
+node {
+  name: "arg2"
+  op: "_Arg"
+  attr {
+    key: "T"
+    value {
+      type: DT_RESOURCE
+    }
+  }
+  attr {
+    key: "_handle_dtypes"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "_handle_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 2
+    }
+  }
+}
+node {
+  name: "var1_add/value"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 2.0
+      }
+    }
+  }
+}
+node {
+  name: "var1_add"
+  op: "AssignAddVariableOp"
+  input: "arg1"
+  input: "var1_add/value"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "var2_add/value"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 8.0
+      }
+    }
+  }
+}
+node {
+  name: "var2_add"
+  op: "AssignAddVariableOp"
+  input: "arg2"
+  input: "var2_add/value"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "identity"
+  op: "Identity"
+  input: "arg0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "ret"
+  op: "_Retval"
+  input: "identity"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 0
+    }
+  }
+}
+versions {
+  producer: 121
+}
+
+# Verify main graph was converted to a function and args/rets/control rets are
+# mapped correctly.
+
+# CHECK-LABEL: func @main
+# CHECK-SAME:  (%{{.*}}: tensor<*xf32>, %[[ARG_1:.*]]: tensor<*x!tf.resource<tensor<f32>>>, %[[ARG_2:.*]]: tensor<*x!tf.resource<tensor<f32>>>)
+# CHECK-SAME:  control_outputs = "var1_add,var2_add"
+# CHECK-SAME:  inputs = "arg0,arg1,arg2"
+# CHECK-SAME:  outputs = "ret"
+# CHECK-DAG:     %[[VAR_ADD_1:.*]] = tf_executor.island wraps "tf.AssignAddVariableOp"(%[[ARG_1]], %{{.*}})
+# CHECK-DAG:     %[[VAR_ADD_2:.*]] = tf_executor.island wraps "tf.AssignAddVariableOp"(%[[ARG_2]], %{{.*}})
+# CHECK:         tf_executor.fetch %{{.*}}, %[[VAR_ADD_1]], %[[VAR_ADD_2]]
+
+# Test duplicate control ret node names.
+
+# UNIQUE: Control outputs must be unique
+
+# Test missing control ret node name.
+
+# MISSING: Control output 'var3_add' is missing

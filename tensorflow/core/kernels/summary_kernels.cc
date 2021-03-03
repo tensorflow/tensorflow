@@ -13,14 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/tensorboard/db/schema.h"
-#include "tensorflow/contrib/tensorboard/db/summary_db_writer.h"
-#include "tensorflow/contrib/tensorboard/db/summary_file_writer.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/db/sqlite.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/summary/schema.h"
+#include "tensorflow/core/summary/summary_db_writer.h"
+#include "tensorflow/core/summary/summary_file_writer.h"
 #include "tensorflow/core/util/event.pb.h"
 
 namespace tensorflow {
@@ -36,15 +38,15 @@ class CreateSummaryFileWriterOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor* tmp;
     OP_REQUIRES_OK(ctx, ctx->input("logdir", &tmp));
-    const string logdir = tmp->scalar<string>()();
+    const string logdir = tmp->scalar<tstring>()();
     OP_REQUIRES_OK(ctx, ctx->input("max_queue", &tmp));
     const int32 max_queue = tmp->scalar<int32>()();
     OP_REQUIRES_OK(ctx, ctx->input("flush_millis", &tmp));
     const int32 flush_millis = tmp->scalar<int32>()();
     OP_REQUIRES_OK(ctx, ctx->input("filename_suffix", &tmp));
-    const string filename_suffix = tmp->scalar<string>()();
+    const string filename_suffix = tmp->scalar<tstring>()();
 
-    SummaryWriterInterface* s = nullptr;
+    core::RefCountPtr<SummaryWriterInterface> s;
     OP_REQUIRES_OK(ctx, LookupOrCreateResource<SummaryWriterInterface>(
                             ctx, HandleFromInput(ctx, 0), &s,
                             [max_queue, flush_millis, logdir, filename_suffix,
@@ -65,15 +67,15 @@ class CreateSummaryDbWriterOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor* tmp;
     OP_REQUIRES_OK(ctx, ctx->input("db_uri", &tmp));
-    const string db_uri = tmp->scalar<string>()();
+    const string db_uri = tmp->scalar<tstring>()();
     OP_REQUIRES_OK(ctx, ctx->input("experiment_name", &tmp));
-    const string experiment_name = tmp->scalar<string>()();
+    const string experiment_name = tmp->scalar<tstring>()();
     OP_REQUIRES_OK(ctx, ctx->input("run_name", &tmp));
-    const string run_name = tmp->scalar<string>()();
+    const string run_name = tmp->scalar<tstring>()();
     OP_REQUIRES_OK(ctx, ctx->input("user_name", &tmp));
-    const string user_name = tmp->scalar<string>()();
+    const string user_name = tmp->scalar<tstring>()();
 
-    SummaryWriterInterface* s = nullptr;
+    core::RefCountPtr<SummaryWriterInterface> s;
     OP_REQUIRES_OK(
         ctx,
         LookupOrCreateResource<SummaryWriterInterface>(
@@ -99,9 +101,8 @@ class FlushSummaryWriterOp : public OpKernel {
   explicit FlushSummaryWriterOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    SummaryWriterInterface* s;
+    core::RefCountPtr<SummaryWriterInterface> s;
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &s));
-    core::ScopedUnref unref(s);
     OP_REQUIRES_OK(ctx, s->Flush());
   }
 };
@@ -125,16 +126,15 @@ class WriteSummaryOp : public OpKernel {
   explicit WriteSummaryOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    SummaryWriterInterface* s;
+    core::RefCountPtr<SummaryWriterInterface> s;
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &s));
-    core::ScopedUnref unref(s);
     const Tensor* tmp;
     OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
     const int64 step = tmp->scalar<int64>()();
     OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
-    const string& tag = tmp->scalar<string>()();
+    const string& tag = tmp->scalar<tstring>()();
     OP_REQUIRES_OK(ctx, ctx->input("summary_metadata", &tmp));
-    const string& serialized_metadata = tmp->scalar<string>()();
+    const string& serialized_metadata = tmp->scalar<tstring>()();
 
     const Tensor* t;
     OP_REQUIRES_OK(ctx, ctx->input("tensor", &t));
@@ -145,18 +145,53 @@ class WriteSummaryOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("WriteSummary").Device(DEVICE_CPU),
                         WriteSummaryOp);
 
+class WriteRawProtoSummaryOp : public OpKernel {
+ public:
+  explicit WriteRawProtoSummaryOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    core::RefCountPtr<SummaryWriterInterface> s;
+    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &s));
+    const Tensor* tmp;
+    OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(tmp->shape()),
+                errors::InvalidArgument("step must be scalar, got shape ",
+                                        tmp->shape().DebugString()));
+    const int64 step = tmp->scalar<int64>()();
+    const Tensor* t;
+    OP_REQUIRES_OK(ctx, ctx->input("tensor", &t));
+    std::unique_ptr<Event> event{new Event};
+    event->set_step(step);
+    event->set_wall_time(static_cast<double>(ctx->env()->NowMicros()) / 1.0e6);
+    // Each Summary proto contains just one repeated field "value" of Value
+    // messages with the actual data, so repeated Merge() is equivalent to
+    // concatenating all the Value entries together into a single Event.
+    const auto summary_pbs = t->flat<tstring>();
+    for (int i = 0; i < summary_pbs.size(); ++i) {
+      if (!event->mutable_summary()->MergeFromString(summary_pbs(i))) {
+        ctx->CtxFailureWithWarning(errors::DataLoss(
+            "Bad tf.compat.v1.Summary binary proto tensor string at index ",
+            i));
+        return;
+      }
+    }
+    OP_REQUIRES_OK(ctx, s->WriteEvent(std::move(event)));
+  }
+};
+REGISTER_KERNEL_BUILDER(Name("WriteRawProtoSummary").Device(DEVICE_CPU),
+                        WriteRawProtoSummaryOp);
+
 class ImportEventOp : public OpKernel {
  public:
   explicit ImportEventOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    SummaryWriterInterface* s;
+    core::RefCountPtr<SummaryWriterInterface> s;
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &s));
-    core::ScopedUnref unref(s);
     const Tensor* t;
     OP_REQUIRES_OK(ctx, ctx->input("event", &t));
     std::unique_ptr<Event> event{new Event};
-    if (!ParseProtoUnlimited(event.get(), t->scalar<string>()())) {
+    if (!ParseProtoUnlimited(event.get(), t->scalar<tstring>()())) {
       ctx->CtxFailureWithWarning(
           errors::DataLoss("Bad tf.Event binary proto tensor string"));
       return;
@@ -171,14 +206,13 @@ class WriteScalarSummaryOp : public OpKernel {
   explicit WriteScalarSummaryOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    SummaryWriterInterface* s;
+    core::RefCountPtr<SummaryWriterInterface> s;
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &s));
-    core::ScopedUnref unref(s);
     const Tensor* tmp;
     OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
     const int64 step = tmp->scalar<int64>()();
     OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
-    const string& tag = tmp->scalar<string>()();
+    const string& tag = tmp->scalar<tstring>()();
 
     const Tensor* t;
     OP_REQUIRES_OK(ctx, ctx->input("value", &t));
@@ -194,14 +228,13 @@ class WriteHistogramSummaryOp : public OpKernel {
   explicit WriteHistogramSummaryOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    SummaryWriterInterface* s;
+    core::RefCountPtr<SummaryWriterInterface> s;
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &s));
-    core::ScopedUnref unref(s);
     const Tensor* tmp;
     OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
     const int64 step = tmp->scalar<int64>()();
     OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
-    const string& tag = tmp->scalar<string>()();
+    const string& tag = tmp->scalar<tstring>()();
 
     const Tensor* t;
     OP_REQUIRES_OK(ctx, ctx->input("values", &t));
@@ -223,14 +256,13 @@ class WriteImageSummaryOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    SummaryWriterInterface* s;
+    core::RefCountPtr<SummaryWriterInterface> s;
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &s));
-    core::ScopedUnref unref(s);
     const Tensor* tmp;
     OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
     const int64 step = tmp->scalar<int64>()();
     OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
-    const string& tag = tmp->scalar<string>()();
+    const string& tag = tmp->scalar<tstring>()();
     const Tensor* bad_color;
     OP_REQUIRES_OK(ctx, ctx->input("bad_color", &bad_color));
     OP_REQUIRES(
@@ -259,14 +291,13 @@ class WriteAudioSummaryOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    SummaryWriterInterface* s;
+    core::RefCountPtr<SummaryWriterInterface> s;
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &s));
-    core::ScopedUnref unref(s);
     const Tensor* tmp;
     OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
     const int64 step = tmp->scalar<int64>()();
     OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
-    const string& tag = tmp->scalar<string>()();
+    const string& tag = tmp->scalar<tstring>()();
     OP_REQUIRES_OK(ctx, ctx->input("sample_rate", &tmp));
     const float sample_rate = tmp->scalar<float>()();
 
@@ -288,15 +319,14 @@ class WriteGraphSummaryOp : public OpKernel {
   explicit WriteGraphSummaryOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    SummaryWriterInterface* s;
+    core::RefCountPtr<SummaryWriterInterface> s;
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &s));
-    core::ScopedUnref unref(s);
     const Tensor* t;
     OP_REQUIRES_OK(ctx, ctx->input("step", &t));
     const int64 step = t->scalar<int64>()();
     OP_REQUIRES_OK(ctx, ctx->input("tensor", &t));
     std::unique_ptr<GraphDef> graph{new GraphDef};
-    if (!ParseProtoUnlimited(graph.get(), t->scalar<string>()())) {
+    if (!ParseProtoUnlimited(graph.get(), t->scalar<tstring>()())) {
       ctx->CtxFailureWithWarning(
           errors::DataLoss("Bad tf.GraphDef binary proto tensor string"));
       return;

@@ -75,12 +75,14 @@ def strip_unused(input_graph_def, input_node_names, output_node_names,
       if "_output_shapes" in node.attr:
         placeholder_node.attr["_output_shapes"].CopyFrom(node.attr[
             "_output_shapes"])
+      if "shape" in node.attr:
+        placeholder_node.attr["shape"].CopyFrom(node.attr["shape"])
       inputs_replaced_graph_def.node.extend([placeholder_node])
     else:
       inputs_replaced_graph_def.node.extend([copy.deepcopy(node)])
 
   if not_found:
-    raise KeyError("The following input nodes were not found: %s\n" % not_found)
+    raise KeyError("The following input nodes were not found: %s" % not_found)
 
   output_graph_def = graph_util.extract_sub_graph(inputs_replaced_graph_def,
                                                   output_node_names)
@@ -102,7 +104,7 @@ def strip_unused_from_files(input_graph, input_binary, output_graph,
 
   input_graph_def = graph_pb2.GraphDef()
   mode = "rb" if input_binary else "r"
-  with gfile.FastGFile(input_graph, mode) as f:
+  with gfile.GFile(input_graph, mode) as f:
     if input_binary:
       input_graph_def.ParseFromString(f.read())
     else:

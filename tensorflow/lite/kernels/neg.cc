@@ -13,7 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/kernels/internal/reference/neg.h"
+
+#include <stdint.h>
+
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+#include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
@@ -27,35 +34,38 @@ constexpr int kOutputTensor = 0;
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   output->type = input->type;
   return context->ResizeTensor(context, output,
                                TfLiteIntArrayCopy(input->dims));
 }
 
-template <typename T>
-void Negate(const T* in_data, int num_elements, T* out_data) {
-  // TODO(alanchiao): add vectorized version.
-  for (int i = 0; i < num_elements; ++i) {
-    out_data[i] = -in_data[i];
-  }
-}
-
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  const int num_elements = NumElements(input);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
   switch (input->type) {
     case kTfLiteInt64:
-      Negate(input->data.i64, num_elements, output->data.i64);
+      reference_ops::Negate(
+          GetTensorShape(input), GetTensorData<int64_t>(input),
+          GetTensorShape(output), GetTensorData<int64_t>(output));
       break;
     case kTfLiteInt32:
-      Negate(input->data.i32, num_elements, output->data.i32);
+      reference_ops::Negate(
+          GetTensorShape(input), GetTensorData<int32_t>(input),
+          GetTensorShape(output), GetTensorData<int32_t>(output));
       break;
     case kTfLiteFloat32:
-      Negate(input->data.f, num_elements, output->data.f);
+      reference_ops::Negate(GetTensorShape(input), GetTensorData<float>(input),
+                            GetTensorShape(output),
+                            GetTensorData<float>(output));
       break;
     default:
       context->ReportError(

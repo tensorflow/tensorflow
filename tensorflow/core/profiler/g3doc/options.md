@@ -54,10 +54,10 @@ cpu_micros: This is the cpu times.
 
 ### Memory
 
-Tensor memory are usually ref-counted. The memory is released when there is
-no more reference to it. It will be difficult to track the release of memory.
+Tensor memory are usually ref-counted. The memory is released when there is no
+more reference to it. It will be difficult to track the release of memory.
 Currently, profiler only tracks the allocation of memory. As a result, the
-accumulated memory request is uaually larger than the peak memory of the overall
+accumulated memory request is usually larger than the peak memory of the overall
 model.
 
 It's recommended to generate timeline to see the allocator memory usage over
@@ -100,15 +100,21 @@ accelerator_micros and cpu_micros. Note: cpu and accelerator can run in parallel
 
 `-order_by`: Order the results by [name|depth|bytes|peak_bytes|residual_bytes|output_bytes|micros|accelerator_micros|cpu_micros|params|float_ops|occurrence]
 
-`-account_type_regexes`: Account and display the nodes whose types match one of the type regexes specified. tfprof allow user to define extra operation types for graph nodes through tensorflow.tfprof.OpLogProto proto. regexes are comma-sperated.
+`-account_type_regexes`: Account and display the nodes whose types match one of
+the type regexes specified. tfprof allow user to define extra operation types
+for graph nodes through tensorflow.tfprof.OpLogProto proto. regexes are
+comma-separated.
 
 `-start_name_regexes`: Show node starting from the node that matches the regexes, recursively. regexes are comma-separated.
 
-`-trim_name_regexes`: Hide node starting from the node that matches the regexes, recursively, regexes are comma-seprated.
+`-trim_name_regexes`: Hide node starting from the node that matches the regexes,
+recursively, regexes are comma-separated.
 
-`-show_name_regexes`: Show node that match the regexes. regexes are comma-seprated.
+`-show_name_regexes`: Show node that match the regexes. regexes are
+comma-separated.
 
-`-hide_name_regexes`: Hide node that match the regexes. regexes are comma-seprated.
+`-hide_name_regexes`: Hide node that match the regexes. regexes are
+comma-separated.
 
 `-account_displayed_op_only`: If True, only account the statistics of ops eventually displayed. If False, account all op statistics matching -account_type_regexes recursively.
 

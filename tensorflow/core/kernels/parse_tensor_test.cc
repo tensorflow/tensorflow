@@ -26,6 +26,9 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 namespace {
@@ -186,12 +189,12 @@ TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_bool) {
 }
 
 TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_string) {
-  MakeOp<string>(TensorShape({10}),
-                 [](int x) -> string { return std::to_string(x / 10.); });
+  MakeOp<tstring>(TensorShape({10}),
+                  [](int x) -> tstring { return std::to_string(x / 10.); });
   TF_ASSERT_OK(RunOpKernel());
   Tensor parse_output;
-  ParseSerializedOutput<string>(GetOutput(0), &parse_output);
-  test::ExpectTensorEqual<string>(parse_output, GetInput(0));
+  ParseSerializedOutput<tstring>(GetOutput(0), &parse_output);
+  test::ExpectTensorEqual<tstring>(parse_output, GetInput(0));
 }
 
 }  // namespace

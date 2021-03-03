@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_TENSOR_H_
 
 #include <cstdint>
+#include <type_traits>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -29,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -41,15 +44,60 @@ class OpKernelContext;
 class Tensor;
 class TensorBuffer;
 class TensorCApi;
+class TensorCord;
 class TensorDescription;
 class TensorProto;
+class Var;
 
 namespace batch_util {
 Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index);
+Status CopySliceToElement(const Tensor& parent, Tensor* element, int64 index);
 Status MaybeMoveSliceToElement(Tensor* parent, Tensor* element, int64 index);
+Status CopyContiguousSlices(const Tensor& src, int64 src_offset,
+                            int64 dst_offset, int64 num_slices, Tensor* dst);
 }  // namespace batch_util
 
 /// @ingroup core
+
+/// Interface to access the raw ref-counted data buffer.
+class TensorBuffer : public core::RefCounted {
+ public:
+  explicit TensorBuffer(void* data_ptr) : data_(data_ptr) {}
+  ~TensorBuffer() override {}
+
+  /// \brief data() points to a memory region of size() bytes.
+  ///
+  /// NOTE(mrry): The `data()` method is not virtual for performance reasons.
+  /// It can be called multiple times when the contents of a `Tensor` are
+  /// accessed, and so making it non-virtual allows the body to be inlined.
+  void* data() const { return data_; }
+
+  /// \brief Size (in bytes) of the buffer.
+  virtual size_t size() const = 0;
+
+  /// \brief If this TensorBuffer is sub-buffer of another TensorBuffer,
+  /// returns that TensorBuffer. Otherwise, returns this.
+  virtual TensorBuffer* root_buffer() = 0;
+
+  /// \brief Fills metadata about the allocation into the proto.
+  virtual void FillAllocationDescription(
+      AllocationDescription* proto) const = 0;
+
+  virtual bool GetAllocatedBytes(size_t* out_bytes) const;
+
+  /// \brief Helper method to reinterpret the buffer as an array of `T`.
+  template <typename T>
+  T* base() const {
+    return reinterpret_cast<T*>(data());
+  }
+
+  /// \brief Whether this TensorBuffer owns the underlying memory.
+  virtual bool OwnsMemory() const { return true; }
+
+ private:
+  void* const data_;
+};
+
 /// Represents an n-dimensional array of values.
 class Tensor {
  public:
@@ -104,6 +152,17 @@ class Tensor {
   Tensor(Allocator* a, DataType type, const TensorShape& shape,
          const AllocationAttributes& allocation_attr);
 
+  /// \brief Creates a tensor with the input datatype, shape and buf.
+  ///
+  /// Acquires a ref on buf that belongs to this Tensor.
+  Tensor(DataType type, const TensorShape& shape, TensorBuffer* buf);
+
+  /// \brief Creates a tensor with the input datatype, shape and buf.
+  ///
+  /// Takes an ownership of the bufffer from the reference counted pointer.
+  Tensor(DataType type, const TensorShape& shape,
+         core::RefCountPtr<TensorBuffer> buf);
+
   /// \brief Creates an empty Tensor of the given data type.
   ///
   /// Like Tensor(), returns a 1-dimensional, 0-element Tensor with
@@ -118,7 +177,7 @@ class Tensor {
 
   class HostScalarTensorBufferBase;
   template <typename T>
-  class HostScalarTensorBuffer;
+  struct ValueAndTensorBuffer;
 
   // Creates a tensor with the given scalar `value` in CPU memory.
   template <typename T>
@@ -146,7 +205,7 @@ class Tensor {
       : Tensor(scalar_value, host_scalar_tag{}) {}
   explicit Tensor(int8 scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
-  explicit Tensor(string scalar_value)
+  explicit Tensor(tstring scalar_value)
       : Tensor(std::move(scalar_value), host_scalar_tag{}) {}
   explicit Tensor(complex64 scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
@@ -179,15 +238,21 @@ class Tensor {
   // convenience because otherwise passing a string literal would surprisingly
   // construct a DT_BOOL tensor.
   explicit Tensor(const char* scalar_value)
-      : Tensor(string(scalar_value), host_scalar_tag{}) {}
+      : Tensor(tstring(scalar_value), host_scalar_tag{}) {}
 
   /// Copy constructor.
   Tensor(const Tensor& other);
 
   /// \brief Move constructor. After this call, <other> is safely destructible
-  /// and can be assigned to, but other calls on it (e.g. shape manipulation)
-  /// are not valid.
+  /// can be assigned to, and IsInitialized() can be called and will return
+  /// false. Other calls on <other> (e.g. shape manipulation) are not valid.
   Tensor(Tensor&& other);
+
+  // Explicitly delete constructor that take a pointer (except char*)
+  // so that the pointer doesn't get implicitly cast to bool.
+  template <typename T, typename std::enable_if<!std::is_same<T, char>::value,
+                                                T>::type* = nullptr>
+  explicit Tensor(T* t) = delete;
 
   ~Tensor();
 
@@ -234,7 +299,8 @@ class Tensor {
     return true;
 #else
     void* ptr = base<void>();
-    return reinterpret_cast<intptr_t>(ptr) % EIGEN_MAX_ALIGN_BYTES == 0;
+    return dtype() == DT_STRING ||
+           (reinterpret_cast<intptr_t>(ptr) % EIGEN_MAX_ALIGN_BYTES == 0);
 #endif
   }
 
@@ -291,7 +357,7 @@ class Tensor {
   /// methods that have alignment requirement (e.g., `flat()`, `tensor()`).
   ///
   /// REQUIRES: `dims()` >= 1
-  /// REQUIRES: `0 <= dim0_start < dim_size(0)`
+  /// REQUIRES: `0 <= index < dim_size(0)`
   Tensor SubSlice(int64 index) const;
 
   /// \brief Parse `other` and construct the tensor.
@@ -520,10 +586,19 @@ class Tensor {
       int64 begin) const;
 
   /// Render the first `max_entries` values in `*this` into a string.
-  string SummarizeValue(int64 max_entries, bool print_v2 = false) const;
+  std::string SummarizeValue(int64 max_entries, bool print_v2 = false) const;
 
   /// A human-readable summary of the tensor suitable for debugging.
-  string DebugString() const;
+  // `num_values` is the number of actual data values in the tensor
+  // included in the message. If the tensor might be resident in
+  // GPU/TPU memory use DeviceSafeDebugString instead.
+  std::string DebugString(int num_values) const;
+  std::string DebugString() const { return DebugString(3); }
+
+  // Variant of DebugString() that should be used for possibly non-CPU tensors.
+  // If the tensor is not resident on CPU, we can't read its values as
+  // DebugString() does.
+  std::string DeviceSafeDebugString() const;
 
   /// Fill in the `TensorDescription` proto with metadata about the
   /// tensor that is useful for monitoring and debugging.
@@ -541,18 +616,45 @@ class Tensor {
   ///
   /// REQUIRES: `DataTypeCanUseMemcpy(dtype())`.
   StringPiece tensor_data() const;
+  void* data() const;
 
-  /// Copy the other tensor into this tensor and reshape it and reinterpret the
-  /// buffer's datatype.
+  /// Copy the other tensor into this tensor, reshape it and reinterpret the
+  /// buffer's datatype. If Status::OK() is returned, the two tensors now share
+  /// the same underlying storage.
   ///
-  /// This tensor shares other's underlying storage.
-  void UnsafeCopyFromInternal(const Tensor&, DataType dtype,
-                              const TensorShape&);
+  /// This call requires that the `other` tensor and the given type and shape
+  /// are "compatible" (i.e. they occupy the same number of bytes).
+  ///
+  /// Specifically:
+  ///
+  /// shape.num_elements() * DataTypeSize(type)
+  ///
+  /// must equal
+  ///
+  /// other.num_elements() * DataTypeSize(other.dtype())
+  ///
+  /// In addition, this function requires:
+  ///   * DataTypeSize(other.dtype()) != 0
+  ///   * DataTypeSize(type) != 0
+  ///
+  /// If any of the requirements are not met, errors::InvalidArgument is
+  /// returned.
+  Status BitcastFrom(const Tensor& other, DataType dtype,
+                     const TensorShape& shape);
 
- private:
+  /// Like BitcastFrom, but CHECK fails if any preconditions are not met.
+  ///
+  /// Deprecated. Use BitcastFrom instead and check the returned Status.
+  void UnsafeCopyFromInternal(const Tensor& other, DataType dtype,
+                              const TensorShape& shape) {
+    TF_CHECK_OK(BitcastFrom(other, dtype, shape));
+  }
+
   // Returns true if the refcount on buf_ and any possible underlying root
   // buffer is one.
   bool RefCountIsOne() const;
+
+ private:
   void CheckType(DataType expected_dtype) const;
   void CheckTypeAndIsAligned(DataType expected_dtype) const;
   void CheckIsAlignedAndSingleElement() const;
@@ -567,37 +669,27 @@ class Tensor {
   TensorShape shape_;
   TensorBuffer* buf_;
 
-  friend class DMAHelper;
-  friend class TensorCApi;
-  friend class TensorReference;       // For access to buf_
-  friend class VariableOp;            // For access to set_shape
-  friend class AutoReloadVariableOp;  // For access to set_shape
-  friend class TensorTestHelper;      // For access to set_shape
-  friend class CastOpBase;            // For access to set_dtype;
-  friend class OpKernelContext;       // For access to RefCountIsOne().
+  friend class DMAHelper;             // For access to buf_.
+  friend class TensorCApi;            // For access to buf_.
+  friend class TensorCord;            // For access to buf_.
+  friend class TensorReference;       // For access to buf_.
+  friend class VariableOp;            // For access to set_shape.
+  friend class AutoReloadVariableOp;  // For access to set_shape.
+  friend class TensorTestHelper;      // For access to set_shape.
+  friend class CastOpBase;            // For access to set_dtype.
   friend class ScopedAllocator;       // For access to buf_.
-  friend class XlaTensor;             // For access to RefCountIsOne().
-  friend class XlaTensorBuffer;  // For access to the private constructor taking
-                                 // the buffer
-  template <typename Device, typename T>
-  friend class AssignVariableOp;  // For access to RefCountIsOne().
-  template <typename Device, typename T>
-  friend Status PrepareToUpdateVariable(
-      OpKernelContext* ctx, Tensor* tensor);  // For access to RefCountIsOne().
   friend Status batch_util::CopyElementToSlice(
       Tensor element, Tensor* parent,
-      int64 index);                // For access to RefCountIsOne().
+      int64 index);  // For access to base<T>().
+  friend Status batch_util::CopySliceToElement(
+      const Tensor& parent, Tensor* element,
+      int64 index);  // For access to base<T>().
   friend Status batch_util::MaybeMoveSliceToElement(
       Tensor* parent, Tensor* element,
-      int64 index);  // For access to RefCountIsOne().
-
-  friend class NumpyTensorBuffer;  // For access to the private constructor
-                                   // taking the buffer.
-
-  // Creates a tensor with the input datatype, shape and buf.
-  //
-  // Acquires a ref on buf that belongs to this Tensor.
-  Tensor(DataType type, const TensorShape& shape, TensorBuffer* buf);
+      int64 index);  // For access to base<T>().
+  friend Status batch_util::CopyContiguousSlices(
+      const Tensor& src, int64 src_offset, int64 dst_offset, int64 num_slices,
+      Tensor* dst);  // For access to base<T>().
 
   bool CanUseDMA() const;
 
@@ -611,7 +703,19 @@ class Tensor {
     set_dtype(dt);
   }
 
-  void CopyFromInternal(const Tensor& other, const TensorShape& shape);
+  inline void CopyFromInternal(const Tensor& other, const TensorShape& shape) {
+    DCHECK_EQ(shape.num_elements(), other.NumElements());
+    // Data type will be overwritten if this == &other, since dtype is part of
+    // shape.
+    DataType other_dtype = other.dtype();
+    shape_ = shape;
+    set_dtype(other_dtype);
+    if (buf_ != other.buf_) {
+      if (buf_) buf_->Unref();
+      buf_ = other.buf_;
+      if (buf_) buf_->Ref();
+    }
+  }
 
   template <typename T>
   T* base() const;
@@ -630,32 +734,6 @@ class Tensor {
 // Implementation details
 
 // START_SKIP_DOXYGEN
-
-// Interface to access the raw ref-counted data buffer.
-class TensorBuffer : public core::RefCounted {
- public:
-  ~TensorBuffer() override {}
-
-  // data() points to a memory region of size() bytes.
-  virtual void* data() const = 0;
-  virtual size_t size() const = 0;
-
-  // If this TensorBuffer is sub-buffer of another TensorBuffer,
-  // returns that TensorBuffer. Otherwise, returns this.
-  virtual TensorBuffer* root_buffer() = 0;
-
-  // Fill metadata about the allocation into the proto.
-  virtual void FillAllocationDescription(
-      AllocationDescription* proto) const = 0;
-
-  template <typename T>
-  T* base() const {
-    return reinterpret_cast<T*>(data());
-  }
-
-  // Whether this TensorBuffer owns the underlying memory.
-  virtual bool OwnsMemory() const { return true; }
-};
 
 template <typename T>
 T* Tensor::base() const {
@@ -815,12 +893,18 @@ typename TTypes<T, NDIMS>::UnalignedConstTensor Tensor::unaligned_shaped(
 
 template <typename T>
 typename TTypes<T>::Scalar Tensor::scalar() {
+  static_assert(
+      !std::is_same<T, std::string>::value,
+      "std::string is no longer a scalar type, use tensorflow::tstring");
   CheckIsAlignedAndSingleElement();
   return typename TTypes<T>::Scalar(base<T>());
 }
 
 template <typename T>
 typename TTypes<T>::ConstScalar Tensor::scalar() const {
+  static_assert(
+      !std::is_same<T, std::string>::value,
+      "std::string is no longer a scalar type, use tensorflow::tstring");
   CheckIsAlignedAndSingleElement();
   return typename TTypes<T>::ConstScalar(base<T>());
 }
@@ -866,47 +950,83 @@ inline Tensor::Tensor(const Tensor& other)
 }
 
 inline Tensor::Tensor(Tensor&& other)
-    : shape_(std::move(other.shape())), buf_(other.buf_) {
+    : shape_(std::move(other.shape_)), buf_(other.buf_) {
   other.buf_ = nullptr;
 }
 
 class Tensor::HostScalarTensorBufferBase : public TensorBuffer {
  public:
+  using TensorBuffer::TensorBuffer;
+  bool GetAllocatedBytes(size_t* out_bytes) const final;
   void FillAllocationDescription(AllocationDescription* proto) const final;
 };
 
-// `Tensor::HostScalarTensorBuffer<T>` is a specialized `TensorBuffer`
-// implementation for storing a single scalar value.
-//
-// TODO(mrry): Evaluate other compilers or approaches to aligning the value
-// so that it can be used directly as a tensor value. For example, in a C++17
-// future, we could use `alignas(EIGEN_MAX_ALIGN_BYTES)` to store the value
-// inline in this object to save an allocation. However, this is not currently
-// widely supported in our compilers.
+// A packed representation for a single scalar value of type `T`, and a
+// `TensorBuffer` implementation that describes (and manages the lifetime of)
+// that value.
 template <typename T>
-class Tensor::HostScalarTensorBuffer : public HostScalarTensorBufferBase {
- public:
-  HostScalarTensorBuffer(T&& value)
-      : data_(reinterpret_cast<T*>(cpu_allocator()->AllocateRaw(
-            EIGEN_MAX_ALIGN_BYTES, sizeof(value)))) {
-    if (is_simple_type<T>::value) {
-      *data_ = value;
-    } else {
-      new (data_) T(std::move(value));
-    }
-  }
-  ~HostScalarTensorBuffer() { cpu_allocator()->Deallocate(data_, 1); }
-  void* data() const final { return const_cast<T*>(data_); }
-  size_t size() const final { return sizeof(*data_); }
-  TensorBuffer* root_buffer() final { return this; }
+struct Tensor::ValueAndTensorBuffer {
+  class HostScalarTensorBuffer : public Tensor::HostScalarTensorBufferBase {
+   public:
+    explicit HostScalarTensorBuffer(void* data)
+        : HostScalarTensorBufferBase(data) {}
+    size_t size() const final { return sizeof(T); }
+    TensorBuffer* root_buffer() final { return this; }
 
- private:
-  T* const data_;
+    // Override `operator delete` so that calling `delete this` in
+    // `core::Refcounted::Unref()` for an object of this type will free
+    // the enclosing `ValueAndTensorBuffer` for the tensor buffer.
+    //
+    // NOTE(mrry): The definition of this method must be outside the class
+    // definition in order to satisfy some compilers.
+    static void operator delete(void* ptr);
+
+    static void operator delete(void*, void*) {
+      // Some compilers require an overridden class-specific deallocation
+      // function, which will be called if placement `new` throws an
+      // exception.
+    }
+
+   private:
+    ~HostScalarTensorBuffer() override { static_cast<T*>(data())->~T(); }
+  };
+
+  T value;
+  HostScalarTensorBuffer tensor_buffer;
 };
 
+/* static */
 template <typename T>
-Tensor::Tensor(T value, host_scalar_tag tag)
-    : buf_(new HostScalarTensorBuffer<T>(std::move(value))) {
+void Tensor::ValueAndTensorBuffer<T>::HostScalarTensorBuffer::operator delete(
+    void* ptr) {
+  // Use a dummy object to compute to offset of
+  // `ValueAndTensorBuffer::tensor_buffer`, because `offsetof()` is not
+  // necessarily defined on this non-POD type (until C++17).
+  //
+  // NOTE(mrry): Using `sizeof(Tensor::ValueAndTensorBuffer<T>)` here requires
+  // us to define this method outside the class definition, so that it is not
+  // considered an incomplete type.
+  typename std::aligned_storage<sizeof(Tensor::ValueAndTensorBuffer<T>),
+                                alignof(Tensor::ValueAndTensorBuffer<T>)>::type
+      dummy_storage_;
+  Tensor::ValueAndTensorBuffer<T>* dummy_object =
+      reinterpret_cast<Tensor::ValueAndTensorBuffer<T>*>(&dummy_storage_);
+  intptr_t offset = reinterpret_cast<intptr_t>(&dummy_object->tensor_buffer) -
+                    reinterpret_cast<intptr_t>(dummy_object);
+
+  port::AlignedFree(static_cast<char*>(ptr) - offset);
+}
+
+template <typename T>
+Tensor::Tensor(T value, host_scalar_tag tag) {
+  auto* value_and_buf = static_cast<Tensor::ValueAndTensorBuffer<T>*>(
+      port::AlignedMalloc(sizeof(typename Tensor::ValueAndTensorBuffer<T>),
+                          EIGEN_MAX_ALIGN_BYTES));
+  new (&value_and_buf->value) T(std::move(value));
+  new (&value_and_buf->tensor_buffer)
+      typename Tensor::ValueAndTensorBuffer<T>::HostScalarTensorBuffer(
+          value_and_buf);
+  buf_ = &value_and_buf->tensor_buffer;
   set_dtype(DataTypeToEnum<T>::value);
 }
 

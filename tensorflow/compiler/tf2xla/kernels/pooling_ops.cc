@@ -15,6 +15,7 @@ limitations under the License.
 
 // XLA specific pooling ops.
 
+#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -26,12 +27,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/bounds_check.h"
-#include "tensorflow/core/kernels/conv_grad_ops.h"
-#include "tensorflow/core/kernels/pooling_ops_common.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 namespace {
@@ -152,7 +153,19 @@ class MaxPoolOp : public PoolingOp {
  public:
   MaxPoolOp(OpKernelConstruction* ctx, int num_spatial_dims)
       : PoolingOp(ctx, /*num_spatial_dims=*/num_spatial_dims,
-                  /*reduction_type=*/ctx->input_type(0)) {}
+                  /*reduction_type=*/ctx->input_type(0)) {
+    string data_format_str;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
+    OP_REQUIRES(ctx, FormatFromString(data_format_str, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+    OP_REQUIRES(
+        ctx,
+        data_format_ != FORMAT_NCHW_VECT_C &&
+            data_format_ != FORMAT_NHWC_VECT_W,
+        errors::Unimplemented("XLA does not support the VECT_* data formats. "
+                              "Returning unimplemented from MaxPool to keep "
+                              "Tensorflow's intended optimized MaxPool here."));
+  }
 
   void Compile(XlaOpKernelContext* ctx) override {
     auto ksize_or_error = GetKernelSize(ctx);
@@ -179,12 +192,7 @@ class MaxPoolOp : public PoolingOp {
 class MaxPool2DOp : public MaxPoolOp {
  public:
   explicit MaxPool2DOp(OpKernelConstruction* ctx)
-      : MaxPoolOp(ctx, /*num_spatial_dims=*/2) {
-    string data_format_str;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
-    OP_REQUIRES(ctx, FormatFromString(data_format_str, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
-  }
+      : MaxPoolOp(ctx, /*num_spatial_dims=*/2) {}
 };
 REGISTER_XLA_OP(Name("MaxPool"), MaxPool2DOp);
 REGISTER_XLA_OP(Name("MaxPoolV2")
@@ -204,7 +212,12 @@ class AvgPoolOp : public PoolingOp {
   AvgPoolOp(OpKernelConstruction* ctx, int num_spatial_dims)
       : PoolingOp(ctx, /*num_spatial_dims=*/num_spatial_dims,
                   /*reduction_type=*/
-                  XlaHelpers::SumAccumulationType(ctx->input_type(0))) {}
+                  XlaHelpers::SumAccumulationType(ctx->input_type(0))) {
+    string data_format_str;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
+    OP_REQUIRES(ctx, FormatFromString(data_format_str, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+  }
 
   void Compile(XlaOpKernelContext* ctx) override {
     auto ksize_or_error = GetKernelSize(ctx);
@@ -240,12 +253,7 @@ class AvgPoolOp : public PoolingOp {
 class AvgPool2DOp : public AvgPoolOp {
  public:
   explicit AvgPool2DOp(OpKernelConstruction* ctx)
-      : AvgPoolOp(ctx, /*num_spatial_dims=*/2) {
-    string data_format_str;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
-    OP_REQUIRES(ctx, FormatFromString(data_format_str, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
-  }
+      : AvgPoolOp(ctx, /*num_spatial_dims=*/2) {}
 };
 REGISTER_XLA_OP(Name("AvgPool"), AvgPool2DOp);
 
@@ -328,6 +336,20 @@ class MaxPoolGradOp : public XlaOpKernel {
     xla::Padding xla_padding =
         (padding_ == VALID) ? xla::Padding::kValid : xla::Padding::kSame;
 
+    // Create a MaxPool operation to check the expected resulting shape, and
+    // then throw away the operation because we don't actually need it here.
+    TensorShape expected_out_shape;
+    auto pooling =
+        xla::MaxPool(ctx->Input(0), ksize_, stride_, xla_padding,
+                     XlaTensorFormat(data_format_, tensor_in_shape.dims() - 2));
+    auto status_or_shape = pooling.builder()->GetShape(pooling);
+    OP_REQUIRES_OK(ctx, status_or_shape.status());
+    OP_REQUIRES_OK(ctx, XLAShapeToTensorShape(status_or_shape.ValueOrDie(),
+                                              &expected_out_shape));
+    OP_REQUIRES(ctx, expected_out_shape == out_backprop_shape,
+                errors::Unimplemented("The output dimensions do not match the "
+                                      "other input values."));
+
     xla::PrimitiveType element_type;
     OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(input_type(2), &element_type));
     xla::XlaOp init_value = XlaHelpers::Zero(ctx->builder(), input_type(2));
@@ -390,6 +412,11 @@ class AvgPoolGradOp : public XlaOpKernel {
     OP_REQUIRES(ctx, ksize_[0] == 1 && stride_[0] == 1,
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));
+
+    string data_format;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format));
+    OP_REQUIRES(ctx, FormatFromString(data_format, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
   }
 
   int num_dims() const { return num_spatial_dims_ + 2; }
@@ -448,12 +475,7 @@ class AvgPoolGradOp : public XlaOpKernel {
 class AvgPool2DGradOp : public AvgPoolGradOp {
  public:
   explicit AvgPool2DGradOp(OpKernelConstruction* ctx)
-      : AvgPoolGradOp(ctx, /*num_spatial_dims=*/2) {
-    string data_format;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format));
-    OP_REQUIRES(ctx, FormatFromString(data_format, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
-  }
+      : AvgPoolGradOp(ctx, /*num_spatial_dims=*/2) {}
 };
 REGISTER_XLA_OP(
     Name("AvgPoolGrad").CompileTimeConstantInput("orig_input_shape"),
@@ -556,10 +578,13 @@ class MaxPoolGradGradOp : public XlaOpKernel {
     auto b = ctx->builder();
 
     auto sixteen = xla::ConstantR0<uint32>(b, 16);
-    // in (f32) -> round to bf16 -> f32 for correct bitwidth -> 16-high-bit u32
+    // in (f32) -> round to 7 mantissa bits (bf16)-> 16-high-bit u32.
+    //
+    // NOTE: Use a ReducePrecision operation instead of a cast to BF16 and back
+    // to F32 since the XLA compiler may ignore narrowing casts to floating
+    // point types if the debug option xla_allow_excess_precision is set.
     auto in_hi = xla::BitcastConvertType(
-        xla::ConvertElementType(xla::ConvertElementType(input, xla::BF16),
-                                xla::F32),
+        xla::ReducePrecision(input, /*exponent_bits=*/8, /*mantissa_bits=*/7),
         xla::U32);
     auto bp_int = xla::BitcastConvertType(out_backprop, xla::U32);
     auto bp_hi = xla::ShiftRightLogical(bp_int, sixteen);

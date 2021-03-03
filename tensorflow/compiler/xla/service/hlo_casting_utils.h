@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Casting utilitiy functions for HLO instructions.
+// Casting utility functions for HLO instructions.
 
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_CASTING_UTILS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_CASTING_UTILS_H_
@@ -39,7 +39,9 @@ template <class T, EnableIfDerivedFromHlo<T>* = nullptr>
 const T* Cast(const HloInstruction* instruction) {
   CHECK(instruction != nullptr);
   const T* casted = dynamic_cast<const T*>(instruction);
-  CHECK(casted != nullptr);
+  CHECK(casted != nullptr)
+      << "Invalid HloInstruction casting. Destination Type: "
+      << typeid(T).name();
   return casted;
 }
 

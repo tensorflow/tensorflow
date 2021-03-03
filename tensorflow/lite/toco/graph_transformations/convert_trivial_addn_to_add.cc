@@ -12,9 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/toco/tooling_util.h"
 
 namespace toco {
 
@@ -44,10 +45,8 @@ namespace toco {
   add_op->outputs = addn_op->outputs;
 
   // Replace the AddN operator in the graph.
-  const auto add_it = model->operators.emplace(addn_it, add_op);
-  addn_it = add_it + 1;
-  CHECK_EQ(addn_it->get(), addn_op);
-  model->operators.erase(addn_it);
+  model->operators.emplace(addn_it, add_op);
+  DeleteOpAndArrays(model, addn_op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

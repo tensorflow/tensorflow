@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package tensorflow.profiler;
+
+// Next ID: 15
+message KernelReport {
+  // Name of the kernel.
+  string name = 1;
+  // Registers per thread.
+  uint32 registers_per_thread = 2;
+  // Static shared memory in bytes.
+  uint32 static_shmem_bytes = 3;
+  // Dynamic shared memory in bytes.
+  uint32 dynamic_shmem_bytes = 4;
+  // Block dimensions.
+  repeated uint32 block_dim = 5;
+  // Grid dimensions.
+  repeated uint32 grid_dim = 6;
+  // Total duration of this kernel.
+  uint64 total_duration_ns = 7;
+  // Min duration of kernel in nanoseconds.
+  uint64 min_duration_ns = 8;
+  // Max duration of kernel in nanoseconds.
+  uint64 max_duration_ns = 9;
+  // Kernel utilizes TensorCore instructions.
+  bool is_kernel_using_tensor_core = 10;
+  // Operation is eligible to use TensorCores.
+  bool is_op_tensor_core_eligible = 11;
+  // TF operation name.
+  string op_name = 12;
+  // Number of occurrences.
+  uint32 occurrences = 13;
+  // Occupancy percentage.
+  float occupancy_pct = 14;
+}
+
+message KernelStatsDb {
+  // A list of kernels aggregated by name.
+  repeated KernelReport reports = 1;
+}

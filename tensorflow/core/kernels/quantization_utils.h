@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_QUANTIZATION_UTILS_H_
 #define TENSORFLOW_CORE_KERNELS_QUANTIZATION_UTILS_H_
 
+#include <cmath>
 #define EIGEN_USE_THREADS
 
 // This is a set of functions that standardizes how quantized values are
@@ -42,7 +43,8 @@ namespace tensorflow {
 // We have to be able to detect and handle overflows in int32, so this function
 // uses doubles and int64's to make sure we have enough room.
 template <class T>
-int64 FloatToQuantizedUnclamped(float input, float range_min, float range_max) {
+inline int64 FloatToQuantizedUnclamped(float input, float range_min,
+                                       float range_max) {
   const int64 lowest_quantized =
       static_cast<double>(Eigen::NumTraits<T>::lowest());
   if (range_min == range_max) {
@@ -57,6 +59,12 @@ int64 FloatToQuantizedUnclamped(float input, float range_min, float range_max) {
       (round(input * range_scale) - round(range_min * range_scale));
   quantized += lowest_quantized;
   return quantized;
+}
+
+template <>
+inline int64 FloatToQuantizedUnclamped<float>(float input, float range_min,
+                                              float range_max) {
+  return -1;
 }
 
 // This converts the float into the final quantized type, clamping/saturating
@@ -102,7 +110,7 @@ float QuantizedToFloat(T input, float range_min, float range_max) {
   // range_scale to a float, otherwise range_min_rounded might be slightly
   // different.
   const double range_min_rounded =
-      round(range_min / static_cast<float>(range_scale)) *
+      std::round(range_min / static_cast<float>(range_scale)) *
       static_cast<float>(range_scale);
   const double result = range_min_rounded + (offset_input * range_scale);
   return static_cast<float>(result);
@@ -170,7 +178,8 @@ struct QuantizedToFloatStruct {
         range_scale((range_max - range_min) / (number_of_steps - 1.0)),
         range_min_rounded(range_max == range_min
                               ? range_min
-                              : round(range_min / range_scale) * range_scale) {}
+                              : std::round(range_min / range_scale) *
+                                    range_scale) {}
 
   const float range_min;
   const float range_scale;
@@ -207,7 +216,7 @@ struct FloatToQuantizedStruct {
         range_scale(range_max == range_min
                         ? 0.0
                         : (number_of_steps - 1.0) / (range_max - range_min)),
-        range_min_scaled(round(range_min * range_scale)) {}
+        range_min_scaled(std::round(range_min * range_scale)) {}
 
   const float range_min;
   const float range_scale;
@@ -266,7 +275,7 @@ inline void RequantizeManyInNewRangeReference(const qint32* input, int64 count,
   // that could be easily adapted for a SIMD implementation. It should also be
   // possible to perform all the calculations in 32-bit rather than 64, but
   // that's not been implemented yet.
-  for (size_t index = 0; index < count; ++index) {
+  for (tensorflow::int64 index = 0; index < count; ++index) {
     const int64 input_value = static_cast<int64>(input[index]);
     const int64 fp_value =
         ((input_value * range_scale_fp) >> 32) + input_offset_fp;
@@ -716,8 +725,8 @@ inline void RequantizeManyInNewRangeUsingEigen<qint32, quint8>(
                        .unaryExpr(int64_right_shift_op<32>())) +
                   (input_offset_fp - output_offset_fp + rounding_delta);
   auto intermediate = fp_value.unaryExpr(int64_right_shift_op<fp_shift>());
-  auto input_requantized = intermediate.cwiseMax(0LL)
-                               .cwiseMin(255LL)
+  auto input_requantized = intermediate.cwiseMax(int64{0})
+                               .cwiseMin(int64{255})
                                .template cast<int32>()
                                .template cast<quint8>();
   output->flat<quint8>().device(device) = input_requantized;

@@ -1,0 +1,29 @@
+op {
+  graph_op_name: "CSRSparseMatrixComponents"
+  visibility: HIDDEN
+  in_arg {
+    name: "csr_sparse_matrix"
+    description: "A batched CSRSparseMatrix."
+  }
+  in_arg {
+    name: "index"
+    description: "The index in `csr_sparse_matrix`'s batch."
+  }
+  out_arg {
+    name: "row_ptrs"
+    description: "An array containing CSR matrix row pointers."
+  }
+  out_arg {
+    name: "col_inds"
+    description: "An array containing CSR matrix column indices."
+  }
+  out_arg {
+    name: "values"
+    description: "An array containing CSR matrix nonzero values."
+  }
+  summary: "Reads out the CSR components at batch `index`."
+  description: <<END
+This op is meant only for debugging / testing, and its interface is not expected
+to be stable.
+END
+}

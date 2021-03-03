@@ -25,8 +25,9 @@ from __future__ import print_function
 import argparse
 import sys
 
-from tensorflow.python import pywrap_tensorflow as tf_wrap
-from tensorflow.python.platform import app
+from absl import app
+
+from tensorflow.python import _pywrap_graph_analyzer as tf_wrap
 
 
 def main(_):

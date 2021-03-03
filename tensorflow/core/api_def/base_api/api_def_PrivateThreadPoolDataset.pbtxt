@@ -1,0 +1,13 @@
+op {
+  graph_op_name: "PrivateThreadPoolDataset"
+  in_arg {
+    name: "num_threads"
+    description: <<END
+Identifies the number of threads to use for the private threadpool.
+END
+  }
+  summary: <<END
+Creates a dataset that uses a custom thread pool to compute `input_dataset`.
+END
+  visibility: HIDDEN
+}

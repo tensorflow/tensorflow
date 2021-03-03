@@ -13,18 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/common_runtime/constant_folding.h"
+
 #include <map>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/core/common_runtime/constant_folding.h"
-
 #include "tensorflow/cc/ops/array_ops_internal.h"
+#include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -87,6 +90,24 @@ class ConstantFoldingTest : public ::testing::Test {
     auto s1 = ops::_Send(s.WithOpName("s1"), m1, "m1", "sender", 0, "receiver");
     auto m2 = ops::MatMul(s.WithOpName("m2"), b, c);
     auto s2 = ops::_Send(s.WithOpName("s2"), m2, "m2", "sender", 0, "receiver");
+  }
+};
+
+class FakeDevice : public Device {
+ private:
+  explicit FakeDevice(const DeviceAttributes& device_attributes)
+      : Device(nullptr, device_attributes) {}
+
+ public:
+  Status Sync() override { return errors::Unimplemented("FakeDevice::Sync()"); }
+
+  Allocator* GetAllocator(AllocatorAttributes attr) override { return nullptr; }
+
+  static std::unique_ptr<Device> Make(const string& name, const string& type) {
+    DeviceAttributes device_attributes;
+    device_attributes.set_name(name);
+    device_attributes.set_device_type(DeviceType(type).type());
+    return std::unique_ptr<Device>(new FakeDevice(device_attributes));
   }
 };
 
@@ -610,6 +631,31 @@ TEST_F(ConstantFoldingTest, ConstShapeKnown) {
   }
 }
 
+TEST_F(ConstantFoldingTest, NoReplacePartialOutput) {
+  Graph g(OpRegistry::Global());
+  {
+    Scope s = Scope::NewRootScope().ExitOnError().WithAssignedDevice("/gpu:0");
+
+    auto c0 = ops::Const<float>(s.WithOpName("c0"), {5.0, 2.0, 8.0, 1.0}, {4});
+    auto k = ops::Const<int>(s.WithOpName("k"), 3);
+    auto topK =
+        ops::TopK(s.WithOpName("topK"), c0, k, ops::TopK::Sorted(false));
+    auto send_values = ops::_Send(s.WithOpName("send_values"), topK.values,
+                                  "send_values", "sender", 0, "receiver");
+    auto send_indices = ops::_Send(s.WithOpName("send_indices"), topK.indices,
+                                   "send_indices", "sender", 0, "receiver");
+    TF_ASSERT_OK(s.ToGraph(&g));
+  }
+  bool was_mutated;
+  TF_EXPECT_OK(ConstantFold(
+      ConstantFoldingOptions{}, nullptr, Env::Default(),
+      FakeDevice::Make("/job:tpu_worker/replica:0/task:0/device:GPU:0",
+                       DEVICE_GPU)
+          .get(),
+      &g, &was_mutated));
+  EXPECT_FALSE(was_mutated);
+}
+
 namespace {
 
 const char kTestMemRegionName[] = "test://test";
@@ -633,8 +679,10 @@ class TestTFFileSystem : public ::tensorflow::NullFileSystem {
       : ::tensorflow::NullFileSystem(),
         data_tensor_(test::AsTensor<double>({1., 2., 3., 4.}, {2, 2})) {}
 
+  using ::tensorflow::NullFileSystem::NewReadOnlyMemoryRegionFromFile;
+
   ::tensorflow::Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname,
+      const string& fname, ::tensorflow::TransactionToken* token,
       std::unique_ptr<::tensorflow::ReadOnlyMemoryRegion>* result) override {
     if (fname != kTestMemRegionName) {
       return ::tensorflow::errors::Unimplemented(
@@ -650,7 +698,7 @@ class TestTFFileSystem : public ::tensorflow::NullFileSystem {
   ::tensorflow::Tensor data_tensor_;
 };
 
-// A test TF environent that checks that the environment was used.
+// A test TF environment that checks that the environment was used.
 class TestTFEnvironment : public ::tensorflow::EnvWrapper {
  public:
   using tf_base = ::tensorflow::EnvWrapper;

@@ -23,14 +23,13 @@ limitations under the License.
 #include "llvm/IR/DataLayout.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
+#include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/logging.h"
@@ -48,27 +47,22 @@ GpuTransferManager::GpuTransferManager(se::Platform::Id id,
 
 Status GpuTransferManager::TransferLiteralToInfeed(
     se::StreamExecutor* executor, const LiteralSlice& literal) {
-  const Shape& shape = literal.shape();
+  const Shape& literal_shape = literal.shape();
   VLOG(2) << "Transferring literal to infeed with shape: "
-          << ShapeUtil::HumanString(shape);
+          << ShapeUtil::HumanString(literal_shape);
 
   // For a tuple, we transfer each of its elements to the device and
   // enqueue the resulting destination device addresses with the
   // infeed manager.
-  ShapeTree<InfeedBuffer> buffer_tree(shape);
-
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      shape, [&](const Shape& literal_subshape, const ShapeIndex& index) {
-        if (ShapeUtil::IsArray(literal_subshape)) {
-          int64 tuple_element_size = GetByteSizeRequirement(literal_subshape);
-          TF_ASSIGN_OR_RETURN(
-              *buffer_tree.mutable_element(index),
-              TransferBufferToInfeedInternal(executor, tuple_element_size,
-                                             literal.untyped_data(index)));
-        }
-        return Status::OK();
-      }));
-
+  ShapeTree<InfeedBuffer> buffer_tree(literal_shape);
+  for (auto& leaf : buffer_tree.leaves()) {
+    const Shape& sub_shape = ShapeUtil::GetSubshape(literal_shape, leaf.first);
+    CHECK(sub_shape.IsArray()) << ShapeUtil::HumanStringWithLayout(sub_shape);
+    int64 tuple_element_size = GetByteSizeRequirement(sub_shape);
+    TF_ASSIGN_OR_RETURN(leaf.second, TransferBufferToInfeedInternal(
+                                         executor, tuple_element_size,
+                                         literal.untyped_data(leaf.first)));
+  }
   return EnqueueBuffersToInfeed(executor, std::move(buffer_tree));
 }
 
@@ -97,7 +91,8 @@ Status GpuTransferManager::EnqueueBuffersToInfeed(
 StatusOr<InfeedBuffer> GpuTransferManager::TransferBufferToInfeedInternal(
     se::StreamExecutor* executor, int64 size, const void* source) {
   if (size > std::numeric_limits<int32>::max()) {
-    return InvalidArgument("Infeed shape is too large: needs %d bytes", size);
+    return InvalidArgument("GPU infeed of %d bytes exceeds maximum of %d bytes",
+                           size, std::numeric_limits<int32>::max());
   }
 
   if (size == 0) {
@@ -118,62 +113,31 @@ StatusOr<InfeedBuffer> GpuTransferManager::TransferBufferToInfeedInternal(
   return std::move(buffer);
 }
 
-static void ShapeTreeToLiteral(
-    ShapeTree<std::unique_ptr<gpu::OutfeedBuffer>>* shape_tree) {
-  // This is a struct instead of a lambda for std::function-free recursion.
-  struct Helper {
-    static void helper(
-        ShapeTree<std::unique_ptr<gpu::OutfeedBuffer>>* shape_tree,
-        ShapeIndex* index) {
-      const Shape& shape = ShapeUtil::GetSubshape(shape_tree->shape(), *index);
-      if (ShapeUtil::IsArray(shape)) {
-        (*shape_tree->mutable_element(*index))->WaitUntilAvailable();
-        return;
-      }
-
-      CHECK(ShapeUtil::IsTuple(shape))
-          << ShapeUtil::HumanStringWithLayout(shape);
-      const int64 tuple_element_count = ShapeUtil::TupleElementCount(shape);
-      index->push_back(0);
-      for (int64 i = 0; i < tuple_element_count; ++i) {
-        index->back() = i;
-        helper(shape_tree, index);
-      }
-      index->pop_back();
-    }
-  };
-  ShapeIndex index;
-  Helper::helper(shape_tree, &index);
-}
-
 Status GpuTransferManager::TransferLiteralFromOutfeed(
-    se::StreamExecutor* /*executor*/, const Shape& literal_shape,
-    MutableBorrowingLiteral literal) {
+    se::StreamExecutor* /*executor*/, MutableBorrowingLiteral literal) {
   ShapeTree<std::unique_ptr<gpu::OutfeedBuffer>> outfeed_buffers(
-      &literal_shape);
+      &literal.shape());
 
-  // First create a tree of literal buffers that the device can write to.
-  outfeed_buffers.ForEachMutableElement(
-      [&](const ShapeIndex& index,
-          std::unique_ptr<gpu::OutfeedBuffer>* buffer) {
-        const Shape& shape = ShapeUtil::GetSubshape(literal_shape, index);
-        // Do not transfer tuple index buffers.
-        if (ShapeUtil::IsTuple(shape)) {
-          return;
-        }
-        *buffer = absl::make_unique<gpu::OutfeedBuffer>(
-            GetByteSizeRequirement(shape));
-        (*buffer)->set_destination(
-            absl::make_unique<MutableBorrowingLiteral>(literal, index));
-      });
+  for (auto& leaf : outfeed_buffers.leaves()) {
+    const Shape& shape = ShapeUtil::GetSubshape(literal.shape(), leaf.first);
+    CHECK(shape.IsArray()) << ShapeUtil::HumanStringWithLayout(shape);
+    leaf.second =
+        absl::make_unique<gpu::OutfeedBuffer>(GetByteSizeRequirement(shape));
+    leaf.second->set_destination(
+        absl::make_unique<MutableBorrowingLiteral>(literal, leaf.first));
+  }
 
-  // Give the tree of buffers to the outfeed mananger. The device will fill it
+  // Give the tree of buffers to the outfeed manager. The device will fill it
   // while we're waiting for it below.
   gpu::OutfeedManager* outfeed_manager = gpu::GetOrCreateOutfeedManager();
   outfeed_manager->EnqueueDestination(&outfeed_buffers);
 
-  // Now wait for the tree of buffers are written.
-  ShapeTreeToLiteral(&outfeed_buffers);
+  // Now wait till all the buffers are written.
+  for (auto& leaf : outfeed_buffers.leaves()) {
+    const Shape& shape = ShapeUtil::GetSubshape(literal.shape(), leaf.first);
+    CHECK(shape.IsArray()) << ShapeUtil::HumanStringWithLayout(shape);
+    leaf.second->WaitUntilAvailable();
+  }
   return Status::OK();
 }
 
@@ -183,13 +147,22 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
 static std::unique_ptr<xla::TransferManager> CreateNVPTXTransferManager() {
   return absl::make_unique<xla::gpu::GpuTransferManager>(
       /*id=*/stream_executor::cuda::kCudaPlatformId,
-      /*pointer_size=*/llvm::DataLayout(xla::gpu::NVPTXCompiler::kDataLayout)
+      /*pointer_size=*/llvm::DataLayout(xla::gpu::nvptx::kDataLayout)
+          .getPointerSize(0 /* default address space */));
+}
+
+static std::unique_ptr<xla::TransferManager> CreateAMDGPUTransferManager() {
+  return absl::make_unique<xla::gpu::GpuTransferManager>(
+      /*id=*/stream_executor::rocm::kROCmPlatformId,
+      /*pointer_size=*/llvm::DataLayout(xla::gpu::amdgpu::kDataLayout)
           .getPointerSize(0 /* default address space */));
 }
 
 static bool InitModule() {
   xla::TransferManager::RegisterTransferManager(
       stream_executor::cuda::kCudaPlatformId, &CreateNVPTXTransferManager);
+  xla::TransferManager::RegisterTransferManager(
+      stream_executor::rocm::kROCmPlatformId, &CreateAMDGPUTransferManager);
   return true;
 }
 static bool module_initialized = InitModule();

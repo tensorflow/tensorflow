@@ -70,7 +70,7 @@ def wrap_py_func(f, return_dtypes, args, kwargs=None, use_dummy_return=False):
   # Of the positional arguments, only grab the tensor ones to be passed through
   # the py_func.
   n_args = len(args)
-  arg_is_tensor = tuple(map(tensor_util.is_tensor, args))
+  arg_is_tensor = tuple(map(tensor_util.is_tf_type, args))
   for i in range(n_args):
     if arg_is_tensor[i]:
       tensor_args_idx[i] = len(tensor_args)
@@ -90,7 +90,7 @@ def wrap_py_func(f, return_dtypes, args, kwargs=None, use_dummy_return=False):
   #     kwarg_keys = ('a', 'b')
   if kwargs:
     kwarg_keys = tuple(kwargs.keys())
-    kwarg_is_tensor = {k: tensor_util.is_tensor(kwargs[k]) for k in kwarg_keys}
+    kwarg_is_tensor = {k: tensor_util.is_tf_type(kwargs[k]) for k in kwarg_keys}
     for k in kwarg_keys:
       if kwarg_is_tensor[k]:
         tensor_args_idx[k] = len(tensor_args)
@@ -127,5 +127,6 @@ def wrap_py_func(f, return_dtypes, args, kwargs=None, use_dummy_return=False):
     retval = f(*f_args, **f_kwargs)
     return 1 if use_dummy_return else retval
 
-  return script_ops.py_func(f_wrapper, tensor_args, dtypes.int64
-                            if use_dummy_return else return_dtypes)
+  if use_dummy_return:
+    return_dtypes = dtypes.int32
+  return script_ops.eager_py_func(f_wrapper, tensor_args, return_dtypes)

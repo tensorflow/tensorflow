@@ -16,13 +16,14 @@ limitations under the License.
 // Util methods to read and write String tensors.
 // String tensors are considered to be char tensor with protocol.
 //   [0, 3] 4 bytes: N, num of strings in the tensor in little endian.
-//   [(i+1)*4, (i+1)*4+3] 4 bytes: offset of i-th string in little endian.
-//   [(N+2)*4, (N+2)*4+3] 4 bytes: length of the whole char buffer.
+//   [(i+1)*4, (i+1)*4+3] 4 bytes: offset of i-th string in little endian,
+//                                 for i from 0 to N-1.
+//   [(N+1)*4, (N+1)*4+3] 4 bytes: length of the whole char buffer.
 //   [offset(i), offset(i+1) - 1] : content of i-th string.
 // Example of a string tensor:
 // [
 //   2, 0, 0, 0,     # 2 strings.
-//   16, 0, 0, 0,    # 0-th string starts from index 12.
+//   16, 0, 0, 0,    # 0-th string starts from index 16.
 //   18, 0, 0, 0,    # 1-st string starts from index 18.
 //   18, 0, 0, 0,    # total length of array.
 //   'A', 'B',       # 0-th string [16..17]: "AB"
@@ -35,15 +36,18 @@ limitations under the License.
 //   buf.AddString("AB", 2);
 //   # Write content of DynamicBuffer to tensor in format of string tensor
 //   # described above.
-//   buf.WriteToTensor(tensor)
+//   buf.WriteToTensor(tensor, nullptr)
 
 #ifndef TENSORFLOW_LITE_STRING_UTIL_H_
 #define TENSORFLOW_LITE_STRING_UTIL_H_
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <vector>
 
-#include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/string.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 
@@ -69,17 +73,21 @@ class DynamicBuffer {
   // Join a list of string with separator, and add as a single string to the
   // buffer.
   void AddJoinedString(const std::vector<StringRef>& strings, char separator);
+  void AddJoinedString(const std::vector<StringRef>& strings,
+                       StringRef separator);
 
   // Fill content into a buffer and returns the number of bytes stored.
   // The function allocates space for the buffer but does NOT take ownership.
   int WriteToBuffer(char** buffer);
 
-  // Fill content into a string tensor, with the given new_shape. The new
-  // shape must match the number of strings in this object.
+  // Fill content into a string tensor, with the given new_shape. The new shape
+  // must match the number of strings in this object. Caller relinquishes
+  // ownership of new_shape. If 'new_shape' is nullptr, keep the tensor's
+  // existing shape.
   void WriteToTensor(TfLiteTensor* tensor, TfLiteIntArray* new_shape);
 
   // Fill content into a string tensor. Set shape to {num_strings}.
-  void WriteToTensor(TfLiteTensor* tensor);
+  void WriteToTensorAsVector(TfLiteTensor* tensor);
 
  private:
   // Data buffer to store contents of strings, not including headers.
@@ -89,12 +97,12 @@ class DynamicBuffer {
 };
 
 // Return num of strings in a String tensor.
-int GetStringCount(const char* raw_buffer);
+int GetStringCount(const void* raw_buffer);
 int GetStringCount(const TfLiteTensor* tensor);
 
 // Get String pointer and length of index-th string in tensor.
 // NOTE: This will not create a copy of string data.
-StringRef GetString(const char* raw_buffer, int string_index);
+StringRef GetString(const void* raw_buffer, int string_index);
 StringRef GetString(const TfLiteTensor* tensor, int string_index);
 }  // namespace tflite
 

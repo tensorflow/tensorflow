@@ -1,0 +1,23 @@
+op {
+  name: "UncompressElement"
+  input_arg {
+    name: "compressed"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "components"
+    type_list_attr: "output_types"
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+}

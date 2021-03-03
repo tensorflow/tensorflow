@@ -1,10 +1,10 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 package(
     default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 cc_library(
     name = "checker",
@@ -31,6 +31,7 @@ cc_library(
     hdrs = ["accelerator_utilization_checker.h"],
     deps = [
         ":checker",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -39,6 +40,7 @@ cc_library(
     hdrs = ["operation_checker.h"],
     deps = [
         ":checker",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -47,6 +49,8 @@ cc_library(
     hdrs = ["expensive_operation_checker.h"],
     deps = [
         ":checker",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -60,6 +64,7 @@ cc_library(
         ":internal_checker_runner_dummy",
         ":operation_checker",
         "//tensorflow/core/profiler:protos_all_cc",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

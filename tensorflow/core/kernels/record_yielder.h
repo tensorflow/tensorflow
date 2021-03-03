@@ -38,7 +38,7 @@ namespace tensorflow {
 //   2) each record is yielded only once within every epoch;
 //   3) the order in which records are yielded is highly randomized.
 //   4) the peak memory usage is roughly avg record size *
-//      (opts.bufsize + opts.parellelism * 16).
+//      (opts.bufsize + opts.parallelism * 16).
 //
 // Usage example:
 //   RecordYielder::Options opts;
@@ -90,7 +90,7 @@ class RecordYielder {
   RecordYielder& operator=(const RecordYielder&) = delete;
 
   // Yields one 'value'.
-  Status YieldOne(string* value);
+  Status YieldOne(tstring* value);
 
   // Returns the current epoch number.
   int64 current_epoch() const { return epoch_; }
@@ -109,14 +109,14 @@ class RecordYielder {
   mutex mu_;
 
   // Turned to true when this is deleted.
-  bool stop_ GUARDED_BY(mu_) = false;
-  Status status_ GUARDED_BY(mu_);
+  bool stop_ TF_GUARDED_BY(mu_) = false;
+  Status status_ TF_GUARDED_BY(mu_);
 
   // PRG used for randomization.
-  std::mt19937_64 rnd_ GUARDED_BY(mu_);
+  std::mt19937_64 rnd_ TF_GUARDED_BY(mu_);
 
   // Randomization buffer.
-  std::vector<string> buf_ GUARDED_BY(mu_);
+  std::vector<string> buf_ TF_GUARDED_BY(mu_);
 
   // True iff we are draining an epoch.
   bool epoch_end_ = false;
@@ -129,17 +129,17 @@ class RecordYielder {
 
   // condition_variables.
   condition_variable buf_empty_;
-  bool BufEmpty() const SHARED_LOCKS_REQUIRED(mu_) {
+  bool BufEmpty() const TF_SHARED_LOCKS_REQUIRED(mu_) {
     return stop_ || buf_.empty();
   }
 
   condition_variable buf_not_full_;
-  bool BufNotFull() const SHARED_LOCKS_REQUIRED(mu_) {
+  bool BufNotFull() const TF_SHARED_LOCKS_REQUIRED(mu_) {
     return stop_ || buf_.size() < opts_.bufsize;
   }
 
   condition_variable buf_enough_;
-  bool BufEnough() const SHARED_LOCKS_REQUIRED(mu_) {
+  bool BufEnough() const TF_SHARED_LOCKS_REQUIRED(mu_) {
     // NOTE: Unless we are finishing an epoch, we want to make sure
     // the buf_ contains enough randomized elements before yielding
     // any.

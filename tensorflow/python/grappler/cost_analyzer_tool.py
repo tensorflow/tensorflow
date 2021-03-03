@@ -21,18 +21,19 @@ from __future__ import print_function
 import argparse
 import sys
 
+from absl import app
+
 from google.protobuf import message
 from google.protobuf import text_format
 from tensorflow.contrib.fused_conv.ops import gen_fused_conv2d_bias_activation_op  # pylint: disable=unused-import
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
-from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.grappler import cost_analyzer
 from tensorflow.python.grappler import tf_optimizer
-from tensorflow.python.platform import app
 from tensorflow.python.platform import gfile
 from tensorflow.python.training import saver
 
@@ -79,10 +80,11 @@ def get_metagraph():
 
 def main(_):
   metagraph = get_metagraph()
-  rewriter_config = rewriter_config_pb2.RewriterConfig()
+  config = config_pb2.ConfigProto()
   if FLAGS.rewriter_config is not None:
-    text_format.Merge(FLAGS.rewriter_config, rewriter_config)
-  optimized_graph = tf_optimizer.OptimizeGraph(rewriter_config, metagraph)
+    text_format.Merge(FLAGS.rewriter_config,
+                      config.graph_options.rewrite_options)
+  optimized_graph = tf_optimizer.OptimizeGraph(config, metagraph)
   metagraph.graph_def.CopyFrom(optimized_graph)
 
   report = cost_analyzer.GenerateCostReport(metagraph, FLAGS.per_node_report,

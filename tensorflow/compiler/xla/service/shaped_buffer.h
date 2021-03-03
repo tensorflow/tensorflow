@@ -21,12 +21,13 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 
@@ -42,8 +43,10 @@ class ShapedBuffer {
   // both the on-host and on-device shape are required. The on-device shape
   // determines the number of device allocations (DeviceMemoryBase) held by the
   // ShapedBuffer.
-  ShapedBuffer(const Shape& on_host_shape, const Shape& on_device_shape,
-               const se::Platform* platform, int device_ordinal);
+  ShapedBuffer(Shape on_device_shape, int device_ordinal);
+
+  // TODO(b/170310047): remove this overload.
+  ShapedBuffer(Shape on_host_shape, Shape on_device_shape, int device_ordinal);
 
   // Movable, but not copyable.
   ShapedBuffer(ShapedBuffer&& s);
@@ -65,7 +68,6 @@ class ShapedBuffer {
   // ShapedBuffer.
   const Shape& on_device_shape() const { return on_device_shape_; }
 
-  const se::Platform* platform() const { return platform_; }
   int device_ordinal() const { return device_ordinal_; }
 
   // Return the root buffer of the shape (shape index {}).
@@ -90,6 +92,23 @@ class ShapedBuffer {
   void set_buffers(ShapeTree<se::DeviceMemoryBase> buffers) {
     CHECK(ShapeUtil::Equal(buffers.shape(), on_device_shape_));
     buffers_ = std::move(buffers);
+    buffers_.replace_shape_ptr(&on_device_shape_);
+  }
+
+  // Reset the shape of this shaped buffer and underlying buffer structure.
+  //
+  // Precondition: EqualStructure(this->on_device_shape_, on_device_shape).
+  void set_shapes(const Shape& on_device_shape) {
+    CHECK(ShapeUtil::EqualStructure(on_device_shape, on_device_shape_))
+        << "Structures are not the same. new: " << on_device_shape
+        << ", old: " << on_device_shape_;
+    on_host_shape_ = ShapeUtil::DeviceShapeToHostShape(on_device_shape);
+    on_device_shape_ = on_device_shape;
+    buffers_.replace_shape_ptr(&on_device_shape_);
+  }
+  // TODO(b/170310047): remove this overload.
+  void set_shapes(const Shape& on_host_shape, const Shape& on_device_shape) {
+    set_shapes(on_device_shape);
   }
 
   // Returns the underlying ShapeTree containing all the device addresses in the
@@ -97,20 +116,18 @@ class ShapedBuffer {
   const ShapeTree<se::DeviceMemoryBase>& buffers() const { return buffers_; }
   ShapeTree<se::DeviceMemoryBase>& buffers() { return buffers_; }
 
+  StatusOr<ShapedBuffer> SubShapedBuffer(const ShapeIndex& index) const;
+
   // Set all device memory pointers in the object to null.
   void clear();
 
   string ToString() const;
 
  protected:
-  // The shape of the data when represented on the host.
   Shape on_host_shape_;
 
   // The shape of the data on the device.
   Shape on_device_shape_;
-
-  // The platform the memory is allocated on.
-  const se::Platform* platform_;
 
   // The device the memory is allocated on.
   int device_ordinal_;
@@ -121,9 +138,8 @@ class ShapedBuffer {
 
 std::ostream& operator<<(std::ostream& out, const ShapedBuffer& buffer);
 
-// ShapedBuffer derived class which allocates all internal buffers on
-// construction and deallocates the memory when the object is
-// destructed.
+// ScopedShapedBuffer takes allocated buffers as inputs, and deallocates on
+// destruction. This class represents an owning wrapper around `ShapedBuffer`.
 //
 // TODO(timshen): Remove inheritance between ScopedShapedBuffer and
 // ShapedBuffer.  There should never be a need to consider a ScopedShapedBuffer
@@ -133,15 +149,18 @@ std::ostream& operator<<(std::ostream& out, const ShapedBuffer& buffer);
 class ScopedShapedBuffer : public ShapedBuffer {
  public:
   // Creates a ScopedShapedBuffer with null DeviceMemoryBases at each index.
-  explicit ScopedShapedBuffer(const Shape& on_host_shape,
-                              const Shape& on_device_shape,
-                              DeviceMemoryAllocator* allocator,
+  explicit ScopedShapedBuffer(Shape on_device_shape,
+                              se::DeviceMemoryAllocator* allocator,
+                              int device_ordinal);
+  // TODO(b/170310047): remove this overload.
+  explicit ScopedShapedBuffer(Shape on_host_shape, Shape on_device_shape,
+                              se::DeviceMemoryAllocator* allocator,
                               int device_ordinal);
 
   // Create a ScopedShapedBuffer by taking over the memory from the incoming
   // ShapedBuffer.
   explicit ScopedShapedBuffer(ShapedBuffer shaped_buffer,
-                              DeviceMemoryAllocator* allocator);
+                              se::DeviceMemoryAllocator* allocator);
 
   // Movable, but not copyable.
   ScopedShapedBuffer(ScopedShapedBuffer&& s);
@@ -154,17 +173,17 @@ class ScopedShapedBuffer : public ShapedBuffer {
 
   // Return the allocator used to allocate the device memory held in this
   // ScopedShapedBuffer.
-  DeviceMemoryAllocator* memory_allocator() const { return allocator_; }
+  se::DeviceMemoryAllocator* memory_allocator() const { return allocator_; }
 
   // Sets the device memory buffer at the given index.
   //
   // If the given buffer's device memory is non-null, its device_ordinal and
   // allocator must match those in `this`.
-  void set_buffer(OwningDeviceMemory buffer, const ShapeIndex& index) {
+  void set_buffer(se::OwningDeviceMemory buffer, const ShapeIndex& index) {
     if (!buffer.is_null()) {
       CHECK_EQ(buffer.device_ordinal(), device_ordinal());
       CHECK_EQ(buffer.allocator(), allocator_);
-      *buffers_.mutable_element(index) = buffer.Forget();
+      *buffers_.mutable_element(index) = buffer.Release();
     } else {
       *buffers_.mutable_element(index) = se::DeviceMemoryBase();
     }
@@ -184,7 +203,7 @@ class ScopedShapedBuffer : public ShapedBuffer {
  protected:
   void Deallocate();
 
-  DeviceMemoryAllocator* allocator_;
+  se::DeviceMemoryAllocator* allocator_;
 };
 
 }  // namespace xla

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
@@ -31,28 +32,64 @@ class HloModule;
 // parameter index in the entry computation.
 class HloInputOutputAliasConfig {
  public:
+  // The kind of aliases which can be set. A kMayAlias is one setup at
+  // compilation time by the user, and has to be respected. A kMustAlias one
+  // might be setup by the compiler, if it decides it is convenient to do so.
+  enum AliasKind {
+    kMayAlias,
+    kMustAlias,
+  };
+  // Defines the alias information for a given output buffer. A given output
+  // buffer shape index can refer only to one parameter+index.
+  struct Alias {
+    Alias(int64 parameter_number, ShapeIndex parameter_index,
+          AliasKind kind = kMayAlias)
+        : parameter_number(parameter_number),
+          parameter_index(std::move(parameter_index)),
+          kind(kind) {}
+
+    int64 parameter_number;
+    ShapeIndex parameter_index;
+    AliasKind kind;
+
+    bool must_alias() const { return kind == kMustAlias; }
+
+    std::string ToString() {
+      return absl::StrFormat("(%lld, %s, %s)", parameter_number,
+                             parameter_index.ToString(),
+                             kind == kMustAlias ? "must-alias" : "may-alias");
+    }
+  };
+
   HloInputOutputAliasConfig() = default;
 
-  explicit HloInputOutputAliasConfig(Shape shape) : alias_(shape) {}
+  explicit HloInputOutputAliasConfig(Shape output_shape)
+      : alias_(std::move(output_shape)) {}
 
   virtual ~HloInputOutputAliasConfig() = default;
 
   // Sets up alias config from `output_index` to `param_index` at
   // `param_number`.
   Status SetUpAlias(const ShapeIndex& output_index, int64 param_number,
-                    const ShapeIndex& param_index);
+                    const ShapeIndex& param_index,
+                    AliasKind must_alias = kMayAlias);
 
   // Returns true if the given parameter is aliased with one of the output
   // buffers.
   bool ParameterHasAlias(int64 param_number,
-                         const ShapeIndex& param_index) const;
+                         const ShapeIndex& param_index) const {
+    return GetAliasedOutput(param_number, param_index).has_value();
+  }
 
-  // (De)Serializes an HloInputOutoutAliasConfig to/from an
-  // HloInputOutoutAliasProto.
+  // Checks whether the provided output index has already been aliased.
+  bool OutputHasAlias(const ShapeIndex& output_index) const;
+
+  // (De)Serializes an HloInputOutputAliasConfig to/from an
+  // HloInputOutputAliasProto.
   HloInputOutputAliasProto ToProto() const;
 
   static StatusOr<HloInputOutputAliasConfig> CreateFromProto(
-      const Shape& output_shape, const HloInputOutputAliasProto& proto);
+      Shape output_shape, const HloInputOutputAliasProto& proto);
 
   // Returns the output index that the given parameter and parameter index is
   // aliased with. A nullopt is returned if there is no output that is aliased
@@ -63,19 +100,22 @@ class HloInputOutputAliasConfig {
   // Returns the number of parameter and index of the parameter buffer that the
   // given output buffer index is aliased with. A nullopt is returned if there
   // is no parameter is aliased with the specific output.
-  absl::optional<std::pair<int64, ShapeIndex>> GetAliasedParameter(
+  absl::optional<Alias> GetAliasedParameter(
       const ShapeIndex& output_index) const;
 
+  // Returns if the parameter at the given parameter number and parameter
+  // index must-alias with an output.
+  bool ParameterMustAlias(int64 param_number,
+                          const ShapeIndex& param_index) const;
+
   using AliasFn =
-      std::function<void(const ShapeIndex& output_index, int64 param_number,
-                         const ShapeIndex& param_index)>;
+      std::function<void(const ShapeIndex& output_index, const Alias&)>;
 
   // Iterates through each aliased output and input.
   void ForEachAlias(AliasFn fn) const;
 
   using AliasFnWithStatus =
-      std::function<Status(const ShapeIndex& output_index, int64 param_number,
-                           const ShapeIndex& param_index)>;
+      std::function<Status(const ShapeIndex& output_index, const Alias&)>;
 
   // Verifies that the given config is valid for the given module.
   // Specifically, the config's input and output should be in-bound and size of
@@ -85,14 +125,20 @@ class HloInputOutputAliasConfig {
 
   Status ForEachAliasWithStatus(AliasFnWithStatus fn) const;
 
+  // Returns the shape of the output of the alias config.
+  const Shape& shape() const;
+
   string ToString() const;
+
+  string ToShortString() const;
 
  private:
   // A ShapeTree which indicates the list of buffers that's expected to be
   // aliased. The key on this shape tree represents the output index. The value
-  // is a pair of parameter number and index into the buffer. If the value is
-  // nullopt, it means there is no parameter aliasing for this output.
-  ShapeTree<absl::optional<std::pair<int64, ShapeIndex>>> alias_;
+  // is an Alias data structure which defines the input parameter coordinates.
+  // If the value is nullopt, it means there is no parameter aliasing for this
+  // output.
+  ShapeTree<absl::optional<Alias>> alias_;
 };
 
 std::ostream& operator<<(std::ostream& out,

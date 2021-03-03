@@ -34,5 +34,18 @@ tf_proto {
       label: LABEL_OPTIONAL
       type: TYPE_STRING
     }
+    field {
+      name: "port"
+      number: 6
+      label: LABEL_OPTIONAL
+      type: TYPE_INT32
+    }
+    field {
+      name: "cluster_device_filters"
+      number: 7
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.ClusterDeviceFilters"
+    }
   }
 }

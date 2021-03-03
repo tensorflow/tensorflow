@@ -157,7 +157,7 @@ cc_binary(
         "output",
         "x86",
     ],
-    visibility = ["@jpeg//:__pkg__"],
+    visibility = ["@libjpeg_turbo//:__pkg__"],
 )
 
 config_setting(

@@ -19,9 +19,11 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/cancellable_call.h"
 #include "tensorflow/core/distributed_runtime/request_id.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/platform/protobuf_internal.h"
 #include "tensorflow/core/protobuf/transport_options.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
@@ -37,16 +39,17 @@ class RecvBufCall : public CancellableCall {
               DeviceContext* to_device_ctx,
               const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
               const DeviceLocality& client_locality,
-              const DeviceLocality& server_locality,
+              const DeviceAttributes& server_attributes,
               CancellationManager* cancel_mgr, WorkerCacheInterface* wc)
       : CancellableCall(cancel_mgr, peer_task, wc) {
     req_.set_step_id(step_id);
     req_.set_buf_rendezvous_key(key);
     *req_.mutable_client_locality() = client_locality;
-    *req_.mutable_server_locality() = server_locality;
+    *req_.mutable_server_locality() = server_attributes.locality();
     req_.set_num_bytes(to_tensor->TotalBytes());
     req_.set_buf_ptr(reinterpret_cast<int64>(DMAHelper::base(to_tensor)));
     req_.set_src_device(peer_device);
+    req_.set_src_incarnation(server_attributes.incarnation());
     req_.set_dst_device(to_device->name());
     req_.set_request_id(GetUniqueRequestId());
   }
@@ -65,7 +68,7 @@ void PopulateTensorFromExtra(const RecvBufRespExtra& extra,
                              Tensor* cpu_tensor) {
   char* head = reinterpret_cast<char*>(DMAHelper::base(cpu_tensor));
   for (const auto& tensor_content_chunk : extra.tensor_content()) {
-    memcpy(head, tensor_content_chunk.data(),
+    memcpy(head, std::string(tensor_content_chunk).data(),
            tensor_content_chunk.size());
     head += tensor_content_chunk.size();
   }
@@ -77,19 +80,19 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
     const string& key, Device* to_device, DeviceContext* to_device_ctx,
     const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
     const DeviceLocality& client_locality, int dev_to_dev_stream_index,
-    const StatusCallback& done) {
+    CancellationManager* cancellation_manager, const StatusCallback& done) {
   if (peer_is_local) {
     CollectiveRemoteAccessLocal::RecvFromPeer(
         peer_device, peer_task, peer_is_local, key, to_device, to_device_ctx,
         to_alloc_attr, to_tensor, client_locality, dev_to_dev_stream_index,
-        done);
+        cancellation_manager, done);
     return;
   }
 
   // State that needs to be threaded through a couple of async calls
   // in order to make this function completely non-blocking.
   struct State {
-    DeviceLocality server_locality;
+    DeviceAttributes server_attributes;
     std::unique_ptr<RecvBufCall> call;
   };
   State* state = new State;
@@ -108,7 +111,8 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
       for (const auto& chunk : extra.tensor_content()) {
         num_bytes += chunk.size();
       }
-      if (num_bytes != to_tensor->TotalBytes()) {
+      const int64 total_bytes = to_tensor->TotalBytes();
+      if (num_bytes != total_bytes) {
         done(errors::Internal("RecvBufResponse returned ", num_bytes,
                               " bytes where to_tensor expected ",
                               to_tensor->TotalBytes()));
@@ -128,6 +132,10 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
         }
         AllocatorAttributes cpu_attr;
         cpu_attr.set_gpu_compatible(true);
+        ScopedMemoryDebugAnnotation op_annotation(
+            "CollectiveRemoteAccessDistributed::RecvFromPeer"
+            "::recv_buf_callback",
+            step_id_, "dynamic", to_tensor->dtype(), &to_tensor->shape());
         Tensor* cpu_tensor = new Tensor(cpu_dev->GetAllocator(cpu_attr),
                                         to_tensor->dtype(), to_tensor->shape());
         PopulateTensorFromExtra(extra, cpu_tensor);
@@ -140,7 +148,7 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
                              delete cpu_tensor;
                              // This callback must not block, so execute
                              // done in another thread.
-                             SchedClosure([s, done] { done(s); });
+                             work_queue_->Schedule([s, done] { done(s); });
                            });
         delete state;
         return;
@@ -149,38 +157,99 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
         PopulateTensorFromExtra(extra, to_tensor);
       }
     }
-    if (!s.ok() && errors::IsFailedPrecondition(s)) {
-      dev_resolver_->ClearTask(peer_task);
-    }
 
     delete state;
     done(s);
   };
 
-  // Logic to execute once we have the device locality for the server-side
-  // device.
-  auto dev_locality_callback = [this, state, peer_device, peer_task, key,
-                                to_device, to_device_ctx, to_alloc_attr,
-                                to_tensor, client_locality,
-                                recv_buf_callback](const Status& s) {
-    if (!s.ok()) {
-      recv_buf_callback(s);
-    } else {
-      state->call.reset(new RecvBufCall(
-          step_id_, peer_device, peer_task, key, to_device, to_device_ctx,
-          to_alloc_attr, to_tensor, client_locality, state->server_locality,
-          &cancel_mgr_, worker_cache_));
-      state->call->Start(recv_buf_callback);
-    }
-  };
+  Status s = dev_resolver_->GetDeviceAttributes(peer_device,
+                                                &state->server_attributes);
+  if (!s.ok()) {
+    recv_buf_callback(s);
+    return;
+  }
+  state->call.reset(new RecvBufCall(
+      step_id_, peer_device, peer_task, key, to_device, to_device_ctx,
+      to_alloc_attr, to_tensor, client_locality, state->server_attributes,
+      cancellation_manager, worker_cache_));
+  CancellationToken abortion_token =
+      abortion_cancel_mgr_.get_cancellation_token();
+  bool already_aborted = !abortion_cancel_mgr_.RegisterCallback(
+      abortion_token, [state] { state->call->Cancel(); });
+  if (already_aborted) {
+    recv_buf_callback(errors::Cancelled("collective ops already aborted"));
+  } else {
+    state->call->Start([this, abortion_token,
+                        done = std::move(recv_buf_callback)](const Status& s) {
+      abortion_cancel_mgr_.DeregisterCallback(abortion_token);
+      done(s);
+    });
+  }
+}
 
-  dev_resolver_->GetLocalityAsync(
-      peer_device, peer_task, &state->server_locality, dev_locality_callback);
+void CollectiveRemoteAccessDistributed::CheckPeerHealth(
+    const string& peer_task, int64 timeout_in_ms, const StatusCallback& done) {
+  if (peer_task == task_name_) {
+    // Fast path if the peer is the worker itself.
+    done(Status::OK());
+    return;
+  }
+  // We send a GetStatus RPC with fail_fast=false to check the health of a peer
+  // task. If the RPC succeeds, we verify if the peer_device incarnation matches
+  // the local record if we have it. Note that DeviceResolverInterface always
+  // caches the device attributes.
+  WorkerInterface* wi = worker_cache_->GetOrCreateWorker(peer_task);
+  if (wi == nullptr) {
+    done(errors::InvalidArgument(peer_task,
+                                 " not found. It's probably in valid. The "
+                                 "valid form is /job:xxx/replica:0/task:N"));
+    return;
+  }
+  auto opts = new CallOptions();
+  opts->SetTimeout(timeout_in_ms);
+  auto req = new GetStatusRequest();
+  auto resp = new GetStatusResponse();
+  // Note that fail_fast is not always respected, so we set a timeout as well.
+  // We're not using CancellableCall since check health shouldn't need to be
+  // cancelled.
+  wi->GetStatusAsync(
+      opts, req, resp, /*fail_fast*/ true,
+      [this, opts, req, resp, wi, peer_task, done](Status s) {
+        std::vector<DeviceAttributes> cached_attrs;
+        if (s.ok()) {
+          s = dev_resolver_->GetAllDeviceAttributes(peer_task, &cached_attrs);
+        }
+        if (s.ok()) {
+          absl::flat_hash_set<uint64> remote_incarnations;
+          for (const DeviceAttributes& da : resp->device_attributes()) {
+            remote_incarnations.insert(da.incarnation());
+          }
+          for (const DeviceAttributes& attr : cached_attrs) {
+            if (!remote_incarnations.contains(attr.incarnation())) {
+              s = errors::FailedPrecondition(
+                  attr.name(), " with incarnation ", attr.incarnation(),
+                  " is not available. This usually means ", peer_task,
+                  " has restarted");
+              break;
+            }
+          }
+        } else if (errors::IsNotFound(s)) {
+          // Skip validating device incarnation if we don't know what the
+          // incarnation should be. The device attribute is cached after the
+          // first collective.
+          s = Status::OK();
+        }
+        delete opts;
+        delete req;
+        delete resp;
+        worker_cache_->ReleaseWorker(peer_task, wi);
+        done(s);
+      });
 }
 
 void CollectiveRemoteAccessDistributed::StartAbort(const Status& s) {
   CollectiveRemoteAccessLocal::StartAbort(s);
-  cancel_mgr_.StartCancel();
+  abortion_cancel_mgr_.StartCancel();
 }
 
 }  // namespace tensorflow

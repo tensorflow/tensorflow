@@ -1,0 +1,108 @@
+syntax = "proto3";
+
+package tensorflow.data;
+
+import "tensorflow/core/data/service/common.proto";
+
+// Message representing journaled dispatcher metadata updates. When we apply
+// one of these changes to the dispatcher's in-memory state, we also write an
+// Update message to the journal.
+message Update {
+  oneof update_type {
+    RegisterDatasetUpdate register_dataset = 1;
+    RegisterWorkerUpdate register_worker = 5;
+    CreateJobUpdate create_job = 2;
+    ProduceSplitUpdate produce_split = 8;
+    AcquireJobClientUpdate acquire_job_client = 6;
+    ReleaseJobClientUpdate release_job_client = 7;
+    RemoveTaskUpdate remove_task = 11;
+    CreatePendingTaskUpdate create_pending_task = 9;
+    ClientHeartbeatUpdate client_heartbeat = 10;
+    CreateTaskUpdate create_task = 3;
+    FinishTaskUpdate finish_task = 4;
+  }
+}
+
+message RegisterDatasetUpdate {
+  int64 dataset_id = 1;
+  uint64 fingerprint = 2;
+}
+
+message RegisterWorkerUpdate {
+  string worker_address = 1;
+  string transfer_address = 2;
+}
+
+message NamedJobKeyDef {
+  string name = 1;
+  int64 index = 2;
+}
+
+message CreateJobUpdate {
+  int64 job_id = 1;
+  int64 dataset_id = 2;
+  ProcessingModeDef processing_mode = 3;
+  // Only some jobs have names, so this may be unset.
+  NamedJobKeyDef named_job_key = 4;
+  // Optional number of consumers. If set, the job's tasks will provide their
+  // elements to consumers round-robin.
+  oneof optional_num_consumers {
+    int64 num_consumers = 7;
+  }
+}
+
+message ProduceSplitUpdate {
+  int64 job_id = 1;
+  int64 repetition = 2;
+  // Whether the split provider reached its end.
+  bool finished = 3;
+}
+
+message AcquireJobClientUpdate {
+  int64 job_id = 1;
+  int64 job_client_id = 2;
+}
+
+message ReleaseJobClientUpdate {
+  int64 job_client_id = 1;
+  // The time when the client was released, measured in microseconds since the
+  // epoch.
+  int64 time_micros = 2;
+}
+
+message RemoveTaskUpdate {
+  int64 task_id = 1;
+}
+
+// Indicates that a client failed to block before reaching the target round.
+message TaskRejected {
+  // A new target round to try adding the task in.
+  int64 new_target_round = 1;
+}
+
+// Updates dispatcher state based on a client heartbeat.
+message ClientHeartbeatUpdate {
+  int64 job_client_id = 1;
+  bool task_accepted = 2;
+  TaskRejected task_rejected = 3;
+}
+
+message CreatePendingTaskUpdate {
+  int64 task_id = 1;
+  int64 job_id = 2;
+  string worker_address = 3;
+  string transfer_address = 4;
+  int64 starting_round = 5;
+}
+
+message CreateTaskUpdate {
+  reserved 3, 5;
+  int64 task_id = 1;
+  int64 job_id = 2;
+  string worker_address = 4;
+  string transfer_address = 6;
+}
+
+message FinishTaskUpdate {
+  int64 task_id = 1;
+}

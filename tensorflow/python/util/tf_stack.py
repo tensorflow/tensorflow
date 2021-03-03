@@ -18,86 +18,182 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import linecache
-import sys
+import collections
+import inspect
+import threading
 
-# Names for indices into TF traceback tuples.
-TB_FILENAME = 0
-TB_LINENO = 1
-TB_FUNCNAME = 2
-TB_CODEDICT = 3  # Dictionary of Python interpreter state.
+import six
+
+# TODO(b/138203821): change to from ...util import ... once the bug is fixed.
+from tensorflow.python.util import _tf_stack
+
+# Generally such lookups should be done using `threading.local()`. See
+# https://blogs.gnome.org/jamesh/2008/06/11/tls-python/ for a detailed
+# explanation of why. However the transform stacks are expected to be empty
+# when a thread is joined, so reusing the key does not introduce a correctness
+# issue. Moreover, get_ident is faster than storing and retrieving a unique
+# key in a thread local store.
+if six.PY2:
+  import thread  # pylint: disable=g-import-not-at-top
+  _get_thread_key = thread.get_ident
+else:
+  _get_thread_key = threading.get_ident
 
 
-def extract_stack(extract_frame_info_fn=None):
-  """A lightweight, extensible re-implementation of traceback.extract_stack.
+# TODO(mdan): Move these to C++ as well.
+# Moving to C++ can further avoid extra copies made by get_effective_map.
+_source_mapper_stacks = collections.defaultdict(lambda: [SentinelMapper()])
+_source_filter_stacks = collections.defaultdict(lambda: [SentinelFilter()])
 
-  NOTE(mrry): traceback.extract_stack eagerly retrieves the line of code for
-      each stack frame using linecache, which results in an abundance of stat()
-      calls. This implementation does not retrieve the code, and any consumer
-      should apply _convert_stack to the result to obtain a traceback that can
-      be formatted etc. using traceback methods.
 
-  Args:
-    extract_frame_info_fn: Optional callable fn(stack_frame) applied to each
-        stack frame.  This callable's return value is stored as the sixth (last)
-        element of the returned tuples.  If not provided, the returned tuples
-        will have None as their sixth value.
+class StackTraceTransform(object):
+  """Base class for stack trace transformation functions."""
+
+  _stack_dict = None  # Subclasses should override
+  _thread_key = None
+
+  def __enter__(self):
+    # Any given instance is assumed to be used by a single thread, which reduces
+    # expensive thread local lookups.
+    if self._thread_key is None:
+      self._thread_key = _get_thread_key()
+    else:
+      assert self._thread_key == _get_thread_key(), 'Shared across threads?'
+
+    stack = self._stack_dict[self._thread_key]
+    self.parent = stack[-1]
+    stack.append(self)
+    self.update()
+    return self
+
+  def __exit__(self, unused_type, unused_value, unused_traceback):
+    top = self._stack_dict[self._thread_key].pop()
+    assert top is self, 'Concurrent access?'
+
+  def update(self):
+    raise NotImplementedError('subclasses need to override this')
+
+
+class StackTraceMapper(StackTraceTransform):
+  """Allows remapping traceback information to different source code."""
+  _stack_dict = _source_mapper_stacks
+
+  def __init__(self):
+    self.internal_map = _tf_stack.PyBindSourceMap()
+
+  def update(self):
+    self.internal_map.update_to(tuple(self.get_effective_source_map().items()))
+
+  def get_effective_source_map(self):
+    """Returns a map (filename, lineno) -> (filename, lineno, function_name)."""
+    raise NotImplementedError('subclasses need to override this')
+
+
+EMPTY_DICT = {}
+
+
+class SentinelMapper(StackTraceMapper):
+
+  def get_effective_source_map(self):
+    return EMPTY_DICT
+
+
+class StackTraceFilter(StackTraceTransform):
+  """Allows filtering traceback information by removing superfluous frames."""
+  _stack_dict = _source_filter_stacks
+
+  def __init__(self):
+    self.internal_set = _tf_stack.PyBindFileSet()
+
+  def update(self):
+    self.internal_set.update_to(set(self.get_filtered_filenames()))
+
+  def get_filtered_filenames(self):
+    raise NotImplementedError('subclasses need to override this')
+
+
+EMPTY_SET = frozenset()
+
+
+class SentinelFilter(StackTraceFilter):
+
+  def get_filtered_filenames(self):
+    return EMPTY_SET
+
+
+class CurrentModuleFilter(StackTraceFilter):
+  """Filters stack frames from the module where this is used (best effort)."""
+
+  def __init__(self):
+    super().__init__()
+    filter_filename = None
+    outer_f = None
+    f = inspect.currentframe()
+    try:
+      if f is not None:
+        # The current frame is __init__. The first outer frame should be the
+        # caller.
+        outer_f = f.f_back
+        if outer_f is not None:
+          filter_filename = inspect.getsourcefile(outer_f)
+      self._filename = filter_filename
+      # This may be called repeatedly: once on entry by the superclass, then by
+      # each child context manager.
+      self._cached_set = None
+    finally:
+      # Avoid reference cycles, see:
+      # https://docs.python.org/3.7/library/inspect.html#the-interpreter-stack
+      del f
+      del outer_f
+
+  def get_filtered_filenames(self):
+    if self._cached_set is not None:
+      return self._cached_set
+
+    filtered_filenames = frozenset((self._filename,))
+    if self.parent is not None:
+      filtered_filenames |= self.parent.get_filtered_filenames()
+    self._cached_set = filtered_filenames
+    return filtered_filenames
+
+
+def extract_stack():
+  """An eager-friendly alternative to traceback.extract_stack.
 
   Returns:
-    A list of 6-tuples
-        (filename, lineno, name, frame_globals, func_start_lineno, custom_info)
-    corresponding to the call stack of the current thread.  The returned tuples
-    have the innermost stack frame at the end, unlike the Python inspect
-    module's stack() function.
+    A list-like FrameSummary containing StackFrame-like objects, which are
+    namedtuple-like objects with the following fields: filename, lineno, name,
+    line, meant to masquerade as traceback.FrameSummary objects.
   """
-  default_fn = lambda f: None
-  extract_frame_info_fn = extract_frame_info_fn or default_fn
-  try:
-    raise ZeroDivisionError
-  except ZeroDivisionError:
-    f = sys.exc_info()[2].tb_frame.f_back
-  ret = []
-  while f is not None:
-    lineno = f.f_lineno
-    co = f.f_code
-    filename = co.co_filename
-    name = co.co_name
-    frame_globals = f.f_globals
-    func_start_lineno = co.co_firstlineno
-    frame_info = extract_frame_info_fn(f)
-    ret.append((filename, lineno, name, frame_globals, func_start_lineno,
-                frame_info))
-    f = f.f_back
-  ret.reverse()
-  return ret
+  # N.B ExtractStack in tf_stack.cc will drop this frame prior to
+  # traversing the stack.
+  # TODO(cheshire): Remove this function, use extract_stack_for_node or Python
+  # traceback module.
+  thread_key = _get_thread_key()
+  return _tf_stack.extract_stack(
+      _source_mapper_stacks[thread_key][-1].internal_map,
+      _source_filter_stacks[thread_key][-1].internal_set)
 
 
-def convert_stack(stack, include_func_start_lineno=False):
-  """Converts a stack extracted using extract_stack() to a traceback stack.
+# TODO(mdan): Revisit these - a single location is almost always sufficient.
+def extract_stack_for_node(node):
+  """Attaches the current stack trace to `node`.
 
   Args:
-    stack: A list of n 5-tuples,
-      (filename, lineno, name, frame_globals, func_start_lineno).
-    include_func_start_lineno: True if function start line number should be
-      included as the 5th entry in return tuples.
+    node: a Node object.
 
   Returns:
-    A list of n 4-tuples or 5-tuples
-    (filename, lineno, name, code, [optional: func_start_lineno]), where the
-    code tuple element is calculated from the corresponding elements of the
-    input tuple.
+    A list-like FrameSummary containing StackFrame-like objects, which are
+    namedtuple-like objects with the following fields: filename, lineno, name,
+    line, meant to masquerade as traceback.FrameSummary objects.
   """
-  ret = []
-  for (filename, lineno, name, frame_globals, func_start_lineno,
-       unused_frame_info) in stack:
-    linecache.checkcache(filename)
-    line = linecache.getline(filename, lineno, frame_globals)
-    if line:
-      line = line.strip()
-    else:
-      line = None
-    if include_func_start_lineno:
-      ret.append((filename, lineno, name, line, func_start_lineno))
-    else:
-      ret.append((filename, lineno, name, line))
-  return ret
+  # N.B ExtractStack in tf_stack.cc will drop this frame prior to
+  # traversing the stack.
+  thread_key = _get_thread_key()
+  return _tf_stack.extract_stack_for_node(
+      _source_mapper_stacks[thread_key][-1].internal_map,
+      _source_filter_stacks[thread_key][-1].internal_set, node)
+
+
+StackSummary = _tf_stack.StackTraceWrapper
+FrameSummary = _tf_stack.StackFrame

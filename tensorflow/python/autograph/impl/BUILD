@@ -1,6 +1,8 @@
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
-load("//tensorflow:tensorflow.bzl", "py_test")
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 filegroup(
     name = "all_files",
@@ -20,7 +22,7 @@ py_library(
         "api.py",
         "conversion.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python:platform",
@@ -31,33 +33,31 @@ py_library(
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
         "//tensorflow/python/autograph/utils",
-        "//third_party/py/numpy",
         "@gast_archive//:gast",
-        "@six_archive//:six",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "api_test",
     srcs = ["api_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["no_windows"],
+    python_version = "PY3",
+    srcs_version = "PY3",
     deps = [
         ":impl",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/autograph/utils",
         "//third_party/py/numpy",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "conversion_test",
     srcs = ["conversion_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["no_windows"],
     deps = [
         ":impl",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/autograph/impl/testing:pybind_for_testing",
         "@gast_archive//:gast",
     ],
 )

@@ -26,13 +26,13 @@ limitations under the License.
 namespace tensorflow {
 
 OpSegment::Item::~Item() {
-  for (auto kv : name_kernel) delete kv.second;
+  for (const auto& kv : name_kernel) delete kv.second;
 }
 
 OpSegment::OpSegment() {}
 
 OpSegment::~OpSegment() {
-  for (auto kv : sessions_) delete kv.second;
+  for (const auto& kv : sessions_) delete kv.second;
 }
 
 Status OpSegment::FindOrCreate(const string& session_handle,
@@ -104,7 +104,8 @@ bool OpSegment::ShouldOwnKernel(FunctionLibraryRuntime* lib,
                                 const string& node_op) {
   // OpSegment should not own kernel if the node is stateless, or a function.
   return lib->IsStateful(node_op) &&
-         lib->GetFunctionLibraryDefinition()->Find(node_op) == nullptr;
+         lib->GetFunctionLibraryDefinition()->Find(node_op) == nullptr &&
+         node_op != "PartitionedCall" && node_op != "StatefulPartitionedCall";
 }
 
 }  // end namespace tensorflow

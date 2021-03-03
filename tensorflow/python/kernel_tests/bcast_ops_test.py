@@ -28,12 +28,10 @@ from tensorflow.python.platform import test
 class BcastOpsTest(test.TestCase):
 
   def _GetBroadcastShape(self, xs, ys):
-    with self.cached_session() as sess:
-      return sess.run(broadcast_args(xs, ys))
+    return self.evaluate(broadcast_args(xs, ys))
 
   def _GetGradientArgs(self, xs, ys):
-    with self.cached_session() as sess:
-      return sess.run(broadcast_gradient_args(xs, ys))
+    return self.evaluate(broadcast_gradient_args(xs, ys))
 
   def testBasic(self):
     r = self._GetBroadcastShape([2, 3, 5], [1])

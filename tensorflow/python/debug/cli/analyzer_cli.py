@@ -16,8 +16,6 @@
 
 The analyzer performs post hoc analysis of dumped intermediate tensors and
 graph structure information from debugged Session.run() calls.
-
-The other part of the debugger is the stepper (c.f. stepper_cli.py).
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -138,8 +136,8 @@ class DebugAnalyzer(object):
   _TENSOR_NAME_COLUMN_HEAD = "Tensor name"
 
   # Op types to be omitted when generating descriptions of graph structure.
-  _GRAPH_STRUCT_OP_TYPE_BLACKLIST = (
-      "_Send", "_Recv", "_HostSend", "_HostRecv", "_Retval")
+  _GRAPH_STRUCT_OP_TYPE_DENYLIST = ("_Send", "_Recv", "_HostSend", "_HostRecv",
+                                    "_Retval")
 
   def __init__(self, debug_dump, config):
     """DebugAnalyzer constructor.
@@ -797,16 +795,16 @@ class DebugAnalyzer(object):
         lines, font_attr_segs=font_attr_segs)
 
     # List node inputs (non-control and control).
-    inputs = self._exclude_blacklisted_ops(
+    inputs = self._exclude_denylisted_ops(
         self._debug_dump.node_inputs(node_name))
-    ctrl_inputs = self._exclude_blacklisted_ops(
+    ctrl_inputs = self._exclude_denylisted_ops(
         self._debug_dump.node_inputs(node_name, is_control=True))
     output.extend(self._format_neighbors("input", inputs, ctrl_inputs))
 
     # List node output recipients (non-control and control).
-    recs = self._exclude_blacklisted_ops(
+    recs = self._exclude_denylisted_ops(
         self._debug_dump.node_recipients(node_name))
-    ctrl_recs = self._exclude_blacklisted_ops(
+    ctrl_recs = self._exclude_denylisted_ops(
         self._debug_dump.node_recipients(node_name, is_control=True))
     output.extend(self._format_neighbors("recipient", recs, ctrl_recs))
 
@@ -824,19 +822,20 @@ class DebugAnalyzer(object):
     _add_main_menu(output, node_name=node_name, enable_node_info=False)
     return output
 
-  def _exclude_blacklisted_ops(self, node_names):
-    """Exclude all nodes whose op types are in _GRAPH_STRUCT_OP_TYPE_BLACKLIST.
+  def _exclude_denylisted_ops(self, node_names):
+    """Exclude all nodes whose op types are in _GRAPH_STRUCT_OP_TYPE_DENYLIST.
 
     Args:
       node_names: An iterable of node or graph element names.
 
     Returns:
-      A list of node names that are not blacklisted.
+      A list of node names that are not denylisted.
     """
-    return [node_name for node_name in node_names
-            if self._debug_dump.node_op_type(
-                debug_graphs.get_node_name(node_name)) not in
-            self._GRAPH_STRUCT_OP_TYPE_BLACKLIST]
+    return [
+        node_name for node_name in node_names
+        if self._debug_dump.node_op_type(debug_graphs.get_node_name(node_name))
+        not in self._GRAPH_STRUCT_OP_TYPE_DENYLIST
+    ]
 
   def _render_node_traceback(self, node_name):
     """Render traceback of a node's creation in Python, if available.
@@ -1202,12 +1201,12 @@ class DebugAnalyzer(object):
       return debugger_cli_common.rich_text_lines_from_rich_line_list(lines)
 
     path_column_width = max(
-        max([len(item[0]) for item in source_list]), len(path_head)) + 1
+        max(len(item[0]) for item in source_list), len(path_head)) + 1
     num_nodes_column_width = max(
-        max([len(str(item[2])) for item in source_list]),
+        max(len(str(item[2])) for item in source_list),
         len(num_nodes_head)) + 1
     num_tensors_column_width = max(
-        max([len(str(item[3])) for item in source_list]),
+        max(len(str(item[3])) for item in source_list),
         len(num_tensors_head)) + 1
 
     head = RL(path_head + " " * (path_column_width - len(path_head)), color)
@@ -1248,8 +1247,8 @@ class DebugAnalyzer(object):
     parsed = self._arg_parsers["list_source"].parse_args(args)
     source_list = source_utils.list_source_files_against_dump(
         self._debug_dump,
-        path_regex_whitelist=parsed.path_filter,
-        node_name_regex_whitelist=parsed.node_name_filter)
+        path_regex_allowlist=parsed.path_filter,
+        node_name_regex_allowlist=parsed.node_name_filter)
 
     top_lines = [
         RL("List of source files that created nodes in this run", "bold")]
@@ -1403,13 +1402,13 @@ class DebugAnalyzer(object):
     """
 
     # Make a shallow copy of the list because it may be extended later.
-    all_inputs = self._exclude_blacklisted_ops(
+    all_inputs = self._exclude_denylisted_ops(
         copy.copy(tracker(node_name, is_control=False)))
     is_ctrl = [False] * len(all_inputs)
     if include_control:
       # Sort control inputs or recipients in alphabetical order of the node
       # names.
-      ctrl_inputs = self._exclude_blacklisted_ops(
+      ctrl_inputs = self._exclude_denylisted_ops(
           sorted(tracker(node_name, is_control=True)))
       all_inputs.extend(ctrl_inputs)
       is_ctrl.extend([True] * len(ctrl_inputs))
@@ -1440,10 +1439,9 @@ class DebugAnalyzer(object):
 
     hang += DEPTH_TEMPLATE % depth
 
-    for i in xrange(len(all_inputs)):
-      inp = all_inputs[i]
+    for i, inp in enumerate(all_inputs):
       op_type = self._debug_dump.node_op_type(debug_graphs.get_node_name(inp))
-      if op_type in self._GRAPH_STRUCT_OP_TYPE_BLACKLIST:
+      if op_type in self._GRAPH_STRUCT_OP_TYPE_DENYLIST:
         continue
 
       if is_ctrl[i]:

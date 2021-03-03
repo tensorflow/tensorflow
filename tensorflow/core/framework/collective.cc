@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/collective.h"
 
+#include "absl/strings/escaping.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
@@ -46,11 +48,29 @@ std::vector<RegistrationInfo>* MutableCollectiveRegistry() {
 }
 }  // namespace
 
+string CollGroupRuntimeDetails::ToString() const {
+  return strings::StrCat("CollGroupRuntimeDetails {communicator_key=",
+                         absl::CEscape(communicator_key), "}");
+}
+
 string CollGroupParams::ToString() const {
-  return strings::StrCat("CollGroupParams {group_key=", group_key,
-                         " group_size=", group_size,
-                         " device_type=", device_type.type_string(),
-                         " num_tasks=", num_tasks, "}");
+  string v = strings::StrCat(
+      "CollGroupParams {group_key=", group_key, " group_size=", group_size,
+      " device_type=", device_type.type_string(), " num_tasks=", num_tasks,
+      " runtime_details=", runtime_details.ToString(), " devices {");
+  for (const auto& d : device_names) {
+    strings::StrAppend(&v, d, ",");
+  }
+  strings::StrAppend(&v, "} task_names={");
+  for (const auto& n : task_names) {
+    strings::StrAppend(&v, n, ", ");
+  }
+  strings::StrAppend(&v, "} num_devices_per_task={");
+  for (const auto& dpt : num_devices_per_task) {
+    strings::StrAppend(&v, dpt.first, ": ", dpt.second, ", ");
+  }
+  strings::StrAppend(&v, "}");
+  return v;
 }
 
 CollInstanceParams& CollInstanceParams::operator=(
@@ -60,11 +80,6 @@ CollInstanceParams& CollInstanceParams::operator=(
     type = other.type;
     data_type = other.data_type;
     shape = other.shape;
-    device_names.clear();
-    device_names.assign(other.device_names.begin(), other.device_names.end());
-    task_names.assign(other.task_names.begin(), other.task_names.end());
-    same_num_devices_per_task = other.same_num_devices_per_task;
-    gpu_ring_order = other.gpu_ring_order;
     impl_details.subdiv_offsets.assign(
         other.impl_details.subdiv_offsets.begin(),
         other.impl_details.subdiv_offsets.end());
@@ -76,21 +91,20 @@ CollInstanceParams& CollInstanceParams::operator=(
     impl_details.subdiv_source_rank.assign(
         other.impl_details.subdiv_source_rank.begin(),
         other.impl_details.subdiv_source_rank.end());
+    impl_details.dependencies = other.impl_details.dependencies;
+    devices.assign(other.devices.begin(), other.devices.end());
+    permutation.assign(other.permutation.begin(), other.permutation.end());
   }
   return *this;
 }
 
 string CollInstanceParams::ToString() const {
-  string v = strings::StrCat("CollInstanceParams { instance_key=", instance_key,
-                             " type=", type, " data_type=", data_type,
-                             " shape=", shape.DebugString(), " devices {");
-  for (const auto& d : device_names) {
-    strings::StrAppend(&v, d, ",");
-  }
-  strings::StrAppend(&v, "} task_names={");
-  for (const auto& n : task_names) {
-    strings::StrAppend(&v, n, ", ");
-  }
+  string v =
+      strings::StrCat("CollInstanceParams { instance_key=", instance_key,
+                      " type=", type, " data_type=", DataTypeString(data_type),
+                      " shape=", shape.DebugString(), " devices {");
+  strings::StrAppend(&v, "}, collective_name=", impl_details.collective_name,
+                     ", subdiv_offsets={");
   strings::StrAppend(&v, "}, subdiv_offsets={");
   for (const auto& d : impl_details.subdiv_offsets) {
     strings::StrAppend(&v, d, ",");
@@ -109,8 +123,18 @@ string CollInstanceParams::ToString() const {
       strings::StrAppend(&v, r, ",");
     }
     strings::StrAppend(&v, "}");
+  }  // all subdivs
+  if (type == PERMUTE_COLLECTIVE) {
+    strings::StrAppend(&v, "}, permute_devices {");
+    for (const auto& d : devices) {
+      strings::StrAppend(&v, d, ",");
+    }
+    strings::StrAppend(&v, "}, permute_permutation {");
+    for (const auto& p : permutation) {
+      strings::StrAppend(&v, p, ",");
+    }
+    strings::StrAppend(&v, "}");
   }
-  strings::StrAppend(&v, "}");  // all subdivs
   return v;
 }
 
@@ -142,14 +166,13 @@ string CollectiveParams::ToString() const {
   return ctx->params_;
 }
 
-CollectiveContext::CollectiveContext(CollectiveExecutor* col_exec,
-                                     const DeviceMgr* dev_mgr,
-                                     OpKernelContext* ctx,
-                                     OpKernelContext::Params* op_params,
-                                     const CollectiveParams& col_params,
-                                     const string& exec_key, int64 step_id,
-                                     const Tensor* input, Tensor* output)
+CollectiveContext::CollectiveContext(
+    CollectiveExecutor* col_exec, NcclCommunicatorInterface* nccl_communicator,
+    const DeviceMgr* dev_mgr, OpKernelContext* ctx,
+    OpKernelContext::Params* op_params, const CollectiveParams* col_params,
+    const string& exec_key, int64 step_id, const Tensor* input, Tensor* output)
     : col_exec(col_exec),
+      nccl_communicator(nccl_communicator),
       dev_mgr(dev_mgr),
       op_ctx(ctx),
       op_params(op_params),
@@ -159,7 +182,7 @@ CollectiveContext::CollectiveContext(CollectiveExecutor* col_exec,
       input(input),
       output(output),
       device(nullptr),
-      device_name(col_params.instance.device_names[col_params.default_rank]) {}
+      device_name(col_params->group.device_names[col_params->default_rank]) {}
 
 /*static*/
 int64 CollectiveExecutor::kInvalidId = -1;

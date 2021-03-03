@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/eigen_spatial_convolutions.h"
+
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/kernels/eigen_cuboid_convolution.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -1373,16 +1375,23 @@ TEST(EigenSpatialConvolutionsTest, SpatialConvContractionMapper) {
   EigenApprox(8.0f, direct(0, 1, 3, 0));
 }
 
-static void PackRhsHelper(int iters,
+template <typename T>
+static void PackRhsHelper(::testing::benchmark::State& state,
                           /* Input dimensions: */
                           int input_batches, int input_cols, int input_rows,
                           int input_depth,
                           /* Filter (kernel) dimensions: */
                           int filter_count, int filter_cols, int filter_rows,
+                          Eigen::PaddingType padding,
                           /* Input strides: */
-                          int col_strides, int row_strides) {
-  tensorflow::testing::UseRealTime();
-  tensorflow::testing::StopTiming();
+                          int col_strides, int row_strides,
+                          /* Patch inflate strides: */
+                          int patch_col_inflate_stride,
+                          int patch_row_inflate_stride,
+                          /* Block dimensions: */
+                          Index block_rows, Index block_cols) {
+  // Set random seed for benchmark repeatability.
+  srand(12345);
 
   using Dimensions = Eigen::DSizes<Eigen::Index, 4>;
 
@@ -1390,8 +1399,7 @@ static void PackRhsHelper(int iters,
   // starting from the inner most (channels aka depth in this case).
   Dimensions input_dims(input_depth, input_rows, input_cols, input_batches);
 
-  using Traits = typename Eigen::internal::gebp_traits<float, float>;
-  static const int packet_size = Eigen::internal::packet_traits<float>::size;
+  static const int packet_size = Eigen::internal::packet_traits<T>::size;
 
   // Reshape dimensions.
   using NewDimension = Eigen::DSizes<Index, 2>;
@@ -1400,11 +1408,11 @@ static void PackRhsHelper(int iters,
   using nocontract_t = Eigen::array<Eigen::Index, 1>;
   using contract_t = Eigen::array<Eigen::Index, 1>;
 
-  // Input to the TensorImagePatchOp. It is the tensorflow TTypes<float>::Tensor
+  // Input to the TensorImagePatchOp. It is the tensorflow TTypes<T>::Tensor
   // with ColMajor layout, instead of RowMajor. But that doesn't make any
   // difference, because TensorContraction swaps LHS with RHS for row major
   // inputs, and contraction mapper always works with column major data.
-  using ArgType = TensorMap<Tensor<float, 4>, Eigen::Aligned>;
+  using ArgType = TensorMap<Tensor<T, 4>, Eigen::Aligned>;
 
   using Evaluator = TensorEvaluator<
       const TensorReshapingOp<
@@ -1412,30 +1420,32 @@ static void PackRhsHelper(int iters,
       Eigen::DefaultDevice>;
 
   using InputMapper = Eigen::internal::TensorContractionInputMapper<
-      float, Index, Eigen::internal::Rhs, Evaluator,  //
-      nocontract_t, contract_t,                       //
-      packet_size,                                    //
-      /*inner_dim_contiguous*/ true,                  //
-      /*inner_dim_reordered*/ false,                  //
+      T, Index, Eigen::internal::Rhs, Evaluator,  //
+      nocontract_t, contract_t,                   //
+      packet_size,                                //
+      /*inner_dim_contiguous*/ true,              //
+      /*inner_dim_reordered*/ false,              //
       /*Alignment*/ 0>;
 
   using SubMapper = Eigen::internal::TensorContractionSubMapper<
-      float, Index, Eigen::internal::Rhs, Evaluator,  //
-      nocontract_t, contract_t,                       //
-      packet_size,                                    //
-      /*inner_dim_contiguous*/ true,                  //
-      /*inner_dim_reordered*/ false,                  //
+      T, Index, Eigen::internal::Rhs, Evaluator,  //
+      nocontract_t, contract_t,                   //
+      packet_size,                                //
+      /*inner_dim_contiguous*/ true,              //
+      /*inner_dim_reordered*/ false,              //
       /*Alignment*/ 0>;
 
 #if defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
-  using PackRhsImpl = Eigen::internal::mkldnn_gemm_pack<float, Eigen::Index,
-                                                        SubMapper, ColMajor>;
-#else
   using PackRhsImpl =
-      Eigen::internal::gemm_pack_rhs<float, Eigen::Index, SubMapper,  //
-                                     Traits::nr,                      //
-                                     ColMajor,                        //
-                                     /*Conjugate*/ false,             //
+      Eigen::internal::gemm_pack_colmajor_block<T, Eigen::Index, SubMapper,
+                                                ColMajor>;
+#else
+  using Traits = typename Eigen::internal::gebp_traits<T, T>;
+  using PackRhsImpl =
+      Eigen::internal::gemm_pack_rhs<T, Eigen::Index, SubMapper,  //
+                                     Traits::nr,                  //
+                                     ColMajor,                    //
+                                     /*Conjugate*/ false,         //
                                      /*PanelMode*/ false>;
 #endif
 
@@ -1447,18 +1457,22 @@ static void PackRhsHelper(int iters,
   contract_t contract_dim = {not_important};
 
   // We use tensor of the same dimensions to store packed data.
-  Tensor<float, 4> packed(input_dims);
+  Tensor<T, 4> packed(input_dims);
 
   // We generate multiple input tensors, around 512mb in total size to measure
   // realistic workload when input data in not in L1-L3 cache.
-  size_t input_bytes = input_dims.TotalSize() * sizeof(float);
+  size_t input_bytes = input_dims.TotalSize() * sizeof(T);
   size_t mem_size_bytes = 1024 * 1024 * 512;
   size_t num_inputs =
       std::max(static_cast<size_t>(1), mem_size_bytes / input_bytes);
 
-  std::vector<Tensor<float, 4>> inputs;
+  std::vector<Tensor<T, 4>> inputs;
   std::vector<Evaluator> evaluators;
   std::vector<InputMapper> input_mappers;
+
+  inputs.reserve(num_inputs);
+  evaluators.reserve(num_inputs);
+  input_mappers.reserve(num_inputs);
 
   for (int i = 0; i < num_inputs; ++i) {
     inputs.emplace_back(input_dims);
@@ -1468,17 +1482,32 @@ static void PackRhsHelper(int iters,
 
     // 1. Extract image patches from input tensor. All strides are `1`.
     const auto image_patch_op = TensorImagePatchOp<Dynamic, Dynamic, ArgType>(
-        tensor_map,                                            //
-        filter_rows, filter_cols,                              //
-        row_strides, col_strides,                              //
-        /*in_row_strides=*/1, /*in_col_strides=*/1,            //
-        /*row_inflate_strides=*/1, /*col_inflate_strides=*/1,  //
-        Eigen::PADDING_SAME, /*padding_value=*/0.0);
+        tensor_map,                                          //
+        filter_rows, filter_cols,                            //
+        row_strides, col_strides,                            //
+        /*in_row_strides=*/1, /*in_col_strides=*/1,          //
+        patch_row_inflate_stride, patch_col_inflate_stride,  //
+        padding, /*padding_value=*/0.0);
 
     // 2. Reshape extracted patches into "virtual" 2d tensor.
-    // NOTE: This is valid for PADDING_SAME only.
-    Index output_rows = input_rows / row_strides;
-    Index output_cols = input_cols / col_strides;
+    Index input_rows_eff = (input_rows - 1) * patch_row_inflate_stride + 1;
+    Index input_cols_eff = (input_cols - 1) * patch_col_inflate_stride + 1;
+
+    Index output_rows = 0;
+    Index output_cols = 0;
+
+    if (padding == Eigen::PADDING_SAME) {
+      output_rows = input_rows_eff / row_strides;
+      output_cols = input_cols_eff / col_strides;
+    } else if (padding == Eigen::PADDING_VALID) {
+      output_rows =
+          numext::ceil((input_rows_eff - filter_rows + 1.f) / row_strides);
+      output_cols =
+          numext::ceil((input_cols_eff - filter_cols + 1.f) / col_strides);
+    } else {
+      eigen_assert(false && "not supported");
+    }
+
     NewDimension reshape_dims;
     reshape_dims[0] = input_depth * filter_rows * filter_cols;    // patch size
     reshape_dims[1] = output_rows * output_cols * input_batches;  // num_patches
@@ -1508,23 +1537,26 @@ static void PackRhsHelper(int iters,
 
   PackRhsImpl pack_rhs;
 
-  // This is the typical size of the rhs block used in Tensor contractions.
-  const Index default_depth = 320;  // must be multiple of 8
-  const Index default_cols = 280;
-
   const Index packed_total_size = input_dims.TotalSize();
 
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  // Round up row/col/memory offsets to make them multiple of packet size.
+  const auto round_up = [](const Index idx) {
+    return (idx / packet_size) * packet_size;
+  };
+
+  for (auto s : state) {
     int input_idx =
         num_inputs == 1 ? 1 : internal::random<int>(0, num_inputs - 1);
 
-    // Depth offset must be a multiple of 8 (float packet size with AVX2).
-    Index depth_offset = (internal::random<Index>(0, patch_size - 10) / 8) * 8;
+    // Depth offset must be a multiple packet size.
+    Index depth_offset =
+        (patch_size > block_rows)
+            ? round_up(internal::random<Index>(0, patch_size - 10))
+            : 0;
     Index col_offset = internal::random<Index>(0, num_patches - 10);
 
-    Index depth = std::min(default_depth, patch_size - depth_offset);
-    Index cols = std::min(default_cols, num_patches - col_offset);
+    Index depth = std::min(block_rows, patch_size - depth_offset);
+    Index cols = std::min(block_cols, num_patches - col_offset);
 
     // Write packed data to random memory location to emulate cold caches.
     Index packed_size = depth * cols;
@@ -1535,55 +1567,482 @@ static void PackRhsHelper(int iters,
         input_mappers[input_idx].getSubMapper(depth_offset, col_offset);
     pack_rhs(packed.data() + packed_offset, sub_mapper, depth, cols);
   }
-  tensorflow::testing::StopTiming();
 
-  std::ostringstream stringStream;
-  stringStream << "patch: depth=" << patch_depth << " rows=" << patch_rows
-               << " cols=" << patch_cols << " num_patches=" << num_patches
-               << " patch_size=" << patch_size << " num_inputs=" << num_inputs;
-  tensorflow::testing::SetLabel(stringStream.str());
+  state.SetLabel(
+      absl::StrCat("patch: ", patch_rows, "x", patch_cols, " D", patch_depth,
+                   "; num_patches=", num_patches, " patch_size=", patch_size,
+                   " num_inputs=", num_inputs, " padding=", padding));
 }
 
-#define BM_NAME(prefix, N, H, W, C, FC, FH, FW, SH, SW) \
-  BM_##prefix##_##N##_##H##x##W##_IC##C##_FC##FC##_##FH##x##FW##_s##SH##x##SW
+template <typename T>
+static void PackLhsHelper(::testing::benchmark::State& state,
+                          /* Input dimensions: */
+                          int input_depth,
+                          /* Filter (kernel) dimensions: */
+                          int filter_count, int filter_cols, int filter_rows,
+                          /* Block dimensions: */
+                          Index block_rows, Index block_cols) {
+  // Set random seed for benchmark repeatability.
+  srand(12345);
 
-#define BM_PackRhs(N, H, W, C, FC, FH, FW, SH, SW)                          \
-  static void BM_NAME(PackRhs, N, H, W, C, FC, FH, FW, SH, SW)(int iters) { \
-    PackRhsHelper(iters, N, H, W, C, FC, FH, FW, SH, SW);                   \
-  }                                                                         \
-  BENCHMARK(BM_NAME(PackRhs, N, H, W, C, FC, FH, FW, SH, SW))
+  eigen_assert(block_rows <= filter_count);
+  eigen_assert(block_cols <= input_depth * filter_rows * filter_cols);
+
+  using Dimensions = Eigen::DSizes<Eigen::Index, 4>;
+
+  // Default Eigen::Tensor layout is column major, so we configure dimensions
+  // starting from the inner most (`filter count` aka `kernel filers`).
+  Dimensions filter_dims(filter_count, filter_rows, filter_cols, input_depth);
+
+  static const int packet_size = Eigen::internal::packet_traits<T>::size;
+
+  // We are going to reshape filter into 2D tensor.
+  using NewDimension = Eigen::DSizes<Index, 2>;
+
+  // Contraction dimensions.
+  using nocontract_t = Eigen::array<Eigen::Index, 1>;
+  using contract_t = Eigen::array<Eigen::Index, 1>;
+
+  // Input to the ReshapeOp. It is the tensorflow TTypes<T>::Tensor
+  // with ColMajor layout, instead of RowMajor. But that doesn't make any
+  // difference, because TensorContraction swaps LHS with RHS for row major
+  // inputs, and contraction mapper always works with column major data.
+  using ArgType = TensorMap<Tensor<T, 4>, Eigen::Aligned>;
+
+  using Evaluator =
+      TensorEvaluator<const TensorReshapingOp<NewDimension, ArgType>,
+                      Eigen::DefaultDevice>;
+
+  using InputMapper = Eigen::internal::TensorContractionInputMapper<
+      T, Index, Eigen::internal::Lhs, Evaluator,  //
+      nocontract_t, contract_t,                   //
+      packet_size,                                //
+      /*inner_dim_contiguous*/ true,              //
+      /*inner_dim_reordered*/ false,              //
+      /*Alignment*/ 0>;
+
+  using SubMapper = Eigen::internal::TensorContractionSubMapper<
+      T, Index, Eigen::internal::Lhs, Evaluator,  //
+      nocontract_t, contract_t,                   //
+      packet_size,                                //
+      /*inner_dim_contiguous*/ true,              //
+      /*inner_dim_reordered*/ false,              //
+      /*Alignment*/ 0>;
+
+#if defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
+  using PackLhsImpl =
+      Eigen::internal::gemm_pack_colmajor_block<T, Eigen::Index, SubMapper,
+                                                ColMajor>;
+#else
+  using Traits = typename Eigen::internal::gebp_traits<T, T>;
+  using PackLhsImpl =
+      Eigen::internal::gemm_pack_lhs<T, Eigen::Index, SubMapper,          //
+                                     Traits::mr,                          //
+                                     Traits::LhsProgress,                 //
+                                     typename Traits::LhsPacket4Packing,  //
+                                     ColMajor>;
+#endif
+
+  Eigen::DefaultDevice device;
+
+  // We will reshape kernel into 2D tensor.
+  NewDimension reshape_dims;
+  reshape_dims[0] = filter_count;
+  reshape_dims[1] = input_depth * filter_rows * filter_cols;
+
+  // We are going to contract along the 'in_depth * filter_rows * filter_cols`.
+  nocontract_t nocontract_dim = {0};
+  contract_t contract_dim = {1};
+
+  // These values computed using the algorithm in TensorContraction.h, with
+  // 'nocontract_dim' and 'contract_dim' values specified above.
+  nocontract_t nocontract_strides = {1};
+  contract_t contract_strides = {filter_count};
+  nocontract_t i_strides = {1};
+  contract_t k_strides = {1};
+
+  // We use tensor of the same dimensions to store packed data.
+  Tensor<T, 4> packed(filter_dims);
+
+  // We generate multiple filter tensors, around 512mb in total size to measure
+  // realistic workload when input data in not in L1-L3 cache.
+  size_t input_bytes = filter_dims.TotalSize() * sizeof(T);
+  size_t mem_size_bytes = 1024 * 1024 * 512;
+  size_t num_filters =
+      std::max(static_cast<size_t>(1), mem_size_bytes / input_bytes);
+
+  std::vector<Tensor<T, 4>> filters;
+  std::vector<Evaluator> evaluators;
+  std::vector<InputMapper> input_mappers;
+
+  filters.reserve(num_filters);
+  evaluators.reserve(num_filters);
+  input_mappers.reserve(num_filters);
+
+  for (int i = 0; i < num_filters; ++i) {
+    filters.emplace_back(filter_dims);
+    filters[i].setRandom();
+
+    ArgType tensor_map(filters[i].data(), filter_dims);
+
+    const auto reshape_op =
+        TensorReshapingOp<NewDimension, ArgType>(tensor_map, reshape_dims);
+
+    evaluators.emplace_back(reshape_op, device);
+
+    input_mappers.emplace_back(evaluators[i], nocontract_strides, i_strides,
+                               contract_strides, k_strides);
+  }
+
+  PackLhsImpl pack_lhs;
+
+  const Index packed_total_size = filter_dims.TotalSize();
+
+  // Round up row/col/memory offsets to make them multiple of packet size.
+  const auto round_up = [](const Index idx) {
+    return (idx / packet_size) * packet_size;
+  };
+
+  // Block rows is in the [0, filter_count) range.
+  // Block cols is in the [0, filter_rows * filter_cols * input_depth) range.
+
+  const Index max_row = filter_count;
+  const Index max_col = filter_rows * filter_cols * input_depth;
+
+  for (auto s : state) {
+    int filter_idx =
+        num_filters == 1 ? 1 : internal::random<int>(0, num_filters - 1);
+
+    Index row_offset = round_up(internal::random<Index>(0, max_row - 10));
+    Index col_offset = round_up(internal::random<Index>(0, max_col - 10));
+
+    Index rows = std::min(block_rows, max_row - row_offset);
+    Index cols = std::min(block_cols, max_col - col_offset);
+
+    // Write packed data to random memory location to emulate cold caches.
+    Index packed_offset = round_up(
+        internal::random<Index>(0, packed_total_size - rows * cols - 1));
+
+    SubMapper sub_mapper =
+        input_mappers[filter_idx].getSubMapper(row_offset, col_offset);
+
+// NOTE: Eigen gemm_pack_lhs accepts contraction depth (k-th dimension) as a
+// first argument (aka block cols). MKL-DNN pack is generic for lhs and rhs
+// and accepts block rows and cols in the same order for lhs and rhs.
+#if defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
+    pack_lhs(packed.data() + packed_offset, sub_mapper, rows, cols);
+#else
+    pack_lhs(packed.data() + packed_offset, sub_mapper, cols, rows);
+#endif
+  }
+  state.SetLabel(absl::StrCat(
+      "filter: count=", filter_count, " dims=", filter_rows, "x", filter_cols,
+      "; input: depth=", input_depth, "; num_filers=", num_filters));
+}
+
+// -------------------------------------------------------------------------- //
+// Pack RHS
+//
+// Macro argument names:
+//    N: batch size
+//    H: height
+//    W: width
+//    C: input channels
+//   FC: filter channels
+//   FH: filter height
+//   FW: filter width
+//   SH: stride in height dimensions
+//   SW: stride in width dimensions
+//  ISH: patch inflate stride in height dimension
+//  ISW: patch inflate stride in width dimension
+//   BR: block rows
+//   BC: block cols
+
+#define BM_CONCAT(a, b) a##b
+
+#define BM_RHS_NAME(prefix, T, N, H, W, C, FC, FH, FW, PAD, SH, SW, ISH, ISW, \
+                    BR, BC)                                                   \
+  BM_CONCAT(                                                                  \
+      BM_##prefix##_##T##_##N##_##H##x##W##_IC##C##_FC##FC##_##FH##x##FW,     \
+      _##PAD##_s##SH##x##SW##_is##ISH##x##ISW##_B##BR##x##BC)
+
+#define BM_PackRhs(T, N, H, W, C, FC, FH, FW, PAD, SH, SW, ISH, ISW, BR, BC)  \
+  static void BM_RHS_NAME(PackRhs, T, N, H, W, C, FC, FH, FW, PAD, SH, SW,    \
+                          ISH, ISW, BR,                                       \
+                          BC)(::testing::benchmark::State & state) {          \
+    PackRhsHelper<T>(state, N, H, W, C, FC, FH, FW, PADDING_##PAD, SH, SW,    \
+                     ISH, ISW, BR, BC);                                       \
+  }                                                                           \
+  BENCHMARK(BM_RHS_NAME(PackRhs, T, N, H, W, C, FC, FH, FW, PAD, SH, SW, ISH, \
+                        ISW, BR, BC))                                         \
+      ->UseRealTime()
 
 // Number of input channel (input depth) it equal to the number of patch
 // channels (patch depth).
 
-// NOTE: This is the most common case in Tensorflow models.
 // Fast path: input channel dimension is the multiple of the packet size.
-BM_PackRhs(/*batch*/ 32,        //
-           /*image*/ 64, 64,    //
-           /*channels*/ 32,     //
-           /*num_filters*/ 64,  //
-           /*filter*/ 5, 5,     //
-           /*stride*/ 1, 1);
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 32,                //
+           /*num_filters*/ 64,             //
+           /*filter*/ 5, 5,                //
+           /*padding*/ VALID,              //
+           /*stride*/ 1, 1,                //
+           /*patch inflate stride*/ 1, 1,  //
+           /*block*/ 256, 56);
 
-BM_PackRhs(/*batch*/ 32,        //
-           /*image*/ 64, 64,    //
-           /*channels*/ 32,     //
-           /*num_filters*/ 64,  //
-           /*filter*/ 5, 5,     //
-           /*stride*/ 2, 2);
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 32,                //
+           /*num_filters*/ 64,             //
+           /*filter*/ 5, 5,                //
+           /*padding*/ SAME,               //
+           /*stride*/ 1, 1,                //
+           /*patch inflate stride*/ 1, 1,  //
+           /*block*/ 256, 56);
+
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 32,                //
+           /*num_filters*/ 64,             //
+           /*filter*/ 5, 5,                //
+           /*padding*/ VALID,              //
+           /*stride*/ 2, 2,                //
+           /*patch inflate stride*/ 1, 1,  //
+           /*block*/ 256, 56);
+
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 32,                //
+           /*num_filters*/ 64,             //
+           /*filter*/ 5, 5,                //
+           /*padding*/ SAME,               //
+           /*stride*/ 2, 2,                //
+           /*patch inflate stride*/ 1, 1,  //
+           /*block*/ 256, 56);
 
 // Slow path: input channel dimension is not the multiple of the packet size.
-BM_PackRhs(/*batch*/ 32,        //
-           /*image*/ 64, 64,    //
-           /*channels*/ 30,     //
-           /*num_filters*/ 64,  //
-           /*filter*/ 5, 5,     //
-           /*stride*/ 1, 1);
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 30,                //
+           /*num_filters*/ 64,             //
+           /*filter*/ 5, 5,                //
+           /*padding*/ SAME,               //
+           /*stride*/ 1, 1,                //
+           /*patch inflate stride*/ 1, 1,  //
+           /*block*/ 256, 56);
 
-BM_PackRhs(/*batch*/ 32,        //
-           /*image*/ 64, 64,    //
-           /*channels*/ 30,     //
-           /*num_filters*/ 64,  //
-           /*filter*/ 5, 5,     //
-           /*stride*/ 2, 2);
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 30,                //
+           /*num_filters*/ 64,             //
+           /*filter*/ 5, 5,                //
+           /*padding*/ VALID,              //
+           /*stride*/ 1, 1,                //
+           /*patch inflate stride*/ 1, 1,  //
+           /*block*/ 256, 56);
+
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 30,                //
+           /*num_filters*/ 64,             //
+           /*filter*/ 5, 5,                //
+           /*padding*/ SAME,               //
+           /*stride*/ 2, 2,                //
+           /*patch inflate stride*/ 1, 1,  //
+           /*block*/ 256, 56);
+
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 30,                //
+           /*num_filters*/ 64,             //
+           /*filter*/ 5, 5,                //
+           /*padding*/ VALID,              //
+           /*stride*/ 2, 2,                //
+           /*patch inflate stride*/ 1, 1,  //
+           /*block*/ 256, 56);
+
+// Slow path with input channel dimension smaller than the packet size.
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 256, 256,             //
+           /*channels*/ 4,                 //
+           /*num_filters*/ 16,             //
+           /*filter*/ 8, 8,                //
+           /*padding*/ SAME,               //
+           /*stride*/ 1, 1,                //
+           /*patch inflate stride*/ 1, 1,  //
+           /*block*/ 256, 56);
+
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 256, 256,             //
+           /*channels*/ 4,                 //
+           /*num_filters*/ 16,             //
+           /*filter*/ 8, 8,                //
+           /*padding*/ VALID,              //
+           /*stride*/ 1, 1,                //
+           /*patch inflate stride*/ 1, 1,  //
+           /*block*/ 256, 56);
+
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 256, 256,             //
+           /*channels*/ 4,                 //
+           /*num_filters*/ 16,             //
+           /*filter*/ 8, 8,                //
+           /*padding*/ SAME,               //
+           /*stride*/ 2, 4,                //
+           /*patch inflate stride*/ 1, 1,  //
+           /*block*/ 256, 56);
+
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 256, 256,             //
+           /*channels*/ 4,                 //
+           /*num_filters*/ 16,             //
+           /*filter*/ 8, 8,                //
+           /*padding*/ VALID,              //
+           /*stride*/ 2, 4,                //
+           /*patch inflate stride*/ 1, 1,  //
+           /*block*/ 256, 56);
+
+// Short and wide block with small input channel dimension.
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 4,                 //
+           /*num_filters*/ 16,             //
+           /*filter*/ 3, 3,                //
+           /*padding*/ SAME,               //
+           /*stride*/ 1, 1,                //
+           /*patch inflate stride*/ 1, 1,  //
+           /*block*/ 36, 432);
+
+// Short and wide block with small input channel dimension.
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 4,                 //
+           /*num_filters*/ 16,             //
+           /*filter*/ 3, 3,                //
+           /*padding*/ VALID,              //
+           /*stride*/ 1, 1,                //
+           /*patch inflate stride*/ 1, 1,  //
+           /*block*/ 36, 432);
+
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 4,                 //
+           /*num_filters*/ 16,             //
+           /*filter*/ 3, 3,                //
+           /*padding*/ SAME,               //
+           /*stride*/ 2, 2,                //
+           /*patch inflate stride*/ 1, 1,  //
+           /*block*/ 36, 432);
+
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 4,                 //
+           /*num_filters*/ 16,             //
+           /*filter*/ 3, 3,                //
+           /*padding*/ VALID,              //
+           /*stride*/ 2, 2,                //
+           /*patch inflate stride*/ 1, 1,  //
+           /*block*/ 36, 432);
+
+// Non standard patches with inflated strides.
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 32, 32,               //
+           /*channels*/ 96,                //
+           /*num_filters*/ 96,             //
+           /*filter*/ 5, 5,                //
+           /*padding*/ SAME,               //
+           /*stride*/ 1, 1,                //
+           /*patch inflate stride*/ 2, 2,  //
+           /*block*/ 272, 240);
+
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 32, 32,               //
+           /*channels*/ 96,                //
+           /*num_filters*/ 96,             //
+           /*filter*/ 5, 5,                //
+           /*padding*/ VALID,              //
+           /*stride*/ 1, 1,                //
+           /*patch inflate stride*/ 2, 2,  //
+           /*block*/ 272, 240);
+
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+using qint8 = Eigen::QInt8;
+BM_PackRhs(/*type*/ qint8,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 32,                //
+           /*num_filters*/ 64,             //
+           /*filter*/ 5, 5,                //
+           /*padding*/ SAME,               //
+           /*stride*/ 1, 1,                //
+           /*patch inflate stride*/ 1, 1,  //
+           /*block*/ 256, 56);
+#endif  // defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+
+// -------------------------------------------------------------------------- //
+// Pack LHS
+//
+// Macro argument names:
+//    C: input channels
+//   FC: filter channels
+//   FH: filter height
+//   FW: filter width
+//   BR: block rows
+//   BC: block cols
+
+#define BM_LHS_NAME(prefix, T, C, FC, FH, FW, BR, BC) \
+  BM_CONCAT(BM_##prefix##_##T##_##C##_FC##FC##_##FH##x##FW, _B##BR##x##BC)
+
+#define BM_PackLhs(T, C, FC, FH, FW, BR, BC)                         \
+  static void BM_LHS_NAME(PackLhs, T, C, FC, FH, FW, BR,             \
+                          BC)(::testing::benchmark::State & state) { \
+    PackLhsHelper<T>(state, C, FC, FH, FW, BR, BC);                  \
+  }                                                                  \
+  BENCHMARK(BM_LHS_NAME(PackLhs, T, C, FC, FH, FW, BR, BC))->UseRealTime()
+
+// Number of input channel (input depth) it equal to the number of patch
+// channels (patch depth).
+
+BM_PackLhs(/*type*/ float,            //
+           /*input channels*/ 128,    //
+           /*filter channels*/ 1024,  //
+           /*filter dims*/ 3, 3,      //
+           /*block*/ 256, 56);
+
+BM_PackLhs(/*type*/ float,            //
+           /*input channels*/ 128,    //
+           /*filter channels*/ 1024,  //
+           /*filter dims*/ 3, 3,      //
+           /*block*/ 56, 256);
+
+BM_PackLhs(/*type*/ float,          //
+           /*input channels*/ 30,   //
+           /*filter channels*/ 64,  //
+           /*filter dims*/ 3, 3,    //
+           /*block*/ 256, 56);
+
+BM_PackLhs(/*type*/ float,          //
+           /*input channels*/ 50,   //
+           /*filter channels*/ 64,  //
+           /*filter dims*/ 3, 3,    //
+           /*block*/ 56, 256);
 }  // namespace Eigen

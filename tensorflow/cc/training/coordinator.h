@@ -22,11 +22,11 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/cost_graph.pb.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 
@@ -114,14 +114,14 @@ class Coordinator {
   condition_variable wait_for_stop_;
 
   mutex mu_;
-  bool should_stop_ GUARDED_BY(mu_);
+  bool should_stop_ TF_GUARDED_BY(mu_);
 
   mutex status_lock_;
-  Status status_ GUARDED_BY(status_lock_);
+  Status status_ TF_GUARDED_BY(status_lock_);
 
   mutable mutex runners_lock_;
   std::vector<std::unique_ptr<RunnerInterface>> runners_
-      GUARDED_BY(runners_lock_);
+      TF_GUARDED_BY(runners_lock_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(Coordinator);
 };

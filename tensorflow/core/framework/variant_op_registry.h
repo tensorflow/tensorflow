@@ -44,10 +44,14 @@ enum VariantUnaryOp {
   CONJ_VARIANT_UNARY_OP = 2,
 };
 
+const char* VariantUnaryOpToString(VariantUnaryOp op);
+
 enum VariantBinaryOp {
   INVALID_VARIANT_BINARY_OP = 0,
   ADD_VARIANT_BINARY_OP = 1,
 };
+
+const char* VariantBinaryOpToString(VariantBinaryOp op);
 
 enum VariantDeviceCopyDirection {
   INVALID_DEVICE_COPY_DIRECTION = 0,
@@ -58,7 +62,6 @@ enum VariantDeviceCopyDirection {
 
 class UnaryVariantOpRegistry {
  public:
-  typedef std::function<Status(const Variant& v, TensorShape*)> VariantShapeFn;
   typedef std::function<bool(Variant*)> VariantDecodeFn;
   typedef std::function<Status(OpKernelContext*, const Variant&, Variant*)>
       VariantUnaryOpFn;
@@ -93,15 +96,8 @@ class UnaryVariantOpRegistry {
                                AsyncTensorDeviceCopyFn copy_fn)>
       AsyncVariantDeviceCopyFn;
 
-  // Add a shape lookup function to the registry.
-  void RegisterShapeFn(const TypeIndex& type_index,
-                       const VariantShapeFn& shape_fn);
-
-  // Returns nullptr if no shape function was found for the given TypeIndex.
-  VariantShapeFn* GetShapeFn(const TypeIndex& type_index);
-
   // Add a decode function to the registry.
-  void RegisterDecodeFn(const string& type_name,
+  void RegisterDecodeFn(const std::string& type_name,
                         const VariantDecodeFn& decode_fn);
 
   // Returns nullptr if no decode function was found for the given TypeName.
@@ -110,35 +106,78 @@ class UnaryVariantOpRegistry {
   // Add a copy-to-GPU function to the registry.
   void RegisterDeviceCopyFn(const VariantDeviceCopyDirection direction,
                             const TypeIndex& type_index,
-                            const AsyncVariantDeviceCopyFn& device_copy_fn);
+                            const AsyncVariantDeviceCopyFn& device_copy_fn) {
+    AsyncVariantDeviceCopyFn* existing = GetDeviceCopyFn(direction, type_index);
+    CHECK_EQ(existing, nullptr)
+        << "UnaryVariantDeviceCopy for direction: " << direction
+        << " and type_index: " << port::MaybeAbiDemangle(type_index.name())
+        << " already registered";
+    device_copy_fns.insert(
+        std::pair<std::pair<VariantDeviceCopyDirection, TypeIndex>,
+                  AsyncVariantDeviceCopyFn>(
+            std::make_pair(direction, type_index), device_copy_fn));
+  }
 
   // Returns nullptr if no copy function was found for the given
   // TypeName and direction.
   AsyncVariantDeviceCopyFn* GetDeviceCopyFn(
-      const VariantDeviceCopyDirection direction, const TypeIndex& type_index);
+      const VariantDeviceCopyDirection direction, const TypeIndex& type_index) {
+    auto found = device_copy_fns.find(std::make_pair(direction, type_index));
+    if (found == device_copy_fns.end()) return nullptr;
+    return &found->second;
+  }
 
   // Add a unary op function to the registry.
-  void RegisterUnaryOpFn(VariantUnaryOp op, const string& device,
+  void RegisterUnaryOpFn(VariantUnaryOp op, const std::string& device,
                          const TypeIndex& type_index,
-                         const VariantUnaryOpFn& unary_op_fn);
+                         const VariantUnaryOpFn& unary_op_fn) {
+    VariantUnaryOpFn* existing = GetUnaryOpFn(op, device, type_index);
+    CHECK_EQ(existing, nullptr)
+        << "Unary VariantUnaryOpFn for type_index: "
+        << port::MaybeAbiDemangle(type_index.name())
+        << " already registered for device type: " << device;
+    unary_op_fns.insert(std::pair<FuncTuple<VariantUnaryOp>, VariantUnaryOpFn>(
+        {op, GetPersistentStringPiece(device), type_index}, unary_op_fn));
+  }
 
   // Returns nullptr if no unary op function was found for the given
   // op, device, and TypeName.
   VariantUnaryOpFn* GetUnaryOpFn(VariantUnaryOp op, StringPiece device,
-                                 const TypeIndex& type_index);
+                                 const TypeIndex& type_index) {
+    auto found = unary_op_fns.find({op, device, type_index});
+    if (found == unary_op_fns.end()) return nullptr;
+    return &found->second;
+  }
 
   // Add a binary op function to the registry.
-  void RegisterBinaryOpFn(VariantBinaryOp op, const string& device,
+  void RegisterBinaryOpFn(VariantBinaryOp op, const std::string& device,
                           const TypeIndex& type_index,
-                          const VariantBinaryOpFn& add_fn);
+                          const VariantBinaryOpFn& add_fn) {
+    VariantBinaryOpFn* existing = GetBinaryOpFn(op, device, type_index);
+    CHECK_EQ(existing, nullptr)
+        << "Unary VariantBinaryOpFn for type_index: "
+        << port::MaybeAbiDemangle(type_index.name())
+        << " already registered for device type: " << device;
+    binary_op_fns.insert(
+        std::pair<FuncTuple<VariantBinaryOp>, VariantBinaryOpFn>(
+            {op, GetPersistentStringPiece(device), type_index}, add_fn));
+  }
 
   // Returns nullptr if no binary op function was found for the given
   // op, device and TypeName.
   VariantBinaryOpFn* GetBinaryOpFn(VariantBinaryOp op, StringPiece device,
-                                   const TypeIndex& type_index);
+                                   const TypeIndex& type_index) {
+    auto found = binary_op_fns.find({op, device, type_index});
+    if (found == binary_op_fns.end()) return nullptr;
+    return &found->second;
+  }
 
   // Get a pointer to a global UnaryVariantOpRegistry object
-  static UnaryVariantOpRegistry* Global();
+  static UnaryVariantOpRegistry* Global() {
+    static UnaryVariantOpRegistry* global_unary_variant_op_registry =
+        new UnaryVariantOpRegistry;
+    return global_unary_variant_op_registry;
+  }
 
   // Get a pointer to a global persistent string storage object.
   // ISO/IEC C++ working draft N4296 clarifies that insertion into an
@@ -154,7 +193,6 @@ class UnaryVariantOpRegistry {
     std::size_t operator()(const TypeIndex& x) const { return x.hash_code(); }
   };
 
-  gtl::FlatMap<TypeIndex, VariantShapeFn, TypeIndexHash> shape_fns;
   gtl::FlatMap<StringPiece, VariantDecodeFn, StringPieceHasher> decode_fns;
 
   // Map std::pair<Direction, type_name> to function.
@@ -218,7 +256,7 @@ class UnaryVariantOpRegistry {
   // Find or insert a string into a persistent string storage
   // container; return the StringPiece pointing to the permanent string
   // location.
-  static StringPiece GetPersistentStringPiece(const string& str) {
+  static StringPiece GetPersistentStringPiece(const std::string& str) {
     const auto string_storage = PersistentStringStorage();
     auto found = string_storage->find(str);
     if (found == string_storage->end()) {
@@ -235,15 +273,6 @@ inline bool operator==(const UnaryVariantOpRegistry::FuncTuple<Op>& lhs,
   return (lhs.op_type_ == rhs.op_type_) && (lhs.device_ == rhs.device_) &&
          (lhs.type_index_ == rhs.type_index_);
 }
-// Gets a TensorShape from a Tensor containing a scalar Variant.
-// Returns an Internal error if the Variant does not have a registered shape
-// function, or if it's a serialized Variant that cannot be decoded.
-//
-// REQUIRES:
-//   variant_tensor.dtype() == DT_VARIANT
-//   variant_tensor.dims() == 0
-//
-Status GetUnaryVariantShape(const Tensor& variant_tensor, TensorShape* shape);
 
 // Decodes the Variant whose data_type has a registered decode
 // function.  Returns an Internal error if the Variant does not have a
@@ -282,13 +311,14 @@ Status VariantDeviceCopy(
 template <typename Device>
 Status UnaryOpVariant(OpKernelContext* ctx, VariantUnaryOp op, const Variant& v,
                       Variant* v_out) {
-  const string& device = DeviceName<Device>::value;
+  const std::string& device = DeviceName<Device>::value;
   UnaryVariantOpRegistry::VariantUnaryOpFn* unary_op_fn =
       UnaryVariantOpRegistry::Global()->GetUnaryOpFn(op, device, v.TypeId());
   if (unary_op_fn == nullptr) {
-    return errors::Internal(
-        "No unary variant unary_op function found for unary variant op enum: ",
-        op, " Variant type_name: ", v.TypeName(), " for device type: ", device);
+    return errors::Internal("No unary variant unary_op function found for op ",
+                            VariantUnaryOpToString(op),
+                            " Variant type_name: ", v.TypeName(),
+                            " for device type: ", device);
   }
   return (*unary_op_fn)(ctx, v, v_out);
 }
@@ -307,19 +337,18 @@ Status BinaryOpVariants(OpKernelContext* ctx, VariantBinaryOp op,
                         const Variant& a, const Variant& b, Variant* out) {
   if (a.TypeId() != b.TypeId()) {
     return errors::Internal(
-        "BianryOpVariants: Variants a and b have different "
+        "BinaryOpVariants: Variants a and b have different "
         "type ids.  Type names: '",
         a.TypeName(), "' vs. '", b.TypeName(), "'");
   }
-  const string& device = DeviceName<Device>::value;
+  const std::string& device = DeviceName<Device>::value;
   UnaryVariantOpRegistry::VariantBinaryOpFn* binary_op_fn =
       UnaryVariantOpRegistry::Global()->GetBinaryOpFn(op, device, a.TypeId());
   if (binary_op_fn == nullptr) {
-    return errors::Internal(
-        "No unary variant binary_op function found for binary variant op "
-        "enum: ",
-        op, " Variant type_name: '", a.TypeName(), "' for device type: ",
-        device);
+    return errors::Internal("No unary variant binary_op function found for op ",
+                            VariantBinaryOpToString(op),
+                            " Variant type_name: '", a.TypeName(),
+                            "' for device type: ", device);
   }
   return (*binary_op_fn)(ctx, a, b, out);
 }
@@ -327,32 +356,9 @@ Status BinaryOpVariants(OpKernelContext* ctx, VariantBinaryOp op,
 namespace variant_op_registry_fn_registration {
 
 template <typename T>
-class UnaryVariantShapeRegistration {
- public:
-  typedef std::function<Status(const T& t, TensorShape*)> LocalVariantShapeFn;
-
-  UnaryVariantShapeRegistration(const TypeIndex& type_index,
-                                const LocalVariantShapeFn& shape_fn) {
-    const string type_index_name = port::MaybeAbiDemangle(type_index.name());
-    UnaryVariantOpRegistry::Global()->RegisterShapeFn(
-        type_index,
-        [type_index_name, shape_fn](const Variant& v,
-                                    TensorShape* s) -> Status {
-          const T* t = v.get<T>();
-          if (t == nullptr) {
-            return errors::Internal(
-                "VariantShapeFn: Could not access object, type_index: ",
-                type_index_name);
-          }
-          return shape_fn(*t, s);
-        });
-  }
-};
-
-template <typename T>
 class UnaryVariantDecodeRegistration {
  public:
-  UnaryVariantDecodeRegistration(const string& type_name) {
+  UnaryVariantDecodeRegistration(const std::string& type_name) {
     // The Variant is passed by pointer because it should be
     // mutable: get below may Decode the variant, which
     // is a self-mutating behavior.  The variant is not modified in
@@ -384,7 +390,8 @@ class UnaryVariantDeviceCopyRegistration {
   UnaryVariantDeviceCopyRegistration(
       const VariantDeviceCopyDirection direction, const TypeIndex& type_index,
       const LocalVariantDeviceCopyFn& device_copy_fn) {
-    const string type_index_name = port::MaybeAbiDemangle(type_index.name());
+    const std::string type_index_name =
+        port::MaybeAbiDemangle(type_index.name());
     UnaryVariantOpRegistry::Global()->RegisterDeviceCopyFn(
         direction, type_index,
         [type_index_name, device_copy_fn](
@@ -411,10 +418,11 @@ class UnaryVariantUnaryOpRegistration {
       LocalVariantUnaryOpFn;
 
  public:
-  UnaryVariantUnaryOpRegistration(VariantUnaryOp op, const string& device,
+  UnaryVariantUnaryOpRegistration(VariantUnaryOp op, const std::string& device,
                                   const TypeIndex& type_index,
                                   const LocalVariantUnaryOpFn& unary_op_fn) {
-    const string type_index_name = port::MaybeAbiDemangle(type_index.name());
+    const std::string type_index_name =
+        port::MaybeAbiDemangle(type_index.name());
     UnaryVariantOpRegistry::Global()->RegisterUnaryOpFn(
         op, device, type_index,
         [type_index_name, unary_op_fn](OpKernelContext* ctx, const Variant& v,
@@ -440,10 +448,12 @@ class UnaryVariantBinaryOpRegistration {
       LocalVariantBinaryOpFn;
 
  public:
-  UnaryVariantBinaryOpRegistration(VariantBinaryOp op, const string& device,
+  UnaryVariantBinaryOpRegistration(VariantBinaryOp op,
+                                   const std::string& device,
                                    const TypeIndex& type_index,
                                    const LocalVariantBinaryOpFn& binary_op_fn) {
-    const string type_index_name = port::MaybeAbiDemangle(type_index.name());
+    const std::string type_index_name =
+        port::MaybeAbiDemangle(type_index.name());
     UnaryVariantOpRegistry::Global()->RegisterBinaryOpFn(
         op, device, type_index,
         [type_index_name, binary_op_fn](OpKernelContext* ctx, const Variant& a,
@@ -471,23 +481,6 @@ class UnaryVariantBinaryOpRegistration {
 
 };  // namespace variant_op_registry_fn_registration
 
-// Register a unary shape variant function with the signature:
-//    Status ShapeFn(const T& t, TensorShape* s);
-// to Variants having TypeIndex type_index.
-#define REGISTER_UNARY_VARIANT_SHAPE_FUNCTION(T, shape_function) \
-  REGISTER_UNARY_VARIANT_SHAPE_FUNCTION_UNIQ_HELPER(             \
-      __COUNTER__, T, MakeTypeIndex<T>(), shape_function)
-
-#define REGISTER_UNARY_VARIANT_SHAPE_FUNCTION_UNIQ_HELPER(ctr, T, type_index, \
-                                                          shape_function)     \
-  REGISTER_UNARY_VARIANT_SHAPE_FUNCTION_UNIQ(ctr, T, type_index, shape_function)
-
-#define REGISTER_UNARY_VARIANT_SHAPE_FUNCTION_UNIQ(ctr, T, type_index,         \
-                                                   shape_function)             \
-  static variant_op_registry_fn_registration::UnaryVariantShapeRegistration<T> \
-      register_unary_variant_op_shape_registration_fn_##ctr(type_index,        \
-                                                            shape_function)
-
 // Register a unary decode variant function for the given type.
 #define REGISTER_UNARY_VARIANT_DECODE_FUNCTION(T, type_name) \
   REGISTER_UNARY_VARIANT_DECODE_FUNCTION_UNIQ_HELPER(__COUNTER__, T, type_name)
@@ -495,10 +488,10 @@ class UnaryVariantBinaryOpRegistration {
 #define REGISTER_UNARY_VARIANT_DECODE_FUNCTION_UNIQ_HELPER(ctr, T, type_name) \
   REGISTER_UNARY_VARIANT_DECODE_FUNCTION_UNIQ(ctr, T, type_name)
 
-#define REGISTER_UNARY_VARIANT_DECODE_FUNCTION_UNIQ(ctr, T, type_name)        \
-  static variant_op_registry_fn_registration::UnaryVariantDecodeRegistration< \
-      T>                                                                      \
-      register_unary_variant_op_decoder_fn_##ctr(type_name)
+#define REGISTER_UNARY_VARIANT_DECODE_FUNCTION_UNIQ(ctr, T, type_name) \
+  static ::tensorflow::variant_op_registry_fn_registration::           \
+      UnaryVariantDecodeRegistration<T>                                \
+          register_unary_variant_op_decoder_fn_##ctr(type_name)
 
 // ****** NOTE ******
 // FOR INTERNAL USE ONLY.  IF YOU USE THIS WE MAY BREAK YOUR CODE.
@@ -536,7 +529,7 @@ class UnaryVariantBinaryOpRegistration {
 #define INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION(T, direction,   \
                                                              device_copy_fn) \
   INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION_UNIQ_HELPER(          \
-      __COUNTER__, T, direction, MakeTypeIndex<T>(), device_copy_fn)
+      __COUNTER__, T, direction, TypeIndex::Make<T>(), device_copy_fn)
 
 #define INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION_UNIQ_HELPER( \
     ctr, T, direction, type_index, device_copy_fn)                        \
@@ -557,19 +550,19 @@ class UnaryVariantBinaryOpRegistration {
 #define REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(op, device, T,     \
                                                  unary_op_function) \
   REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION_UNIQ_HELPER(             \
-      __COUNTER__, op, device, T, MakeTypeIndex<T>(), unary_op_function)
+      __COUNTER__, op, device, T, TypeIndex::Make<T>(), unary_op_function)
 
 #define REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION_UNIQ_HELPER(       \
     ctr, op, device, T, type_index, unary_op_function)              \
   REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION_UNIQ(ctr, op, device, T, \
                                                 type_index, unary_op_function)
 
-#define REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION_UNIQ(                         \
-    ctr, op, device, T, type_index, unary_op_function)                         \
-  static variant_op_registry_fn_registration::UnaryVariantUnaryOpRegistration< \
-      T>                                                                       \
-      register_unary_variant_op_decoder_fn_##ctr(op, device, type_index,       \
-                                                 unary_op_function)
+#define REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION_UNIQ(                       \
+    ctr, op, device, T, type_index, unary_op_function)                       \
+  static ::tensorflow::variant_op_registry_fn_registration::                 \
+      UnaryVariantUnaryOpRegistration<T>                                     \
+          register_unary_variant_op_decoder_fn_##ctr(op, device, type_index, \
+                                                     unary_op_function)
 
 // Register a binary_op variant function with the signature:
 //    Status BinaryOpFn(OpKernelContext* ctx, const T& a, const T& b, T* out);
@@ -578,7 +571,7 @@ class UnaryVariantBinaryOpRegistration {
 #define REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION(op, device, T,      \
                                                   binary_op_function) \
   REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION_UNIQ_HELPER(              \
-      __COUNTER__, op, device, T, MakeTypeIndex<T>(), binary_op_function)
+      __COUNTER__, op, device, T, TypeIndex::Make<T>(), binary_op_function)
 
 #define REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION_UNIQ_HELPER( \
     ctr, op, device, T, type_index, binary_op_function)        \
@@ -587,7 +580,7 @@ class UnaryVariantBinaryOpRegistration {
 
 #define REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION_UNIQ(                      \
     ctr, op, device, T, type_index, binary_op_function)                      \
-  static variant_op_registry_fn_registration::                               \
+  static ::tensorflow::variant_op_registry_fn_registration::                 \
       UnaryVariantBinaryOpRegistration<T>                                    \
           register_unary_variant_op_decoder_fn_##ctr(op, device, type_index, \
                                                      binary_op_function)

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the gradient of `tf.sparse_tensor_dense_matmul()`."""
+"""Tests for the gradient of `tf.sparse.sparse_dense_matmul()`."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import sparse_ops
 import tensorflow.python.ops.sparse_grad  # pylint: disable=unused-import
@@ -49,9 +50,11 @@ class SparseTensorDenseMatMulGradientTest(test.TestCase):
                     indices_dtype=np.int64):
     n, m = size
     x = np.random.randn(n, m).astype(values_dtype)
+    if values_dtype in (np.complex64, np.complex128):
+      x.imag = np.random.randn(n, m)
 
     if adjoint:
-      x = x.transpose()
+      x = x.transpose().conj()
 
     if sparse:
       return self._sparsify(x, indices_dtype=indices_dtype)
@@ -72,7 +75,7 @@ class SparseTensorDenseMatMulGradientTest(test.TestCase):
     matmul = sparse_ops.sparse_tensor_dense_matmul(
         sp_t, dense_t, adjoint_a=adjoint_a, adjoint_b=adjoint_b, name=name)
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       dense_t_shape = [m, k] if adjoint_b else [k, m]
       sp_t_val_shape = [nnz]
       err = gradient_checker.compute_gradient_error(
@@ -89,11 +92,15 @@ class SparseTensorDenseMatMulGradientTest(test.TestCase):
         self._testGradients(adjoint_a, adjoint_b, name, values_dtype,
                             indices_dtype)
 
+  @test_util.run_deprecated_v1
   def testGradients(self):
     np.random.seed(5)  # Fix seed to avoid flakiness
     self._testGradientsType(np.float32, np.int64)
     self._testGradientsType(np.float64, np.int64)
+    self._testGradientsType(np.complex64, np.int64)
+    self._testGradientsType(np.complex128, np.int64)
     self._testGradientsType(np.float32, np.int32)
+    self._testGradientsType(np.complex64, np.int32)
 
 
 if __name__ == "__main__":

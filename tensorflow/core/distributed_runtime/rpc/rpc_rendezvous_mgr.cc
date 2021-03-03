@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -71,9 +72,12 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
     req_.set_request_id(GetUniqueRequestId());
   }
 
-  void Reset(WorkerCacheInterface* wc) {
-    wc->ReleaseWorker(src_worker_, wi_);
-    wi_ = nullptr;
+  void Reset() {
+    // The RpcRemoteRendezvous using this object is responsible for calling
+    // ReleaseWorker() before Reset().
+    DCHECK_EQ(static_cast<WorkerInterface*>(nullptr), wi_)
+        << "Leaking WorkerInterface in RpcRecvTensorCall::Reset().";
+
     alloc_attrs_ = AllocatorAttributes();
     dst_device_ = nullptr;
     // We don't clear opts_ and assume that Init will set up the state for
@@ -89,9 +93,8 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
 
   ~RpcRecvTensorCall() override {
     // Since only the RpcRecvTensorFreeList will delete an
-    // RpcRecvTensorCall, and it always sets this->wi_ to null when
-    // a call object is released to it, we can assert that this->wi_ is
-    // always null at the point of deletion.
+    // RpcRecvTensorCall, we require that ReleaseWorker() has been called before
+    // the user releases a Call object to the free list.
     CHECK_EQ(static_cast<WorkerInterface*>(nullptr), wi_)
         << "Leaking WorkerInterface in RpcRecvTensorCall destructor.";
   }
@@ -113,6 +116,13 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
     return status_;
   }
 
+  void ReleaseWorker(WorkerCacheInterface* worker_cache) {
+    DCHECK_NE(static_cast<WorkerInterface*>(nullptr), wi_)
+        << "RpcRecvTensorCall::ReleaseWorker() called twice.";
+    worker_cache->ReleaseWorker(src_worker_, wi_);
+    wi_ = nullptr;
+  }
+
   const Tensor& tensor() const { return resp_.tensor(); }
 
   bool is_dead() const { return resp_.metadata().is_dead(); }
@@ -127,24 +137,40 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
   // Start the main RecvTensor call, checking for an async abort.
   void StartRTCall(std::function<void()> recv_done) {
     resp_.InitAlloc(dst_device_, alloc_attrs_);
-    using namespace std::placeholders;
-    StatusCallback cb = std::bind(
-        [this](std::function<void()> recv_done,
-               // Begin unbound arguments.
-               const Status& s) {
-          if (!s.ok()) {
-            mutex_lock l(mu_);
-            status_.Update(s);
-          }
-          recv_done();
-        },
-        std::move(recv_done), _1);
+    auto abort_checked = std::make_shared<Notification>();
+    auto cb = [this, abort_checked,
+               recv_done = std::move(recv_done)](const Status& s) {
+      // Make sure the Rendezvous abort checking is finished before running the
+      // callback, which might destroy the current call object.
+      abort_checked->WaitForNotification();
+      if (!s.ok()) {
+        mutex_lock l(mu_);
+        status_.Update(s);
+      }
+      recv_done();
+    };
     wi_->RecvTensorAsync(&opts_, &req_, &resp_, std::move(cb));
+
+    // NOTE: Check if the rendezvous was aborted after sending out the RPC. The
+    // ordering is important because `StartAbort` could be called right before
+    // the `RecvTensorAsync` request registers its RPC cancellation to `opts_`.
+    // In that case, the previous `StartAbort` would not trigger the
+    // cancellation of this call.
+    Status s;
+    {
+      mutex_lock l(mu_);
+      s = status_;
+    }
+    if (!s.ok()) {
+      opts_.StartCancel();
+    }
+    // Notify that the abort check has finished.
+    abort_checked->Notify();
   }
 
   string src_worker_;
   string src_rel_device_;
-  WorkerInterface* wi_;
+  WorkerInterface* wi_;  // Not owned.
   AllocatorAttributes alloc_attrs_;
   Device* dst_device_;
   CallOptions opts_;
@@ -154,7 +180,7 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
   Rendezvous::DoneCallback done_;
 
   mutable mutex mu_;
-  Status status_ GUARDED_BY(mu_);
+  Status status_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(RpcRecvTensorCall);
 };
@@ -180,8 +206,8 @@ class RpcRecvTensorFreeList {
     return new RpcRecvTensorCall;
   }
 
-  void Release(RpcRecvTensorCall* obj, WorkerCacheInterface* wc) {
-    obj->Reset(wc);
+  void Release(RpcRecvTensorCall* obj) {
+    obj->Reset();
     {
       mutex_lock l(mu_);
       if (objects_.size() < kMaxObjects) {
@@ -193,10 +219,10 @@ class RpcRecvTensorFreeList {
   }
 
  private:
-  static const int kMaxObjects = 1000;
+  static constexpr int kMaxObjects = 1000;
 
   mutex mu_;
-  std::vector<RpcRecvTensorCall*> objects_ GUARDED_BY(mu_);
+  std::vector<RpcRecvTensorCall*> objects_ TF_GUARDED_BY(mu_);
 };
 
 static RpcRecvTensorFreeList* get_call_freelist() {
@@ -220,7 +246,12 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
                          " is invalid remote source device.");
   }
   WorkerSession* sess = session();
-  WorkerInterface* rwi = sess->worker_cache->CreateWorker(call->src_worker_);
+  std::shared_ptr<WorkerCacheInterface> worker_cache =
+      sess->GetSharedWorkerCache();
+  // The worker will be released in a subsequent call to
+  // `sess->worker_cache()->ReleaseWorker()` (if the call has not yet been
+  // initialized) or `call->ReleaseWorker()` (if it has been initialized).
+  WorkerInterface* rwi = worker_cache->GetOrCreateWorker(call->src_worker_);
   if (s.ok() && rwi == nullptr) {
     s = errors::Internal("No worker known as ", call->src_worker_);
   }
@@ -231,9 +262,9 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
   }
   if (!s.ok()) {
     if (rwi != nullptr) {
-      sess->worker_cache->ReleaseWorker(call->src_worker_, rwi);
+      sess->worker_cache()->ReleaseWorker(call->src_worker_, rwi);
     }
-    get_call_freelist()->Release(call, sess->worker_cache.get());
+    get_call_freelist()->Release(call);
     done(s, Args(), recv_args, Tensor{}, false);
     return;
   }
@@ -242,20 +273,34 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
              recv_args, std::move(done));
 
   // Record "call" in active_ so that it can be aborted cleanly.
-  RegisterCall(call);
+  RegisterCall(call, recv_args);
+
+  // RendezvousMgr already aborted, shouldn't send RPC call any more
+  if (!call->status().ok()) {
+    DeregisterCall(call);
+    // NOTE: `*sess` can potentially be deleted before we return from
+    // `call->done()(...)`, so we must release the worker before calling the
+    // callback.
+    call->ReleaseWorker(sess->worker_cache());
+    call->done()(call->status(), Args(), Args(), Tensor(), false);
+    get_call_freelist()->Release(call);
+    return;
+  }
 
   // Start "call".
   Ref();
-  call->Start([this, call]() {
+  call->Start([this, call, worker_cache]() {
     // Removes "call" from active_. Prevent StartAbort().
     DeregisterCall(call);
     // If StartAbort was called prior to DeregisterCall, then the
     // current status should be bad.
     Status s = call->status();
+    // NOTE: `*session()` can potentially be deleted before we return from
+    // `call->done()(...)`, so we must release the worker before calling the
+    // callback.
+    call->ReleaseWorker(session()->worker_cache());
     call->done()(s, Args(), call->recv_args(), call->tensor(), call->is_dead());
-    session()->worker_cache->ReleaseWorker(call->src_worker_, call->wi_);
-    call->wi_ = nullptr;
-    get_call_freelist()->Release(call, session()->worker_cache.get());
+    get_call_freelist()->Release(call);
     Unref();
   });
 }

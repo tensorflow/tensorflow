@@ -18,41 +18,75 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-std::ostream& operator<<(std::ostream& os, Thunk::Kind kind) {
-  switch (kind) {
-    case Thunk::kConditional:
-      return os << "kConditional";
-    case Thunk::kConvolution:
-      return os << "kConvolution";
-    case Thunk::kCopy:
-      return os << "kCopy";
-    case Thunk::kCudnnBatchNormBackward:
-      return os << "kCudnnBatchNormBackward";
-    case Thunk::kCudnnBatchNormForwardInference:
-      return os << "kCudnnBatchNormForwardInference";
-    case Thunk::kCudnnBatchNormForwardTraining:
-      return os << "kCudnnBatchNormForwardTraining";
-    case Thunk::kFft:
-      return os << "kFft";
-    case Thunk::kGemm:
-      return os << "kGemm";
-    case Thunk::kInfeed:
-      return os << "kInfeed";
-    case Thunk::kKernel:
-      return os << "kKernel";
-    case Thunk::kMemset32BitValue:
-      return os << "kMemset32BitValue";
-    case Thunk::kMemzero:
-      return os << "kMemzero";
-    case Thunk::kOutfeed:
-      return os << "kOutfeed";
-    case Thunk::kSequential:
-      return os << "kSequential";
-    case Thunk::kTuple:
-      return os << "kTuple";
-    case Thunk::kWhile:
-      return os << "kWhile";
+StatusOr<GlobalDeviceId> Thunk::ExecuteParams::GetGlobalDeviceId() const {
+  int64 local_device_ordinal = stream->parent()->device_ordinal();
+  if (gpu_global_device_ids) {
+    TF_RET_CHECK(0 <= local_device_ordinal &&
+                 local_device_ordinal < gpu_global_device_ids->size());
+    return (*gpu_global_device_ids)[local_device_ordinal];
+  } else {
+    // No local -> global mapping was provided; assume the identity mapping.
+    return GlobalDeviceId(local_device_ordinal);
   }
+}
+
+absl::string_view ThunkKindToString(Thunk::Kind kind) {
+  switch (kind) {
+    case Thunk::kCholesky:
+      return "kCholesky";
+    case Thunk::kCollectivePermute:
+      return "kCollectivePermute";
+    case Thunk::kConditional:
+      return "kConditional";
+    case Thunk::kConvolution:
+      return "kConvolution";
+    case Thunk::kCopy:
+      return "kCopy";
+    case Thunk::kCudnnBatchNormBackward:
+      return "kCudnnBatchNormBackward";
+    case Thunk::kCudnnBatchNormForwardInference:
+      return "kCudnnBatchNormForwardInference";
+    case Thunk::kCudnnBatchNormForwardTraining:
+      return "kCudnnBatchNormForwardTraining";
+    case Thunk::kCustomCall:
+      return "kCustomCall";
+    case Thunk::kNcclAllGather:
+      return "kNcclAllGather";
+    case Thunk::kNcclAllReduce:
+      return "kNcclAllReduce";
+    case Thunk::kNcclAllToAll:
+      return "kNcclAllToAll";
+    case Thunk::kFft:
+      return "kFft";
+    case Thunk::kGemm:
+      return "kGemm";
+    case Thunk::kInfeed:
+      return "kInfeed";
+    case Thunk::kKernel:
+      return "kKernel";
+    case Thunk::kMemset32BitValue:
+      return "kMemset32BitValue";
+    case Thunk::kMemzero:
+      return "kMemzero";
+    case Thunk::kOutfeed:
+      return "kOutfeed";
+    case Thunk::kReplicaId:
+      return "kReplicaId";
+    case Thunk::kPartitionId:
+      return "kPartitionId";
+    case Thunk::kSequential:
+      return "kSequential";
+    case Thunk::kTriangularSolve:
+      return "kTriangularSolve";
+    case Thunk::kTuple:
+      return "kTuple";
+    case Thunk::kWhile:
+      return "kWhile";
+  }
+}
+
+std::ostream& operator<<(std::ostream& os, Thunk::Kind kind) {
+  return os << ThunkKindToString(kind);
 }
 
 }  // namespace gpu

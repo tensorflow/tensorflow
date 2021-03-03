@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -30,256 +31,132 @@ namespace gpu {
 
 namespace dnn = se::dnn;
 
-static std::pair<dnn::BatchDescriptor /*input_desc*/,
-                 dnn::BatchDescriptor /*scale_offset_desc*/>
-MakeDescriptors(const Shape& shape, int64 feature_index) {
-  std::vector<int64> logical_to_physical =
-      LayoutUtil::MakeLogicalToPhysical(shape.layout());
-
-  auto physical_dim_size = [&](int64 physical_dim) {
-    return shape.dimensions(LayoutUtil::Major(shape.layout(), physical_dim));
-  };
-
-  // Batchnorm only cares about the location of the depth (aka "feature") dim.
-  // The other dims are all treated the same.  Thus we can use the kBatchDepthYX
-  // cudnn layout for any XLA shape+layout, even XLA shapes that don't have
-  // exactly 4 dimensions: We put everything that comes before the feature dim
-  // into "batch", and everything that comes after the feature dim into "Y".
-  int64 batch_size = 1;
-  int64 y_size = 1;
-  int64 physical_dim;
-  for (physical_dim = 0; physical_dim != logical_to_physical[feature_index];
-       ++physical_dim) {
-    CHECK_LT(physical_dim, shape.dimensions_size());
-    batch_size *= physical_dim_size(physical_dim);
-  }
-  ++physical_dim;  // Skip the feature dimension.
-  for (; physical_dim < shape.dimensions_size(); ++physical_dim) {
-    y_size *= physical_dim_size(physical_dim);
-  }
-
-  dnn::BatchDescriptor input_desc;
-  input_desc.set_layout(dnn::DataLayout::kBatchDepthYX)
-      .set_count(batch_size)
-      .set_feature_map_count(shape.dimensions(feature_index))
-      .set_height(y_size)
-      .set_width(1);
-
-  dnn::BatchDescriptor scale_offset_desc;
-  scale_offset_desc.set_layout(dnn::DataLayout::kBatchDepthYX)
-      .set_feature_map_count(input_desc.feature_map_count())
-      .set_height(1)
-      .set_width(1)
-      .set_count(1);
-
-  return std::make_pair(input_desc, scale_offset_desc);
-}
-
 CudnnBatchNormForwardInferenceThunk::CudnnBatchNormForwardInferenceThunk(
+    ThunkInfo thunk_info, CudnnBatchNormConfig config,
     const BufferAllocation::Slice& operand,
     const BufferAllocation::Slice& scale, const BufferAllocation::Slice& offset,
     const BufferAllocation::Slice& mean,
-    const BufferAllocation::Slice& variance, float epsilon, int64 feature_index,
-    const BufferAllocation::Slice& output, const HloInstruction* hlo)
-    : Thunk(Thunk::Kind::kCudnnBatchNormForwardInference, hlo),
+    const BufferAllocation::Slice& variance,
+    const BufferAllocation::Slice& output)
+    : Thunk(Thunk::Kind::kCudnnBatchNormForwardInference, thunk_info),
+      config_(std::move(config)),
       operand_(operand),
       scale_(scale),
       offset_(offset),
       mean_(mean),
       variance_(variance),
-      epsilon_(epsilon),
-      feature_index_(feature_index),
-      output_(output) {
-  CHECK_EQ(hlo->opcode(), HloOpcode::kCustomCall);
-  CHECK_EQ(hlo->custom_call_target(),
-           kCudnnBatchNormForwardInferenceCallTarget);
-  CHECK(
-      LayoutUtil::LayoutsInShapesEqual(hlo->shape(), hlo->operand(0)->shape()));
-  CHECK_EQ(hlo->shape().element_type(), F32) << "Not yet implemented";
-}
+      output_(output) {}
 
 Status CudnnBatchNormForwardInferenceThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
-  dnn::BatchDescriptor operand_desc;
-  dnn::BatchDescriptor scale_offset_desc;
-  std::tie(operand_desc, scale_offset_desc) =
-      MakeDescriptors(hlo_instruction()->shape(), feature_index_);
+    const ExecuteParams& params) {
+  auto& buffer_allocations = *params.buffer_allocations;
+  auto op_profiler =
+      params.profiler->MakeScopedInstructionProfiler(profile_index());
+  se::DeviceMemoryBase output_base =
+      buffer_allocations.GetDeviceAddress(output_);
+  se::DeviceMemoryBase operand = buffer_allocations.GetDeviceAddress(operand_);
+  se::DeviceMemory<float> scale(buffer_allocations.GetDeviceAddress(scale_));
+  se::DeviceMemory<float> offset(buffer_allocations.GetDeviceAddress(offset_));
+  se::DeviceMemory<float> mean(buffer_allocations.GetDeviceAddress(mean_));
+  se::DeviceMemory<float> variance(
+      buffer_allocations.GetDeviceAddress(variance_));
+  auto& stream = *params.stream;
+  TF_RETURN_IF_ERROR(RunCudnnBatchNormForwardInference(
+      config_, operand, output_base, scale, offset, mean, variance, &stream));
 
-  se::DeviceMemory<float> output(buffer_allocations.GetDeviceAddress(output_));
-  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
-  stream->ThenBatchNormalizationForward(
-      se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(operand_)),
-      se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(scale_)),
-      se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(offset_)),
-      se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(mean_)),
-      se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(variance_)),
-      operand_desc,                //
-      scale_offset_desc,           //
-      epsilon_,                    //
-      &output,                     //
-      /*batch_mean=*/nullptr,      //
-      /*batch_var=*/nullptr,       //
-      /*saved_mean=*/nullptr,      //
-      /*saved_inv_var=*/nullptr,   //
-      /*is_training=*/false,       //
-      /*var_to_inv_var=*/nullptr,  //
-      /*inv_var_to_var=*/nullptr);
-
-  if (!stream->ok()) {
+  if (!stream.ok()) {
     return InternalError("BatchNormalizationForward call failed.");
   }
   return Status::OK();
 }
 
 CudnnBatchNormForwardTrainingThunk::CudnnBatchNormForwardTrainingThunk(
+    ThunkInfo thunk_info, CudnnBatchNormConfig config,
     const BufferAllocation::Slice& operand,
     const BufferAllocation::Slice& scale, const BufferAllocation::Slice& offset,
-    float epsilon, int64 feature_index,
     const BufferAllocation::Slice& output_data,
     const BufferAllocation::Slice& output_mean,
-    const BufferAllocation::Slice& output_inv_stddev,
-    const BufferAllocation::Slice& output_tuple, const HloInstruction* hlo)
-    : Thunk(Thunk::Kind::kCudnnBatchNormForwardTraining, hlo),
+    const BufferAllocation::Slice& output_inv_stddev)
+    : Thunk(Thunk::Kind::kCudnnBatchNormForwardTraining, thunk_info),
+      config_(std::move(config)),
       operand_(operand),
       scale_(scale),
       offset_(offset),
-      epsilon_(epsilon),
-      feature_index_(feature_index),
       output_data_(output_data),
       output_mean_(output_mean),
-      output_inv_stddev_(output_inv_stddev),
-      output_tuple_(output_tuple) {
-  CHECK_EQ(hlo->opcode(), HloOpcode::kCustomCall);
-  CHECK_EQ(hlo->custom_call_target(), kCudnnBatchNormForwardTrainingCallTarget);
-  CHECK_EQ(hlo->shape().tuple_shapes_size(), 3);
-  CHECK(LayoutUtil::LayoutsInShapesEqual(hlo->shape().tuple_shapes(0),
-                                         hlo->operand(0)->shape()));
-  for (const auto& tuple_shape : hlo->shape().tuple_shapes()) {
-    CHECK_EQ(tuple_shape.element_type(), F32) << "Not yet implemented";
-  }
-}
+      output_inv_stddev_(output_inv_stddev) {}
 
 Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
-  dnn::BatchDescriptor operand_desc;
-  dnn::BatchDescriptor scale_offset_desc;
-  // The BatchNormTraining HLO outputs a tuple of three elements: output data,
-  // batch mean, and batch variance.  We want to make our descriptors based on
-  // the shape of the output data.
-  std::tie(operand_desc, scale_offset_desc) = MakeDescriptors(
-      hlo_instruction()->shape().tuple_shapes(0), feature_index_);
+    const ExecuteParams& params) {
+  auto& buffer_allocations = *params.buffer_allocations;
+  se::DeviceMemoryBase operand = buffer_allocations.GetDeviceAddress(operand_);
+  se::DeviceMemoryBase output_data =
+      buffer_allocations.GetDeviceAddress(output_data_);
 
-  se::DeviceMemory<float> output_data(
-      buffer_allocations.GetDeviceAddress(output_data_));
   se::DeviceMemory<float> output_mean(
       buffer_allocations.GetDeviceAddress(output_mean_));
   se::DeviceMemory<float> output_inv_stddev(
       buffer_allocations.GetDeviceAddress(output_inv_stddev_));
 
   se::DeviceMemory<float> null_device_ptr(nullptr);
-  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
-  stream->ThenBatchNormalizationForward(
-      se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(operand_)),
+  auto op_profiler =
+      params.profiler->MakeScopedInstructionProfiler(profile_index());
+  auto& stream = *params.stream;
+  TF_RETURN_IF_ERROR(RunCudnnBatchNormForwardTraining(
+      config_, operand, output_data, output_mean, output_inv_stddev,
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(scale_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(offset_)),
-      /*estimated_mean=*/null_device_ptr,
-      /*estimated_variance=*/null_device_ptr,
-      operand_desc,                          //
-      scale_offset_desc,                     //
-      epsilon_,                              //
-      &output_data,                          //
-      /*batch_mean=*/&null_device_ptr,       //
-      /*batch_var=*/&null_device_ptr,        //
-      /*saved_mean=*/&output_mean,           //
-      /*saved_inv_var=*/&output_inv_stddev,  //
-      /*is_training=*/true,                  //
-      /*var_to_inv_var=*/nullptr,            //
-      /*inv_var_to_var=*/nullptr);
+      &stream));
 
-  // Write the tuple.
-  void* ptrs[] = {output_data.opaque(), output_mean.opaque(),
-                  output_inv_stddev.opaque()};
-  se::DeviceMemory<void*> tuple_addr(
-      buffer_allocations.GetDeviceAddress(output_tuple_));
-  stream->ThenMemcpyH2D<void*>(ptrs, &tuple_addr);
-
-  if (!stream->ok()) {
+  if (!stream.ok()) {
     return InternalError("BatchNormalizationTraining call failed.");
   }
   return Status::OK();
 }
 
 CudnnBatchNormBackwardThunk::CudnnBatchNormBackwardThunk(
+    ThunkInfo thunk_info, CudnnBatchNormConfig config,
     const BufferAllocation::Slice& operand,
     const BufferAllocation::Slice& scale, const BufferAllocation::Slice& mean,
     const BufferAllocation::Slice& inv_stddev,
-    const BufferAllocation::Slice& grad_output, float epsilon,
-    int64 feature_index, const BufferAllocation::Slice& output_grad_data,
+    const BufferAllocation::Slice& grad_output,
+    const BufferAllocation::Slice& output_grad_data,
     const BufferAllocation::Slice& output_grad_scale,
-    const BufferAllocation::Slice& output_grad_offset,
-    const BufferAllocation::Slice& output_tuple, const HloInstruction* hlo)
-    : Thunk(Thunk::Kind::kCudnnBatchNormBackward, hlo),
+    const BufferAllocation::Slice& output_grad_offset)
+    : Thunk(Thunk::Kind::kCudnnBatchNormBackward, thunk_info),
+      config_(std::move(config)),
       operand_(operand),
       scale_(scale),
       mean_(mean),
       inv_stddev_(inv_stddev),
       grad_output_(grad_output),
-      epsilon_(epsilon),
-      feature_index_(feature_index),
       output_grad_data_(output_grad_data),
       output_grad_scale_(output_grad_scale),
-      output_grad_offset_(output_grad_offset),
-      output_tuple_(output_tuple) {
-  CHECK_EQ(hlo->opcode(), HloOpcode::kCustomCall);
-  CHECK_EQ(hlo->custom_call_target(), kCudnnBatchNormBackwardCallTarget);
-  CHECK_EQ(hlo->shape().tuple_shapes_size(), 3);
-  CHECK(LayoutUtil::LayoutsInShapesEqual(hlo->shape().tuple_shapes(0),
-                                         hlo->operand(0)->shape()));
-  CHECK(LayoutUtil::LayoutsInShapesEqual(hlo->shape().tuple_shapes(0),
-                                         hlo->operand(4)->shape()));
-  for (const auto& tuple_shape : hlo->shape().tuple_shapes()) {
-    CHECK_EQ(tuple_shape.element_type(), F32) << "Not yet implemented";
-  }
-}
+      output_grad_offset_(output_grad_offset) {}
 
 Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
-  dnn::BatchDescriptor operand_desc;
-  dnn::BatchDescriptor scale_offset_desc;
-
-  // This call outputs a tuple of three elements: grad data, grad offset, and
-  // grad scale.  We want to make our descriptors based on the shape of the grad
-  // data.
-  std::tie(operand_desc, scale_offset_desc) = MakeDescriptors(
-      hlo_instruction()->shape().tuple_shapes(0), feature_index_);
-
-  se::DeviceMemory<float> output_grad_data(
-      buffer_allocations.GetDeviceAddress(output_grad_data_));
+    const ExecuteParams& params) {
+  auto& buffer_allocations = *params.buffer_allocations;
+  se::DeviceMemoryBase operand = buffer_allocations.GetDeviceAddress(operand_);
+  se::DeviceMemoryBase output_grad_data =
+      buffer_allocations.GetDeviceAddress(output_grad_data_);
+  se::DeviceMemoryBase grad_output =
+      buffer_allocations.GetDeviceAddress(grad_output_);
   se::DeviceMemory<float> output_grad_scale(
       buffer_allocations.GetDeviceAddress(output_grad_scale_));
   se::DeviceMemory<float> output_grad_offset(
       buffer_allocations.GetDeviceAddress(output_grad_offset_));
 
-  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
-  stream->ThenBatchNormalizationBackward(
-      se::DeviceMemory<float>(
-          buffer_allocations.GetDeviceAddress(grad_output_)),
-      se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(operand_)),
+  auto op_profiler =
+      params.profiler->MakeScopedInstructionProfiler(profile_index());
+  se::Stream* stream = params.stream;
+  TF_RETURN_IF_ERROR(RunCudnnBatchNormBackward(
+      config_, operand, output_grad_data, grad_output, output_grad_scale,
+      output_grad_offset,
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(scale_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(mean_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(inv_stddev_)),
-      operand_desc, scale_offset_desc, epsilon_, &output_grad_data,
-      &output_grad_scale, &output_grad_offset);
-
-  // Write the output tuple.
-  void* ptrs[] = {output_grad_data.opaque(), output_grad_scale.opaque(),
-                  output_grad_offset.opaque()};
-  se::DeviceMemory<void*> tuple_addr(
-      buffer_allocations.GetDeviceAddress(output_tuple_));
-  stream->ThenMemcpyH2D<void*>(ptrs, &tuple_addr);
+      stream));
 
   if (!stream->ok()) {
     return InternalError("BatchNormalizationBackward call failed.");

@@ -23,10 +23,13 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/jit/shape_inference.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 
@@ -37,6 +40,27 @@ namespace tensorflow {
 Status ShapeAnnotationsMatch(
     const Graph& graph, const GraphShapeInfo& shape_info,
     std::map<string, std::vector<PartialTensorShape>> expected_shapes);
+
+// A helper object to create GraphOptimizationPassOptions.
+struct GraphOptimizationPassWrapper {
+  explicit GraphOptimizationPassWrapper() : library(OpRegistry::Global(), {}) {
+    session_options.env = Env::Default();
+  }
+
+  // Create GraphOptimizationPassOptions with a graph passed in constructor and
+  // sensible options.
+  GraphOptimizationPassOptions CreateGraphOptimizationPassOptions(
+      std::unique_ptr<Graph>* graph) {
+    GraphOptimizationPassOptions options;
+    options.session_options = &session_options;
+    options.flib_def = &library;
+    options.graph = graph;
+    return options;
+  }
+
+  FunctionLibraryDefinition library;
+  SessionOptions session_options;
+};
 
 }  // namespace tensorflow
 

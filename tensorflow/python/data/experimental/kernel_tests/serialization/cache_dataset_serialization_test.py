@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the CacheDataset serialization."""
+"""Tests for checkpointing the CacheDataset."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -21,15 +21,16 @@ import os
 
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
 
 
-class CacheDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase,
-    parameterized.TestCase):
+class CacheDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                 parameterized.TestCase):
 
   def setUp(self):
     self.range_size = 10
@@ -52,10 +53,9 @@ class CacheDatasetSerializationTest(
   def expected_outputs(self):
     return list(range(self.range_size)) * self.num_repeats
 
-  @parameterized.named_parameters(
-      ('Memory', True),
-      ('File', False),
-  )
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(is_memory=[True, False])))
   def testCheckpointBeforeOneEpoch(self, is_memory):
     ds_fn = self.make_dataset_fn(is_memory)
 
@@ -73,10 +73,9 @@ class CacheDatasetSerializationTest(
             verify_exhausted=False))
     self.assertSequenceEqual(outputs, self.expected_outputs())
 
-  @parameterized.named_parameters(
-      ('Memory', True),
-      ('File', False),
-  )
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(is_memory=[True, False])))
   def testCheckpointBeforeOneEpochThenRunFewSteps(self, is_memory):
     ds_fn = self.make_dataset_fn(is_memory)
 
@@ -85,29 +84,18 @@ class CacheDatasetSerializationTest(
         ds_fn, [5], 8, verify_exhausted=False, save_checkpoint_at_end=False)
     self.assertSequenceEqual(outputs, range(8))
 
-    if is_memory:
-      outputs = outputs[:5]
-      outputs.extend(
-          self.gen_outputs(
-              ds_fn, [],
-              self.num_outputs - 5,
-              ckpt_saved=True,
-              verify_exhausted=False))
-      self.assertSequenceEqual(outputs, self.expected_outputs())
-    else:
-      # Restoring from checkpoint and running GetNext should return
-      # `AlreadExistsError` now because the lockfile already exists.
-      with self.assertRaises(errors.AlreadyExistsError):
+    outputs = outputs[:5]
+    outputs.extend(
         self.gen_outputs(
             ds_fn, [],
             self.num_outputs - 5,
             ckpt_saved=True,
-            verify_exhausted=False)
+            verify_exhausted=False))
+    self.assertSequenceEqual(outputs, self.expected_outputs())
 
-  @parameterized.named_parameters(
-      ('Memory', True),
-      ('File', False),
-  )
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(is_memory=[True, False])))
   def testCheckpointAfterOneEpoch(self, is_memory):
     ds_fn = self.make_dataset_fn(is_memory)
 
@@ -125,10 +113,9 @@ class CacheDatasetSerializationTest(
             verify_exhausted=False))
     self.assertSequenceEqual(outputs, self.expected_outputs())
 
-  @parameterized.named_parameters(
-      ('Memory', True),
-      ('File', False),
-  )
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(is_memory=[True, False])))
   def testCheckpointAfterOneEpochThenRunFewSteps(self, is_memory):
     ds_fn = self.make_dataset_fn(is_memory)
 
@@ -144,10 +131,9 @@ class CacheDatasetSerializationTest(
         verify_exhausted=False)
     self.assertSequenceEqual(outputs, list(range(10)) * 3)
 
-  @parameterized.named_parameters(
-      ('Memory', True),
-      ('File', False),
-  )
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(is_memory=[True, False])))
   def testCheckpointBeforeOneEpochButRunCompleteEpoch(self, is_memory):
     ds_fn = self.make_dataset_fn(is_memory)
 
@@ -168,10 +154,9 @@ class CacheDatasetSerializationTest(
         verify_exhausted=False)
     self.assertSequenceEqual(outputs, list(range(10)) * 3)
 
-  @parameterized.named_parameters(
-      ('Memory', True),
-      ('File', False),
-  )
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(is_memory=[True, False])))
   def testCheckpointUnusedWriterIterator(self, is_memory):
     ds_fn = self.make_dataset_fn(is_memory)
 
@@ -183,10 +168,9 @@ class CacheDatasetSerializationTest(
         ds_fn, [], self.num_outputs, ckpt_saved=True, verify_exhausted=False)
     self.assertSequenceEqual(outputs, list(range(10)) * 3)
 
-  @parameterized.named_parameters(
-      ('Memory', True),
-      ('File', False),
-  )
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(is_memory=[True, False])))
   def testCheckpointUnusedMidwayWriterIterator(self, is_memory):
     ds_fn = self.make_dataset_fn(is_memory)
 
@@ -208,10 +192,9 @@ class CacheDatasetSerializationTest(
             verify_exhausted=False))
     self.assertSequenceEqual(outputs, list(range(10)) * 3)
 
-  @parameterized.named_parameters(
-      ('Memory', True),
-      ('File', False),
-  )
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(is_memory=[True, False])))
   def testUnusedCheckpointError(self, is_memory):
     ds_fn = self.make_dataset_fn(is_memory)
 
@@ -231,10 +214,9 @@ class CacheDatasetSerializationTest(
         outputs = self.gen_outputs(
             ds_fn, [], self.num_outputs, verify_exhausted=False)
 
-  @parameterized.named_parameters(
-      ('Memory', True),
-      ('File', False),
-  )
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(is_memory=[True, False])))
   def testIgnoreCheckpointIfCacheWritten(self, is_memory):
     ds_fn = self.make_dataset_fn(is_memory)
 

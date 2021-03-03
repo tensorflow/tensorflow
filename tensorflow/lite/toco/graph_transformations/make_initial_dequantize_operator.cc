@@ -31,7 +31,8 @@ namespace toco {
 // generate this output to be removed by graph transformations.  Note that there
 // may be more than one operator that takes the input_array as their input, and
 // that some of these may be removed by graph transformations.
-bool AddDequantizeOperatorToInput(const string& input_name, const Operator* op,
+bool AddDequantizeOperatorToInput(const std::string& input_name,
+                                  const Operator* op,
                                   GraphTransformation* transformation,
                                   Model* model) {
   // An operator with the required output may be a dequantize operator already
@@ -65,7 +66,7 @@ bool AddDequantizeOperatorToInput(const string& input_name, const Operator* op,
   const auto& dequantized_input_name =
       AvailableArrayName(*model, input_name + "_dequantized");
   for (auto& other_op : model->operators) {
-    for (string& other_op_input : other_op->inputs) {
+    for (std::string& other_op_input : other_op->inputs) {
       if (other_op_input == input_name) {
         other_op_input = dequantized_input_name;
       }

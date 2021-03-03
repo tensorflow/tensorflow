@@ -18,50 +18,74 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
+import collections
+import enum
 
 import gast
-import six
 
 from tensorflow.python.autograph.pyct import anno
-from tensorflow.python.autograph.pyct import compiler
+from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import pretty_printer
 from tensorflow.python.autograph.pyct import templates
 
 
-class AutographParseError(SyntaxError):
-  pass
+class AnalysisLevel(enum.IntEnum):
+
+  NONE = 0
+  ACTIVITY = 1
+  DEFINEDNESS = 2
+  LIVENESS = 3
 
 
-# TODO(mdan): Use namedtuple.
-class EntityInfo(object):
-  """Contains information about a Python entity. Immutable.
+# TODO(znado): Use namedtuple.
+class Context(object):
+  """Contains information about a source code transformation.
+
+  This object is mutable, and is updated during conversion. Not thread safe.
+
+  Attributes:
+    info: EntityInfo, immutable.
+    namer: naming.Namer.
+    current_origin: origin_info.OriginInfo, holds the OriginInfo of the last
+      AST node to be processed successfully. Useful for error handling.
+    user: An user-supplied context object. The object is opaque to the
+      infrastructure, but will pe passed through to all custom transformations.
+  """
+
+  def __init__(self, info, namer, user_context):
+    self.info = info
+    self.namer = namer
+    self.current_origin = None
+    self.user = user_context
+
+
+# TODO(mdan): Move to a standalone file.
+class EntityInfo(
+    collections.namedtuple(
+        'EntityInfo',
+        ('name', 'source_code', 'source_file', 'future_features', 'namespace'))
+):
+  """Contains information about a Python entity.
+
+  Immutable.
 
   Examples of entities include functions and classes.
 
   Attributes:
+    name: The name that identifies this entity.
     source_code: The entity's source code.
     source_file: The entity's source file.
-    namespace: Dict[str, ], containing symbols visible to the entity
-        (excluding parameters).
-    arg_values: dict[str->*], containing parameter values, if known.
-    arg_types: dict[str->*], containing parameter types, if known.
-    owner_type: The surrounding class type of the function, if present.
+    future_features: Tuple[Text], the future features that this entity was
+      compiled with. See
+      https://docs.python.org/2/reference/simple_stmts.html#future.
+    namespace: Dict[str, ], containing symbols visible to the entity (excluding
+      parameters).
   """
-
-  # TODO(mdan): Remove the default and update tests.
-  def __init__(self, source_code, source_file, namespace, arg_values, arg_types,
-               owner_type):
-    self.source_code = source_code
-    self.source_file = source_file
-    self.namespace = namespace
-    self.arg_values = {} if arg_values is None else arg_values
-    self.arg_types = {} if arg_types is None else arg_types
-    self.owner_type = owner_type
+  pass
 
 
 class _StateStack(object):
-  """Typed stack abstraction.
+  """Templated context manager.
 
   This class provides syntactic sugar for a stack of objects of known
   type. It allows accessing attributes of the object at the top of the stack
@@ -85,6 +109,7 @@ class _StateStack(object):
   Attributes:
     type: Any, the type of objects that this stack holds
     level: int, the current stack depth
+    stack: List[Any], the actual stack
     value: Any, the instance of the object at the top of the stack
   """
 
@@ -96,11 +121,22 @@ class _StateStack(object):
     if not hasattr(type_, 'no_root'):
       self.enter()
 
+  def __enter__(self):
+    self.enter()
+    return self
+
+  def __exit__(self, exc_type, exc_value, traceback):
+    self.exit()
+
   def enter(self):
     self._stack.append(self.type())
 
   def exit(self):
-    return self._stack.pop()
+    self._stack.pop()
+
+  @property
+  def stack(self):
+    return self._stack
 
   @property
   def level(self):
@@ -121,7 +157,7 @@ class _StateStack(object):
 
 
 class _State(object):
-  """Supporting class for nested scope variable space for converter.Base.
+  """Syntactic sugar for accessing an instance of a StateStack context manager.
 
   This structure offers syntactic sugar over a dict of stacks of objects
   of known type. These structures are useful to keep state during AST walks.
@@ -161,131 +197,87 @@ class _State(object):
     return self._value[key]
 
 
-class Base(gast.NodeTransformer):
-  """Base class for general-purpose code transformers transformers.
+class NodeStateTracker(object):
+  """Base class for general-purpose Python code transformation.
 
-  This is an extension of ast.NodeTransformer that provides a few additional
-  functions, like state tracking within the scope of arbitrary node, helpers
-  for processing code blocks, debugging, mapping of transformed code to
-  original code, and others.
+  This abstract class provides helpful functions, like state tracking within
+  the scope of arbitrary node, helpers for processing code blocks, debugging,
+  mapping of transformed code to original code, and others.
 
   Scope-local state tracking: to keep state across nodes, at the level of
   (possibly nested) scopes, use enter/exit_local_scope and set/get_local.
   You must call enter/exit_local_scope manually, but the transformer detects
   when they are not properly paired.
 
-  The transformer allows keeping state across calls to visit_* that is local to
-  arbitrary nodes and their descendants, using the self.state attribute.
+  The transformer allows keeping state across calls that is local
+  to arbitrary nodes and their descendants, using the self.state attribute.
   Multiple independent scopes are allowed and automatically constructed.
 
-  For example, to keep track of the If node that encloses any Name node, one can
-  write:
+  For example, to keep track of the `If` node that encloses any `Name` node,
+  one can write:
 
+  ```
     class FooType(object):
 
       def __init__(self):
         self.foo_property = None
 
-    class DummyTransformer(Base):
+    class DummyTransformer(NodeStateTracker, ast.NodeTransformer):
 
       def visit_If(self, node):
         self.state[FooType].enter()
         self.state[FooType].foo_property = node
+        node = self.veneric_visit(node)
+        self.state[FooType].exit()
+        return node
 
       def visit_Name(self, node):
         self.state[FooType].foo_property  # will hold the innermost enclosing if
+  ```
+
+  Alternatively, the `enter()`/`exit()` calls can be managed by a `with`
+  statement:
+
+  ```
+      def visit_If(self, node):
+        with self.state[FooType] as foo:
+          foo.foo_property = node
+          return self.generic_visit(node)
+  ```
   """
 
   # TODO(mdan): Document all extra features.
 
-  def __init__(self, entity_info):
-    """Initialize the transformer. Subclasses should call this.
+  def __init__(self, ctx):
+    """Initialize the transformer.
+
+    Subclasses should call this.
 
     Args:
-      entity_info: An EntityInfo object.
+      ctx: A Context object.
     """
-    self._current_origin = None
     self._lineno = 0
     self._col_offset = 0
-    # TODO(znado): remove this from the constructor of all Transformers.
-    self.entity_info = entity_info
-    self._enclosing_entities = []
-
-    # A stack that allows keeping mutable, scope-local state where scopes may be
-    # nested. For example, it can be used to track the usage of break
-    # statements in each loop, where loops may be nested.
-    self._local_scope_state = []
-    self.enter_local_scope()
+    self.ctx = ctx
 
     # Allows scoping of local variables to keep state across calls to visit_*
-    # methods. Multiple scope hierchies may exist and are keyed by tag. A scope
-    # is valid at one or more nodes and all its children. Scopes created in
-    # child nodes supersede their parent. Scopes are isolated from one another.
+    # methods. Multiple scope hierarchies may exist and are keyed by tag. A
+    # scope is valid at one or more nodes and all its children. Scopes created
+    # in child nodes supersede their parent. Scopes are isolated from one
+    # another.
     self.state = _State()
 
-  @property
-  def enclosing_entities(self):
-    return tuple(self._enclosing_entities)
-
-  @property
-  def local_scope_level(self):
-    return len(self._local_scope_state)
-
-  def enter_local_scope(self, inherit=None):
-    """Deprecated. Use self.state instead.
-
-    Marks entry into a new local scope.
-
-    Args:
-      inherit: Optional enumerable of variable names to copy from the
-          parent scope.
-    """
-    scope_entered = {}
-    if inherit:
-      this_scope = self._local_scope_state[-1]
-      for name in inherit:
-        if name in this_scope:
-          scope_entered[name] = this_scope[name]
-    self._local_scope_state.append(scope_entered)
-
-  def exit_local_scope(self, keep=None):
-    """Deprecated. Use self.state instead.
-
-    Marks exit from the current local scope.
-
-    Args:
-      keep: Optional enumerable of variable names to copy into the
-          parent scope.
-    Returns:
-      A dict containing the scope that has just been exited.
-    """
-    scope_left = self._local_scope_state.pop()
-    if keep:
-      this_scope = self._local_scope_state[-1]
-      for name in keep:
-        if name in scope_left:
-          this_scope[name] = scope_left[name]
-    return scope_left
-
-  def set_local(self, name, value):
-    """Deprecated. Use self.state instead."""
-    self._local_scope_state[-1][name] = value
-
-  def get_local(self, name, default=None):
-    """Deprecated. Use self.state instead."""
-    return self._local_scope_state[-1].get(name, default)
-
   def debug_print(self, node):
-    """Helper method useful for debugging."""
+    """Helper method useful for debugging. Prints the AST."""
     if __debug__:
       print(pretty_printer.fmt(node))
     return node
 
-  def create_assignment(self, target, expression):
-    template = """
-      target = expression
-    """
-    return templates.replace(template, target=target, expression=expression)
+  def debug_print_src(self, node):
+    """Helper method useful for debugging. Prints the AST as code."""
+    if __debug__:
+      print(parser.unparse(node))
+    return node
 
   def visit_block(self, nodes, before_visit=None, after_visit=None):
     """A more powerful version of generic_visit for statement blocks.
@@ -363,6 +355,21 @@ class Base(gast.NodeTransformer):
         node_destination = new_destination
     return results
 
+
+# TODO(mdan): Rename to PythonCodeTransformer.
+class Base(NodeStateTracker, gast.NodeTransformer):
+  """Base class for general-purpose Python-to-Python code transformation.
+
+  This is an extension of ast.NodeTransformer that provides the additional
+  functions offered by NodeStateTracker.
+  """
+
+  def create_assignment(self, target, expression):
+    template = """
+      target = expression
+    """
+    return templates.replace(template, target=target, expression=expression)
+
   # TODO(mdan): Remove.
   def apply_to_single_assignments(self, targets, values, apply_fn):
     """Applies a function to each individual assignment.
@@ -390,11 +397,11 @@ class Base(gast.NodeTransformer):
 
     Args:
       targets: list, tuple of or individual AST node. Should be used with the
-          targets field of an ast.Assign node.
+        targets field of an ast.Assign node.
       values: an AST node.
       apply_fn: a function of a single argument, which will be called with the
-          respective nodes of each single assignment. The signature is
-          apply_fn(target, value), no return value.
+        respective nodes of each single assignment. The signature is
+        apply_fn(target, value), no return value.
     """
     if not isinstance(targets, (list, tuple)):
       targets = (targets,)
@@ -405,22 +412,11 @@ class Base(gast.NodeTransformer):
           if isinstance(values, (gast.Tuple, gast.List)):
             value_el = values.elts[i]
           else:
-            value_el = gast.Subscript(values, gast.Index(i), ctx=gast.Store())
+            value_el = gast.Subscript(values, i, ctx=gast.Store())
           self.apply_to_single_assignments(target_el, value_el, apply_fn)
       else:
         # TODO(mdan): Look into allowing to rewrite the AST here.
         apply_fn(target, values)
-
-  def _get_source(self, node):
-    try:
-      source, _ = compiler.ast_to_source(node)
-      return source
-    # pylint: disable=broad-except
-    # This function is used for error reporting.  If an exception occurs here,
-    # it should be suppressed, in favor of emitting as informative a message
-    # about the original error as possible.
-    except Exception:
-      return '<could not convert AST to source>'
 
   def visit(self, node):
     if not isinstance(node, gast.AST):
@@ -429,75 +425,118 @@ class Base(gast.NodeTransformer):
       # call `visit`.  The error needs to be raised before the exception handler
       # below is installed, because said handler will mess up if `node` is not,
       # in fact, a node.
-      msg = (
-          'invalid value for "node": expected "ast.AST", got "{}"; to'
-          ' visit lists of nodes, use "visit_block" instead').format(type(node))
+      msg = ('invalid value for "node": expected "ast.AST", got "{}"; to'
+             ' visit lists of nodes, use "visit_block" instead').format(
+                 type(node))
       raise ValueError(msg)
 
-    did_enter_function = False
-    local_scope_size_at_entry = len(self._local_scope_state)
-    processing_expr_node = False
+    if anno.hasanno(node, anno.Basic.SKIP_PROCESSING):
+      return node
+
+    parent_origin = self.ctx.current_origin
+    if anno.hasanno(node, anno.Basic.ORIGIN):
+      self.ctx.current_origin = anno.getanno(node, anno.Basic.ORIGIN)
 
     try:
-      parent_origin = self._current_origin
-      if isinstance(node, (gast.FunctionDef, gast.ClassDef, gast.Lambda)):
-        did_enter_function = True
-      elif isinstance(node, gast.Expr):
-        processing_expr_node = True
-
-      if did_enter_function:
-        self._enclosing_entities.append(node)
-
-      if anno.hasanno(node, anno.Basic.ORIGIN):
-        self._current_origin = anno.getanno(node, anno.Basic.ORIGIN)
-
+      processing_expr_node = isinstance(node, gast.Expr)
       if processing_expr_node:
         entry_expr_value = node.value
 
-      if not anno.hasanno(node, anno.Basic.SKIP_PROCESSING):
-        result = super(Base, self).visit(node)
-      self._current_origin = parent_origin
+      result = super(Base, self).visit(node)
 
       # Adjust for consistency: replacing the value of an Expr with
       # an Assign node removes the need for the Expr node.
-      if processing_expr_node:
-        if isinstance(result, gast.Expr) and result.value != entry_expr_value:
-          # When the replacement is a list, it is assumed that the list came
-          # from a template that contained a number of statements, which
-          # themselves are standalone and don't require an enclosing Expr.
-          if isinstance(result.value,
-                        (list, tuple, gast.Assign, gast.AugAssign)):
-            result = result.value
+      if (processing_expr_node and isinstance(result, gast.Expr) and
+          (result.value is not entry_expr_value)):
+        # When the replacement is a list, it is assumed that the list came
+        # from a template that contained a number of statements, which
+        # themselves are standalone and don't require an enclosing Expr.
+        if isinstance(result.value,
+                      (list, tuple, gast.Assign, gast.AugAssign)):
+          result = result.value
 
-      # On exception, the local scope integrity is not guaranteed.
-      if did_enter_function:
-        self._enclosing_entities.pop()
-
-      if local_scope_size_at_entry != len(self._local_scope_state):
-        raise AssertionError(
-            'Inconsistent local scope stack. Before entering node %s, the'
-            ' stack had length %d, after exit it has length %d. This'
-            ' indicates enter_local_scope and exit_local_scope are not'
-            ' well paired.' % (node, local_scope_size_at_entry,
-                               len(self._local_scope_state)))
-      return result
-
-    except (ValueError, AttributeError, KeyError, NotImplementedError) as e:
-      if not self._current_origin:
-        raise e
-      original_file_path = self._current_origin.loc.filename
-      original_line_number = self._current_origin.loc.lineno
-      original_col_offset = self._current_origin.loc.col_offset
-      original_source_line = self._current_origin.source_code_line
-      msg = '%s: %s.' % (e.__class__.__name__, str(e))
-
-      # TODO(mdan): Avoid the printing of the original exception.
-      # In other words, we need to find how to suppress the "During handling
-      # of the above exception, another exception occurred" message.
-      six.reraise(
-          AutographParseError,
-          AutographParseError(msg, (original_file_path, original_line_number,
-                                    original_col_offset, original_source_line)),
-          sys.exc_info()[2])
+      # By default, all replacements receive the origin info of the replaced
+      # node.
+      if result is not node and result is not None:
+        inherited_origin = anno.getanno(
+            node, anno.Basic.ORIGIN, default=parent_origin)
+        if inherited_origin is not None:
+          nodes_to_adjust = result
+          if isinstance(result, (list, tuple)):
+            nodes_to_adjust = result
+          else:
+            nodes_to_adjust = (result,)
+          for n in nodes_to_adjust:
+            if not anno.hasanno(n, anno.Basic.ORIGIN):
+              anno.setanno(n, anno.Basic.ORIGIN, inherited_origin)
     finally:
-      self._current_origin = parent_origin
+      self.ctx.current_origin = parent_origin
+
+    return result
+
+
+class CodeGenerator(NodeStateTracker, gast.NodeVisitor):
+  """Base class for general-purpose Python-to-string code transformation.
+
+  Similar to Base, but outputs arbitrary strings instead of a Python AST.
+
+  This uses the same visitor mechanism that the standard NodeVisitor uses,
+  meaning that subclasses write handlers for the different kinds of nodes.
+  New code is generated using the emit method, which appends to a code buffer
+  that can be afterwards obtained from code_buffer.
+
+  Example:
+
+    class SimpleCodeGen(CodeGenerator):
+
+      def visitIf(self, node):
+        self.emit('if ')
+        self.visit(node.test)
+        self.emit(' { ')
+        self.visit(node.body)
+        self.emit(' } else { ')
+        self.visit(node.orelse)
+        self.emit(' } ')
+
+    node = ast.parse(...)
+    gen = SimpleCodeGen()
+    gen.visit(node)
+    # gen.code_buffer contains the resulting code
+  """
+
+  def __init__(self, ctx):
+    super(CodeGenerator, self).__init__(ctx)
+
+    self._output_code = ''
+    self.source_map = {}
+
+  def emit(self, code):
+    self._output_code += code
+
+  @property
+  def code_buffer(self):
+    return self._output_code
+
+  def visit(self, node):
+    if anno.hasanno(node, anno.Basic.SKIP_PROCESSING):
+      return
+
+    parent_origin = self.ctx.current_origin
+    eof_before = len(self._output_code)
+    if anno.hasanno(node, anno.Basic.ORIGIN):
+      self.ctx.current_origin = anno.getanno(node, anno.Basic.ORIGIN)
+
+    try:
+      ret = super(CodeGenerator, self).visit(node)
+
+      # By default, all replacements receive the origin info of the replaced
+      # node.
+      eof_after = len(self._output_code)
+      if eof_before - eof_after:
+        inherited_origin = anno.getanno(
+            node, anno.Basic.ORIGIN, default=parent_origin)
+        if inherited_origin is not None:
+          self.source_map[(eof_before, eof_after)] = inherited_origin
+      return ret
+    finally:
+      self.ctx.current_origin = parent_origin

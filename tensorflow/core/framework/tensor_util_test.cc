@@ -17,7 +17,11 @@ limitations under the License.
 
 #include <vector>
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/framework/variant_encode_decode.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -107,12 +111,12 @@ TEST(TensorUtil, DeepCopy) {
 
   // Test string deep copy
   Tensor str1(DT_STRING, TensorShape({2}));
-  str1.flat<string>()(0) = "foo1";
-  str1.flat<string>()(1) = "foo2";
+  str1.flat<tstring>()(0) = "foo1";
+  str1.flat<tstring>()(1) = "foo2";
   Tensor str2 = tensor::DeepCopy(str1);
-  str2.flat<string>()(0) = "bar1";
-  str2.flat<string>()(1) = "bar2";
-  EXPECT_NE(str2.flat<string>()(0), str1.flat<string>()(0));
+  str2.flat<tstring>()(0) = "bar1";
+  str2.flat<tstring>()(1) = "bar2";
+  EXPECT_NE(str2.flat<tstring>()(0), str1.flat<tstring>()(0));
 }
 
 TEST(TensorUtil, DeepCopySlice) {
@@ -142,6 +146,69 @@ TEST(TensorUtil, DeepCopySlice) {
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(2, y.unaligned_flat<int32>()(i));
     EXPECT_EQ(1, z.flat<int32>()(i));
+  }
+}
+
+TEST(TensorUtil, DeepCopySliceString) {
+  Tensor x(DT_STRING, TensorShape({10}));
+  x.flat<tstring>().setConstant("hello");
+
+  // Slice 'x' -- y still refers to the same buffer.
+  Tensor y = x.Slice(3, 7);
+
+  // Do a deep copy of y, which is a slice.
+  Tensor z = tensor::DeepCopy(y);
+
+  // Set x to be different.
+  x.flat<tstring>().setConstant("goodbye");
+
+  EXPECT_EQ(TensorShape({10}), x.shape());
+  EXPECT_EQ(TensorShape({4}), y.shape());
+  EXPECT_EQ(TensorShape({4}), z.shape());
+  EXPECT_EQ(DT_STRING, x.dtype());
+  EXPECT_EQ(DT_STRING, y.dtype());
+  EXPECT_EQ(DT_STRING, z.dtype());
+
+  // x and y should now all be 'goodbye', but z should be 'hello'.
+  for (int i = 0; i < 10; ++i) {
+    EXPECT_EQ("goodbye", x.flat<tstring>()(i));
+  }
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_EQ("goodbye", y.unaligned_flat<tstring>()(i));
+    EXPECT_EQ("hello", z.flat<tstring>()(i));
+  }
+}
+
+TEST(TensorUtil, DeepCopySliceVariant) {
+  Tensor x(DT_VARIANT, TensorShape({10}));
+  x.flat<Variant>().setConstant(Tensor(42.0f));
+
+  // Slice 'x' -- y still refers to the same buffer.
+  Tensor y = x.Slice(3, 7);
+
+  // Do a deep copy of y, which is a slice.
+  Tensor z = tensor::DeepCopy(y);
+
+  // Set x to be different.
+  x.flat<Variant>().setConstant(Tensor("foo"));
+
+  EXPECT_EQ(TensorShape({10}), x.shape());
+  EXPECT_EQ(TensorShape({4}), y.shape());
+  EXPECT_EQ(TensorShape({4}), z.shape());
+  EXPECT_EQ(DT_VARIANT, x.dtype());
+  EXPECT_EQ(DT_VARIANT, y.dtype());
+  EXPECT_EQ(DT_VARIANT, z.dtype());
+
+  // Each element of x and y should now be a DT_STRING Tensor containing "foo",
+  // but each element of z should be a DT_FLOAT tensor containing 42.0.
+  for (int i = 0; i < 10; ++i) {
+    EXPECT_EQ("foo", x.flat<Variant>()(i).get<Tensor>()->scalar<tstring>()());
+  }
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_EQ(
+        "foo",
+        y.unaligned_flat<Variant>()(i).get<Tensor>()->scalar<tstring>()());
+    EXPECT_EQ(42.0, z.flat<Variant>()(i).get<Tensor>()->scalar<float>()());
   }
 }
 
@@ -205,7 +272,7 @@ TEST(TensorUtil, Split) {
 TEST(TensorUtil, ConcatSplitStrings) {
   Tensor x(DT_STRING, TensorShape({4, 3}));
   for (int i = 0; i < 4 * 3; ++i) {
-    x.flat<string>()(i) = strings::StrCat("foo_", i);
+    x.flat<tstring>()(i) = strings::StrCat("foo_", i);
   }
 
   std::vector<Tensor> split;
@@ -214,15 +281,15 @@ TEST(TensorUtil, ConcatSplitStrings) {
   TF_ASSERT_OK(tensor::Concat(split, &x_round_tripped));
   ASSERT_EQ(x.shape(), x_round_tripped.shape());
   for (int i = 0; i < 4 * 3; ++i) {
-    EXPECT_EQ(x.flat<string>()(i), x_round_tripped.flat<string>()(i));
+    EXPECT_EQ(x.flat<tstring>()(i), x_round_tripped.flat<tstring>()(i));
   }
 
   // Ensure that no memory is being shared between 'x' and 'x_round_tripped'.
   for (int i = 0; i < 4 * 3; ++i) {
-    x_round_tripped.flat<string>()(i) = strings::StrCat("bar_", i);
+    x_round_tripped.flat<tstring>()(i) = strings::StrCat("bar_", i);
   }
   for (int i = 0; i < 4 * 3; ++i) {
-    EXPECT_NE(x.flat<string>()(i), x_round_tripped.flat<string>()(i));
+    EXPECT_NE(x.flat<tstring>()(i), x_round_tripped.flat<tstring>()(i));
   }
 }
 
@@ -364,6 +431,178 @@ TEST(TensorProtoUtil, CreatesBoolTensorProto) {
             "}\n"
             "bool_val: true\n"
             "bool_val: false\n");
+}
+
+TEST(TensorProtoUtil, CompressTensorProtoInPlaceTooSmall) {
+  const int kLength = 63;
+  TensorProto tensor_proto =
+      tensor::CreateTensorProto(std::vector<float>(kLength), {kLength});
+  EXPECT_FALSE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  tensor_proto =
+      tensor::CreateTensorProto(std::vector<int>(kLength), {kLength});
+  EXPECT_FALSE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  tensor_proto =
+      tensor::CreateTensorProto(std::vector<uint8>(kLength), {kLength});
+  EXPECT_FALSE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  tensor_proto =
+      tensor::CreateTensorProto(std::vector<bool>(kLength), {kLength});
+  EXPECT_FALSE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  tensor_proto =
+      tensor::CreateTensorProto(std::vector<Eigen::half>(kLength), {kLength});
+  EXPECT_FALSE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  tensor_proto = tensor::CreateTensorProto(
+      std::vector<std::complex<float>>(kLength), {kLength});
+  EXPECT_FALSE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+}
+
+TEST(TensorProtoUtil, CompressTensorProtoInPlaceAllEqual) {
+  const int kLength = 64;
+  TensorProto tensor_proto =
+      tensor::CreateTensorProto(std::vector<float>(kLength), {kLength});
+  EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  EXPECT_EQ(tensor::internal::TensorProtoHelper<float>::NumValues(tensor_proto),
+            1);
+
+  tensor_proto =
+      tensor::CreateTensorProto(std::vector<int>(kLength), {kLength});
+  EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  EXPECT_EQ(tensor::internal::TensorProtoHelper<int>::NumValues(tensor_proto),
+            1);
+
+  tensor_proto =
+      tensor::CreateTensorProto(std::vector<uint8>(kLength), {kLength});
+  EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  EXPECT_EQ(tensor::internal::TensorProtoHelper<uint8>::NumValues(tensor_proto),
+            1);
+  tensor_proto =
+      tensor::CreateTensorProto(std::vector<bool>(kLength), {kLength});
+  EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  EXPECT_EQ(tensor::internal::TensorProtoHelper<bool>::NumValues(tensor_proto),
+            1);
+
+  tensor_proto =
+      tensor::CreateTensorProto(std::vector<Eigen::half>(kLength), {kLength});
+  EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  EXPECT_EQ(
+      tensor::internal::TensorProtoHelper<Eigen::half>::NumValues(tensor_proto),
+      1);
+
+  tensor_proto = tensor::CreateTensorProto(
+      std::vector<std::complex<float>>(kLength), {kLength});
+  EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  EXPECT_EQ(tensor::internal::TensorProtoHelper<std::complex<float>>::NumValues(
+                tensor_proto),
+            1);
+}
+
+template <typename T>
+void VectorWithConstantTail(int size, int tail_length, std::vector<T>* v) {
+  CHECK_LE(tail_length, size);
+  v->clear();
+  for (int i = 0; i < size; ++i) {
+    T vi = (i >= size - tail_length) ? T() : T(i);
+    v->push_back(vi);
+  }
+}
+
+template <>
+void VectorWithConstantTail(int size, int tail_length,
+                            std::vector<std::complex<float>>* v) {
+  CHECK_LE(tail_length, size);
+  v->clear();
+  for (int i = 0; i < size; ++i) {
+    std::complex<float> vi(
+        0.0f, (i >= (size - tail_length)) ? 0.f : static_cast<float>(i));
+    v->push_back(vi);
+  }
+}
+
+template <typename T>
+TensorProto CreateAsProtoTensorContent(int size, int tail_length) {
+  std::vector<T> values;
+  VectorWithConstantTail<T>(size, tail_length, &values);
+  Tensor tensor(DataTypeToEnum<T>::value, TensorShape({size}));
+  std::copy(values.begin(), values.end(), tensor.flat<T>().data());
+  TensorProto tensor_proto;
+  tensor.AsProtoTensorContent(&tensor_proto);
+  return tensor_proto;
+}
+
+template <typename T>
+TensorProto CreateAsProtoField(int size, int tail_length) {
+  std::vector<T> values;
+  VectorWithConstantTail<T>(size, tail_length, &values);
+  Tensor tensor(DataTypeToEnum<T>::value, TensorShape({size}));
+  std::copy(values.begin(), values.end(), tensor.flat<T>().data());
+  TensorProto tensor_proto;
+  tensor.AsProtoField(&tensor_proto);
+  return tensor_proto;
+}
+
+template <typename T>
+void CompareTensorValues(const TensorProto& x, const TensorProto& y) {
+  Tensor x_t;
+  EXPECT_TRUE(x_t.FromProto(x));
+  Tensor y_t;
+  EXPECT_TRUE(y_t.FromProto(y));
+  test::ExpectTensorEqual<T>(x_t, y_t);
+}
+
+template <typename T>
+void ConstantTailTest(int64 length, int64 tail_length, bool as_field) {
+  using TensorProtoHelper = tensor::internal::TensorProtoHelper<T>;
+  using FieldType = typename TensorProtoHelper::FieldType;
+  const float kMinCompressionRatio = 2.0;
+  const int64 kMinSize = 64;
+  TensorProto tensor_proto =
+      as_field ? CreateAsProtoField<T>(length, tail_length)
+               : CreateAsProtoTensorContent<T>(length, tail_length);
+  TensorProto original_tensor_proto = tensor_proto;
+  int64 original_size =
+      length * (as_field ? (is_complex<T>::value ? 2 : 1) * sizeof(FieldType)
+                         : sizeof(T));
+  int64 size_as_tensor_content = length * sizeof(T);
+  int64 size_as_field = std::min(length, (length - tail_length + 1)) *
+                        (is_complex<T>::value ? 2 : 1) * sizeof(FieldType);
+  bool will_compress = std::min(size_as_tensor_content, size_as_field) <=
+                       static_cast<int64>(original_size / kMinCompressionRatio);
+
+  EXPECT_EQ(tensor::CompressTensorProtoInPlace(kMinSize, kMinCompressionRatio,
+                                               &tensor_proto),
+            will_compress);
+  if (will_compress) {
+    if (size_as_tensor_content < size_as_field) {
+      EXPECT_EQ(TensorProtoHelper::NumValues(tensor_proto), 0);
+      EXPECT_FALSE(tensor_proto.tensor_content().empty());
+    } else {
+      EXPECT_LE(TensorProtoHelper::NumValues(tensor_proto),
+                (length - tail_length + 1));
+      EXPECT_TRUE(tensor_proto.tensor_content().empty());
+    }
+  }
+  CompareTensorValues<T>(tensor_proto, original_tensor_proto);
+}
+
+TEST(TensorProtoUtil, CompressTensorProtoConstantTail) {
+  const int kLength = 64;
+  for (bool as_field : {true, false}) {
+    for (int tail_length : {0, 1, 2, 32, 33, 63, 64}) {
+      ConstantTailTest<float>(kLength, tail_length, as_field);
+      ConstantTailTest<double>(kLength, tail_length, as_field);
+      ConstantTailTest<complex64>(kLength, tail_length, as_field);
+      ConstantTailTest<complex128>(kLength, tail_length, as_field);
+      ConstantTailTest<int32>(kLength, tail_length, as_field);
+      ConstantTailTest<uint32>(kLength, tail_length, as_field);
+      ConstantTailTest<int64>(kLength, tail_length, as_field);
+      ConstantTailTest<uint64>(kLength, tail_length, as_field);
+      ConstantTailTest<int8>(kLength, tail_length, as_field);
+      ConstantTailTest<uint8>(kLength, tail_length, as_field);
+      ConstantTailTest<int16>(kLength, tail_length, as_field);
+      ConstantTailTest<uint16>(kLength, tail_length, as_field);
+      ConstantTailTest<Eigen::half>(kLength, tail_length, as_field);
+      ConstantTailTest<bfloat16>(kLength, tail_length, as_field);
+    }
+  }
 }
 
 }  // namespace

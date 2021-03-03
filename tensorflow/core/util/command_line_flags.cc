@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cinttypes>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -30,9 +31,8 @@ bool ParseStringFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
                      const std::function<bool(string)>& hook,
                      bool* value_parsing_ok) {
   *value_parsing_ok = true;
-  if (str_util::ConsumePrefix(&arg, "--") &&
-      str_util::ConsumePrefix(&arg, flag) &&
-      str_util::ConsumePrefix(&arg, "=")) {
+  if (absl::ConsumePrefix(&arg, "--") && absl::ConsumePrefix(&arg, flag) &&
+      absl::ConsumePrefix(&arg, "=")) {
     *value_parsing_ok = hook(string(arg));
     return true;
   }
@@ -44,9 +44,8 @@ bool ParseInt32Flag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
                     const std::function<bool(int32)>& hook,
                     bool* value_parsing_ok) {
   *value_parsing_ok = true;
-  if (str_util::ConsumePrefix(&arg, "--") &&
-      str_util::ConsumePrefix(&arg, flag) &&
-      str_util::ConsumePrefix(&arg, "=")) {
+  if (absl::ConsumePrefix(&arg, "--") && absl::ConsumePrefix(&arg, flag) &&
+      absl::ConsumePrefix(&arg, "=")) {
     char extra;
     int32 parsed_int32;
     if (sscanf(arg.data(), "%d%c", &parsed_int32, &extra) != 1) {
@@ -66,9 +65,8 @@ bool ParseInt64Flag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
                     const std::function<bool(int64)>& hook,
                     bool* value_parsing_ok) {
   *value_parsing_ok = true;
-  if (str_util::ConsumePrefix(&arg, "--") &&
-      str_util::ConsumePrefix(&arg, flag) &&
-      str_util::ConsumePrefix(&arg, "=")) {
+  if (absl::ConsumePrefix(&arg, "--") && absl::ConsumePrefix(&arg, flag) &&
+      absl::ConsumePrefix(&arg, "=")) {
     char extra;
     int64_t parsed_int64;
     if (sscanf(arg.data(), "%" SCNd64 "%c", &parsed_int64, &extra) != 1) {
@@ -88,8 +86,7 @@ bool ParseBoolFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
                    const std::function<bool(bool)>& hook,
                    bool* value_parsing_ok) {
   *value_parsing_ok = true;
-  if (str_util::ConsumePrefix(&arg, "--") &&
-      str_util::ConsumePrefix(&arg, flag)) {
+  if (absl::ConsumePrefix(&arg, "--") && absl::ConsumePrefix(&arg, flag)) {
     if (arg.empty()) {
       *value_parsing_ok = hook(true);
       return true;
@@ -116,9 +113,8 @@ bool ParseFloatFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
                     const std::function<bool(float)>& hook,
                     bool* value_parsing_ok) {
   *value_parsing_ok = true;
-  if (str_util::ConsumePrefix(&arg, "--") &&
-      str_util::ConsumePrefix(&arg, flag) &&
-      str_util::ConsumePrefix(&arg, "=")) {
+  if (absl::ConsumePrefix(&arg, "--") && absl::ConsumePrefix(&arg, flag) &&
+      absl::ConsumePrefix(&arg, "=")) {
     char extra;
     float parsed_float;
     if (sscanf(arg.data(), "%f%c", &parsed_float, &extra) != 1) {
@@ -136,51 +132,61 @@ bool ParseFloatFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
 
 }  // namespace
 
-Flag::Flag(const char* name, tensorflow::int32* dst, const string& usage_text)
+Flag::Flag(const char* name, tensorflow::int32* dst, const string& usage_text,
+           bool* dst_updated)
     : name_(name),
       type_(TYPE_INT32),
-      int32_hook_([dst](int32 value) {
+      int32_hook_([dst, dst_updated](int32 value) {
         *dst = value;
+        if (dst_updated) *dst_updated = true;
         return true;
       }),
       int32_default_for_display_(*dst),
       usage_text_(usage_text) {}
 
-Flag::Flag(const char* name, tensorflow::int64* dst, const string& usage_text)
+Flag::Flag(const char* name, tensorflow::int64* dst, const string& usage_text,
+           bool* dst_updated)
     : name_(name),
       type_(TYPE_INT64),
-      int64_hook_([dst](int64 value) {
+      int64_hook_([dst, dst_updated](int64 value) {
         *dst = value;
+        if (dst_updated) *dst_updated = true;
         return true;
       }),
       int64_default_for_display_(*dst),
       usage_text_(usage_text) {}
 
-Flag::Flag(const char* name, float* dst, const string& usage_text)
+Flag::Flag(const char* name, float* dst, const string& usage_text,
+           bool* dst_updated)
     : name_(name),
       type_(TYPE_FLOAT),
-      float_hook_([dst](float value) {
+      float_hook_([dst, dst_updated](float value) {
         *dst = value;
+        if (dst_updated) *dst_updated = true;
         return true;
       }),
       float_default_for_display_(*dst),
       usage_text_(usage_text) {}
 
-Flag::Flag(const char* name, bool* dst, const string& usage_text)
+Flag::Flag(const char* name, bool* dst, const string& usage_text,
+           bool* dst_updated)
     : name_(name),
       type_(TYPE_BOOL),
-      bool_hook_([dst](bool value) {
+      bool_hook_([dst, dst_updated](bool value) {
         *dst = value;
+        if (dst_updated) *dst_updated = true;
         return true;
       }),
       bool_default_for_display_(*dst),
       usage_text_(usage_text) {}
 
-Flag::Flag(const char* name, string* dst, const string& usage_text)
+Flag::Flag(const char* name, string* dst, const string& usage_text,
+           bool* dst_updated)
     : name_(name),
       type_(TYPE_STRING),
-      string_hook_([dst](string value) {
+      string_hook_([dst, dst_updated](string value) {
         *dst = std::move(value);
+        if (dst_updated) *dst_updated = true;
         return true;
       }),
       string_default_for_display_(*dst),

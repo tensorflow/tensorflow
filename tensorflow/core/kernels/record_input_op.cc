@@ -55,7 +55,7 @@ class RecordInputOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     Tensor out(DT_STRING, {batch_size_});
-    auto t_out = out.flat<string>();
+    auto t_out = out.flat<tstring>();
     for (int i = 0; i < batch_size_; ++i) {
       OP_REQUIRES_OK(ctx, yielder_->YieldOne(&t_out(i)));
     }

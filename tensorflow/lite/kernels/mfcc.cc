@@ -13,16 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/mfcc.h"
-#include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+
+#include <stddef.h>
+#include <stdint.h>
+
+#include <vector>
+
+#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/mfcc_dct.h"
 #include "tensorflow/lite/kernels/internal/mfcc_mel_filterbank.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -67,19 +73,26 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* inputWav = GetInput(context, node, kInputTensorWav);
-  const TfLiteTensor* inputRate = GetInput(context, node, kInputTensorRate);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input_wav;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorWav, &input_wav));
+  const TfLiteTensor* input_rate;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorRate, &input_rate));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
-  TF_LITE_ENSURE_EQ(context, NumDimensions(inputWav), 3);
-  TF_LITE_ENSURE_EQ(context, NumDimensions(inputRate), 1);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(input_wav), 3);
+  TF_LITE_ENSURE_EQ(context, NumElements(input_rate), 1);
 
-  TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
-  TF_LITE_ENSURE_EQ(context, inputWav->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat32);
+  TF_LITE_ENSURE_TYPES_EQ(context, input_wav->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input_rate->type, kTfLiteInt32);
 
   TfLiteIntArray* output_size = TfLiteIntArrayCreate(3);
-  output_size->data[0] = inputWav->dims->data[0];
-  output_size->data[1] = inputWav->dims->data[1];
+  output_size->data[0] = input_wav->dims->data[0];
+  output_size->data[1] = input_wav->dims->data[1];
   output_size->data[2] = params->dct_coefficient_count;
 
   return context->ResizeTensor(context, output, output_size);
@@ -94,15 +107,21 @@ template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteMfccParams*>(node->user_data);
 
-  const TfLiteTensor* inputWav = GetInput(context, node, kInputTensorWav);
-  const TfLiteTensor* inputRate = GetInput(context, node, kInputTensorRate);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input_wav;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorWav, &input_wav));
+  const TfLiteTensor* input_rate;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kInputTensorRate, &input_rate));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
-  const int32 sample_rate = *GetTensorData<int>(inputRate);
+  const int32 sample_rate = *GetTensorData<int>(input_rate);
 
-  const int spectrogram_channels = inputWav->dims->data[2];
-  const int spectrogram_samples = inputWav->dims->data[1];
-  const int audio_channels = inputWav->dims->data[0];
+  const int spectrogram_channels = input_wav->dims->data[2];
+  const int spectrogram_samples = input_wav->dims->data[1];
+  const int audio_channels = input_wav->dims->data[0];
 
   internal::Mfcc mfcc;
   mfcc.set_upper_frequency_limit(params->upper_frequency_limit);
@@ -112,7 +131,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   mfcc.Initialize(spectrogram_channels, sample_rate);
 
-  const float* spectrogram_flat = GetTensorData<float>(inputWav);
+  const float* spectrogram_flat = GetTensorData<float>(input_wav);
   float* output_flat = GetTensorData<float>(output);
 
   for (int audio_channel = 0; audio_channel < audio_channels; ++audio_channel) {

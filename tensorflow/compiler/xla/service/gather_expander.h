@@ -16,20 +16,45 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GATHER_EXPANDER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GATHER_EXPANDER_H_
 
-#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/compiler/xla/service/op_expander_pass.h"
 
 namespace xla {
 
 // This pass rewrites gather operations into (roughly) while loops of dynamic
-// slices.  This lets backends that don't support gather directly to
-// nevertheless have a minimum level of support.
-class GatherExpander : public HloModulePass {
+// slices.
+//
+// This pass can be used two ways:
+//
+//  - kEliminateAllGathers: For backends that don't support gather, this pass
+//    can convert every gather to a loop.
+//
+//  - kEliminateSimpleGathers: For backends that *do* support gather, this pass
+//    can strength-reduce "simple" gathers -- specifically, gathers that can be
+//    represented without a loop -- to dyanmic-slices.
+//
+// Note that even in kEliminateSimpleGathers mode, this pass may still expand a
+// gather into a loop (with a trip-count of 1).  It's up to other simplification
+// passes to remove the loop.
+//
+class GatherExpander : public OpExpanderPass {
  public:
+  enum Mode {
+    kEliminateAllGathers,
+    kEliminateSimpleGathers,
+  };
+
+  explicit GatherExpander(Mode m) : mode_(m) {}
+
   absl::string_view name() const override { return "gather_expander"; }
-  StatusOr<bool> Run(HloModule* module) override;
 
  protected:
-  StatusOr<HloInstruction*> ExpandGather(HloInstruction* gather_instr);
+  bool InstructionMatchesPattern(HloInstruction* instruction) override;
+
+  StatusOr<HloInstruction*> ExpandInstruction(
+      HloInstruction* gather_inst) override;
+
+ private:
+  Mode mode_;
 };
 
 }  // namespace xla

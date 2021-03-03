@@ -258,7 +258,7 @@ class NormalTest(test.TestCase):
           value = func(x)
           grads = gradients_impl.gradients(value, [mu, sigma])
           with self.session(graph=g):
-            variables.global_variables_initializer().run()
+            self.evaluate(variables.global_variables_initializer())
             self.assertAllFinite(value)
             self.assertAllFinite(grads[0])
             self.assertAllFinite(grads[1])
@@ -381,7 +381,7 @@ class NormalTest(test.TestCase):
       value = dist.quantile(p)
       grads = gradients_impl.gradients(value, [mu, p])
       with self.cached_session(graph=g):
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         self.assertAllFinite(grads[0])
         self.assertAllFinite(grads[1])
 
@@ -511,6 +511,7 @@ class NormalTest(test.TestCase):
     self.assertAllEqual(self.evaluate(normal.event_shape_tensor()), [])
     self.assertEqual(normal.event_shape, tensor_shape.TensorShape([]))
 
+  @test_util.run_deprecated_v1
   def testNormalShapeWithPlaceholders(self):
     mu = array_ops.placeholder(dtype=dtypes.float32)
     sigma = array_ops.placeholder(dtype=dtypes.float32)

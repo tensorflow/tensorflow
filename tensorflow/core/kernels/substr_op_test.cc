@@ -115,7 +115,7 @@ const char* const kUTF8Unit = "UTF8_CHAR";
 Tensor GetTestTensor(int batch) {
   const int sz = TF_ARRAYSIZE(ascii_lines);
   Tensor t(DT_STRING, {batch});
-  auto s = t.flat<string>();
+  auto s = t.flat<tstring>();
   for (int i = 0; i < batch; ++i) {
     s(i) = ascii_lines[i % sz];
   }
@@ -125,7 +125,7 @@ Tensor GetTestTensor(int batch) {
 Tensor GetTestUTF8Tensor(int batch) {
   const int sz = TF_ARRAYSIZE(unicode_lines);
   Tensor t(DT_STRING, {batch});
-  auto s = t.flat<string>();
+  auto s = t.flat<tstring>();
   for (int i = 0; i < batch; ++i) {
     s(i) = unicode_lines[i % sz];
   }
@@ -149,27 +149,26 @@ Graph* SetupSubstrGraph(const Tensor& input, const int32 pos, const int32 len,
   return g;
 }
 
-void BM_SubstrByte(int iters, int batch_size) {
-  testing::StopTiming();
-  testing::ItemsProcessed(static_cast<int64>(iters));
-  testing::UseRealTime();
+static void BM_SubstrByte(::testing::benchmark::State& state) {
+  const int batch_size = state.range(0);
+
   Tensor input = GetTestTensor(batch_size);
   Graph* g = SetupSubstrGraph(input, 3, 30, kByteUnit);
-  testing::StartTiming();
-  test::Benchmark("cpu", g).Run(iters);
+  test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);
+  state.SetItemsProcessed(state.iterations());
 }
 
-void BM_SubstrUTF8(int iters, int batch_size) {
-  testing::StopTiming();
-  testing::ItemsProcessed(static_cast<int64>(iters));
-  testing::UseRealTime();
+static void BM_SubstrUTF8(::testing::benchmark::State& state) {
+  const int batch_size = state.range(0);
+
   Tensor input = GetTestUTF8Tensor(batch_size);
   Graph* g = SetupSubstrGraph(input, 3, 30, kUTF8Unit);
-  testing::StartTiming();
-  test::Benchmark("cpu", g).Run(iters);
+  test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);
+  state.SetItemsProcessed(state.iterations());
 }
 
 BENCHMARK(BM_SubstrByte)
+    ->UseRealTime()
     ->Arg(1)
     ->Arg(8)
     ->Arg(16)
@@ -178,6 +177,7 @@ BENCHMARK(BM_SubstrByte)
     ->Arg(128)
     ->Arg(256);
 BENCHMARK(BM_SubstrUTF8)
+    ->UseRealTime()
     ->Arg(1)
     ->Arg(8)
     ->Arg(16)

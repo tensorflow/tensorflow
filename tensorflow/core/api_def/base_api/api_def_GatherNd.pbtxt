@@ -21,13 +21,13 @@ END
   }
   summary: "Gather slices from `params` into a Tensor with shape specified by `indices`."
   description: <<END
-`indices` is an K-dimensional integer tensor, best thought of as a
+`indices` is a K-dimensional integer tensor, best thought of as a
 (K-1)-dimensional tensor of indices into `params`, where each element defines a
 slice of `params`:
 
     output[\\(i_0, ..., i_{K-2}\\)] = params[indices[\\(i_0, ..., i_{K-2}\\)]]
 
-Whereas in `tf.gather` `indices` defines slices into the first
+Whereas in `tf.gather` `indices` defines slices into the `axis`
 dimension of `params`, in `tf.gather_nd`, `indices` defines slices into the
 first `N` dimensions of `params`, where `N = indices.shape[-1]`.
 

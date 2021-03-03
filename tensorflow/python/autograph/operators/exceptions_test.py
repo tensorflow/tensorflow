@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.autograph.operators import exceptions
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
@@ -30,18 +31,20 @@ class ExceptionsTest(test.TestCase):
     with self.cached_session() as sess:
       t = exceptions.assert_stmt(
           constant_op.constant(True), lambda: constant_op.constant('ignored'))
-      sess.run(t)
+      self.evaluate(t)
 
+  @test_util.run_deprecated_v1
   def test_assert_tf_triggered(self):
     with self.cached_session() as sess:
       t = exceptions.assert_stmt(
           constant_op.constant(False),
           lambda: constant_op.constant('test message'))
 
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   'test message'):
-        sess.run(t)
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  'test message'):
+        self.evaluate(t)
 
+  @test_util.run_deprecated_v1
   def test_assert_tf_multiple_printed_values(self):
     two_tensors = [
         constant_op.constant('test message'),
@@ -51,9 +54,9 @@ class ExceptionsTest(test.TestCase):
       t = exceptions.assert_stmt(
           constant_op.constant(False), lambda: two_tensors)
 
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   'test message.*another message'):
-        sess.run(t)
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  'test message.*another message'):
+        self.evaluate(t)
 
   def test_assert_python_untriggered(self):
     side_effect_trace = []
@@ -78,7 +81,7 @@ class ExceptionsTest(test.TestCase):
       side_effect_trace.append(tracer)
       return 'test message'
 
-    with self.assertRaisesRegexp(AssertionError, 'test message'):
+    with self.assertRaisesRegex(AssertionError, 'test message'):
       exceptions.assert_stmt(False, expression_with_side_effects)
     self.assertListEqual(side_effect_trace, [tracer])
 

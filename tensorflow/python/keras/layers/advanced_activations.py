@@ -18,43 +18,64 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
-from tensorflow.python.keras.engine.base_layer import InputSpec
 from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import math_ops
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.layers.LeakyReLU')
+def get_globals():
+  return globals()
+
+
+@keras_export('keras.layers.LeakyReLU')
 class LeakyReLU(Layer):
   """Leaky version of a Rectified Linear Unit.
 
   It allows a small gradient when the unit is not active:
-  `f(x) = alpha * x for x < 0`,
-  `f(x) = x for x >= 0`.
+
+  ```
+    f(x) = alpha * x if x < 0
+    f(x) = x if x >= 0
+  ```
+
+  Usage:
+
+  >>> layer = tf.keras.layers.LeakyReLU()
+  >>> output = layer([-3.0, -1.0, 0.0, 2.0])
+  >>> list(output.numpy())
+  [-0.9, -0.3, 0.0, 2.0]
+  >>> layer = tf.keras.layers.LeakyReLU(alpha=0.1)
+  >>> output = layer([-3.0, -1.0, 0.0, 2.0])
+  >>> list(output.numpy())
+  [-0.3, -0.1, 0.0, 2.0]
 
   Input shape:
-      Arbitrary. Use the keyword argument `input_shape`
-      (tuple of integers, does not include the samples axis)
-      when using this layer as the first layer in a model.
+    Arbitrary. Use the keyword argument `input_shape`
+    (tuple of integers, does not include the batch axis)
+    when using this layer as the first layer in a model.
 
   Output shape:
-      Same shape as the input.
+    Same shape as the input.
 
-  Arguments:
-      alpha: float >= 0. Negative slope coefficient.
+  Args:
+    alpha: Float >= 0. Negative slope coefficient. Default to 0.3.
 
   """
 
   def __init__(self, alpha=0.3, **kwargs):
     super(LeakyReLU, self).__init__(**kwargs)
+    if alpha is None:
+      raise ValueError('alpha of leaky Relu layer '
+                       'cannot be None. Required a float')
     self.supports_masking = True
     self.alpha = K.cast_to_floatx(alpha)
-    self._can_use_graph_functions = True
 
   def call(self, inputs):
     return K.relu(inputs, alpha=self.alpha)
@@ -69,36 +90,39 @@ class LeakyReLU(Layer):
     return input_shape
 
 
-@tf_export('keras.layers.PReLU')
+@keras_export('keras.layers.PReLU')
 class PReLU(Layer):
   """Parametric Rectified Linear Unit.
 
   It follows:
-  `f(x) = alpha * x for x < 0`,
-  `f(x) = x for x >= 0`,
+
+  ```
+    f(x) = alpha * x for x < 0
+    f(x) = x for x >= 0
+  ```
+
   where `alpha` is a learned array with the same shape as x.
 
   Input shape:
-      Arbitrary. Use the keyword argument `input_shape`
-      (tuple of integers, does not include the samples axis)
-      when using this layer as the first layer in a model.
+    Arbitrary. Use the keyword argument `input_shape`
+    (tuple of integers, does not include the samples axis)
+    when using this layer as the first layer in a model.
 
   Output shape:
-      Same shape as the input.
+    Same shape as the input.
 
-  Arguments:
-      alpha_initializer: initializer function for the weights.
-      alpha_regularizer: regularizer for the weights.
-      alpha_constraint: constraint for the weights.
-      shared_axes: the axes along which to share learnable
-          parameters for the activation function.
-          For example, if the incoming feature maps
-          are from a 2D convolution
-          with output shape `(batch, height, width, channels)`,
-          and you wish to share parameters across space
-          so that each filter only has one set of parameters,
-          set `shared_axes=[1, 2]`.
-
+  Args:
+    alpha_initializer: Initializer function for the weights.
+    alpha_regularizer: Regularizer for the weights.
+    alpha_constraint: Constraint for the weights.
+    shared_axes: The axes along which to share learnable
+      parameters for the activation function.
+      For example, if the incoming feature maps
+      are from a 2D convolution
+      with output shape `(batch, height, width, channels)`,
+      and you wish to share parameters across space
+      so that each filter only has one set of parameters,
+      set `shared_axes=[1, 2]`.
   """
 
   def __init__(self,
@@ -118,16 +142,13 @@ class PReLU(Layer):
       self.shared_axes = [shared_axes]
     else:
       self.shared_axes = list(shared_axes)
-    self._can_use_graph_functions = True
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
     param_shape = list(input_shape[1:])
-    self.param_broadcast = [False] * len(param_shape)
     if self.shared_axes is not None:
       for i in self.shared_axes:
         param_shape[i - 1] = 1
-        self.param_broadcast[i - 1] = True
     self.alpha = self.add_weight(
         shape=param_shape,
         name='alpha',
@@ -143,14 +164,9 @@ class PReLU(Layer):
     self.input_spec = InputSpec(ndim=len(input_shape), axes=axes)
     self.built = True
 
-  def call(self, inputs, mask=None):
+  def call(self, inputs):
     pos = K.relu(inputs)
-    if K.backend() == 'theano':
-      neg = (
-          K.pattern_broadcast(self.alpha, self.param_broadcast) *
-          (inputs - math_ops.abs(inputs)) * 0.5)
-    else:
-      neg = -self.alpha * K.relu(-inputs)
+    neg = -self.alpha * K.relu(-inputs)
     return pos + neg
 
   def get_config(self):
@@ -168,32 +184,35 @@ class PReLU(Layer):
     return input_shape
 
 
-@tf_export('keras.layers.ELU')
+@keras_export('keras.layers.ELU')
 class ELU(Layer):
   """Exponential Linear Unit.
 
   It follows:
-  `f(x) =  alpha * (exp(x) - 1.) for x < 0`,
-  `f(x) = x for x >= 0`.
+
+  ```
+    f(x) =  alpha * (exp(x) - 1.) for x < 0
+    f(x) = x for x >= 0
+  ```
 
   Input shape:
-      Arbitrary. Use the keyword argument `input_shape`
-      (tuple of integers, does not include the samples axis)
-      when using this layer as the first layer in a model.
+    Arbitrary. Use the keyword argument `input_shape`
+    (tuple of integers, does not include the samples axis)
+    when using this layer as the first layer in a model.
 
   Output shape:
-      Same shape as the input.
+    Same shape as the input.
 
-  Arguments:
-      alpha: scale for the negative factor.
-
+  Args:
+    alpha: Scale for the negative factor.
   """
 
   def __init__(self, alpha=1.0, **kwargs):
     super(ELU, self).__init__(**kwargs)
+    if alpha is None:
+      raise ValueError('alpha of ELU layer ' 'cannot be None. Required a float')
     self.supports_masking = True
     self.alpha = K.cast_to_floatx(alpha)
-    self._can_use_graph_functions = True
 
   def call(self, inputs):
     return K.elu(inputs, self.alpha)
@@ -208,36 +227,37 @@ class ELU(Layer):
     return input_shape
 
 
-@tf_export('keras.layers.ThresholdedReLU')
+@keras_export('keras.layers.ThresholdedReLU')
 class ThresholdedReLU(Layer):
   """Thresholded Rectified Linear Unit.
 
   It follows:
-  `f(x) = x for x > theta`,
-  `f(x) = 0 otherwise`.
+
+  ```
+    f(x) = x for x > theta
+    f(x) = 0 otherwise`
+  ```
 
   Input shape:
-      Arbitrary. Use the keyword argument `input_shape`
-      (tuple of integers, does not include the samples axis)
-      when using this layer as the first layer in a model.
+    Arbitrary. Use the keyword argument `input_shape`
+    (tuple of integers, does not include the samples axis)
+    when using this layer as the first layer in a model.
 
   Output shape:
-      Same shape as the input.
+    Same shape as the input.
 
-  Arguments:
-      theta: float >= 0. Threshold location of activation.
-
+  Args:
+    theta: Float >= 0. Threshold location of activation.
   """
 
   def __init__(self, theta=1.0, **kwargs):
     super(ThresholdedReLU, self).__init__(**kwargs)
     self.supports_masking = True
     self.theta = K.cast_to_floatx(theta)
-    self._can_use_graph_functions = True
 
-  def call(self, inputs, mask=None):
-    return inputs * math_ops.cast(
-        math_ops.greater(inputs, self.theta), K.floatx())
+  def call(self, inputs):
+    theta = math_ops.cast(self.theta, inputs.dtype)
+    return inputs * math_ops.cast(math_ops.greater(inputs, theta), inputs.dtype)
 
   def get_config(self):
     config = {'theta': float(self.theta)}
@@ -249,29 +269,79 @@ class ThresholdedReLU(Layer):
     return input_shape
 
 
-@tf_export('keras.layers.Softmax')
+def _large_compatible_negative(tensor_type):
+  """Large negative number as Tensor.
+
+  This function is necessary because the standard value for epsilon
+  in this module (-1e9) cannot be represented using tf.float16
+
+  Args:
+    tensor_type: a dtype to determine the type.
+
+  Returns:
+    a large negative number.
+  """
+  if tensor_type == dtypes.float16:
+    return dtypes.float16.min
+  return -1e9
+
+
+@keras_export('keras.layers.Softmax')
 class Softmax(Layer):
   """Softmax activation function.
 
+  Example without mask:
+
+  >>> inp = np.asarray([1., 2., 1.])
+  >>> layer = tf.keras.layers.Softmax()
+  >>> layer(inp).numpy()
+  array([0.21194157, 0.5761169 , 0.21194157], dtype=float32)
+  >>> mask = np.asarray([True, False, True], dtype=bool)
+  >>> layer(inp, mask).numpy()
+  array([0.5, 0. , 0.5], dtype=float32)
+
   Input shape:
-      Arbitrary. Use the keyword argument `input_shape`
-      (tuple of integers, does not include the samples axis)
-      when using this layer as the first layer in a model.
+    Arbitrary. Use the keyword argument `input_shape`
+    (tuple of integers, does not include the samples axis)
+    when using this layer as the first layer in a model.
 
   Output shape:
-      Same shape as the input.
+    Same shape as the input.
 
-  Arguments:
-      axis: Integer, axis along which the softmax normalization is applied.
+  Args:
+    axis: Integer, or list of Integers, axis along which the softmax
+      normalization is applied.
+  Call arguments:
+    inputs: The inputs, or logits to the softmax layer.
+    mask: A boolean mask of the same shape as `inputs`. Defaults to `None`. The
+      mask specifies 1 to keep and 0 to mask.
+
+  Returns:
+    softmaxed output with the same shape as `inputs`.
   """
 
   def __init__(self, axis=-1, **kwargs):
     super(Softmax, self).__init__(**kwargs)
     self.supports_masking = True
     self.axis = axis
-    self._can_use_graph_functions = True
 
-  def call(self, inputs):
+  def call(self, inputs, mask=None):
+    if mask is not None:
+      # Since mask is 1.0 for positions we want to keep and 0.0 for
+      # masked positions, this operation will create a tensor which is 0.0 for
+      # positions we want to attend and -1e.9 for masked positions.
+      adder = (1.0 - math_ops.cast(mask, inputs.dtype)) * (
+          _large_compatible_negative(inputs.dtype))
+
+      # Since we are adding it to the raw scores before the softmax, this is
+      # effectively the same as removing these entirely.
+      inputs += adder
+    if isinstance(self.axis, (tuple, list)):
+      if len(self.axis) > 1:
+        return math_ops.exp(inputs - math_ops.reduce_logsumexp(
+            inputs, axis=self.axis, keepdims=True))
+      else:
+        return K.softmax(inputs, axis=self.axis[0])
     return K.softmax(inputs, axis=self.axis)
 
   def get_config(self):
@@ -284,29 +354,52 @@ class Softmax(Layer):
     return input_shape
 
 
-@tf_export('keras.layers.ReLU')
+@keras_export('keras.layers.ReLU')
 class ReLU(Layer):
   """Rectified Linear Unit activation function.
 
   With default values, it returns element-wise `max(x, 0)`.
 
   Otherwise, it follows:
-  `f(x) = max_value` for `x >= max_value`,
-  `f(x) = x` for `threshold <= x < max_value`,
-  `f(x) = negative_slope * (x - threshold)` otherwise.
+
+  ```
+    f(x) = max_value if x >= max_value
+    f(x) = x if threshold <= x < max_value
+    f(x) = negative_slope * (x - threshold) otherwise
+  ```
+
+  Usage:
+
+  >>> layer = tf.keras.layers.ReLU()
+  >>> output = layer([-3.0, -1.0, 0.0, 2.0])
+  >>> list(output.numpy())
+  [0.0, 0.0, 0.0, 2.0]
+  >>> layer = tf.keras.layers.ReLU(max_value=1.0)
+  >>> output = layer([-3.0, -1.0, 0.0, 2.0])
+  >>> list(output.numpy())
+  [0.0, 0.0, 0.0, 1.0]
+  >>> layer = tf.keras.layers.ReLU(negative_slope=1.0)
+  >>> output = layer([-3.0, -1.0, 0.0, 2.0])
+  >>> list(output.numpy())
+  [-3.0, -1.0, 0.0, 2.0]
+  >>> layer = tf.keras.layers.ReLU(threshold=1.5)
+  >>> output = layer([-3.0, -1.0, 1.0, 2.0])
+  >>> list(output.numpy())
+  [0.0, 0.0, 0.0, 2.0]
 
   Input shape:
-      Arbitrary. Use the keyword argument `input_shape`
-      (tuple of integers, does not include the samples axis)
-      when using this layer as the first layer in a model.
+    Arbitrary. Use the keyword argument `input_shape`
+    (tuple of integers, does not include the batch axis)
+    when using this layer as the first layer in a model.
 
   Output shape:
-      Same shape as the input.
+    Same shape as the input.
 
-  Arguments:
-      max_value: float >= 0. Maximum activation value.
-      negative_slope: float >= 0. Negative slope coefficient.
-      threshold: float. Threshold value for thresholded activation.
+  Args:
+    max_value: Float >= 0. Maximum activation value. Default to None, which
+      means unlimited.
+    negative_slope: Float >= 0. Negative slope coefficient. Default to 0.
+    threshold: Float. Threshold value for thresholded activation. Default to 0.
   """
 
   def __init__(self, max_value=None, negative_slope=0, threshold=0, **kwargs):
@@ -317,14 +410,16 @@ class ReLU(Layer):
     if negative_slope < 0.:
       raise ValueError('negative_slope of Relu layer '
                        'cannot be negative value: ' + str(negative_slope))
+    if threshold is None:
+      raise ValueError('threshold of Relu layer '
+                       'cannot be None. Required a float')
 
-    self.support_masking = True
+    self.supports_masking = True
     if max_value is not None:
       max_value = K.cast_to_floatx(max_value)
     self.max_value = max_value
     self.negative_slope = K.cast_to_floatx(negative_slope)
     self.threshold = K.cast_to_floatx(threshold)
-    self._can_use_graph_functions = True
 
   def call(self, inputs):
     # alpha is used for leaky relu slope in activations instead of

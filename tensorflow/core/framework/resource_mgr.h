@@ -23,12 +23,14 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/type_index.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -77,7 +79,7 @@ namespace tensorflow {
 class ResourceBase : public core::RefCounted {
  public:
   // Returns a debug string for *this.
-  virtual string DebugString() = 0;
+  virtual std::string DebugString() const = 0;
 
   // Returns memory used by this resource.
   virtual int64 MemoryUsed() const { return 0; }
@@ -89,34 +91,85 @@ class ScopedStepContainer {
   // step_id: the unique ID of this step. Doesn't have to be sequential, just
   // has to be unique.
   // cleanup: callback to delete a container of this name.
+  // prefix: optional string prefix to disambiguate step containers.
   ScopedStepContainer(const int64 step_id,
                       std::function<void(const string&)> cleanup)
-      : name_(strings::StrCat("__per_step_", step_id)), cleanup_(cleanup) {}
-  ~ScopedStepContainer() { cleanup_(name_); }
+      : step_id_(step_id),
+        container_(strings::StrCat("__per_step_", step_id)),
+        cleanup_(cleanup),
+        dirty_(false) {}
 
-  const string& name() const { return name_; }
+  ScopedStepContainer(const int64 step_id,
+                      std::function<void(const string&)> cleanup,
+                      const std::string& prefix)
+      : step_id_(step_id),
+        container_(strings::StrCat("__", prefix, "_per_step_", step_id)),
+        cleanup_(cleanup),
+        dirty_(false) {}
+
+  ~ScopedStepContainer() { CleanUp(); }
+
+  void CleanUp() TF_NO_THREAD_SAFETY_ANALYSIS {
+    // NOTE(mrry): Avoid acquiring the mutex in the case that the container is
+    // clean.
+    if (dirty_) {
+      mutex_lock ml(mu_);
+      cleanup_(container_);
+      dirty_ = false;
+    }
+  }
+
+  // Pass through functions for resource lookup and creation. We do this to
+  // ensure that we can appropriately set the dirty_ bit in the
+  // ScopedStepContainer if the name of the container is used to create
+  // resources.
+
+  // Pass through to MakeResourceHandle with the container name
+  template <typename T>
+  ResourceHandle MakeResourceHandle(
+      const std::string& name, const DeviceBase& device) TF_MUST_USE_RESULT;
+  // Pass through to ResourceMgr::Create with the container name
+  template <typename T>
+  Status Create(ResourceMgr* rm, const std::string& name,
+                T* resource) TF_MUST_USE_RESULT;
+  // Pass through to ResourceMgr::Delete with the container name
+  template <typename T>
+  Status Delete(ResourceMgr* rm, const std::string& name) TF_MUST_USE_RESULT;
+  // Pass through to ResourceMgr::Lookup with the container name
+  template <typename T>
+  Status Lookup(ResourceMgr* rm, const std::string& name,
+                T** resource) const TF_MUST_USE_RESULT;
+  // Pass through to ResourceMgr::LookupOrCreate with the container name
+  template <typename T>
+  Status LookupOrCreate(ResourceMgr* rm, const std::string& name, T** resource,
+                        std::function<Status(T**)> creator) TF_MUST_USE_RESULT;
+  int64 StepId() const { return step_id_; }
 
  private:
-  const string name_;
+  const int64 step_id_;
+  const std::string container_;
   const std::function<void(const string&)> cleanup_;
+  mutex mu_;
+  mutable std::atomic<bool> dirty_ TF_GUARDED_BY(mu_);
 };
 
 class ResourceMgr {
  public:
   ResourceMgr();
-  explicit ResourceMgr(const string& default_container);
+  explicit ResourceMgr(const std::string& default_container);
   ~ResourceMgr();
 
   // Returns the default container name for *this.
-  const string& default_container() const { return default_container_; }
+  const std::string& default_container() const { return default_container_; }
 
   // Creates a resource "name" in the "container".  The caller transfers
-  // the ownership of one ref on "resource" to *this
+  // the ownership of one ref on "resource" to *this, regardless of whether this
+  // operation succeeds or fails.
   //
   // REQUIRES: std::is_base_of<ResourceBase, T>
   // REQUIRES: resource != nullptr.
   template <typename T>
-  Status Create(const string& container, const string& name,
+  Status Create(const std::string& container, const std::string& name,
                 T* resource) TF_MUST_USE_RESULT;
 
   // If "container" has a resource "name", returns it in "*resource" and
@@ -124,14 +177,21 @@ class ResourceMgr {
   //
   // REQUIRES: std::is_base_of<ResourceBase, T>
   // REQUIRES: resource != nullptr
-  template <typename T>
-  Status Lookup(const string& container, const string& name,
+  template <typename T, bool use_dynamic_cast = false>
+  Status Lookup(const std::string& container, const std::string& name,
                 T** resource) const TF_MUST_USE_RESULT;
+
+  // If the resource manager has a resource matching "handle", returns it in
+  // "*resource" and the caller takes the ownership of one ref on "*resource".
+  //
+  // REQUIRES: resource != nullptr
+  Status Lookup(const ResourceHandle& handle,
+                ResourceBase** resource) const TF_MUST_USE_RESULT;
 
   // Similar to Lookup, but looks up multiple resources at once, with only a
   // single lock acquisition.  If containers_and_names[i] is uninitialized
   // then this function does not modify resources[i].
-  template <typename T>
+  template <typename T, bool use_dynamic_cast = false>
   Status LookupMany(absl::Span<std::pair<const string*, const string*> const>
                         containers_and_names,
                     std::vector<std::unique_ptr<T, core::RefCountDeleter>>*
@@ -147,8 +207,8 @@ class ResourceMgr {
   //
   // REQUIRES: std::is_base_of<ResourceBase, T>
   // REQUIRES: resource != nullptr
-  template <typename T>
-  Status LookupOrCreate(const string& container, const string& name,
+  template <typename T, bool use_dynamic_cast = false>
+  Status LookupOrCreate(const std::string& container, const std::string& name,
                         T** resource,
                         std::function<Status(T**)> creator) TF_MUST_USE_RESULT;
 
@@ -156,22 +216,23 @@ class ResourceMgr {
   //
   // REQUIRES: std::is_base_of<ResourceBase, T>
   template <typename T>
-  Status Delete(const string& container, const string& name) TF_MUST_USE_RESULT;
+  Status Delete(const std::string& container,
+                const std::string& name) TF_MUST_USE_RESULT;
 
   // Deletes the resource pointed by "handle".
   Status Delete(const ResourceHandle& handle) TF_MUST_USE_RESULT;
 
   // Deletes all resources from the "container" and removes the container.
-  Status Cleanup(const string& container) TF_MUST_USE_RESULT;
+  Status Cleanup(const std::string& container) TF_MUST_USE_RESULT;
 
   // Deletes all resources in all containers.
   void Clear();
 
   // Returns a text description for all resources.
-  string DebugString() const;
+  std::string DebugString() const;
 
  private:
-  typedef std::pair<uint64, string> Key;
+  typedef std::pair<uint64, StringPiece> Key;
   struct KeyHash {
     std::size_t operator()(const Key& k) const {
       return Hash64(k.second.data(), k.second.size(), k.first);
@@ -182,66 +243,107 @@ class ResourceMgr {
       return (x.second == y.second) && (x.first == y.first);
     }
   };
-  typedef std::unordered_map<Key, ResourceBase*, KeyHash, KeyEqual> Container;
+  struct ResourceAndName {
+    core::RefCountPtr<ResourceBase> resource;
+    std::unique_ptr<string> name;
 
-  const string default_container_;
+    ResourceAndName();
+    ResourceAndName(ResourceBase* resource, std::string name);
+    ResourceAndName(ResourceAndName&& other) noexcept;
+    ~ResourceAndName();
+
+    ResourceAndName& operator=(ResourceAndName&&) noexcept;
+
+   private:
+    TF_DISALLOW_COPY_AND_ASSIGN(ResourceAndName);
+  };
+  typedef std::unordered_map<Key, ResourceAndName, KeyHash, KeyEqual> Container;
+
+  const std::string default_container_;
   mutable mutex mu_;
-  std::unordered_map<string, Container*> containers_ GUARDED_BY(mu_);
+  std::unordered_map<string, Container*> containers_ TF_GUARDED_BY(mu_);
 
-  template <typename T>
-  Status LookupInternal(const string& container, const string& name,
+  template <typename T, bool use_dynamic_cast = false>
+  Status LookupInternal(const std::string& container, const std::string& name,
                         T** resource) const
-      SHARED_LOCKS_REQUIRED(mu_) TF_MUST_USE_RESULT;
+      TF_SHARED_LOCKS_REQUIRED(mu_) TF_MUST_USE_RESULT;
+  Status LookupInternal(const std::string& container, uint64 type_hash_code,
+                        const std::string& name, ResourceBase** resource) const
+      TF_SHARED_LOCKS_REQUIRED(mu_) TF_MUST_USE_RESULT;
 
-  Status DoCreate(const string& container, TypeIndex type, const string& name,
-                  ResourceBase* resource)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) TF_MUST_USE_RESULT;
+  Status DoCreate(const std::string& container, TypeIndex type,
+                  const std::string& name, ResourceBase* resource)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) TF_MUST_USE_RESULT;
 
-  Status DoLookup(const string& container, TypeIndex type, const string& name,
+  Status DoLookup(const std::string& container, TypeIndex type,
+                  const std::string& name, ResourceBase** resource) const
+      TF_SHARED_LOCKS_REQUIRED(mu_) TF_MUST_USE_RESULT;
+  Status DoLookup(const std::string& container, uint64 type_hash_code,
+                  const std::string& type_name,
+                  const std::string& resource_name,
                   ResourceBase** resource) const
-      SHARED_LOCKS_REQUIRED(mu_) TF_MUST_USE_RESULT;
+      TF_SHARED_LOCKS_REQUIRED(mu_) TF_MUST_USE_RESULT;
 
-  Status DoDelete(const string& container, uint64 type_hash_code,
-                  const string& resource_name,
-                  const string& type_name) TF_MUST_USE_RESULT;
-  Status DoDelete(const string& container, TypeIndex type,
-                  const string& resource_name) TF_MUST_USE_RESULT;
+  Status DoDelete(const std::string& container, uint64 type_hash_code,
+                  const std::string& resource_name,
+                  const std::string& type_name) TF_MUST_USE_RESULT;
+  Status DoDelete(const std::string& container, TypeIndex type,
+                  const std::string& resource_name) TF_MUST_USE_RESULT;
 
   // Inserts the type name for 'hash_code' into the hash_code to type name map.
-  Status InsertDebugTypeName(uint64 hash_code, const string& type_name)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) TF_MUST_USE_RESULT;
+  Status InsertDebugTypeName(uint64 hash_code, const std::string& type_name)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) TF_MUST_USE_RESULT;
 
   // Returns the type name for the 'hash_code'.
   // Returns "<unknown>" if a resource with such a type was never inserted into
   // the container.
   const char* DebugTypeName(uint64 hash_code) const
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Map from type hash_code to type name.
-  std::unordered_map<uint64, string> debug_type_names_ GUARDED_BY(mu_);
+  std::unordered_map<uint64, string> debug_type_names_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(ResourceMgr);
 };
 
 // Makes a resource handle with the specified type for a given container /
 // name.
-ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
-                                  const string& name,
-                                  const TypeIndex& type_index);
+ResourceHandle MakeResourceHandle(
+    const std::string& container, const std::string& name,
+    const DeviceBase& device, const TypeIndex& type_index,
+    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
+    const absl::optional<ManagedStackTrace>& definition_stack_trace = {})
+    TF_MUST_USE_RESULT;
 
 template <typename T>
-ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
-                                  const string& name) {
-  return MakeResourceHandle(ctx, container, name, MakeTypeIndex<T>());
+ResourceHandle MakeResourceHandle(
+    OpKernelContext* ctx, const std::string& container, const std::string& name,
+    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
+    const absl::optional<ManagedStackTrace>& definition_stack_trace = {}) {
+  return MakeResourceHandle(container.empty()
+                                ? ctx->resource_manager()->default_container()
+                                : container,
+                            name, *ctx->device(), TypeIndex::Make<T>(),
+                            dtypes_and_shapes, definition_stack_trace);
+}
+
+template <typename T>
+ResourceHandle MakeResourceHandle(
+    OpKernelConstruction* ctx, const std::string& container,
+    const std::string& name,
+    const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
+    const absl::optional<ManagedStackTrace>& definition_stack_trace = {}) {
+  return MakeResourceHandle(container.empty()
+                                ? ctx->resource_manager()->default_container()
+                                : container,
+                            name, *ctx->device(), TypeIndex::Make<T>(),
+                            dtypes_and_shapes, definition_stack_trace);
 }
 
 Status MakeResourceHandleToOutput(OpKernelContext* context, int output_index,
-                                  const string& container, const string& name,
+                                  const std::string& container,
+                                  const std::string& name,
                                   const TypeIndex& type_index);
-
-template <typename T>
-ResourceHandle MakePerStepResourceHandle(OpKernelContext* ctx,
-                                         const string& name);
 
 // Returns a resource handle from a numbered op input.
 const ResourceHandle& HandleFromInput(OpKernelContext* ctx, int input);
@@ -259,15 +361,22 @@ Status CreateResource(OpKernelContext* ctx, const ResourceHandle& p, T* value);
 //
 // If the lookup is successful, the caller takes the ownership of one ref on
 // `*value`, and must call its `Unref()` method when it has finished using it.
-template <typename T>
+template <typename T, bool use_dynamic_cast = false>
 Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p, T** value);
+
+// Looks up a resource pointed by a given resource handle.
+//
+// Prefer usage of LookupResource taking `core::RefCountPtr` to avoid
+// requiring the caller to explicitly call `Unref()`.
+template <typename T>
+Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
+                      core::RefCountPtr<T>* value);
 
 // Looks up multiple resources pointed by a sequence of resource handles.  If
 // p[i] is uninitialized then values[i] is unmodified.
 template <typename T>
-Status LookupResources(
-    OpKernelContext* ctx, absl::Span<ResourceHandle const> p,
-    std::vector<std::unique_ptr<T, core::RefCountDeleter>>* values);
+Status LookupResources(OpKernelContext* ctx, absl::Span<ResourceHandle const> p,
+                       std::vector<core::RefCountPtr<T>>* values);
 
 // Looks up or creates a resource.
 //
@@ -275,9 +384,18 @@ Status LookupResources(
 // must call its `Unref()` method when it has finished using it. If the
 // `creator` is invoked, its reference on the created resource is transferred
 // to `ctx->resource_mgr()`.
+//
+// Prefer usage of LookupOrCreateResource taking `core::RefCountPtr` to avoid
+// requiring the caller to explicitly call `Unref()`.
 template <typename T>
 Status LookupOrCreateResource(OpKernelContext* ctx, const ResourceHandle& p,
                               T** value, std::function<Status(T**)> creator);
+
+// Looks up or creates a resource.
+template <typename T>
+Status LookupOrCreateResource(OpKernelContext* ctx, const ResourceHandle& p,
+                              core::RefCountPtr<T>* value,
+                              std::function<Status(T**)> creator);
 
 // Destroys a resource pointed by a given resource handle.
 template <typename T>
@@ -318,19 +436,19 @@ class ContainerInfo {
   // name is name().  If resource_is_private_to_kernel() is true, the
   // kernel should delete the resource when the kernel is deleted.
   ResourceMgr* resource_manager() const { return rmgr_; }
-  const string& container() const { return container_; }
-  const string& name() const { return name_; }
+  const std::string& container() const { return container_; }
+  const std::string& name() const { return name_; }
   bool resource_is_private_to_kernel() const {
     return resource_is_private_to_kernel_;
   }
 
   // Returns a readable string for *this.
-  string DebugString() const;
+  std::string DebugString() const;
 
  private:
   ResourceMgr* rmgr_ = nullptr;
-  string container_;
-  string name_;
+  std::string container_;
+  std::string name_;
   bool resource_is_private_to_kernel_ = false;
 };
 
@@ -344,8 +462,8 @@ class ContainerInfo {
 // Returns OK if the resource is found and transfers one ref of
 // *resource to the caller. Otherwise, returns an error.
 template <typename T>
-Status GetResourceFromContext(OpKernelContext* ctx, const string& input_name,
-                              T** resource);
+Status GetResourceFromContext(OpKernelContext* ctx,
+                              const std::string& input_name, T** resource);
 
 // Utility op kernel to check if a handle to resource type T is initialized.
 template <typename T>
@@ -379,8 +497,8 @@ class ResourceHandleOp : public OpKernel {
   bool IsExpensive() override { return false; }
 
  private:
-  string container_;
-  string name_;
+  std::string container_;
+  std::string name_;
   mutex mutex_;
   Tensor resource_;
   std::atomic<bool> initialized_{false};
@@ -404,13 +522,83 @@ class ResourceHandlesOp : public OpKernel {
   std::atomic<bool> initialized_{false};
 };
 
-Status ResourceHandlesShape(shape_inference::InferenceContext* c);
-
 // Registers a kernel for an op which produces a handle to a resource of the
 // specified type.
 #define REGISTER_RESOURCE_HANDLE_KERNEL(Type)                        \
   REGISTER_KERNEL_BUILDER(Name(#Type "HandleOp").Device(DEVICE_CPU), \
                           ResourceHandleOp<Type>)
+
+// This class is used to guarantee that an anonymous resource is deleted
+// (irrespective of whether a resource deleter op is called explicitly or
+// the execution encounters an error before the op runs).
+//
+// This is achieved by wrapping an instance of this class into a variant
+// tensor which is passed as an input to a resource deleter op. If the
+// execution encounters an error before the op runs, the tensor will be
+// destroyed, essentially triggering the iterator deletion.
+// NOTE: This is not a feature-complete implementation of the DT_VARIANT
+// specification. In particular, we cannot serialize the `ResourceMgr`
+// object, so the `Encode()` and `Decode()` methods are not implemented.
+class ResourceDeleter {
+ public:
+  ResourceDeleter() : deleter_() {}
+
+  ResourceDeleter(ResourceHandle handle, ResourceMgr* resource_manager)
+      : deleter_(std::make_shared<Helper>(handle, resource_manager)) {}
+
+  ResourceDeleter(ResourceDeleter&& rhs) : deleter_(std::move(rhs.deleter_)) {
+    VLOG(3) << "ResourceDeleter move constructor called.";
+  }
+
+  ResourceDeleter(const ResourceDeleter& rhs) : deleter_(rhs.deleter_) {
+    VLOG(3) << "ResourceDeleter copy constructor called.";
+  }
+
+  ResourceDeleter& operator=(const ResourceDeleter& rhs) = delete;
+
+  ResourceDeleter& operator=(ResourceDeleter&& rhs) = default;
+
+  virtual ~ResourceDeleter() {
+    VLOG(3) << "ResourceDeleter destructor called.";
+  }
+
+  void Encode(VariantTensorData*) const {
+    LOG(ERROR) << "The Encode() method is not implemented for ResourceDeleter "
+                  "objects.";
+  }
+
+  bool Decode(const VariantTensorData&) {
+    LOG(ERROR) << "The Decode() method is not implemented for ResourceDeleter "
+                  "objects";
+    return false;  // Not supported.
+  }
+
+ private:
+  // Helper that performs reference counting for the parent class and deletes
+  // the iterator resource when the refcount goes to zero.
+  //
+  // NOTE: The object is borrowing a pointer to the resource manager.
+  // Consequently, the tensor containing this object should not escape the
+  // function in which was created (so that it is guaranteed that the resource
+  // manager will outlive it).
+  struct Helper {
+    Helper(ResourceHandle handle, ResourceMgr* resource_manager)
+        : handle(handle), resource_manager(resource_manager) {}
+
+    Helper(const Helper& rhs) = delete;
+    Helper(Helper&& rhs) = delete;
+
+    ~Helper() {
+      VLOG(3) << "Deleting Resource: " << handle.DebugString();
+      resource_manager->Delete(handle).IgnoreError();
+    }
+
+    ResourceHandle handle;
+    ResourceMgr* resource_manager;  // not owned
+  };
+
+  std::shared_ptr<Helper> deleter_;
+};
 
 // Implementation details below.
 
@@ -421,23 +609,23 @@ void CheckDeriveFromResourceBase() {
 }
 
 template <typename T>
-Status ResourceMgr::Create(const string& container, const string& name,
-                           T* resource) {
+Status ResourceMgr::Create(const std::string& container,
+                           const std::string& name, T* resource) {
   CheckDeriveFromResourceBase<T>();
   CHECK(resource != nullptr);
   mutex_lock l(mu_);
-  return DoCreate(container, MakeTypeIndex<T>(), name, resource);
+  return DoCreate(container, TypeIndex::Make<T>(), name, resource);
 }
 
-template <typename T>
-Status ResourceMgr::Lookup(const string& container, const string& name,
-                           T** resource) const {
+template <typename T, bool use_dynamic_cast>
+Status ResourceMgr::Lookup(const std::string& container,
+                           const std::string& name, T** resource) const {
   CheckDeriveFromResourceBase<T>();
   tf_shared_lock l(mu_);
-  return LookupInternal(container, name, resource);
+  return LookupInternal<T, use_dynamic_cast>(container, name, resource);
 }
 
-template <typename T>
+template <typename T, bool use_dynamic_cast>
 Status ResourceMgr::LookupMany(
     absl::Span<std::pair<const string*, const string*> const>
         containers_and_names,
@@ -447,8 +635,9 @@ Status ResourceMgr::LookupMany(
   resources->resize(containers_and_names.size());
   for (size_t i = 0; i < containers_and_names.size(); ++i) {
     T* resource;
-    Status s = LookupInternal(*containers_and_names[i].first,
-                              *containers_and_names[i].second, &resource);
+    Status s = LookupInternal<T, use_dynamic_cast>(
+        *containers_and_names[i].first, *containers_and_names[i].second,
+        &resource);
     if (s.ok()) {
       (*resources)[i].reset(resource);
     }
@@ -456,36 +645,48 @@ Status ResourceMgr::LookupMany(
   return Status::OK();
 }
 
+// Simple wrapper to allow conditional dynamic / static casts.
+template <typename T, bool use_dynamic_cast>
+struct TypeCastFunctor {
+  static T* Cast(ResourceBase* r) { return static_cast<T*>(r); }
+};
+
 template <typename T>
-Status ResourceMgr::LookupInternal(const string& container, const string& name,
+struct TypeCastFunctor<T, true> {
+  static T* Cast(ResourceBase* r) { return dynamic_cast<T*>(r); }
+};
+
+template <typename T, bool use_dynamic_cast>
+Status ResourceMgr::LookupInternal(const std::string& container,
+                                   const std::string& name,
                                    T** resource) const {
   ResourceBase* found = nullptr;
-  Status s = DoLookup(container, MakeTypeIndex<T>(), name, &found);
+  Status s = DoLookup(container, TypeIndex::Make<T>(), name, &found);
   if (s.ok()) {
     // It's safe to down cast 'found' to T* since
     // typeid(T).hash_code() is part of the map key.
-    *resource = static_cast<T*>(found);
+    *resource = TypeCastFunctor<T, use_dynamic_cast>::Cast(found);
   }
   return s;
 }
 
-template <typename T>
-Status ResourceMgr::LookupOrCreate(const string& container, const string& name,
-                                   T** resource,
+template <typename T, bool use_dynamic_cast>
+Status ResourceMgr::LookupOrCreate(const std::string& container,
+                                   const std::string& name, T** resource,
                                    std::function<Status(T**)> creator) {
   CheckDeriveFromResourceBase<T>();
   *resource = nullptr;
   Status s;
   {
     tf_shared_lock l(mu_);
-    s = LookupInternal(container, name, resource);
+    s = LookupInternal<T, use_dynamic_cast>(container, name, resource);
     if (s.ok()) return s;
   }
   mutex_lock l(mu_);
-  s = LookupInternal(container, name, resource);
+  s = LookupInternal<T, use_dynamic_cast>(container, name, resource);
   if (s.ok()) return s;
   TF_RETURN_IF_ERROR(creator(resource));
-  s = DoCreate(container, MakeTypeIndex<T>(), name, *resource);
+  s = DoCreate(container, TypeIndex::Make<T>(), name, *resource);
   if (!s.ok()) {
     return errors::Internal("LookupOrCreate failed unexpectedly");
   }
@@ -494,14 +695,15 @@ Status ResourceMgr::LookupOrCreate(const string& container, const string& name,
 }
 
 template <typename T>
-Status ResourceMgr::Delete(const string& container, const string& name) {
+Status ResourceMgr::Delete(const std::string& container,
+                           const std::string& name) {
   CheckDeriveFromResourceBase<T>();
-  return DoDelete(container, MakeTypeIndex<T>(), name);
+  return DoDelete(container, TypeIndex::Make<T>(), name);
 }
 
 template <typename T>
-Status GetResourceFromContext(OpKernelContext* ctx, const string& input_name,
-                              T** resource) {
+Status GetResourceFromContext(OpKernelContext* ctx,
+                              const std::string& input_name, T** resource) {
   DataType dtype;
   TF_RETURN_IF_ERROR(ctx->input_dtype(input_name, &dtype));
   if (dtype == DT_RESOURCE) {
@@ -509,8 +711,8 @@ Status GetResourceFromContext(OpKernelContext* ctx, const string& input_name,
     TF_RETURN_IF_ERROR(ctx->input(input_name, &handle));
     return LookupResource(ctx, handle->scalar<ResourceHandle>()(), resource);
   }
-  string container;
-  string shared_name;
+  std::string container;
+  std::string shared_name;
   {
     mutex* mu;
     TF_RETURN_IF_ERROR(ctx->input_ref_mutex(input_name, &mu));
@@ -522,16 +724,10 @@ Status GetResourceFromContext(OpKernelContext* ctx, const string& input_name,
           "Resource handle must have 2 elements, but had shape: ",
           tensor.shape().DebugString());
     }
-    container = tensor.flat<string>()(0);
-    shared_name = tensor.flat<string>()(1);
+    container = tensor.flat<tstring>()(0);
+    shared_name = tensor.flat<tstring>()(1);
   }
   return ctx->resource_manager()->Lookup(container, shared_name, resource);
-}
-
-template <typename T>
-ResourceHandle MakePerStepResourceHandle(OpKernelContext* ctx,
-                                         const string& name) {
-  return MakeResourceHandle<T>(ctx, ctx->step_container()->name(), name);
 }
 
 namespace internal {
@@ -541,7 +737,7 @@ Status ValidateDevice(OpKernelContext* ctx, const ResourceHandle& p);
 template <typename T>
 Status ValidateDeviceAndType(OpKernelContext* ctx, const ResourceHandle& p) {
   TF_RETURN_IF_ERROR(internal::ValidateDevice(ctx, p));
-  auto type_index = MakeTypeIndex<T>();
+  auto type_index = TypeIndex::Make<T>();
   if (type_index.hash_code() != p.hash_code()) {
     return errors::InvalidArgument(
         "Trying to access resource using the wrong type. Expected ",
@@ -552,23 +748,48 @@ Status ValidateDeviceAndType(OpKernelContext* ctx, const ResourceHandle& p) {
 
 }  // namespace internal
 
+// Creates the resource pointed at by "p". The caller transfers the ownership of
+// one ref on "*value" to the resource manager in "ctx", regardless of whether
+// this operation succeeds or fails.
 template <typename T>
 Status CreateResource(OpKernelContext* ctx, const ResourceHandle& p, T* value) {
   TF_RETURN_IF_ERROR(internal::ValidateDeviceAndType<T>(ctx, p));
   return ctx->resource_manager()->Create(p.container(), p.name(), value);
 }
 
-template <typename T>
+// If the resource manager in "ctx" has a resource matching "p", returns it in
+// "*value" and the caller takes the ownership of one ref on "*value"
+template <typename T, bool use_dynamic_cast>
 Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
                       T** value) {
   TF_RETURN_IF_ERROR(internal::ValidateDeviceAndType<T>(ctx, p));
-  return ctx->resource_manager()->Lookup(p.container(), p.name(), value);
+  return ctx->resource_manager()->Lookup<T, use_dynamic_cast>(p.container(),
+                                                              p.name(), value);
 }
 
+// If the resource manager in "ctx" has a resource matching "p", returns it in
+// "*value" and the caller takes the ownership of one ref on "*value"
+Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
+                      ResourceBase** value);
+
+// If the resource manager in "ctx" has a resource matching "p", returns it in
+// "*value".
 template <typename T>
-Status LookupResources(
-    OpKernelContext* ctx, absl::Span<ResourceHandle const* const> p,
-    std::vector<std::unique_ptr<T, core::RefCountDeleter>>* values) {
+Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
+                      core::RefCountPtr<T>* value) {
+  T* raw_ptr = nullptr;
+  TF_RETURN_IF_ERROR(LookupResource<T, false>(ctx, p, &raw_ptr));
+  value->reset(raw_ptr);
+
+  return Status::OK();
+}
+
+// Similar to Lookup, but looks up multiple resources at once, with only a
+// single lock acquisition.
+template <typename T>
+Status LookupResources(OpKernelContext* ctx,
+                       absl::Span<ResourceHandle const* const> p,
+                       std::vector<core::RefCountPtr<T>>* values) {
   std::vector<std::pair<const string*, const string*>> containers_and_names(
       p.size());
   for (size_t i = 0; i < p.size(); ++i) {
@@ -578,6 +799,13 @@ Status LookupResources(
   return ctx->resource_manager()->LookupMany(containers_and_names, values);
 }
 
+// If the resource manager in "ctx" has a resource pointed at by "p", returns
+// it in "*value". Otherwise, invokes creator() to create the resource.
+// The caller takes the ownership of one ref on "*value".
+//
+// WARNING: creator() must not call any methods on the resource manager during
+// its execution, because a non-reentrant lock is held during the creator() call
+// in order to guarantee atomicity of LookupOrCreateResource().
 template <typename T>
 Status LookupOrCreateResource(OpKernelContext* ctx, const ResourceHandle& p,
                               T** value, std::function<Status(T**)> creator) {
@@ -586,12 +814,31 @@ Status LookupOrCreateResource(OpKernelContext* ctx, const ResourceHandle& p,
                                                  creator);
 }
 
+// If the resource manager in "ctx" has a resource pointed at by "p", returns
+// it in "*value". Otherwise, invokes creator() to create the resource.
+//
+// WARNING: creator() must not call any methods on the resource manager during
+// its execution, because a non-reentrant lock is held during the creator() call
+// in order to guarantee atomicity of LookupOrCreateResource().
+template <typename T>
+Status LookupOrCreateResource(OpKernelContext* ctx, const ResourceHandle& p,
+                              core::RefCountPtr<T>* value,
+                              std::function<Status(T**)> creator) {
+  T* raw_ptr = nullptr;
+  TF_RETURN_IF_ERROR(LookupOrCreateResource<T>(ctx, p, &raw_ptr, creator));
+  value->reset(raw_ptr);
+
+  return Status::OK();
+}
+
+// Deletes the resource pointed by "p", using the resource manager in "ctx".
 template <typename T>
 Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p) {
   TF_RETURN_IF_ERROR(internal::ValidateDeviceAndType<T>(ctx, p));
   return ctx->resource_manager()->Delete<T>(p.container(), p.name());
 }
 
+// Deletes the resource pointed by "p", using the resource manager in "ctx".
 Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p);
 
 template <typename T>
@@ -619,20 +866,31 @@ ResourceHandleOp<T>::ResourceHandleOp(OpKernelConstruction* context)
 
 template <typename T>
 void ResourceHandleOp<T>::Compute(OpKernelContext* ctx) {
-  if (!initialized_.load()) {
-    mutex_lock ml(mutex_);
-    // Checking again to see if another thread has initialized the resource.
+  if (name_ == ResourceHandle::ANONYMOUS_NAME) {
+    AllocatorAttributes attr;
+    attr.set_on_host(true);
+    Tensor handle;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}), &handle, attr));
+    handle.scalar<ResourceHandle>()() =
+        MakeResourceHandle<T>(ctx, container_, name_);
+    ctx->set_output(0, handle);
+  } else {
     if (!initialized_.load()) {
-      AllocatorAttributes attr;
-      attr.set_on_host(true);
-      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}),
-                                             &resource_, attr));
-      resource_.scalar<ResourceHandle>()() =
-          MakeResourceHandle<T>(ctx, container_, name_);
-      initialized_.store(true);
+      mutex_lock ml(mutex_);
+      // Checking again to see if another thread has initialized the resource.
+      if (!initialized_.load()) {
+        AllocatorAttributes attr;
+        attr.set_on_host(true);
+        OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}),
+                                               &resource_, attr));
+        resource_.scalar<ResourceHandle>()() =
+            MakeResourceHandle<T>(ctx, container_, name_);
+        initialized_.store(true);
+      }
     }
+    ctx->set_output(0, resource_);
   }
-  ctx->set_output(0, resource_);
 }
 
 template <typename T>
@@ -673,6 +931,44 @@ void ResourceHandlesOp<T>::Compute(OpKernelContext* ctx) {
   for (size_t i = 0; i < resources_.size(); ++i) {
     ctx->set_output(i, resources_[i]);
   }
+}
+
+template <typename T>
+ResourceHandle ScopedStepContainer::MakeResourceHandle(
+    const std::string& name, const DeviceBase& device) {
+  mutex_lock ml(mu_);
+  dirty_ = true;
+  return tensorflow::MakeResourceHandle(container_, name, device,
+                                        TypeIndex::Make<T>(), {});
+}
+
+template <typename T>
+Status ScopedStepContainer::Lookup(ResourceMgr* rm, const std::string& name,
+                                   T** resource) const {
+  return rm->Lookup<T>(container_, name, resource);
+}
+
+template <typename T>
+Status ScopedStepContainer::LookupOrCreate(ResourceMgr* rm,
+                                           const std::string& name,
+                                           T** resource,
+                                           std::function<Status(T**)> creator) {
+  mutex_lock ml(mu_);
+  dirty_ = true;
+  return rm->LookupOrCreate<T>(container_, name, resource, creator);
+}
+
+template <typename T>
+Status ScopedStepContainer::Create(ResourceMgr* rm, const std::string& name,
+                                   T* resource) {
+  mutex_lock ml(mu_);
+  dirty_ = true;
+  return rm->Create<T>(container_, name, resource);
+}
+
+template <typename T>
+Status ScopedStepContainer::Delete(ResourceMgr* rm, const std::string& name) {
+  return rm->Delete<T>(container_, name);
 }
 
 }  //  end namespace tensorflow

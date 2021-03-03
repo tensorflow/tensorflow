@@ -17,14 +17,14 @@ limitations under the License.
 
 #include <thread>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/stream_executor/host/host_gpu_executor.h"
 #include "tensorflow/stream_executor/host/host_platform_id.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
-#include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/status_macros.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
 
 namespace stream_executor {
 namespace host {
@@ -39,7 +39,12 @@ int HostPlatform::VisibleDeviceCount() const {
   return std::thread::hardware_concurrency();
 }
 
-const string& HostPlatform::Name() const { return name_; }
+const std::string& HostPlatform::Name() const { return name_; }
+
+port::StatusOr<std::unique_ptr<DeviceDescription>>
+HostPlatform::DescriptionForDevice(int ordinal) const {
+  return HostExecutor::CreateDeviceDescription(ordinal);
+}
 
 port::StatusOr<StreamExecutor*> HostPlatform::ExecutorForDevice(int ordinal) {
   StreamExecutorConfig config;
@@ -66,13 +71,14 @@ port::StatusOr<StreamExecutor*> HostPlatform::GetExecutor(
 
 port::StatusOr<std::unique_ptr<StreamExecutor>>
 HostPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
-  auto executor = MakeUnique<StreamExecutor>(
-      this, MakeUnique<HostExecutor>(config.plugin_config));
-  auto init_status = executor->Init(config.ordinal, config.device_options);
+  auto executor = absl::make_unique<StreamExecutor>(
+      this, absl::make_unique<HostExecutor>(config.plugin_config),
+      config.ordinal);
+  auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {
     return port::Status(
         port::error::INTERNAL,
-        port::Printf(
+        absl::StrFormat(
             "failed initializing StreamExecutor for device ordinal %d: %s",
             config.ordinal, init_status.ToString().c_str()));
   }

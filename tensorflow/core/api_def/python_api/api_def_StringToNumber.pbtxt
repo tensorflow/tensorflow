@@ -1,10 +1,4 @@
 op {
   graph_op_name: "StringToNumber"
-  endpoint {
-    name: "strings.to_number"
-  }
-  endpoint {
-    name: "string_to_number"
-    deprecation_version: 2
-  }
+  visibility: HIDDEN
 }

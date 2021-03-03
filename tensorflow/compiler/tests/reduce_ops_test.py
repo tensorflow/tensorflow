@@ -20,12 +20,14 @@ from __future__ import print_function
 
 import functools
 import itertools
+
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
@@ -45,7 +47,7 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     """Tests that the output of 'tf_reduce_fn' matches numpy's output."""
 
     for test_input in test_inputs:
-      with self.cached_session() as sess:
+      with self.session() as sess:
         with self.test_scope():
           a = array_ops.placeholder(dtype)
           index = array_ops.placeholder(index_dtype)
@@ -62,13 +64,16 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
         self.assertAllClose(
             result, np_reduce_fn(test_input, axis=1), rtol=rtol, atol=atol)
 
-        with self.assertRaisesWithPredicateMatch(
-            errors_impl.InvalidArgumentError, 'Invalid reduction dim'):
-          sess.run(out, {a: test_input, index: [-33]})
+        # MLIR bridge doesn't return the same error so it can't be matched
+        # directly.
+        if not test_util.is_mlir_bridge_enabled():
+          with self.assertRaisesWithPredicateMatch(
+              errors_impl.InvalidArgumentError, 'Invalid reduction dim'):
+            sess.run(out, {a: test_input, index: [-33]})
 
-        with self.assertRaisesWithPredicateMatch(
-            errors_impl.InvalidArgumentError, 'Invalid reduction dim'):
-          sess.run(out, {a: test_input, index: [2]})
+          with self.assertRaisesWithPredicateMatch(
+              errors_impl.InvalidArgumentError, 'Invalid reduction dim'):
+            sess.run(out, {a: test_input, index: [2]})
 
   REAL_DATA = [
       np.zeros(shape=(2, 0)),
@@ -91,6 +96,7 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       np.array([], dtype=np.bool).reshape(0, 3),
       np.array([[False, True, False], [True, True, False]]),
   ]
+  ONES = [np.ones([34000, 2])]
 
   def testReduceSumF32(self, index_dtype):
     self._testReduction(math_ops.reduce_sum, np.sum, np.float32, self.REAL_DATA,
@@ -149,6 +155,11 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     self._testReduction(math_ops.reduce_mean, np.mean, np.float32,
                         self.NONEMPTY_REAL_DATA, index_dtype)
 
+  def testReduceMeanF16(self, index_dtype):
+    if np.float16 in self.all_types:
+      self._testReduction(math_ops.reduce_mean, np.mean, np.float16, self.ONES,
+                          index_dtype)
+
   def testReduceMeanC64(self, index_dtype):
     self._testReduction(math_ops.reduce_mean, np.mean, np.complex64,
                         self.NONEMPTY_COMPLEX_DATA, index_dtype)
@@ -160,6 +171,18 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
   def testReduceAny(self, index_dtype):
     self._testReduction(math_ops.reduce_any, np.any, np.bool, self.BOOL_DATA,
                         index_dtype)
+
+  @test_util.disable_mlir_bridge('Error messages differ')
+  def testReduceSumWithDuplicateAxes(self, index_dtype):
+    with self.session() as sess:
+      with self.test_scope():
+        a = array_ops.placeholder(np.float32)
+        index = array_ops.placeholder(np.int32)
+        out = math_ops.reduce_sum(a, index)
+      with self.assertRaisesWithPredicateMatch(
+          errors_impl.InvalidArgumentError,
+          'Axes contains duplicate dimension'):
+        sess.run(out, {a: [10, 20, 30], index: [0, 0]})
 
 
 class ReduceOpPrecisionTest(xla_test.XLATestCase):
@@ -184,7 +207,7 @@ class ReduceOpPrecisionTest(xla_test.XLATestCase):
     """
 
     for test_input in test_inputs:
-      with self.cached_session() as sess:
+      with self.session() as sess:
         with self.test_scope():
           a = array_ops.placeholder(dtype)
           index = array_ops.placeholder(dtypes.int32)

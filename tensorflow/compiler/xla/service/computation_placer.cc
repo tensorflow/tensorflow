@@ -21,7 +21,9 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -31,12 +33,44 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
+#include "tensorflow/stream_executor/host/host_platform_id.h"
+#include "tensorflow/stream_executor/rocm/rocm_platform_id.h"
 
 using absl::StrAppend;
 using absl::StrCat;
 
 namespace xla {
+
+StatusOr<DeviceAssignment::LogicalID> DeviceAssignment::LogicalIdForDevice(
+    GlobalDeviceId device_id) const {
+  absl::optional<DeviceAssignment::LogicalID> logical_id;
+  for (int r = 0; r < replica_count(); ++r) {
+    for (int c = 0; c < computation_count(); ++c) {
+      if ((*this)(r, c) == device_id.value()) {
+        if (logical_id.has_value()) {
+          return InternalError(
+              "Device %d appears twice in DeviceAssignment: %s",
+              device_id.value(), ToString());
+        }
+        logical_id.emplace(DeviceAssignment::LogicalID{r, c});
+      }
+    }
+  }
+  if (logical_id.has_value()) {
+    return *logical_id;
+  } else {
+    return InternalError("Device %d doesn't appear in DeviceAssignment: %s",
+                         device_id.value(), ToString());
+  }
+}
+
+StatusOr<int> DeviceAssignment::ReplicaIdForDevice(
+    GlobalDeviceId device_id) const {
+  TF_ASSIGN_OR_RETURN(const LogicalID logical_id,
+                      LogicalIdForDevice(device_id));
+  return logical_id.replica_id;
+}
 
 Status DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
   proto->set_replica_count(replica_count());
@@ -164,6 +198,8 @@ static bool InitModule() {
       stream_executor::host::kHostPlatformId, &CreateComputationPlacer);
   xla::ComputationPlacer::RegisterComputationPlacer(
       stream_executor::cuda::kCudaPlatformId, &CreateComputationPlacer);
+  xla::ComputationPlacer::RegisterComputationPlacer(
+      stream_executor::rocm::kROCmPlatformId, &CreateComputationPlacer);
   return true;
 }
 static bool module_initialized = InitModule();

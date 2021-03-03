@@ -1,5 +1,6 @@
 op {
   graph_op_name: "ParseExampleDataset"
+  visibility: HIDDEN
   in_arg {
     name: "dense_defaults"
     description: <<END

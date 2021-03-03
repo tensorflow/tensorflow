@@ -18,14 +18,17 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/common_runtime/graph_def_builder_util.h"
+#include "tensorflow/core/graph/benchmark_testlib.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/graph/graph_def_builder_util.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 // TODO(josh11b): Test setting the "device" field of a NodeDef.
 // TODO(josh11b): Test that feeding won't prune targets.
@@ -156,7 +159,6 @@ TEST(AlgorithmTest, ReversePostOrderStable) {
 
 TEST(AlgorithmTest, PostOrderWithEdgeFilter) {
   GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
-  string error;
   Node* n0 = ops::SourceOp("TestParams", b.opts().WithName("n0"));
   Node* n1 = ops::UnaryOp("TestUnary", n0, b.opts().WithName("n1"));
   Node* n2 = ops::UnaryOp("TestUnary", n1, b.opts().WithName("n2"));
@@ -200,5 +202,44 @@ TEST(AlgorithmTest, PostOrderWithEdgeFilter) {
         << expected_reverse_post_order[i]->name();
   }
 }
+
+void BM_PruneForReverseReachability(::testing::benchmark::State& state) {
+  const int num_nodes = state.range(0);
+  const int num_edges_per_node = state.range(1);
+  const GraphDef graph_def =
+      test::CreateGraphDef(num_nodes, num_edges_per_node);
+  const auto registry = OpRegistry::Global();
+  GraphConstructorOptions opts;
+  for (auto s : state) {
+    state.PauseTiming();
+    Graph graph(registry);
+    TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
+    std::unordered_set<const Node*> visited;
+    visited.insert(graph.FindNodeId(graph.num_nodes() - 1));
+    state.ResumeTiming();
+    PruneForReverseReachability(&graph, std::move(visited));
+  }
+}
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(10, 2);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 6, 2);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 9, 2);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 12, 2);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 15, 2);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(10, 4);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 6, 4);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 9, 4);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 12, 4);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 15, 4);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(10, 8);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 6, 8);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 9, 8);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 12, 8);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 15, 8);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(10, 16);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 6, 16);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 9, 16);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 12, 16);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 15, 16);
+
 }  // namespace
 }  // namespace tensorflow

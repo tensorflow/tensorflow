@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if !GOOGLE_CUDA
-#error This file must only be included when building with Cuda support
+#if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
+#error This file must only be included when building with Cuda or ROCm support
 #endif
 
 #ifndef TENSORFLOW_CORE_KERNELS_CWISE_OPS_GPU_GRADIENTS_CU_H_
@@ -49,7 +49,7 @@ struct SimpleBinaryFunctor<GPUDevice, Functor> {
 };
 
 // Macros to explicitly instantiate kernels on GPU for multiple types
-// (T0, T1, etc.) for SimpleBiaryFunctor (e.g., functor::tanh_grad).
+// (T0, T1, etc.) for SimpleBinaryFunctor (e.g., functor::tanh_grad).
 #define DEFINE_SIMPLE_BINARY1(F, T) \
   template struct SimpleBinaryFunctor<GPUDevice, F<T> >
 #define DEFINE_SIMPLE_BINARY2(F, T0, T1) \

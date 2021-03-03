@@ -24,8 +24,10 @@ limitations under the License.
 #include <Python.h>
 
 #include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 
 typedef tensorflow::gtl::InlinedVector<TFE_TensorHandle*, 4>
     TFE_InputTensorHandles;
@@ -51,18 +53,24 @@ void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
                     PyObject* attrs, TFE_OutputTensorHandles* outputs,
                     TF_Status* out_status);
 
+// Execute a cancelable TensorFlow operation.
+//
+// Arguments as above (for TFE_Py_Execute), with the addition of:
+// 'cancellation_manager': A pointer to a TFE_CancellationManager that can be
+//                         used to cancel execution of the given operation.
+typedef struct TFE_CancellationManager TFE_CancellationManager;
+void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
+                              const char* op_name,
+                              TFE_InputTensorHandles* inputs, PyObject* attrs,
+                              TFE_CancellationManager* cancellation_manager,
+                              TFE_OutputTensorHandles* outputs,
+                              TF_Status* out_status);
+
 // Registers e as the Exception class for handling not ok Status. Returns
 // Py_None if registration succeeds, else throws a TypeError and returns NULL.
 //
 // This function is not thread-safe.
 PyObject* TFE_Py_RegisterExceptionClass(PyObject* e);
-
-// Registers e as the type of the ResourceVariable class.
-// Returns Py_None if registration succeeds, else throws a TypeError and returns
-// NULL.
-//
-// This function is not thread-safe.
-PyObject* TFE_Py_RegisterResourceVariableType(PyObject* e);
 
 // Registers e as the VSpace to use.
 // `vspace` must be a imperative_grad.py:VSpace named tuple.
@@ -85,6 +93,14 @@ PyObject* TFE_Py_RegisterFallbackExceptionClass(PyObject* e);
 //
 // This function is not thread-safe.
 PyObject* TFE_Py_RegisterGradientFunction(PyObject* e);
+
+// Registers e as the forward_gradient_function.  The registered function takes
+// (op_name, attrs, inputs, outputs, tangents) and returns the output
+// tangents. This function is used only for operations, not for custom gradients
+// or functional ops.
+//
+// This function is not thread-safe.
+PyObject* TFE_Py_RegisterJVPFunction(PyObject* e);
 
 // Returns 0 if 'status' is TF_OK. Otherwise, raises an exception (using
 // `exception` if not nullptr, else using the class registered via
@@ -115,7 +131,8 @@ void TFE_DeleteContextCapsule(PyObject* context);
 bool EagerTensor_CheckExact(const PyObject* o);
 
 // Helper function to construct a new EagerTensor from a TFE_TensorHandle.
-PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle);
+PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle,
+                                const bool is_packed = false);
 
 // Extracts the handle inside EagerTensor object `o`. Returns nullptr on error.
 TFE_TensorHandle* EagerTensor_Handle(const PyObject* o);
@@ -147,26 +164,80 @@ void TFE_Py_TapeSetAdd(PyObject* tape);
 // Returns true if the tape stack is empty.
 PyObject* TFE_Py_TapeSetIsEmpty();
 
-PyObject* TFE_Py_TapeSetShouldRecord(PyObject* tensors);
+// Check if any backward tape should record an operation given inputs.
+//
+// Does not take forward accumulators into account.
+PyObject* TFE_Py_TapeSetShouldRecordBackprop(PyObject* tensors);
+
+// Determine possible gradient types, taking forward accumulators into account.
+//   - 0 if no tape will record (implies TFE_Py_TapeSetShouldRecordBackprop
+//     is false and no forward accumulator is watching)
+//   - 1 if first-order gradients may be requested
+//   - 2 if higher-order gradients may be requested
+PyObject* TFE_Py_TapeSetPossibleGradientTypes(PyObject* tensors);
+
 void TFE_Py_TapeWatch(PyObject* tape, PyObject* tensor);
 void TFE_Py_TapeSetDeleteTrace(tensorflow::int64 tensor_id);
 
 // Stops any gradient recording on the current thread.
+//
+// Includes forward accumulators.
 void TFE_Py_TapeSetStopOnThread();
 
 // Restarts gradient recording on the current thread.
 void TFE_Py_TapeSetRestartOnThread();
 
-// Records an operation in the gradient tape stack.type is a string for the
-// operation type, used in the backprop code. output_tensors should be a list of
-// python ops.Tensor objects. input_tensor_ids should be a list of python
-// integers with the ids of the input tensors of the recorded
-// operation. backward_function should be the function to be called during
-// backprop to, given the gradients of the output tensors, produce the gradients
-// of the input tensors.
-void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
-                                   PyObject* input_tensor_ids,
-                                   PyObject* backward_function);
+// Checks whether gradient recording is stopped on the current thread.
+PyObject* TFE_Py_TapeSetIsStopped();
+
+// Records an operation for the purpose of gradient computation.
+//
+// Arguments:
+//  - op_type is a string for the operation type, used in the backprop code
+//  - output_tensors are a list of Python Tensor objects output by the operation
+//  - input_tensors are a list of input Tensors to the recorded operation
+//  - backward_function is the function to be called during backprop or
+//    forwardprop to, given the gradients of the output tensors, produce the
+//    gradients of the input tensors. This function is automatically transposed
+//    during forwardprop.
+//  - forward_function is an optional special-case for forwardprop, taking input
+//    jvps and returning output jvps.
+//
+// Records an operation both for backprop (gradient tape) and forwardprop
+// (forward accumulator). Equivalent to calling both
+// TFE_Py_TapeSetRecordOperationBackprop and
+// TFE_Py_TapeSetRecordOperationForwardprop.
+PyObject* TFE_Py_TapeSetRecordOperation(PyObject* op_type,
+                                        PyObject* output_tensors,
+                                        PyObject* input_tensors,
+                                        PyObject* backward_function,
+                                        PyObject* forward_function);
+
+// Records an operation only for backprop (gradient tapes).
+//
+// Same arguments as TFE_Py_TapeSetRecordOperation.
+PyObject* TFE_Py_TapeSetRecordOperationBackprop(PyObject* op_type,
+                                                PyObject* output_tensors,
+                                                PyObject* input_tensors,
+                                                PyObject* backward_function);
+
+// Records an operation only for forwardprop (forward accumulators).
+//
+// Arguments:
+//  - op_type is a string for the operation type, used in the backprop code
+//  - output_tensors are a list of Python Tensor objects output by the operation
+//  - input_tensors are a list of input Tensors to the recorded operation
+//  - backward_function is the function to be called to, given the gradients of
+//    the output tensors, produce the gradients of the input tensors. This
+//    function is automatically transposed to produce output gradients given
+//    input gradients.
+//  - forwardprop_output_indices indicates any output_tensors which contain
+//    JVPs. Typically these will have come from TFE_Py_PackJVPs. May
+//    be None or an empty sequence if there are no JVP outputs from the
+//    operation.
+PyObject* TFE_Py_TapeSetRecordOperationForwardprop(
+    PyObject* op_type, PyObject* output_tensors, PyObject* input_tensors,
+    PyObject* backward_function, PyObject* forwardprop_output_indices);
 
 // Notifies all tapes that a variable has been accessed.
 void TFE_Py_TapeVariableAccessed(PyObject* variable);
@@ -181,6 +252,7 @@ void TFE_Py_TapeWatchVariable(PyObject* tape, PyObject* variable);
 // target.
 PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
                               PyObject* sources, PyObject* output_gradients,
+                              PyObject* sources_raw,
                               PyObject* unconnected_gradients,
                               TF_Status* status);
 
@@ -188,31 +260,94 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
 // correctly formatted (i.e. EagerTensors). If it doesn't find EagerTensors,
 // it will simply fail with a NotImplementedError.
 //
-// The first PyObject* is unused.
 // The "args" PyObject* is meant to be a tuple with the following structure:
-//  Item 1: The TFE Context
-//  Item 2: device_name: Name of the device on which to execute the operation,
-//          or NULL for automatic selection.
-//  Item 3: op_name: Name of the TensorFlow op to execute.
-//  Item 4: name: An optional name for the operation.
-//  Item 5: List representing all callbacks to execute after successful
-//  op execute.
-//  Item 6 onwards: inputs - This is a list of inputs followed by a list of
+//  Item 1: The Python eager Context object
+//  Item 2: op_name: Name of the TensorFlow op to execute.
+//  Item 3: name: An optional name for the operation.
+//  Item 4 onwards: inputs - This is a list of inputs followed by a list of
 //        attrs. It is not necessary for type attrs to be present.
+//
+// Note: the device_name and op_callbacks, which were previously passed
+// as arguments, are now read via GetEagerContextThreadLocalData().
 //
 // This is named _C since there doesn't seem to be any way to make it visible
 // in the SWIG interface without renaming due to the use of the %native
 // directive.
-PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args);
+PyObject* TFE_Py_FastPathExecute_C(PyObject* args);
 
 // Record the gradient for a given op.
 PyObject* TFE_Py_RecordGradient(PyObject* op_name, PyObject* inputs,
                                 PyObject* attrs, PyObject* results,
-                                PyObject* name);
+                                PyObject* forward_pass_name_scope);
 
 // Returns all variables watched by the given tape in the order those variables
 // were created.
 PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape);
+
+// Creates a new forward accumulator. Does not add it to the active set.
+PyObject* TFE_Py_ForwardAccumulatorNew(bool use_batch);
+
+// Adds a ForwardAccumulator to the active set, meaning it will watch executed
+// operations. It must not already be in the active set.
+PyObject* TFE_Py_ForwardAccumulatorSetAdd(PyObject* accumulator);
+// Removes a forward accumulator from the active set, meaning it will no longer
+// be watching operations.
+void TFE_Py_ForwardAccumulatorSetRemove(PyObject* accumulator);
+
+// Tell the forward accumulator `accumulator` to watch `tensor`, with a Tensor
+// tangent vector `tangent` of matching shape and dtype.
+void TFE_Py_ForwardAccumulatorWatch(PyObject* accumulator, PyObject* tensor,
+                                    PyObject* tangent);
+
+// Looks up the Jacobian-vector product of `tensor` in the forward accumulator
+// `accumulator`. Returns None if no JVP is available.
+PyObject* TFE_Py_ForwardAccumulatorJVP(PyObject* accumulator, PyObject* tensor);
+
+// Temporarily push or pop transient state for accumulators in the active set.
+//
+// Allows an accumulator which is currently processing an operation to
+// temporarily reset its state. This is useful when building forwardprop
+// versions of functions, where an accumulator will trigger function building
+// and then must process captured symbolic tensors while building it. Without
+// pushing and popping, accumulators ignore operations executed as a direct
+// result of their own jvp computations.
+PyObject* TFE_Py_ForwardAccumulatorPushState();
+PyObject* TFE_Py_ForwardAccumulatorPopState();
+
+// Collects state from all current forward accumulators related to `tensors`.
+//
+// This is useful for packing JVPs as function inputs before executing a
+// function which computes primals and JVPs at the same time.
+//
+// Does not include accumulators which are currently in the process of computing
+// a jvp (and so appear somewhere on the current execution stack) or any
+// accumulators more deeply nested.
+//
+// Includes JVPs for `tensors` and any higher-order JVPs for those
+// (recursively). Returns a two-element tuple (indices, jvps):
+//   indices: A sequence of sequences of two-element tuples. Each forward
+//       accumulator is represented as a sequence of tuples with (primal_index,
+//       jvp_index). Both integers index into the concatenated `tensors + jvps`
+//       array.
+//   jvps: A flat list of Tensors. Best interpreted as a sequence to be
+//       appended to `tensors`.
+PyObject* TFE_Py_PackJVPs(PyObject* tensors);
+
+// Variable Watcher methods.
+
+// Creates a new variable watcher and adds it to the set of active variable
+// watchers.
+PyObject* TFE_Py_VariableWatcherNew();
+
+// Removes the passed variable watcher from the set of active variable watchers.
+void TFE_Py_VariableWatcherRemove(PyObject* variable_watcher);
+
+// Notifies all variable watchers that a variable has been accessed.
+void TFE_Py_VariableWatcherVariableAccessed(PyObject* variable);
+
+// Returns all variables watched by the given variable_watcher in the order
+// those variables were created.
+PyObject* TFE_Py_VariableWatcherWatchedVariables(PyObject* variable_watcher);
 
 // Returns an EagerTensor of dimension [len(`tensors`)] containing
 // the `slice_dim`'th dimension of each tensor in `tensors`. In other words,
@@ -231,7 +366,92 @@ PyObject* TFE_Py_TensorShapeSlice(PyObject* tensors, int slice_dim);
 PyObject* TFE_Py_TensorShapeOnDevice(PyObject* tensor);
 
 // Encodes the object as a tuple that is meant to be used as part of the key
-// for the defun function cache.
-PyObject* TFE_Py_EncodeArg(PyObject*);
+// for the defun function cache.  If `include_tensor_ranks_only` is true,
+// then the encoding only stores tensor ranks, and the key is
+// agnostic to dimension sizes.  Otherwise, full tensor shape encodings are
+// returned.
+PyObject* TFE_Py_EncodeArg(PyObject*, bool include_tensor_ranks_only);
+
+void TFE_Py_EnableInteractivePythonLogging();
+
+// Sets `python_context` as the current eager Context object (defined
+// in eager/context.py). This function must be called at least once before
+// eager tensors are created.
+// If an error is encountered, sets python error and returns NULL. Else, returns
+// Py_None.
+//
+// This function is not thread-safe.
+PyObject* TFE_Py_SetEagerContext(PyObject* py_context);
+
+// Returns the current eager Context object (defined in eager/context.py)
+// that was last set using TFE_Py_SetEagerContext.
+// If an error is encountered, sets python error and returns NULL.
+// The returned PyObject is "new", i.e. the caller must call Py_DECREF on it at
+// some point.
+PyObject* GetPyEagerContext();
+
+// These are exposed since there is SWIG code that calls these.
+// Returns a pre-allocated status if it exists.
+TF_Status* GetStatus();
+// Returns the pre-allocated status to the code.
+void ReturnStatus(TF_Status* status);
+
+namespace tensorflow {
+
+// Returns the DataType for the specified tensor.  Returns DT_INVALID if
+// PyObject is not a tensor.
+DataType PyTensor_DataType(PyObject* tensor);
+
+// Thread-local data associated with a Python eager Context object.
+//
+// TODO(edloper): Consider changing device_name and scope_name to a const char*
+// (with nullptr used for None). However, note that existing code (e.g.
+// TFE_TensorHandleCache::Lookup) assumes that the lifetime of these strings
+// extends beyond the point where their value is changed; so we'd need to make
+// sure that the strings stay alive (maybe using PyUnicode_InternInPlace?)
+struct EagerContextThreadLocalData {
+  bool is_eager = false;
+  bool invoking_op_callbacks = false;
+  tensorflow::Safe_PyObjectPtr device_name;
+  tensorflow::Safe_PyObjectPtr scope_name;
+  tensorflow::Safe_PyObjectPtr device_spec;
+  tensorflow::Safe_PyObjectPtr function_call_options;
+  tensorflow::Safe_PyObjectPtr executor;
+  tensorflow::Safe_PyObjectPtr op_callbacks;
+};
+
+// Create a thread-local-data structure associated with py_eager_context.
+// `is_eager` and `device_spec` are used to supply default values for those
+// fields whenever a new thread-local instance is created for py_eager_tensor.
+//
+// This function assumes that the Python GIL is held (and does not perform its
+// own locking).
+void MakeEagerContextThreadLocalData(PyObject* py_eager_context,
+                                     PyObject* is_eager,
+                                     PyObject* device_spec);
+
+// Returns the thread-local instance of EagerContextThreadLocalData that is
+// associated with the given Python Context object.  If an instance has not
+// yet been created for `py_eager_context` in this thread, then a new one is
+// created, and initialized with the default values specified in
+// MakeEagerContextThreadLocalData.
+EagerContextThreadLocalData* GetEagerContextThreadLocalData(
+    PyObject* py_eager_context);
+
+// Free data structures used to track py_eager_context.
+//
+// This frees global state associated with py_eager_context, as well as thread-
+// local state associated with py_eager_context and the current thread. If you
+// wish to destroy thread-local state associated with a single py_eager_context
+// for multiple threads, then you must call this method from each thread.
+//
+// Thread-local state assocaited with eager contexts is also automatically
+// cleaned up when the thread is destroyed.
+//
+// This function assumes that the Python GIL is held (and does not perform its
+// own locking).
+void DestroyEagerContextThreadLocalData(PyObject* py_eager_context);
+
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_

@@ -25,12 +25,14 @@ from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("train.AdadeltaOptimizer")
+@tf_export(v1=["train.AdadeltaOptimizer"])
 class AdadeltaOptimizer(optimizer.Optimizer):
   """Optimizer that implements the Adadelta algorithm.
 
-  See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
-  ([pdf](http://arxiv.org/pdf/1212.5701v1.pdf))
+  References:
+    ADADELTA - An Adaptive Learning Rate Method:
+      [Zeiler, 2012](http://arxiv.org/abs/1212.5701)
+      ([pdf](http://arxiv.org/pdf/1212.5701v1.pdf))
   """
 
   def __init__(self, learning_rate=0.001, rho=0.95, epsilon=1e-8,

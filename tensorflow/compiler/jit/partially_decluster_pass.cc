@@ -14,18 +14,29 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/jit/partially_decluster_pass.h"
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/jit/device_util.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/graph/graph_node_util.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 namespace {
+
+bool NotBackedge(const Edge& edge) { return !edge.src()->IsNextIteration(); }
+
+namespace reduce_device_to_host_copies {
 Status FindNodesToDecluster(const Graph& graph,
                             absl::flat_hash_set<Node*>* result,
                             absl::Span<Node* const> post_order) {
@@ -41,6 +52,15 @@ Status FindNodesToDecluster(const Graph& graph,
       continue;
     }
 
+    // Assume the benefit of not outputting a larger tensor outweighs the
+    // benefit of this check.
+    // TODO(tpopp): Only apply this if the value being consumed is not output
+    // from the cluster to another consumer.
+    // TODO(tpopp): See if XlaRun can be modified to avoid this issue
+    // completely.
+    if (IsShapeConsumerOp(*n)) {
+      continue;
+    }
     // We assume the only XLA-auto-clusterable operations with side effects are
     // resource variable updates.  We can't execute these twice.
     if (HasResourceInputOrOutput(*n)) {
@@ -49,7 +69,7 @@ Status FindNodesToDecluster(const Graph& graph,
 
     DeviceType device_type("");
     TF_RETURN_IF_ERROR(
-        DeviceToDeviceType(n->assigned_device_name(), &device_type));
+        DeviceNameToDeviceType(n->assigned_device_name(), &device_type));
     TF_RETURN_IF_ERROR(MemoryTypesForNode(graph.op_registry(), device_type,
                                           n->def(), &input_mtypes,
                                           &output_mtypes));
@@ -69,8 +89,8 @@ Status FindNodesToDecluster(const Graph& graph,
       } else {
         MemoryTypeVector dst_input_mtypes, dst_output_mtypes;
         DeviceType dst_device_type("");
-        TF_RETURN_IF_ERROR(
-            DeviceToDeviceType(dst->assigned_device_name(), &dst_device_type));
+        TF_RETURN_IF_ERROR(DeviceNameToDeviceType(dst->assigned_device_name(),
+                                                  &dst_device_type));
         TF_RETURN_IF_ERROR(MemoryTypesForNode(graph.op_registry(), device_type,
                                               dst->def(), &dst_input_mtypes,
                                               &dst_output_mtypes));
@@ -116,6 +136,7 @@ Status PartiallyDeclusterNode(Graph* graph, Node* n) {
 
   NodeDef ndef = n->def();
   ndef.set_name(absl::StrCat(n->name(), "/declustered"));
+  MergeDebugInfo(NodeDebugInfo(n->def()), &ndef);
   RemoveFromXlaCluster(&ndef);
   Status s;
   Node* cloned_node = graph->AddNode(ndef, &s);
@@ -139,8 +160,6 @@ Status PartiallyDeclusterNode(Graph* graph, Node* n) {
 
   return Status::OK();
 }
-
-bool NotBackedge(const Edge& edge) { return !edge.src()->IsNextIteration(); }
 
 // Clones nodes to outside their cluster to avoid device-to-host copies.  For
 // instance, converts this:
@@ -168,7 +187,7 @@ bool NotBackedge(const Edge& edge) { return !edge.src()->IsNextIteration(); }
 // where the ===> arrow has a hostmem source and destination and would entail a
 // device to host copy if the source and destination were not in the same XLA
 // cluster.
-Status PartiallyDeclusterToRemoveDeviceToHostCopies(Graph* graph) {
+Status PartiallyDeclusterGraph(Graph* graph) {
   // When deciding whether to decluster a particular node, we base our decision
   // on if we've decided that some of its consumers have to be declustered too.
   // Iterating the graph in post-order guarantees that consumers have been
@@ -206,7 +225,9 @@ Status PartiallyDeclusterToRemoveDeviceToHostCopies(Graph* graph) {
 
   return Status::OK();
 }
+}  // namespace reduce_device_to_host_copies
 
+namespace reduce_recompilation {
 bool IsIntraClusterEdge(const Edge& edge) {
   absl::optional<absl::string_view> src_cluster_name =
       GetXlaClusterForNode(*edge.src());
@@ -228,7 +249,7 @@ bool IsMustCompileDevice(const DeviceType& device_type) {
 Status MustCompileNode(const Node* n, bool* must_compile) {
   DeviceType device_type("");
   TF_RETURN_IF_ERROR(
-      DeviceToDeviceType(n->assigned_device_name(), &device_type));
+      DeviceNameToDeviceType(n->assigned_device_name(), &device_type));
 
   if (IsMustCompileDevice(device_type)) {
     *must_compile = true;
@@ -267,12 +288,20 @@ Status MustCompileNode(const Node* n, bool* must_compile) {
 // We assume here that the extra repeated (repeated compared to a clustered f
 // where it will always be constant folded) host-side computation of f does not
 // regress performance in any significant manner.  We will have to revisit this
-// algorith with a more complex cost model if this assumption turns out to be
+// algorithm with a more complex cost model if this assumption turns out to be
 // incorrect.
-Status DeclusterNodesToReduceRecompilations(Graph* graph) {
+Status PartiallyDeclusterGraph(Graph* graph,
+                               const FunctionLibraryDefinition* flib_def,
+                               Env* env) {
   std::vector<bool> compile_time_const_nodes(graph->num_node_ids());
-  TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
-      *graph, nullptr, &compile_time_const_nodes, IsIntraClusterEdge));
+  OptimizerOptions opts;
+  auto pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
+      nullptr, env, /*config=*/nullptr, TF_GRAPH_DEF_VERSION, flib_def, opts);
+  FunctionLibraryRuntime* lib_runtime =
+      pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
+  TF_RETURN_IF_ERROR(BackwardsConstAnalysis(*graph, nullptr,
+                                            &compile_time_const_nodes,
+                                            lib_runtime, IsIntraClusterEdge));
 
   std::vector<Node*> rpo;
   GetReversePostOrder(*graph, &rpo, /*stable_comparator=*/NodeComparatorName(),
@@ -322,7 +351,41 @@ Status DeclusterNodesToReduceRecompilations(Graph* graph) {
 
   return Status::OK();
 }
+}  // namespace reduce_recompilation
 
+namespace decluster_root_shape_consumers {
+
+Status PartiallyDeclusterGraph(Graph* graph) {
+  std::vector<Node*> reverse_post_order;
+  GetReversePostOrder(*graph, &reverse_post_order,
+                      /*stable_comparator=*/NodeComparatorName(),
+                      /*edge_filter=*/NotBackedge);
+
+  for (Node* n : reverse_post_order) {
+    if (!IsShapeConsumerOp(*n)) {
+      continue;
+    }
+
+    absl::optional<absl::string_view> cluster = GetXlaClusterForNode(*n);
+    if (!cluster.has_value()) {
+      continue;
+    }
+
+    auto input_belongs_to_same_cluster = [&](const Edge* e) {
+      return cluster == GetXlaClusterForNode(*e->src());
+    };
+
+    if (absl::c_any_of(n->in_edges(), input_belongs_to_same_cluster)) {
+      continue;
+    }
+
+    VLOG(2) << "Declustering " << n->name()
+            << " because it is a root shape consumer";
+    RemoveFromXlaCluster(n);
+  }
+  return Status::OK();
+}
+}  // namespace decluster_root_shape_consumers
 }  // namespace
 
 Status PartiallyDeclusterPass::Run(
@@ -334,8 +397,24 @@ Status PartiallyDeclusterPass::Run(
 
   Graph* graph = options.graph->get();
 
-  TF_RETURN_IF_ERROR(PartiallyDeclusterToRemoveDeviceToHostCopies(graph));
-  TF_RETURN_IF_ERROR(DeclusterNodesToReduceRecompilations(graph));
+  TF_RETURN_IF_ERROR(
+      reduce_device_to_host_copies::PartiallyDeclusterGraph(graph));
+  if (options.flib_def == nullptr) {
+    return errors::InvalidArgument(
+        "GraphOptimizationPassOptions::flib_def must be set for "
+        "PartiallyDeclusterPass.");
+  }
+  if (options.session_options == nullptr ||
+      options.session_options->env == nullptr) {
+    return errors::InvalidArgument(
+        "GraphOptimizationPassOptions::session_options::env must be set for "
+        "PartiallyDeclusterPass.");
+  }
+  TF_RETURN_IF_ERROR(reduce_recompilation::PartiallyDeclusterGraph(
+      graph, options.flib_def, options.session_options->env));
+
+  TF_RETURN_IF_ERROR(
+      decluster_root_shape_consumers::PartiallyDeclusterGraph(graph));
 
   return Status::OK();
 }

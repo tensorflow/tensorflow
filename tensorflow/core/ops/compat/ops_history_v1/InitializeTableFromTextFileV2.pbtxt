@@ -1,0 +1,40 @@
+op {
+  name: "InitializeTableFromTextFileV2"
+  input_arg {
+    name: "table_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "filename"
+    type: DT_STRING
+  }
+  attr {
+    name: "key_index"
+    type: "int"
+    has_minimum: true
+    minimum: -2
+  }
+  attr {
+    name: "value_index"
+    type: "int"
+    has_minimum: true
+    minimum: -2
+  }
+  attr {
+    name: "vocab_size"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    has_minimum: true
+    minimum: -1
+  }
+  attr {
+    name: "delimiter"
+    type: "string"
+    default_value {
+      s: "\t"
+    }
+  }
+  is_stateful: true
+}

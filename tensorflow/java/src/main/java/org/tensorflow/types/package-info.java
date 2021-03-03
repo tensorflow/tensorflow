@@ -24,6 +24,6 @@ limitations under the License.
  *
  * <p>TensorFlow element types are also separately represented by the {@link
  * org.tensorflow.DataType} enum, with one enum value per element type. The enum representation is
- * not usually needed, but can be obtained using {@link org.tensorflow.DataType.fromClass}.
+ * not usually needed, but can be obtained using {@link org.tensorflow.DataType#fromClass}.
  */
 package org.tensorflow.types;

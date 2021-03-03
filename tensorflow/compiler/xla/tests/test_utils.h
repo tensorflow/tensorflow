@@ -56,9 +56,9 @@ class PseudorandomGenerator {
 
 // Generates fake data in a literal of the given shape, or returns an error
 // status if the element type is currently unhandled for fake data
-// generation. See below for documentation of pseudo_random.
-StatusOr<Literal> MakeFakeLiteral(const Shape& shape,
-                                  bool pseudo_random = true);
+// generation. See below for documentation of pseudo_random and use_large_range.
+StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random = true,
+                                  bool use_large_range = false);
 
 // Generates a vector of arguments containing fake data. The number, shape and
 // layout of the arguments is appropriate for given HLO module.
@@ -81,17 +81,25 @@ StatusOr<Literal> MakeFakeLiteral(const Shape& shape,
 // will be generated in a faster way that yields less interesting data, e.g. the
 // values may all be just the same value.
 //
+// If use_large_range is false, the generated floating point numbers will be
+// sampled from a small range of possible values. If use_large_range is true,
+// the generated floating point numbers will be sampled from a uniform-log
+// distribution of most possible floats, with a small chance to instead be
+// sampled from a list of special floating point values (such as 0, inf, etc.).
+//
 // TODO(b/79942829): Make interesting argument generation fast enough that using
 // pseudo_random does not save any noticeable amount of time so that the
 // parameter can be removed.
 StatusOr<std::vector<Literal>> MakeFakeArguments(HloModule* const module,
-                                                 bool pseudo_random = true);
+                                                 bool pseudo_random = true,
+                                                 bool use_large_range = false);
 
 // Overload which accepts a random number generator. This enables generation of
 // different random values with sequential calls to MakeFakeArguments by reusing
 // the same generator.
 StatusOr<std::vector<Literal>> MakeFakeArguments(HloModule* const module,
-                                                 std::minstd_rand0* engine);
+                                                 std::minstd_rand0* engine,
+                                                 bool use_large_range = false);
 
 // Check that a given module satisfies various constraints before trying to
 // execute it.

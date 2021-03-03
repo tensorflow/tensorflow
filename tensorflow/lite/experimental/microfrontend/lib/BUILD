@@ -1,10 +1,8 @@
 # Library for generating feature vectors from audio data
-
 package(
     default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 cc_library(
     name = "bits",
@@ -14,14 +12,16 @@ cc_library(
 cc_library(
     name = "fft",
     srcs = [
-        "fft.c",
-        "fft_util.c",
+        "fft.cc",
+        "fft_util.cc",
     ],
     hdrs = [
         "fft.h",
         "fft_util.h",
     ],
-    deps = ["@kissfft//:kiss_fftr_16"],
+    deps = [
+        "@kissfft//:kiss_fftr_16",
+    ],
 )
 
 cc_library(
@@ -119,70 +119,81 @@ cc_library(
 
 cc_test(
     name = "fft_test",
-    size = "small",
     srcs = ["fft_test.cc"],
     deps = [
         ":fft",
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
 
 cc_test(
     name = "filterbank_test",
-    size = "small",
     srcs = ["filterbank_test.cc"],
+    # Setting copts for experimental code to [], but this code should be fixed
+    # to build with the default copts (micro_copts())
+    copts = [],
     deps = [
         ":filterbank",
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
 
 cc_test(
     name = "frontend_test",
-    size = "small",
     srcs = ["frontend_test.cc"],
+    # Setting copts for experimental code to [], but this code should be fixed
+    # to build with the default copts (micro_copts())
+    copts = [],
     deps = [
         ":frontend",
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
 
 cc_test(
     name = "log_scale_test",
-    size = "small",
     srcs = ["log_scale_test.cc"],
+    # Setting copts for experimental code to [], but this code should be fixed
+    # to build with the default copts (micro_copts())
+    copts = [],
     deps = [
         ":log_scale",
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
 
 cc_test(
     name = "noise_reduction_test",
-    size = "small",
     srcs = ["noise_reduction_test.cc"],
+    # Setting copts for experimental code to [], but this code should be fixed
+    # to build with the default copts (micro_copts())
+    copts = [],
     deps = [
         ":noise_reduction",
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
 
 cc_test(
     name = "pcan_gain_control_test",
-    size = "small",
     srcs = ["pcan_gain_control_test.cc"],
+    # Setting copts for experimental code to [], but this code should be fixed
+    # to build with the default copts (micro_copts())
+    copts = [],
     deps = [
         ":pcan_gain_control",
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
 
 cc_test(
     name = "window_test",
-    size = "small",
     srcs = ["window_test.cc"],
+    # Setting copts for experimental code to [], but this code should be fixed
+    # to build with the default copts (micro_copts())
+    copts = [],
     deps = [
         ":window",
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/lite/micro/testing:micro_test",
     ],
 )

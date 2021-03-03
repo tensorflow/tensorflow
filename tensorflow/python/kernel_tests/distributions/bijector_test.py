@@ -36,9 +36,10 @@ class BaseBijectorTest(test.TestCase):
   """Tests properties of the Bijector base-class."""
 
   def testIsAbstract(self):
-    with self.assertRaisesRegexp(TypeError,
-                                 ("Can't instantiate abstract class Bijector "
-                                  "with abstract methods __init__")):
+    # In Python 3.9, "abstract methods" become "abstract method"
+    with self.assertRaisesRegex(TypeError,
+                                ("Can't instantiate abstract class Bijector "
+                                 "with abstract methods? __init__")):
       bijector.Bijector()  # pylint: disable=abstract-class-instantiated
 
   def testDefaults(self):
@@ -65,20 +66,18 @@ class BaseBijectorTest(test.TestCase):
       self.assertAllEqual(shape, inverse_event_shape_)
       self.assertAllEqual(shape, bij.inverse_event_shape(shape))
 
-    with self.assertRaisesRegexp(
-        NotImplementedError, "inverse not implemented"):
+    with self.assertRaisesRegex(NotImplementedError, "inverse not implemented"):
       bij.inverse(0)
 
-    with self.assertRaisesRegexp(
-        NotImplementedError, "forward not implemented"):
+    with self.assertRaisesRegex(NotImplementedError, "forward not implemented"):
       bij.forward(0)
 
-    with self.assertRaisesRegexp(
-        NotImplementedError, "inverse_log_det_jacobian not implemented"):
+    with self.assertRaisesRegex(NotImplementedError,
+                                "inverse_log_det_jacobian not implemented"):
       bij.inverse_log_det_jacobian(0, event_ndims=0)
 
-    with self.assertRaisesRegexp(
-        NotImplementedError, "forward_log_det_jacobian not implemented"):
+    with self.assertRaisesRegex(NotImplementedError,
+                                "forward_log_det_jacobian not implemented"):
       bij.forward_log_det_jacobian(0, event_ndims=0)
 
 
@@ -116,22 +115,24 @@ class BrokenBijector(bijector.Bijector):
       raise IntentionallyMissingError
     return math_ops.log(2.)
 
+
 class BijectorTestEventNdims(test.TestCase):
 
   def testBijectorNonIntegerEventNdims(self):
     bij = BrokenBijector()
-    with self.assertRaisesRegexp(ValueError, "Expected integer"):
+    with self.assertRaisesRegex(ValueError, "Expected integer"):
       bij.forward_log_det_jacobian(1., event_ndims=1.5)
-    with self.assertRaisesRegexp(ValueError, "Expected integer"):
+    with self.assertRaisesRegex(ValueError, "Expected integer"):
       bij.inverse_log_det_jacobian(1., event_ndims=1.5)
 
   def testBijectorArrayEventNdims(self):
     bij = BrokenBijector()
-    with self.assertRaisesRegexp(ValueError, "Expected scalar"):
+    with self.assertRaisesRegex(ValueError, "Expected scalar"):
       bij.forward_log_det_jacobian(1., event_ndims=(1, 2))
-    with self.assertRaisesRegexp(ValueError, "Expected scalar"):
+    with self.assertRaisesRegex(ValueError, "Expected scalar"):
       bij.inverse_log_det_jacobian(1., event_ndims=(1, 2))
 
+  @test_util.run_deprecated_v1
   def testBijectorDynamicEventNdims(self):
     bij = BrokenBijector(validate_args=True)
     event_ndims = array_ops.placeholder(dtype=np.int32, shape=None)
@@ -161,12 +162,8 @@ class BijectorCachingTestBase(object):
     _ = broken_bijector.forward_log_det_jacobian(x, event_ndims=0)
 
     # Now, everything should be cached if the argument is y.
+    broken_bijector.inverse(y)
     broken_bijector.inverse_log_det_jacobian(y, event_ndims=0)
-    try:
-      broken_bijector.inverse(y)
-      broken_bijector.inverse_log_det_jacobian(y, event_ndims=0)
-    except IntentionallyMissingError:
-      raise AssertionError("Tests failed! Cached values not used.")
 
     # Different event_ndims should not be cached.
     with self.assertRaises(IntentionallyMissingError):
@@ -181,11 +178,8 @@ class BijectorCachingTestBase(object):
     _ = broken_bijector.inverse_log_det_jacobian(y, event_ndims=0)
 
     # Now, everything should be cached if the argument is x.
-    try:
-      broken_bijector.forward(x)
-      broken_bijector.forward_log_det_jacobian(x, event_ndims=0)
-    except IntentionallyMissingError:
-      raise AssertionError("Tests failed! Cached values not used.")
+    broken_bijector.forward(x)
+    broken_bijector.forward_log_det_jacobian(x, event_ndims=0)
 
     # Different event_ndims should not be cached.
     with self.assertRaises(IntentionallyMissingError):
@@ -253,7 +247,7 @@ class BijectorReduceEventDimsTest(test.TestCase):
   def testReduceEventNdimsForwardRaiseError(self):
     x = [[[1., 2.], [3., 4.]]]
     bij = ExpOnlyJacobian(forward_min_event_ndims=1)
-    with self.assertRaisesRegexp(ValueError, "must be larger than"):
+    with self.assertRaisesRegex(ValueError, "must be larger than"):
       bij.forward_log_det_jacobian(x, event_ndims=0)
 
   def testReduceEventNdimsInverse(self):
@@ -272,7 +266,7 @@ class BijectorReduceEventDimsTest(test.TestCase):
   def testReduceEventNdimsInverseRaiseError(self):
     x = [[[1., 2.], [3., 4.]]]
     bij = ExpOnlyJacobian(forward_min_event_ndims=1)
-    with self.assertRaisesRegexp(ValueError, "must be larger than"):
+    with self.assertRaisesRegex(ValueError, "must be larger than"):
       bij.inverse_log_det_jacobian(x, event_ndims=0)
 
   def testReduceEventNdimsForwardConstJacobian(self):
@@ -301,6 +295,7 @@ class BijectorReduceEventDimsTest(test.TestCase):
         8.,
         self.evaluate(bij.inverse_log_det_jacobian(x, event_ndims=2)))
 
+  @test_util.run_deprecated_v1
   def testHandlesNonStaticEventNdims(self):
     x_ = [[[1., 2.], [3., 4.]]]
     x = array_ops.placeholder_with_default(x_, shape=None)

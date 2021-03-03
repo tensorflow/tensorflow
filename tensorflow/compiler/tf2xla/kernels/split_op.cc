@@ -105,6 +105,10 @@ class SplitVOp : public XlaOpKernel {
     const TensorShape input_shape = ctx->InputShape(0);
     const TensorShape index_shape = ctx->InputShape(2);
 
+    OP_REQUIRES(ctx, index_shape.num_elements() == 1,
+                errors::InvalidArgument(
+                    "split_dim_tensor must have exactly one element."));
+
     int64 split_dim_orig;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(2, &split_dim_orig));
     int64 split_dim = split_dim_orig < 0 ? split_dim_orig + input_shape.dims()

@@ -1,0 +1,18 @@
+op {
+  name: "InfeedDequeueTuple"
+  output_arg {
+    name: "outputs"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "shapes"
+    type: "list(shape)"
+  }
+  is_stateful: true
+}

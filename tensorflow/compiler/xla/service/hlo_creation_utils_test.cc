@@ -19,22 +19,37 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
 namespace {
 
-class HloCreationUtilsTest : public HloVerifiedTestBase {
+class HloCreationUtilsTest : public HloTestBase {
  protected:
-  HloModule* CreateModuleWithProgramShape(
+  std::unique_ptr<VerifiedHloModule> CreateModuleWithProgramShape(
       PrimitiveType primitive_type, absl::Span<const int64> input_shape_dims,
       absl::Span<const int64> output_shape_dims, HloInstruction** param,
       HloComputation** entry_computation) {
     Shape input_shape = ShapeUtil::MakeShape(primitive_type, input_shape_dims);
     Shape output_shape =
         ShapeUtil::MakeShape(primitive_type, output_shape_dims);
-    auto module = CreateNewModule("test");
+    auto module = CreateNewVerifiedModule("test");
+    *entry_computation = module->AddEntryComputation(
+        CreateComputationWithSignature({&input_shape}, output_shape, "entry")
+            .ValueOrDie());
+    *param = (*entry_computation)->parameter_instruction(0);
+    return module;
+  }
+
+  std::unique_ptr<VerifiedHloModule> CreateModuleWithProgramShape(
+      PrimitiveType primitive_type, absl::Span<const int64> input_shape_dims,
+      absl::Span<const int64> output_shape_dims, HloInstruction** param,
+      HloComputation** entry_computation, PrimitiveType primitive_type_output) {
+    Shape input_shape = ShapeUtil::MakeShape(primitive_type, input_shape_dims);
+    Shape output_shape =
+        ShapeUtil::MakeShape(primitive_type_output, output_shape_dims);
+    auto module = CreateNewVerifiedModule("test");
     *entry_computation = module->AddEntryComputation(
         CreateComputationWithSignature({&input_shape}, output_shape, "entry")
             .ValueOrDie());
@@ -47,19 +62,18 @@ TEST_F(HloCreationUtilsTest, CollapseFirst1Dim) {
   HloInstruction* param;
   HloComputation* entry_computation;
 
-  HloModule* module = CreateModuleWithProgramShape(S32,
-                                                   /*input_shape_dims=*/{2},
-                                                   /*output_shape_dims=*/{2},
-                                                   &param, &entry_computation);
+  auto module = CreateModuleWithProgramShape(S32, /*input_shape_dims=*/{2},
+                                             /*output_shape_dims=*/{2}, &param,
+                                             &entry_computation);
 
   TF_ASSERT_OK_AND_ASSIGN(HloInstruction * first_1_dims_collapsed,
                           CollapseFirstNDims(param, 1));
   entry_computation->set_root_instruction(first_1_dims_collapsed);
 
   HloEvaluator evaluator;
-  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
-                          evaluator.Evaluate<Literal>(
-                              *module, {LiteralUtil::CreateR1<int32>({3, 4})}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result_literal,
+      evaluator.Evaluate(*module, {LiteralUtil::CreateR1<int32>({3, 4})}));
   CHECK_EQ(result_literal, LiteralUtil::CreateR1<int32>({3, 4}));
 }
 
@@ -67,9 +81,8 @@ TEST_F(HloCreationUtilsTest, CollapseFirst2Dims) {
   HloInstruction* param;
   HloComputation* entry_computation;
 
-  HloModule* module = CreateModuleWithProgramShape(
-      S32,
-      /*input_shape_dims=*/{2, 3, 2}, /*output_shape_dims=*/{6, 2}, &param,
+  auto module = CreateModuleWithProgramShape(
+      S32, /*input_shape_dims=*/{2, 3, 2}, /*output_shape_dims=*/{6, 2}, &param,
       &entry_computation);
 
   TF_ASSERT_OK_AND_ASSIGN(HloInstruction * first_2_dims_collapsed,
@@ -79,10 +92,9 @@ TEST_F(HloCreationUtilsTest, CollapseFirst2Dims) {
   HloEvaluator evaluator;
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result_literal,
-      evaluator.Evaluate<Literal>(
-          *module,
-          {LiteralUtil::CreateR3<int32>(
-              {{{1, 2}, {3, 4}, {5, 6}}, {{-1, -2}, {-3, -4}, {-5, -6}}})}));
+      evaluator.Evaluate(*module, {LiteralUtil::CreateR3<int32>(
+                                      {{{1, 2}, {3, 4}, {5, 6}},
+                                       {{-1, -2}, {-3, -4}, {-5, -6}}})}));
   CHECK_EQ(result_literal,
            LiteralUtil::CreateR2<int32>(
                {{1, 2}, {3, 4}, {5, 6}, {-1, -2}, {-3, -4}, {-5, -6}}));
@@ -92,10 +104,9 @@ TEST_F(HloCreationUtilsTest, Prepend1DegenerateDim) {
   HloInstruction* param;
   HloComputation* entry_computation;
 
-  HloModule* module = CreateModuleWithProgramShape(S32,
-                                                   /*input_shape_dims=*/{2},
-                                                   /*output_shape_dims=*/{1, 2},
-                                                   &param, &entry_computation);
+  auto module = CreateModuleWithProgramShape(S32, /*input_shape_dims=*/{2},
+                                             /*output_shape_dims=*/{1, 2},
+                                             &param, &entry_computation);
 
   TF_ASSERT_OK_AND_ASSIGN(HloInstruction * with_1_degenerate_dim_prepended,
                           PrependDegenerateDims(param, 1));
@@ -104,8 +115,7 @@ TEST_F(HloCreationUtilsTest, Prepend1DegenerateDim) {
   HloEvaluator evaluator;
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result_literal,
-      evaluator.Evaluate<Literal>(*module,
-                                  {LiteralUtil::CreateR1<int32>({9, 10})}));
+      evaluator.Evaluate(*module, {LiteralUtil::CreateR1<int32>({9, 10})}));
   CHECK_EQ(result_literal, LiteralUtil::CreateR2<int32>({{9, 10}}));
 }
 
@@ -113,10 +123,9 @@ TEST_F(HloCreationUtilsTest, Prepend2DegenerateDims) {
   HloInstruction* param;
   HloComputation* entry_computation;
 
-  HloModule* module = CreateModuleWithProgramShape(
-      S32,
-      /*input_shape_dims=*/{2}, /*output_shape_dims=*/{1, 1, 2}, &param,
-      &entry_computation);
+  auto module = CreateModuleWithProgramShape(S32, /*input_shape_dims=*/{2},
+                                             /*output_shape_dims=*/{1, 1, 2},
+                                             &param, &entry_computation);
 
   TF_ASSERT_OK_AND_ASSIGN(HloInstruction * with_2_degenerate_dims_prepended,
                           PrependDegenerateDims(param, 2));
@@ -125,8 +134,7 @@ TEST_F(HloCreationUtilsTest, Prepend2DegenerateDims) {
   HloEvaluator evaluator;
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result_literal,
-      evaluator.Evaluate<Literal>(*module,
-                                  {LiteralUtil::CreateR1<int32>({9, 10})}));
+      evaluator.Evaluate(*module, {LiteralUtil::CreateR1<int32>({9, 10})}));
   CHECK_EQ(result_literal, LiteralUtil::CreateR3<int32>({{{9, 10}}}));
 }
 
@@ -134,10 +142,9 @@ TEST_F(HloCreationUtilsTest, Prepend2DegenerateDimsToScalar) {
   HloInstruction* param;
   HloComputation* entry_computation;
 
-  HloModule* module = CreateModuleWithProgramShape(S32,
-                                                   /*input_shape_dims=*/{},
-                                                   /*output_shape_dims=*/{1, 1},
-                                                   &param, &entry_computation);
+  auto module = CreateModuleWithProgramShape(S32, /*input_shape_dims=*/{},
+                                             /*output_shape_dims=*/{1, 1},
+                                             &param, &entry_computation);
 
   TF_ASSERT_OK_AND_ASSIGN(HloInstruction * with_2_degenerate_dims_prepended,
                           PrependDegenerateDims(param, 2));
@@ -146,7 +153,7 @@ TEST_F(HloCreationUtilsTest, Prepend2DegenerateDimsToScalar) {
   HloEvaluator evaluator;
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result_literal,
-      evaluator.Evaluate<Literal>(*module, {LiteralUtil::CreateR0<int32>(9)}));
+      evaluator.Evaluate(*module, {LiteralUtil::CreateR0<int32>(9)}));
   CHECK_EQ(result_literal, LiteralUtil::CreateR2<int32>({{9}}));
 }
 
@@ -154,10 +161,9 @@ TEST_F(HloCreationUtilsTest, ExpandFirstDimInto3Dims) {
   HloInstruction* param;
   HloComputation* entry_computation;
 
-  HloModule* module = CreateModuleWithProgramShape(
-      S32,
-      /*input_shape_dims=*/{6}, /*output_shape_dims=*/{3, 1, 2}, &param,
-      &entry_computation);
+  auto module = CreateModuleWithProgramShape(S32, /*input_shape_dims=*/{6},
+                                             /*output_shape_dims=*/{3, 1, 2},
+                                             &param, &entry_computation);
 
   TF_ASSERT_OK_AND_ASSIGN(HloInstruction * first_dim_expanded,
                           ExpandFirstDimIntoNDims(param, {3, 1, 2}));
@@ -166,8 +172,8 @@ TEST_F(HloCreationUtilsTest, ExpandFirstDimInto3Dims) {
   HloEvaluator evaluator;
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result_literal,
-      evaluator.Evaluate<Literal>(
-          *module, {LiteralUtil::CreateR1<int32>({1, 2, 3, 4, 5, 6})}));
+      evaluator.Evaluate(*module,
+                         {LiteralUtil::CreateR1<int32>({1, 2, 3, 4, 5, 6})}));
   CHECK_EQ(result_literal,
            LiteralUtil::CreateR3<int32>({{{1, 2}}, {{3, 4}}, {{5, 6}}}));
 }
@@ -176,10 +182,9 @@ TEST_F(HloCreationUtilsTest, PadVectorWithZeros) {
   HloInstruction* param;
   HloComputation* entry_computation;
 
-  HloModule* module = CreateModuleWithProgramShape(S32,
-                                                   /*input_shape_dims=*/{2},
-                                                   /*output_shape_dims=*/{6},
-                                                   &param, &entry_computation);
+  auto module = CreateModuleWithProgramShape(S32, /*input_shape_dims=*/{2},
+                                             /*output_shape_dims=*/{6}, &param,
+                                             &entry_computation);
 
   TF_ASSERT_OK_AND_ASSIGN(
       HloInstruction * zero_padded_param,
@@ -187,9 +192,9 @@ TEST_F(HloCreationUtilsTest, PadVectorWithZeros) {
   entry_computation->set_root_instruction(zero_padded_param);
 
   HloEvaluator evaluator;
-  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
-                          evaluator.Evaluate<Literal>(
-                              *module, {LiteralUtil::CreateR1<int32>({3, 4})}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result_literal,
+      evaluator.Evaluate(*module, {LiteralUtil::CreateR1<int32>({3, 4})}));
   CHECK_EQ(result_literal, LiteralUtil::CreateR1<int32>({0, 0, 0, 3, 4, 0}));
 }
 
@@ -197,20 +202,18 @@ TEST_F(HloCreationUtilsTest, BroadcastZeros_S32) {
   HloInstruction* param;
   HloComputation* entry_computation;
 
-  HloModule* module = CreateModuleWithProgramShape(S32,
-                                                   /*input_shape_dims=*/{},
-                                                   /*output_shape_dims=*/{2, 2},
-                                                   &param, &entry_computation);
+  auto module = CreateModuleWithProgramShape(S32, /*input_shape_dims=*/{},
+                                             /*output_shape_dims=*/{2, 2},
+                                             &param, &entry_computation);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      HloInstruction * zeros,
-      BroadcastZeros(module->entry_computation(), S32, {2, 2}));
+  HloInstruction* zeros =
+      BroadcastZeros(module->entry_computation(), S32, {2, 2});
   entry_computation->set_root_instruction(zeros);
 
   HloEvaluator evaluator;
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result_literal,
-      evaluator.Evaluate<Literal>(*module, {LiteralUtil::CreateR0<int32>(0)}));
+      evaluator.Evaluate(*module, {LiteralUtil::CreateR0<int32>(0)}));
   CHECK_EQ(result_literal, LiteralUtil::CreateR2<int32>({{0, 0}, {0, 0}}));
 }
 
@@ -218,22 +221,100 @@ TEST_F(HloCreationUtilsTest, BroadcastZeros_F32) {
   HloInstruction* param;
   HloComputation* entry_computation;
 
-  HloModule* module = CreateModuleWithProgramShape(F32,
-                                                   /*input_shape_dims=*/{},
-                                                   /*output_shape_dims=*/{2, 2},
-                                                   &param, &entry_computation);
+  auto module = CreateModuleWithProgramShape(F32, /*input_shape_dims=*/{},
+                                             /*output_shape_dims=*/{2, 2},
+                                             &param, &entry_computation);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      HloInstruction * zeros,
-      BroadcastZeros(module->entry_computation(), F32, {2, 2}));
+  HloInstruction* zeros =
+      BroadcastZeros(module->entry_computation(), F32, {2, 2});
   entry_computation->set_root_instruction(zeros);
 
   HloEvaluator evaluator;
-  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
-                          evaluator.Evaluate<Literal>(
-                              *module, {LiteralUtil::CreateR0<float>(0.0f)}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result_literal,
+      evaluator.Evaluate(*module, {LiteralUtil::CreateR0<float>(0.0f)}));
   CHECK_EQ(result_literal,
            LiteralUtil::CreateR2<float>({{0.0f, 0.0f}, {0.0f, 0.0f}}));
+}
+
+TEST_F(HloCreationUtilsTest, MakeBitcastConvertToHlo_S32) {
+  HloInstruction* param;
+  HloComputation* entry_computation;
+
+  auto module = CreateModuleWithProgramShape(S32, /*input_shape_dims=*/{2, 2},
+                                             /*output_shape_dims=*/{2, 2},
+                                             &param, &entry_computation, F32);
+  auto* input = module->entry_computation()->AddInstruction(
+      HloInstruction::CreateConstant(
+          LiteralUtil::CreateR2<int32>({{0, 0}, {0, 0}})));
+
+  HloInstruction* output = MakeBitcastConvertToHlo(input, F32);
+  entry_computation->set_root_instruction(output);
+
+  HloEvaluator evaluator;
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result_literal,
+      evaluator.Evaluate(*module,
+                         {LiteralUtil::CreateR2<int32>({{0, 0}, {0, 0}})}));
+  CHECK_EQ(result_literal,
+           LiteralUtil::CreateR2<float>({{0.0f, 0.0f}, {0.0f, 0.0f}}));
+}
+
+TEST_F(HloCreationUtilsTest, MakeIotaHlo_I32) {
+  HloInstruction* param;
+  HloComputation* entry_computation;
+
+  auto module = CreateModuleWithProgramShape(S32, /*input_shape_dims=*/{},
+                                             /*output_shape_dims=*/{2, 2},
+                                             &param, &entry_computation, F32);
+  HloInstruction* output = MakeIotaHlo(module->entry_computation(),
+                                       ShapeUtil::MakeShape(F32, {2, 2}), 0);
+  entry_computation->set_root_instruction(output);
+
+  HloEvaluator evaluator;
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result_literal,
+      evaluator.Evaluate(*module, {LiteralUtil::CreateR0<int32>(0.0)}));
+  CHECK_EQ(result_literal,
+           LiteralUtil::CreateR2<float>({{0.0f, 0.0f}, {1.0f, 1.0f}}));
+}
+
+TEST_F(HloCreationUtilsTest, MakeBroadcast_F32) {
+  HloInstruction* param;
+  HloComputation* entry_computation;
+
+  auto module = CreateModuleWithProgramShape(F32, /*input_shape_dims=*/{},
+                                             /*output_shape_dims=*/{2, 2},
+                                             &param, &entry_computation);
+  auto* input = MakeR0ConstantHlo<float>(module->entry_computation(), 0);
+  HloInstruction* output = MakeBroadcastHlo(input, {}, {2, 2});
+  entry_computation->set_root_instruction(output);
+
+  HloEvaluator evaluator;
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result_literal,
+      evaluator.Evaluate(*module, {LiteralUtil::CreateR0<float>(0.0f)}));
+  CHECK_EQ(result_literal,
+           LiteralUtil::CreateR2<float>({{0.0f, 0.0f}, {0.0f, 0.0f}}));
+}
+
+TEST_F(HloCreationUtilsTest, MakeBroadcast_Shape_I32) {
+  HloInstruction* param;
+  HloComputation* entry_computation;
+
+  auto module = CreateModuleWithProgramShape(S32, /*input_shape_dims=*/{},
+                                             /*output_shape_dims=*/{2, 2},
+                                             &param, &entry_computation);
+  auto* input = MakeR0ConstantHlo<int32>(module->entry_computation(), 0);
+  HloInstruction* output =
+      MakeBroadcastHlo(input, {}, ShapeUtil::MakeShape(S32, {2, 2}));
+  entry_computation->set_root_instruction(output);
+
+  HloEvaluator evaluator;
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result_literal,
+      evaluator.Evaluate(*module, {LiteralUtil::CreateR0<int32>(0.0)}));
+  CHECK_EQ(result_literal, LiteralUtil::CreateR2<int32>({{0, 0}, {0, 0}}));
 }
 
 }  // namespace

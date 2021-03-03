@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "TensorMapErase"
+  summary: "Returns a tensor map with item from given key erased."
+  description: <<END
+input_handle: the original map
+output_handle: the map with value from given key removed
+key: the key of the value to be erased
+END
+}

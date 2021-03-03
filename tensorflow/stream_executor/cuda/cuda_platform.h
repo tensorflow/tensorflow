@@ -17,28 +17,27 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_PLATFORM_H_
 
 #include <memory>
-#include "tensorflow/stream_executor/platform/port.h"
 #include <vector>
 
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/executor_cache.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 #include "tensorflow/stream_executor/platform.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
-#include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/stream_executor/trace_listener.h"
 
 namespace stream_executor {
 namespace cuda {
-
 // Opaque and unique identifier for the CUDA platform plugin.
 // This is needed so that plugins can refer to/identify this platform without
 // instantiating a CudaPlatform object.
 extern const Platform::Id kCudaPlatformId;
+}  // namespace cuda
 
+namespace gpu {
 // Cuda-specific platform plugin, registered as a singleton value via module
 // initializer.
 class CudaPlatform : public Platform {
@@ -63,7 +62,10 @@ class CudaPlatform : public Platform {
   // Returns -1 as a sentinel on internal failure (and logs the error).
   int VisibleDeviceCount() const override;
 
-  const string& Name() const override;
+  const std::string& Name() const override;
+
+  port::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
+      int ordinal) const override;
 
   port::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
 
@@ -85,7 +87,7 @@ class CudaPlatform : public Platform {
   void InspectNumaNodes();
 
   // This platform's name.
-  string name_;
+  std::string name_;
 
   // Cache of created executors.
   ExecutorCache executor_cache_;
@@ -101,6 +103,12 @@ class CudaPlatform : public Platform {
 
   SE_DISALLOW_COPY_AND_ASSIGN(CudaPlatform);
 };
+
+}  // namespace gpu
+
+namespace cuda {
+
+using CudaPlatform = gpu::CudaPlatform;
 
 }  // namespace cuda
 }  // namespace stream_executor

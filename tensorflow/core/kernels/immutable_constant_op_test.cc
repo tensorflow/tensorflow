@@ -60,8 +60,12 @@ class TestReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
 class TestFileSystem : public NullFileSystem {
  public:
   ~TestFileSystem() override = default;
+
+  // import non-transactional method from the base class
+  using NullFileSystem::NewReadOnlyMemoryRegionFromFile;
+
   Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname,
+      const string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
     float val = 0;
     StringPiece scheme, host, path;
@@ -102,7 +106,7 @@ TEST(ImmutableConstantOpTest, Simple) {
   session_options.env = Env::Default();
   session_options.config.mutable_graph_options()
       ->mutable_optimizer_options()
-      ->set_opt_level(OptimizerOptions_Level_L0);
+      ->set_opt_level(OptimizerOptions::L0);
   std::unique_ptr<Session> session(NewSession(session_options));
   ASSERT_TRUE(session != nullptr) << "Failed to create session";
   TF_ASSERT_OK(session->Create(graph_def)) << "Can't create test graph";
@@ -174,7 +178,7 @@ TEST(ImmutableConstantOpTest, FromFile) {
   SessionOptions session_options;
   session_options.config.mutable_graph_options()
       ->mutable_optimizer_options()
-      ->set_opt_level(OptimizerOptions_Level_L0);
+      ->set_opt_level(OptimizerOptions::L0);
   std::unique_ptr<Session> session(NewSession(session_options));
   ASSERT_TRUE(session != nullptr) << "Failed to create session";
   TF_ASSERT_OK(session->Create(graph_def)) << "Can't create test graph";

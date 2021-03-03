@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
+#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/experimental/microfrontend/lib/frontend.h"
 #include "tensorflow/lite/experimental/microfrontend/lib/frontend_util.h"
@@ -91,8 +91,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 1);
 
@@ -142,7 +145,8 @@ void GenerateFeatures(TfLiteAudioMicrofrontendParams* data,
 
     if (output.values != nullptr) {
       frame_buffer[frame_index].reserve(output.size);
-      for (int i = 0; i < output.size; ++i) {
+      int i;
+      for (i = 0; i < output.size; ++i) {
         frame_buffer[frame_index].push_back(static_cast<T>(output.values[i]) /
                                             data->out_scale);
       }
@@ -152,9 +156,10 @@ void GenerateFeatures(TfLiteAudioMicrofrontendParams* data,
 
   int index = 0;
   std::vector<T> pad(data->state->filterbank.num_channels, 0);
-  for (int anchor = 0; anchor < frame_buffer.size();
-       anchor += data->frame_stride) {
-    for (int frame = anchor - data->left_context;
+  int anchor;
+  for (anchor = 0; anchor < frame_buffer.size(); anchor += data->frame_stride) {
+    int frame;
+    for (frame = anchor - data->left_context;
          frame <= anchor + data->right_context; ++frame) {
       std::vector<T>* feature;
       if (data->zero_padding && (frame < 0 || frame >= frame_buffer.size())) {
@@ -178,8 +183,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       reinterpret_cast<TfLiteAudioMicrofrontendParams*>(node->user_data);
   FrontendReset(data->state);
 
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   if (data->out_float) {
     GenerateFeatures<float>(data, input, output);

@@ -15,13 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/numeric.h"
 #include "tensorflow/compiler/xla/client/lib/sorting.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/no_op.h"
 
 namespace tensorflow {
 namespace {
@@ -60,7 +58,8 @@ class TopKOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("TopKV2").CompileTimeConstantInput("k").TypeConstraint(
-                    "T", {DT_UINT32, DT_INT32, DT_FLOAT, DT_BFLOAT16}),
+                    "T", {DT_UINT32, DT_INT32, DT_FLOAT, DT_HALF, DT_DOUBLE,
+                          DT_BFLOAT16}),
                 TopKOp);
 
 }  // namespace

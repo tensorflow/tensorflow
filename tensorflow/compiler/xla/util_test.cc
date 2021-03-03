@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/util.h"
 
+#include <limits>
 #include <list>
 
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/platform/bfloat16.h"
 
 namespace xla {
 namespace {
@@ -29,7 +31,7 @@ namespace {
 // Also throws in some trailing whitespace on the original to show it is
 // removed.
 TEST(UtilTest, ReindentsDifferentNumberOfLeadingSpacesUniformly) {
-  string original = R"(   hello there  
+  string original = R"(   hello there
       world)";
   string got = Reindent(original, "  ");
   string want = R"(  hello there
@@ -69,17 +71,31 @@ TEST(UtilTest, LogLines) {
 TEST(UtilTest, CommonFactors) {
   struct {
     std::vector<int64> a, b;
-    std::vector<std::pair<int64, int64>> expected;
+    absl::InlinedVector<std::pair<int64, int64>, 8> expected;
   } test_cases[] = {
       {/*.a =*/{0}, /*.b =*/{0}, /*.expected =*/{{0, 0}, {1, 1}}},
+      {/*.a =*/{0, 1}, /*.b =*/{0, 1}, /*.expected =*/{{0, 0}, {1, 1}, {2, 2}}},
       {/*.a =*/{}, /*.b =*/{}, /*.expected =*/{{0, 0}}},
       {/*.a =*/{2, 5, 1, 3},
        /*.b =*/{1, 10, 3, 1},
        /*.expected =*/{{0, 0}, {0, 1}, {2, 2}, {3, 2}, {4, 3}, {4, 4}}},
-  };
+      {/*.a =*/{1, 1, 3},
+       /*.b =*/{1, 1, 3},
+       /*.expected =*/{{0, 0}, {1, 1}, {2, 2}, {3, 3}}},
+      // Splitting and combining dimensions.
+      {/*.a =*/{2, 6},
+       /*.b =*/{4, 3},
+       /*.expected =*/{{0, 0}, {2, 2}}},
+      {/*.a =*/{1, 2, 6},
+       /*.b =*/{4, 1, 3, 1},
+       /*.expected =*/{{0, 0}, {1, 0}, {3, 3}, {3, 4}}},
+      // Extra degenerated dimension (second and third dims in the output) forms
+      // single common factor group.
+      {/*.a =*/{1, 2, 1},
+       /*.b =*/{1, 1, 1, 2},
+       /*.expected =*/{{0, 0}, {1, 1}, {1, 2}, {1, 3}, {2, 4}, {3, 4}}}};
   for (const auto& test_case : test_cases) {
-    EXPECT_TRUE(absl::c_equal(test_case.expected,
-                              CommonFactors(test_case.a, test_case.b)));
+    EXPECT_EQ(test_case.expected, CommonFactors(test_case.a, test_case.b));
   }
 }
 
@@ -88,6 +104,35 @@ TEST(UtilTest, SanitizeFileName) {
   EXPECT_EQ(SanitizeFileName("abc"), "abc");
   EXPECT_EQ(SanitizeFileName("/\\[]"), "____");
   EXPECT_EQ(SanitizeFileName("/A\\B[C]"), "_A_B_C_");
+}
+
+TEST(UtilTest, RoundTripFpToString) {
+  EXPECT_EQ(RoundTripFpToString(std::numeric_limits<Eigen::half>::quiet_NaN()),
+            "nan");
+  EXPECT_EQ(RoundTripFpToString(-std::numeric_limits<Eigen::half>::quiet_NaN()),
+            "-nan");
+  EXPECT_EQ(RoundTripFpToString(
+                std::numeric_limits<tensorflow::bfloat16>::quiet_NaN()),
+            "nan");
+  EXPECT_EQ(RoundTripFpToString(
+                -std::numeric_limits<tensorflow::bfloat16>::quiet_NaN()),
+            "-nan");
+  EXPECT_EQ(RoundTripFpToString(std::numeric_limits<float>::quiet_NaN()),
+            "nan");
+  EXPECT_EQ(RoundTripFpToString(-std::numeric_limits<float>::quiet_NaN()),
+            "-nan");
+  EXPECT_EQ(RoundTripFpToString(std::numeric_limits<double>::quiet_NaN()),
+            "nan");
+  EXPECT_EQ(RoundTripFpToString(-std::numeric_limits<double>::quiet_NaN()),
+            "-nan");
+}
+
+TEST(UtilTest, SplitF64ToF32) {
+  // Overflowing the F32 exponent in SplitF64ToF32 should result in a pair of
+  // [∞,0].
+  EXPECT_EQ(SplitF64ToF32(std::numeric_limits<double>::max()).first,
+            std::numeric_limits<float>::infinity());
+  EXPECT_EQ(SplitF64ToF32(std::numeric_limits<double>::max()).second, 0.0f);
 }
 
 }  // namespace

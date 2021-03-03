@@ -20,14 +20,17 @@ from __future__ import print_function
 
 import os
 import tempfile
+
 import numpy as np
+from tensorflow import keras
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.testing.model_coverage import model_coverage_lib as model_coverage
-from tensorflow.python import keras
 from tensorflow.python.client import session
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -43,43 +46,78 @@ class EvaluateFrozenGraph(test.TestCase):
     return graph_def_file
 
   def testFloat(self):
-    with session.Session().as_default() as sess:
-      in_tensor = array_ops.placeholder(
-          shape=[1, 16, 16, 3], dtype=dtypes.float32)
-      _ = in_tensor + in_tensor
-    filename = self._saveFrozenGraph(sess)
+    with ops.Graph().as_default():
+      with session.Session().as_default() as sess:
+        in_tensor = array_ops.placeholder(
+            shape=[1, 16, 16, 3], dtype=dtypes.float32)
+        _ = in_tensor + in_tensor
 
+    filename = self._saveFrozenGraph(sess)
     model_coverage.test_frozen_graph(filename, ['Placeholder'], ['add'])
 
-  def testMultipleOutputs(self):
-    with session.Session().as_default() as sess:
-      in_tensor_1 = array_ops.placeholder(
-          shape=[1, 16], dtype=dtypes.float32, name='inputA')
-      in_tensor_2 = array_ops.placeholder(
-          shape=[1, 16], dtype=dtypes.float32, name='inputB')
+  def testInputWithRange(self):
+    with ops.Graph().as_default():
+      with session.Session().as_default() as sess:
+        in_tensor = array_ops.placeholder(
+            shape=[1, 16, 16, 3], dtype=dtypes.float32)
+        _ = in_tensor + in_tensor
 
-      weight = constant_op.constant(-1.0, shape=[16, 16])
-      bias = constant_op.constant(-1.0, shape=[16])
-      layer = math_ops.matmul(in_tensor_1, weight) + bias
-      _ = math_ops.reduce_mean(math_ops.square(layer - in_tensor_2))
     filename = self._saveFrozenGraph(sess)
+    model_coverage.test_frozen_graph(
+        filename, ['Placeholder'], ['add'],
+        input_data_range={'Placeholder': (0, 10)})
 
+  def testMultipleOutputs(self):
+    with ops.Graph().as_default():
+      with session.Session().as_default() as sess:
+        in_tensor_1 = array_ops.placeholder(
+            shape=[1, 16], dtype=dtypes.float32, name='inputA')
+        in_tensor_2 = array_ops.placeholder(
+            shape=[1, 16], dtype=dtypes.float32, name='inputB')
+
+        weight = constant_op.constant(-1.0, shape=[16, 16])
+        bias = constant_op.constant(-1.0, shape=[16])
+        layer = math_ops.matmul(in_tensor_1, weight) + bias
+        _ = math_ops.reduce_mean(math_ops.square(layer - in_tensor_2))
+
+    filename = self._saveFrozenGraph(sess)
     model_coverage.test_frozen_graph(filename, ['inputA', 'inputB'],
                                      ['add', 'Mean'])
 
+  def testFunctions(self):
+    """Tests functions."""
+
+    @def_function.function
+    def plus_placeholder(x, placeholder):
+      return x + placeholder
+
+    with ops.Graph().as_default():
+      placeholder = array_ops.placeholder(
+          dtype=dtypes.float32, shape=[1], name='input')
+      variable_node = constant_op.constant(1.0, name='variable_node')
+      defun_node = plus_placeholder(variable_node, placeholder)
+      _ = math_ops.multiply(defun_node, 2.0, name='output_node')
+
+      # Initialize variables in the model.
+      sess = session.Session()
+
+    filename = self._saveFrozenGraph(sess)
+    model_coverage.test_frozen_graph(filename, ['input'], ['output_node'])
+
   def _getQuantizedModel(self):
     np.random.seed(0)
-    with session.Session().as_default() as sess:
-      # The tensor needs to have more than 1024 elements for quantize_weights to
-      # kick in. Thus, the [33, 33] shape.
-      in_tensor_1 = array_ops.placeholder(
-          shape=[33, 33], dtype=dtypes.float32, name='inputA')
-      in_tensor_2 = constant_op.constant(
-          np.random.uniform(low=-10., high=10., size=(33, 33)),
-          shape=[33, 33],
-          dtype=dtypes.float32,
-          name='inputB')
-      _ = math_ops.matmul(in_tensor_1, in_tensor_2, name='output')
+    with ops.Graph().as_default():
+      with session.Session().as_default() as sess:
+        # The tensor needs to have more than 1024 elements for quantize_weights
+        # to kick in. Thus, the [33, 33] shape.
+        in_tensor_1 = array_ops.placeholder(
+            shape=[33, 33], dtype=dtypes.float32, name='inputA')
+        in_tensor_2 = constant_op.constant(
+            np.random.uniform(low=-10., high=10., size=(33, 33)),
+            shape=[33, 33],
+            dtype=dtypes.float32,
+            name='inputB')
+        _ = math_ops.matmul(in_tensor_1, in_tensor_2, name='output')
 
     filename = self._saveFrozenGraph(sess)
     return filename
@@ -104,17 +142,51 @@ class EvaluateSavedModel(test.TestCase):
 
   def testFloat(self):
     saved_model_dir = os.path.join(self.get_temp_dir(), 'simple_savedmodel')
-    with session.Session().as_default() as sess:
-      in_tensor_1 = array_ops.placeholder(
-          shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputB')
-      in_tensor_2 = array_ops.placeholder(
-          shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputA')
-      out_tensor = in_tensor_1 + in_tensor_2
+    with ops.Graph().as_default():
+      with session.Session().as_default() as sess:
+        in_tensor_1 = array_ops.placeholder(
+            shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputB')
+        in_tensor_2 = array_ops.placeholder(
+            shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputA')
+        out_tensor = in_tensor_1 + in_tensor_2
 
-      inputs = {'x': in_tensor_1, 'y': in_tensor_2}
-      outputs = {'z': out_tensor}
-      saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+        inputs = {'x': in_tensor_1, 'y': in_tensor_2}
+        outputs = {'z': out_tensor}
+        saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
     model_coverage.test_saved_model(saved_model_dir)
+
+  def testPostTrainingQuantize16x8(self):
+    """Test for post-training quantization mode: activations/weights - int16/int8."""
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'simple_savedmodel')
+
+    input_size = [5, 5, 3]
+    kernel_size = [3, 3, 1]
+    layer_name = 'test_conv2d'
+    input_0 = keras.layers.Input(shape=input_size)
+    layer_0 = keras.layers.Conv2D(
+        filters=kernel_size[-1],
+        kernel_size=kernel_size[0:2],
+        use_bias=False,
+        name=layer_name)(
+            input_0)
+    model = keras.models.Model(inputs=[input_0], outputs=[layer_0])
+    keras_layer = [layer for layer in model.layers if layer.name == layer_name
+                  ][0]
+    keras_layer.set_weights([
+        np.random.rand(
+            input_size[-1],
+            kernel_size[0],
+            kernel_size[1],
+            kernel_size[2],
+        ).astype(np.float32)
+    ])
+
+    saved_model.save(model, saved_model_dir)
+
+    model_coverage.test_saved_model(
+        saved_model_dir,
+        post_training_quantize_16x8=True,
+        model_input_size=input_size)
 
 
 class EvaluateKerasModel(test.TestCase):
@@ -123,8 +195,8 @@ class EvaluateKerasModel(test.TestCase):
     """Returns single input Sequential tf.keras model."""
     keras.backend.clear_session()
 
-    xs = [-1, 0, 1, 2, 3, 4]
-    ys = [-3, -1, 1, 3, 5, 7]
+    xs = np.array([-1, 0, 1, 2, 3, 4])
+    ys = np.array([-3, -1, 1, 3, 5, 7])
 
     model = keras.Sequential([keras.layers.Dense(units=1, input_shape=[1])])
     model.compile(optimizer='sgd', loss='mean_squared_error')
@@ -134,7 +206,7 @@ class EvaluateKerasModel(test.TestCase):
   def _saveKerasModel(self, model):
     try:
       fd, keras_file = tempfile.mkstemp('.h5')
-      keras.models.save_model(model, keras_file)
+      model.save(keras_file)
     finally:
       os.close(fd)
     return keras_file

@@ -149,11 +149,10 @@ def _ndtr(x):
       0.5 * np.sqrt(2.), dtype=x.dtype, name="half_sqrt_2")
   w = x * half_sqrt_2
   z = math_ops.abs(w)
-  y = array_ops.where(math_ops.less(z, half_sqrt_2),
-                      1. + math_ops.erf(w),
-                      array_ops.where(math_ops.greater(w, 0.),
-                                      2. - math_ops.erfc(z),
-                                      math_ops.erfc(z)))
+  y = array_ops.where_v2(
+      math_ops.less(z, half_sqrt_2), 1. + math_ops.erf(w),
+      array_ops.where_v2(
+          math_ops.greater(w, 0.), 2. - math_ops.erfc(z), math_ops.erfc(z)))
   return 0.5 * y
 
 
@@ -192,56 +191,44 @@ def _ndtri(p):
   # Constants used in piece-wise rational approximations. Taken from the cephes
   # library:
   # https://root.cern.ch/doc/v608/SpecFuncCephesInv_8cxx_source.html
-  p0 = list(reversed([-5.99633501014107895267E1,
-                      9.80010754185999661536E1,
-                      -5.66762857469070293439E1,
-                      1.39312609387279679503E1,
-                      -1.23916583867381258016E0]))
-  q0 = list(reversed([1.0,
-                      1.95448858338141759834E0,
-                      4.67627912898881538453E0,
-                      8.63602421390890590575E1,
-                      -2.25462687854119370527E2,
-                      2.00260212380060660359E2,
-                      -8.20372256168333339912E1,
-                      1.59056225126211695515E1,
-                      -1.18331621121330003142E0]))
-  p1 = list(reversed([4.05544892305962419923E0,
-                      3.15251094599893866154E1,
-                      5.71628192246421288162E1,
-                      4.40805073893200834700E1,
-                      1.46849561928858024014E1,
-                      2.18663306850790267539E0,
-                      -1.40256079171354495875E-1,
-                      -3.50424626827848203418E-2,
-                      -8.57456785154685413611E-4]))
-  q1 = list(reversed([1.0,
-                      1.57799883256466749731E1,
-                      4.53907635128879210584E1,
-                      4.13172038254672030440E1,
-                      1.50425385692907503408E1,
-                      2.50464946208309415979E0,
-                      -1.42182922854787788574E-1,
-                      -3.80806407691578277194E-2,
-                      -9.33259480895457427372E-4]))
-  p2 = list(reversed([3.23774891776946035970E0,
-                      6.91522889068984211695E0,
-                      3.93881025292474443415E0,
-                      1.33303460815807542389E0,
-                      2.01485389549179081538E-1,
-                      1.23716634817820021358E-2,
-                      3.01581553508235416007E-4,
-                      2.65806974686737550832E-6,
-                      6.23974539184983293730E-9]))
-  q2 = list(reversed([1.0,
-                      6.02427039364742014255E0,
-                      3.67983563856160859403E0,
-                      1.37702099489081330271E0,
-                      2.16236993594496635890E-1,
-                      1.34204006088543189037E-2,
-                      3.28014464682127739104E-4,
-                      2.89247864745380683936E-6,
-                      6.79019408009981274425E-9]))
+
+  p0 = [
+      -1.23916583867381258016E0, 1.39312609387279679503E1,
+      -5.66762857469070293439E1, 9.80010754185999661536E1,
+      -5.99633501014107895267E1
+  ]
+  q0 = [
+      -1.18331621121330003142E0, 1.59056225126211695515E1,
+      -8.20372256168333339912E1, 2.00260212380060660359E2,
+      -2.25462687854119370527E2, 8.63602421390890590575E1,
+      4.67627912898881538453E0, 1.95448858338141759834E0, 1.0
+  ]
+  p1 = [
+      -8.57456785154685413611E-4, -3.50424626827848203418E-2,
+      -1.40256079171354495875E-1, 2.18663306850790267539E0,
+      1.46849561928858024014E1, 4.40805073893200834700E1,
+      5.71628192246421288162E1, 3.15251094599893866154E1,
+      4.05544892305962419923E0
+  ]
+  q1 = [
+      -9.33259480895457427372E-4, -3.80806407691578277194E-2,
+      -1.42182922854787788574E-1, 2.50464946208309415979E0,
+      1.50425385692907503408E1, 4.13172038254672030440E1,
+      4.53907635128879210584E1, 1.57799883256466749731E1, 1.0
+  ]
+  p2 = [
+      6.23974539184983293730E-9, 2.65806974686737550832E-6,
+      3.01581553508235416007E-4, 1.23716634817820021358E-2,
+      2.01485389549179081538E-1, 1.33303460815807542389E0,
+      3.93881025292474443415E0, 6.91522889068984211695E0,
+      3.23774891776946035970E0
+  ]
+  q2 = [
+      6.79019408009981274425E-9, 2.89247864745380683936E-6,
+      3.28014464682127739104E-4, 1.34204006088543189037E-2,
+      2.16236993594496635890E-1, 1.37702099489081330271E0,
+      3.67983563856160859403E0, 6.02427039364742014255E0, 1.0
+  ]
 
   def _create_polynomial(var, coeffs):
     """Compute n_th order polynomial via Horner's method."""
@@ -250,11 +237,11 @@ def _ndtri(p):
       return array_ops.zeros_like(var)
     return coeffs[0] + _create_polynomial(var, coeffs[1:]) * var
 
-  maybe_complement_p = array_ops.where(p > -np.expm1(-2.), 1. - p, p)
+  maybe_complement_p = array_ops.where_v2(p > -np.expm1(-2.), 1. - p, p)
   # Write in an arbitrary value in place of 0 for p since 0 will cause NaNs
   # later on. The result from the computation when p == 0 is not used so any
   # number that doesn't result in NaNs is fine.
-  sanitized_mcp = array_ops.where(
+  sanitized_mcp = array_ops.where_v2(
       maybe_complement_p <= 0.,
       array_ops.fill(array_ops.shape(p), np.array(0.5, p.dtype.as_numpy_dtype)),
       maybe_complement_p)
@@ -280,15 +267,15 @@ def _ndtri(p):
   x_for_small_p = first_term - second_term_small_p
   x_otherwise = first_term - second_term_otherwise
 
-  x = array_ops.where(sanitized_mcp > np.exp(-2.),
-                      x_for_big_p,
-                      array_ops.where(z >= 8.0, x_for_small_p, x_otherwise))
+  x = array_ops.where_v2(
+      sanitized_mcp > np.exp(-2.), x_for_big_p,
+      array_ops.where_v2(z >= 8.0, x_for_small_p, x_otherwise))
 
-  x = array_ops.where(p > 1. - np.exp(-2.), x, -x)
+  x = array_ops.where_v2(p > 1. - np.exp(-2.), x, -x)
   infinity_scalar = constant_op.constant(np.inf, dtype=p.dtype)
   infinity = array_ops.fill(array_ops.shape(p), infinity_scalar)
-  x_nan_replaced = array_ops.where(
-      p <= 0.0, -infinity, array_ops.where(p >= 1.0, infinity, x))
+  x_nan_replaced = array_ops.where_v2(p <= 0.0, -infinity,
+                                      array_ops.where_v2(p >= 1.0, infinity, x))
   return x_nan_replaced
 
 
@@ -375,13 +362,13 @@ def log_ndtr(x, series_order=3, name="log_ndtr"):
     #   the gradient of a select involves the calculation 1*dy+0*(-inf)=nan
     #   regardless of whether dy is finite. Note that the minimum is a NOP if
     #   the branch is chosen.
-    return array_ops.where(
+    return array_ops.where_v2(
         math_ops.greater(x, upper_segment),
         -_ndtr(-x),  # log(1-x) ~= -x, x << 1
-        array_ops.where(math_ops.greater(x, lower_segment),
-                        math_ops.log(_ndtr(math_ops.maximum(x, lower_segment))),
-                        _log_ndtr_lower(math_ops.minimum(x, lower_segment),
-                                        series_order)))
+        array_ops.where_v2(
+            math_ops.greater(x, lower_segment),
+            math_ops.log(_ndtr(math_ops.maximum(x, lower_segment))),
+            _log_ndtr_lower(math_ops.minimum(x, lower_segment), series_order)))
 
 
 def _log_ndtr_lower(x, series_order):
@@ -480,8 +467,8 @@ def log_cdf_laplace(x, name="log_cdf_laplace"):
     #   exp{-x} --> inf, for x << -1
     safe_exp_neg_x = math_ops.exp(-math_ops.abs(x))
 
-    # log1p(z) = log(1 + z) approx z for |z| << 1. This approxmation is used
+    # log1p(z) = log(1 + z) approx z for |z| << 1. This approximation is used
     # internally by log1p, rather than being done explicitly here.
     upper_solution = math_ops.log1p(-0.5 * safe_exp_neg_x)
 
-    return array_ops.where(x < 0., lower_solution, upper_solution)
+    return array_ops.where_v2(x < 0., lower_solution, upper_solution)

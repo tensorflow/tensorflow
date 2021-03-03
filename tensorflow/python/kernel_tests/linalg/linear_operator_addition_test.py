@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_addition
@@ -62,13 +63,14 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
     self.assertIs(op_sum[0], op_a)
 
   def test_at_least_one_operators_required(self):
-    with self.assertRaisesRegexp(ValueError, "must contain at least one"):
+    with self.assertRaisesRegex(ValueError, "must contain at least one"):
       add_operators([])
 
   def test_attempting_to_add_numbers_raises(self):
-    with self.assertRaisesRegexp(TypeError, "contain only LinearOperator"):
+    with self.assertRaisesRegex(TypeError, "contain only LinearOperator"):
       add_operators([1, 2])
 
+  @test_util.run_deprecated_v1
   def test_two_diag_operators(self):
     op_a = linalg.LinearOperatorDiag(
         [1., 1.], is_positive_definite=True, name="A")
@@ -79,7 +81,7 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
       self.assertEqual(1, len(op_sum))
       op = op_sum[0]
       self.assertIsInstance(op, linalg_lib.LinearOperatorDiag)
-      self.assertAllClose([[3., 0.], [0., 3.]], op.to_dense().eval())
+      self.assertAllClose([[3., 0.], [0., 3.]], op.to_dense())
       # Adding positive definite operators produces positive def.
       self.assertTrue(op.is_positive_definite)
       # Real diagonal ==> self-adjoint.
@@ -89,6 +91,7 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
       # Enforce particular name for this simple case
       self.assertEqual("Add/B__A/", op.name)
 
+  @test_util.run_deprecated_v1
   def test_three_diag_operators(self):
     op1 = linalg.LinearOperatorDiag(
         [1., 1.], is_positive_definite=True, name="op1")
@@ -101,7 +104,7 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
       self.assertEqual(1, len(op_sum))
       op = op_sum[0]
       self.assertTrue(isinstance(op, linalg_lib.LinearOperatorDiag))
-      self.assertAllClose([[6., 0.], [0., 6.]], op.to_dense().eval())
+      self.assertAllClose([[6., 0.], [0., 6.]], op.to_dense())
       # Adding positive definite operators produces positive def.
       self.assertTrue(op.is_positive_definite)
       # Real diagonal ==> self-adjoint.
@@ -109,6 +112,7 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
       # Positive definite ==> non-singular
       self.assertTrue(op.is_non_singular)
 
+  @test_util.run_deprecated_v1
   def test_diag_tril_diag(self):
     op1 = linalg.LinearOperatorDiag(
         [1., 1.], is_non_singular=True, name="diag_a")
@@ -124,7 +128,7 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
       self.assertEqual(1, len(op_sum))
       op = op_sum[0]
       self.assertIsInstance(op, linalg_lib.LinearOperatorLowerTriangular)
-      self.assertAllClose([[6., 0.], [0., 6.]], op.to_dense().eval())
+      self.assertAllClose([[6., 0.], [0., 6.]], op.to_dense())
 
       # The diag operators will be self-adjoint (because real and diagonal).
       # The TriL operator has the self-adjoint hint set.
@@ -134,6 +138,7 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
       # Since no custom hint was provided, we default to None (unknown).
       self.assertEqual(None, op.is_non_singular)
 
+  @test_util.run_deprecated_v1
   def test_matrix_diag_tril_diag_uses_custom_name(self):
     op0 = linalg.LinearOperatorFullMatrix(
         [[-1., -1.], [-1., -1.]], name="matrix")
@@ -146,25 +151,25 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
       self.assertEqual(1, len(op_sum))
       op = op_sum[0]
       self.assertIsInstance(op, linalg_lib.LinearOperatorFullMatrix)
-      self.assertAllClose([[5., -1.], [0.5, 5.]], op.to_dense().eval())
+      self.assertAllClose([[5., -1.], [0.5, 5.]], op.to_dense())
       self.assertEqual("my_operator", op.name)
 
   def test_incompatible_domain_dimensions_raises(self):
     op1 = linalg.LinearOperatorFullMatrix(rng.rand(2, 3))
     op2 = linalg.LinearOperatorDiag(rng.rand(2, 4))
-    with self.assertRaisesRegexp(ValueError, "must.*same domain dimension"):
+    with self.assertRaisesRegex(ValueError, "must.*same domain dimension"):
       add_operators([op1, op2])
 
   def test_incompatible_range_dimensions_raises(self):
     op1 = linalg.LinearOperatorFullMatrix(rng.rand(2, 3))
     op2 = linalg.LinearOperatorDiag(rng.rand(3, 3))
-    with self.assertRaisesRegexp(ValueError, "must.*same range dimension"):
+    with self.assertRaisesRegex(ValueError, "must.*same range dimension"):
       add_operators([op1, op2])
 
   def test_non_broadcastable_batch_shape_raises(self):
     op1 = linalg.LinearOperatorFullMatrix(rng.rand(2, 3, 3))
     op2 = linalg.LinearOperatorDiag(rng.rand(4, 3, 3))
-    with self.assertRaisesRegexp(ValueError, "Incompatible shapes"):
+    with self.assertRaisesRegex(ValueError, "Incompatible shapes"):
       add_operators([op1, op2])
 
 
@@ -217,6 +222,7 @@ class LinearOperatorOrderOfAdditionTest(test.TestCase):
     self.assertEqual(1, len(op_sum))
     self.assertIsInstance(op_sum[0], linalg.LinearOperatorLowerTriangular)
 
+  @test_util.run_deprecated_v1
   def test_cannot_add_everything_so_return_more_than_one_operator(self):
     diag1 = linalg.LinearOperatorDiag([1.])
     diag2 = linalg.LinearOperatorDiag([2.])
@@ -235,10 +241,10 @@ class LinearOperatorOrderOfAdditionTest(test.TestCase):
       for op in op_sum:
         if isinstance(op, linalg.LinearOperatorDiag):
           found_diag = True
-          self.assertAllClose([[3.]], op.to_dense().eval())
+          self.assertAllClose([[3.]], op.to_dense())
         if isinstance(op, linalg.LinearOperatorLowerTriangular):
           found_tril = True
-          self.assertAllClose([[5.]], op.to_dense().eval())
+          self.assertAllClose([[5.]], op.to_dense())
       self.assertTrue(found_diag and found_tril)
 
   def test_intermediate_tier_is_not_skipped(self):
@@ -252,7 +258,7 @@ class LinearOperatorOrderOfAdditionTest(test.TestCase):
     ]
     # tril cannot be added in tier 0, and the intermediate tier 1 with the
     # BadAdder will catch it and raise.
-    with self.assertRaisesRegexp(AssertionError, "BadAdder.can_add called"):
+    with self.assertRaisesRegex(AssertionError, "BadAdder.can_add called"):
       add_operators([diag1, diag2, tril], addition_tiers=addition_tiers)
 
 
@@ -261,6 +267,7 @@ class AddAndReturnScaledIdentityTest(test.TestCase):
   def setUp(self):
     self._adder = linear_operator_addition._AddAndReturnScaledIdentity()
 
+  @test_util.run_deprecated_v1
   def test_identity_plus_identity(self):
     id1 = linalg.LinearOperatorIdentity(num_rows=2)
     id2 = linalg.LinearOperatorIdentity(num_rows=2, batch_shape=[3])
@@ -272,13 +279,13 @@ class AddAndReturnScaledIdentityTest(test.TestCase):
     self.assertIsInstance(operator, linalg.LinearOperatorScaledIdentity)
 
     with self.cached_session():
-      self.assertAllClose(2 *
-                          linalg_ops.eye(num_rows=2, batch_shape=[3]).eval(),
-                          operator.to_dense().eval())
+      self.assertAllClose(2 * linalg_ops.eye(num_rows=2, batch_shape=[3]),
+                          operator.to_dense())
     self.assertTrue(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
     self.assertEqual("my_operator", operator.name)
 
+  @test_util.run_deprecated_v1
   def test_identity_plus_scaled_identity(self):
     id1 = linalg.LinearOperatorIdentity(num_rows=2, batch_shape=[3])
     id2 = linalg.LinearOperatorScaledIdentity(num_rows=2, multiplier=2.2)
@@ -290,13 +297,13 @@ class AddAndReturnScaledIdentityTest(test.TestCase):
     self.assertIsInstance(operator, linalg.LinearOperatorScaledIdentity)
 
     with self.cached_session():
-      self.assertAllClose(3.2 *
-                          linalg_ops.eye(num_rows=2, batch_shape=[3]).eval(),
-                          operator.to_dense().eval())
+      self.assertAllClose(3.2 * linalg_ops.eye(num_rows=2, batch_shape=[3]),
+                          operator.to_dense())
     self.assertTrue(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
     self.assertEqual("my_operator", operator.name)
 
+  @test_util.run_deprecated_v1
   def test_scaled_identity_plus_scaled_identity(self):
     id1 = linalg.LinearOperatorScaledIdentity(
         num_rows=2, multiplier=[2.2, 2.2, 2.2])
@@ -309,9 +316,8 @@ class AddAndReturnScaledIdentityTest(test.TestCase):
     self.assertIsInstance(operator, linalg.LinearOperatorScaledIdentity)
 
     with self.cached_session():
-      self.assertAllClose(1.2 *
-                          linalg_ops.eye(num_rows=2, batch_shape=[3]).eval(),
-                          operator.to_dense().eval())
+      self.assertAllClose(1.2 * linalg_ops.eye(num_rows=2, batch_shape=[3]),
+                          operator.to_dense())
     self.assertTrue(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
     self.assertEqual("my_operator", operator.name)
@@ -322,6 +328,7 @@ class AddAndReturnDiagTest(test.TestCase):
   def setUp(self):
     self._adder = linear_operator_addition._AddAndReturnDiag()
 
+  @test_util.run_deprecated_v1
   def test_identity_plus_identity_returns_diag(self):
     id1 = linalg.LinearOperatorIdentity(num_rows=2)
     id2 = linalg.LinearOperatorIdentity(num_rows=2, batch_shape=[3])
@@ -333,13 +340,13 @@ class AddAndReturnDiagTest(test.TestCase):
     self.assertIsInstance(operator, linalg.LinearOperatorDiag)
 
     with self.cached_session():
-      self.assertAllClose(2 *
-                          linalg_ops.eye(num_rows=2, batch_shape=[3]).eval(),
-                          operator.to_dense().eval())
+      self.assertAllClose(2 * linalg_ops.eye(num_rows=2, batch_shape=[3]),
+                          operator.to_dense())
     self.assertTrue(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
     self.assertEqual("my_operator", operator.name)
 
+  @test_util.run_deprecated_v1
   def test_diag_plus_diag(self):
     diag1 = rng.rand(2, 3, 4)
     diag2 = rng.rand(4)
@@ -354,8 +361,8 @@ class AddAndReturnDiagTest(test.TestCase):
 
     with self.cached_session():
       self.assertAllClose(
-          linalg.LinearOperatorDiag(diag1 + diag2).to_dense().eval(),
-          operator.to_dense().eval())
+          linalg.LinearOperatorDiag(diag1 + diag2).to_dense(),
+          operator.to_dense())
     self.assertTrue(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
     self.assertEqual("my_operator", operator.name)
@@ -366,6 +373,7 @@ class AddAndReturnTriLTest(test.TestCase):
   def setUp(self):
     self._adder = linear_operator_addition._AddAndReturnTriL()
 
+  @test_util.run_deprecated_v1
   def test_diag_plus_tril(self):
     diag = linalg.LinearOperatorDiag([1., 2.])
     tril = linalg.LinearOperatorLowerTriangular([[10., 0.], [30., 0.]])
@@ -378,7 +386,7 @@ class AddAndReturnTriLTest(test.TestCase):
     self.assertIsInstance(operator, linalg.LinearOperatorLowerTriangular)
 
     with self.cached_session():
-      self.assertAllClose([[11., 0.], [30., 2.]], operator.to_dense().eval())
+      self.assertAllClose([[11., 0.], [30., 2.]], operator.to_dense())
     self.assertTrue(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
     self.assertEqual("my_operator", operator.name)
@@ -389,6 +397,7 @@ class AddAndReturnMatrixTest(test.TestCase):
   def setUp(self):
     self._adder = linear_operator_addition._AddAndReturnMatrix()
 
+  @test_util.run_deprecated_v1
   def test_diag_plus_diag(self):
     diag1 = linalg.LinearOperatorDiag([1., 2.])
     diag2 = linalg.LinearOperatorDiag([-1., 3.])
@@ -400,7 +409,7 @@ class AddAndReturnMatrixTest(test.TestCase):
     self.assertIsInstance(operator, linalg.LinearOperatorFullMatrix)
 
     with self.cached_session():
-      self.assertAllClose([[0., 0.], [0., 5.]], operator.to_dense().eval())
+      self.assertAllClose([[0., 0.], [0., 5.]], operator.to_dense())
     self.assertFalse(operator.is_positive_definite)
     self.assertFalse(operator.is_non_singular)
     self.assertEqual("my_operator", operator.name)

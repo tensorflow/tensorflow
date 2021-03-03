@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -33,7 +33,7 @@ using ComputeFunctionType = void (*)(void*, const void*, const void**, void**,
 
 // Dispatches 'num_partitions - 1' calls to 'function_ptr' in parallel.
 // Calls 'function_ptr' for first partition inline.
-// Uses blocking counter to synchonize threads after parallel calls complete.
+// Uses blocking counter to synchronize threads after parallel calls complete.
 //
 // The 'partitions' array has a total number of elements equal to
 // 'num_partitions * num_partitioned_dims * 2' (the '2' is necessary to specify
@@ -69,8 +69,13 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ParallelForkJoin(
   CHECK_EQ(params, nullptr);
   CHECK_GT(num_partitions, 1);
   CHECK_GT(num_partitioned_dims, 0);
+  CHECK_NE(function_ptr, nullptr);
+  CHECK_NE(partitions, nullptr);
   const xla::ExecutableRunOptions* run_options =
       static_cast<const xla::ExecutableRunOptions*>(run_options_ptr);
+  CHECK_NE(run_options, nullptr);
+  CHECK_NE(run_options->intra_op_thread_pool(), nullptr);
+
   ComputeFunctionType function =
       reinterpret_cast<ComputeFunctionType>(function_ptr);
   // Compute partition stride in 'partitions' array.

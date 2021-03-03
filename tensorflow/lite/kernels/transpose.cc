@@ -12,14 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <string.h>
-#include <vector>
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include <stdint.h>
+
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -29,6 +31,7 @@ namespace transpose {
 // This file has two implementations of Transpose.
 enum KernelType {
   kReference,
+  kGenericOptimized,
 };
 
 struct TransposeContext {
@@ -72,9 +75,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TransposeContext op_context(context, node);
 
   // Ensure validity of input tensor.
-  TF_LITE_ENSURE_MSG(context, NumDimensions(op_context.input) <= 4,
-                     "Transpose op only supports 1D-4D input arrays.");
-  TF_LITE_ENSURE_EQ(context, op_context.input->type, op_context.output->type);
+  TF_LITE_ENSURE_MSG(context, NumDimensions(op_context.input) <= 5,
+                     "Transpose op only supports 1D-5D input arrays.");
+  TF_LITE_ENSURE_TYPES_EQ(context, op_context.input->type,
+                          op_context.output->type);
 
   if (!IsConstantTensor(op_context.perm)) {
     SetTensorToDynamic(op_context.output);
@@ -106,31 +110,47 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                   GetTensorShape(op_context.output),        \
                   GetTensorData<scalar>(op_context.output))
 
+  // Transpose kernel only does rearranging values not numeric evaluations on
+  // each cell. It's safe to implement per size of scalar type and this trick
+  // keeps the total code size in a reasonable range.
   switch (op_context.input->type) {
     case kTfLiteFloat32:
-      if (kernel_type == kReference) {
-        TF_LITE_TRANSPOSE(reference_ops, float);
-      }
-      break;
-    case kTfLiteUInt8:
-      if (kernel_type == kReference) {
-        TF_LITE_TRANSPOSE(reference_ops, uint8_t);
-      }
-      break;
     case kTfLiteInt32:
-      if (kernel_type == kReference) {
+      if (kernel_type == kGenericOptimized) {
+        TF_LITE_TRANSPOSE(optimized_ops, int32_t);
+      } else {
         TF_LITE_TRANSPOSE(reference_ops, int32_t);
       }
       break;
+    case kTfLiteUInt8:
+    case kTfLiteInt8:
+      if (kernel_type == kGenericOptimized) {
+        TF_LITE_TRANSPOSE(optimized_ops, int8_t);
+      } else {
+        TF_LITE_TRANSPOSE(reference_ops, int8_t);
+      }
+      break;
+    case kTfLiteInt16:
+      TF_LITE_TRANSPOSE(reference_ops, int16_t);
+      break;
     case kTfLiteInt64:
-      if (kernel_type == kReference) {
-        TF_LITE_TRANSPOSE(reference_ops, int64_t);
+      TF_LITE_TRANSPOSE(reference_ops, int64_t);
+      break;
+    case kTfLiteBool:
+      if (sizeof(bool) == 1) {
+        if (kernel_type == kGenericOptimized) {
+          TF_LITE_TRANSPOSE(optimized_ops, int8_t);
+        } else {
+          TF_LITE_TRANSPOSE(reference_ops, int8_t);
+        }
+      } else {
+        TF_LITE_TRANSPOSE(reference_ops, bool);
       }
       break;
     default:
-      context->ReportError(context,
-                           "Type %d is currently not supported by Transpose.",
-                           op_context.input->type);
+      TF_LITE_KERNEL_LOG(context,
+                         "Type %s is currently not supported by Transpose.",
+                         TfLiteTypeGetName(op_context.input->type));
       return kTfLiteError;
   }
 #undef TF_LITE_TRANSPOSE
@@ -146,7 +166,15 @@ TfLiteRegistration* Register_TRANSPOSE_REF() {
   return &r;
 }
 
-TfLiteRegistration* Register_TRANSPOSE() { return Register_TRANSPOSE_REF(); }
+TfLiteRegistration* Register_TRANSPOSE_GENERIC_OPTIMIZED() {
+  static TfLiteRegistration r = {nullptr, nullptr, transpose::Prepare,
+                                 transpose::Eval<transpose::kGenericOptimized>};
+  return &r;
+}
+
+TfLiteRegistration* Register_TRANSPOSE() {
+  return Register_TRANSPOSE_GENERIC_OPTIMIZED();
+}
 
 }  // namespace builtin
 }  // namespace ops

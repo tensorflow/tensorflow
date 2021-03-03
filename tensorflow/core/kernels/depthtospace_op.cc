@@ -117,14 +117,13 @@ class DepthToSpaceOp : public OpKernel {
         // NCHW_VECT_C with 4 x qint8 can be treated as NCHW int32.
         auto Tinput_v = input.template reinterpret_last_dimension<int32, 4>();
         auto Toutput_v = outputs_tensor->reinterpret_last_dimension<int32, 4>();
-        functor::DepthToSpaceOpFunctor<GPUDevice, int32, FORMAT_NCHW> functor;
-        functor(context->eigen_device<GPUDevice>(), Tinput_v, block_size_,
+        functor::DepthToSpaceOpFunctor<Device, int32, FORMAT_NCHW> functor;
+        functor(context->eigen_device<Device>(), Tinput_v, block_size_,
                 Toutput_v);
         return;
       } else if (data_format_ == FORMAT_NCHW) {
-        functor::DepthToSpaceOpFunctor<GPUDevice, T, FORMAT_NCHW> functor;
-        functor(context->eigen_device<GPUDevice>(), Tinput, block_size_,
-                Toutput);
+        functor::DepthToSpaceOpFunctor<Device, T, FORMAT_NCHW> functor;
+        functor(context->eigen_device<Device>(), Tinput, block_size_, Toutput);
         return;
       }
     }
@@ -173,17 +172,29 @@ struct DepthToSpaceOpFunctor<CPUDevice, T, FORMAT_NHWC> {
     }
   }
 };
+
+#ifdef WIN32
+template <typename T>
+struct DepthToSpaceOpFunctor<CPUDevice, T, FORMAT_NCHW> {
+  void operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
+                  int block_size, typename TTypes<T, 4>::Tensor output) {
+    LOG(FATAL) << "Trivial implementation to make debug build compile.";
+  }
+};
+#endif
 }  // namespace functor
 
-#define REGISTER(type)                                                   \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("DepthToSpace").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
-      DepthToSpaceOp<CPUDevice, type>);
+#define REGISTER(type)                                                \
+  REGISTER_KERNEL_BUILDER(Name("DepthToSpace")                        \
+                              .Device(DEVICE_CPU)                     \
+                              .TypeConstraint<type>("T")              \
+                              .AttrConstraint("data_format", "NHWC"), \
+                          DepthToSpaceOp<CPUDevice, type>);
 
 TF_CALL_ALL_TYPES(REGISTER);
 #undef REGISTER
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER_KERNEL_BUILDER(
     Name("DepthToSpace").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     DepthToSpaceOp<GPUDevice, float>);
@@ -193,6 +204,6 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("DepthToSpace").Device(DEVICE_GPU).TypeConstraint<qint8>("T"),
     DepthToSpaceOp<GPUDevice, qint8>);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow

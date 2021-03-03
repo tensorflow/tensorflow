@@ -92,7 +92,11 @@ void StringReader(png_structp png_ptr, png_bytep data, png_size_t length) {
   DecodeContext* const ctx =
       absl::bit_cast<DecodeContext*>(png_get_io_ptr(png_ptr));
   if (static_cast<png_size_t>(ctx->data_left) < length) {
-    memset(data, 0, length);
+    // Don't zero out the data buffer as it has been lazily allocated (copy on
+    // write) and zeroing it out here can produce an OOM. Since the buffer is
+    // only used for reading data from the image, this doesn't result in any
+    // data leak, so it is safe to just leave the buffer be as it is and just
+    // exit with error.
     png_error(png_ptr, "More bytes requested to read than available");
   } else {
     memcpy(data, ctx->data, length);
@@ -101,8 +105,9 @@ void StringReader(png_structp png_ptr, png_bytep data, png_size_t length) {
   }
 }
 
+template <typename T>
 void StringWriter(png_structp png_ptr, png_bytep data, png_size_t length) {
-  string* const s = absl::bit_cast<string*>(png_get_io_ptr(png_ptr));
+  T* const s = absl::bit_cast<T*>(png_get_io_ptr(png_ptr));
   s->append(absl::bit_cast<const char*>(data), length);
 }
 
@@ -336,9 +341,10 @@ bool CommonFinishDecode(png_bytep data, int row_bytes, DecodeContext* context) {
   return ok;
 }
 
+template <typename T>
 bool WriteImageToBuffer(
     const void* image, int width, int height, int row_bytes, int num_channels,
-    int channel_bits, int compression, string* png_string,
+    int channel_bits, int compression, T* png_string,
     const std::vector<std::pair<string, string> >* metadata) {
   CHECK_NOTNULL(image);
   CHECK_NOTNULL(png_string);
@@ -380,7 +386,7 @@ bool WriteImageToBuffer(
       return false;
   }
 
-  png_set_write_fn(png_ptr, png_string, StringWriter, StringWriterFlush);
+  png_set_write_fn(png_ptr, png_string, StringWriter<T>, StringWriterFlush);
   if (compression < 0) compression = Z_DEFAULT_COMPRESSION;
   png_set_compression_level(png_ptr, compression);
   png_set_compression_mem_level(png_ptr, MAX_MEM_LEVEL);
@@ -413,6 +419,15 @@ bool WriteImageToBuffer(
   png_destroy_write_struct(&png_ptr, &info_ptr);
   return true;
 }
+
+template bool WriteImageToBuffer<string>(
+    const void* image, int width, int height, int row_bytes, int num_channels,
+    int channel_bits, int compression, string* png_string,
+    const std::vector<std::pair<string, string> >* metadata);
+template bool WriteImageToBuffer<tstring>(
+    const void* image, int width, int height, int row_bytes, int num_channels,
+    int channel_bits, int compression, tstring* png_string,
+    const std::vector<std::pair<string, string> >* metadata);
 
 }  // namespace png
 }  // namespace tensorflow

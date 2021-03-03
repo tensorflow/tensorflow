@@ -60,7 +60,7 @@ int FillTensorWithTfLiteHexString(tensorflow::Tensor* tensor,
   int num_strings = values_as_string.empty() ? 0 : GetStringCount(s.data());
 
   if (num_strings == tensor->NumElements()) {
-    auto data = tensor->flat<string>();
+    auto data = tensor->flat<tensorflow::tstring>();
     for (size_t i = 0; i < num_strings; ++i) {
       auto ref = GetString(s.data(), i);
       data(i).assign(ref.str, ref.len);
@@ -87,7 +87,7 @@ string TensorDataToCsvString(const tensorflow::Tensor& tensor) {
 string TensorDataToTfLiteHexString(const tensorflow::Tensor& tensor) {
   DynamicBuffer dynamic_buffer;
 
-  auto data = tensor.flat<string>();
+  auto data = tensor.flat<tensorflow::tstring>();
   for (int i = 0; i < tensor.NumElements(); ++i) {
     dynamic_buffer.AddString(data(i).data(), data(i).size());
   }
@@ -162,6 +162,10 @@ void TfDriver::SetInput(const string& values_as_string,
       num_values_available =
           FillTensorWithData<int32_t>(tensor, values_as_string);
       break;
+    case tensorflow::DT_UINT32:
+      num_values_available =
+          FillTensorWithData<uint32_t>(tensor, values_as_string);
+      break;
     case tensorflow::DT_UINT8:
       num_values_available =
           FillTensorWithData<uint8_t>(tensor, values_as_string);
@@ -224,6 +228,8 @@ string TfDriver::ReadOutput(const tensorflow::Tensor& tensor) {
       return TensorDataToCsvString<float>(tensor);
     case tensorflow::DT_INT32:
       return TensorDataToCsvString<int32_t>(tensor);
+    case tensorflow::DT_UINT32:
+      return TensorDataToCsvString<uint32_t>(tensor);
     case tensorflow::DT_INT64:
       return TensorDataToCsvString<tensorflow::int64>(tensor);
     case tensorflow::DT_UINT8:

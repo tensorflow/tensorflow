@@ -75,7 +75,7 @@ fi
 BASE_DIR=$(upsearch "${DOCKERFILE}")
 if [[ -z "${BASE_DIR}" ]]; then
   die "FAILED: Unable to find the base directory where the dockerfile "\
-"${DOCKERFFILE} resides"
+"${DOCKERFILE} resides"
 fi
 echo "Base directory: ${BASE_DIR}"
 
@@ -109,7 +109,8 @@ if [ "${IMAGE_TYPE}" == "gpu" ]; then
   libs=$(\ls /usr/lib/x86_64-linux-gnu/libcuda.* | xargs -I{} echo '-v {}:{}')
   GPU_EXTRA_PARAMS="${devices} ${libs}"
 elif [ "${IMAGE_TYPE}" == "rocm" ]; then
-  ROCM_EXTRA_PARAMS="--device=/dev/kfd --device=/dev/dri --group-add video"
+  ROCM_EXTRA_PARAMS="--device=/dev/kfd --device=/dev/dri --group-add video \
+  --cap-add=SYS_PTRACE --security-opt seccomp=unconfined --shm-size 16G"
 else
   GPU_EXTRA_PARAMS=""
   ROCM_EXTRA_PARAMS=""
@@ -121,7 +122,7 @@ ${GPU_EXTRA_PARAMS} ${ROCM_EXTRA_PARAMS} \
 "${DOCKER_IMG_TAG}" \
 /bin/bash -c "tensorflow/tools/ci_build/builds/run_pip_tests.sh && "\
 "tensorflow/tools/ci_build/builds/test_tutorials.sh && "\
-"tensorflow/tools/ci_bukld/builds/integration_tests.sh"
+"tensorflow/tools/ci_build/builds/integration_tests.sh"
 
 RESULT=$?
 

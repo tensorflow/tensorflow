@@ -1,0 +1,12 @@
+op {
+  name: "ExperimentalIteratorGetDevice"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "device"
+    type: DT_STRING
+  }
+  is_stateful: true
+}

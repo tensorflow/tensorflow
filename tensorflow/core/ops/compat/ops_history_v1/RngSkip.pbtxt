@@ -1,0 +1,16 @@
+op {
+  name: "RngSkip"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "algorithm"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "delta"
+    type: DT_INT64
+  }
+  is_stateful: true
+}

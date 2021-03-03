@@ -12,13 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/kernels/internal/reference/arg_min_max.h"
+
+#include <stdint.h>
+
+#include <functional>
+
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -31,14 +37,26 @@ constexpr int kOutputTensor = 0;
 
 TfLiteStatus ResizeOutput(TfLiteContext* context, const TfLiteTensor* input,
                           const TfLiteTensor* axis, TfLiteTensor* output) {
-  int axis_value = *GetTensorData<int>(axis);
+  int axis_value;
+  // Retrive all 8 bytes when axis type is kTfLiteInt64 to avoid data loss.
+  if (axis->type == kTfLiteInt64) {
+    axis_value = static_cast<int>(*GetTensorData<int64_t>(axis));
+  } else {
+    axis_value = *GetTensorData<int>(axis);
+  }
   if (axis_value < 0) {
     axis_value += NumDimensions(input);
   }
 
-  // Copy the input dimensions to output except make the axis dimension 1.
-  TfLiteIntArray* output_dims = TfLiteIntArrayCopy(input->dims);
-  output_dims->data[axis_value] = 1;
+  // Copy the input dimensions to output except the axis dimension.
+  TfLiteIntArray* output_dims = TfLiteIntArrayCreate(NumDimensions(input) - 1);
+  int j = 0;
+  for (int i = 0; i < NumDimensions(input); ++i) {
+    if (i != axis_value) {
+      output_dims->data[j] = SizeOfDimension(input, i);
+      ++j;
+    }
+  }
   return context->ResizeTensor(context, output, output_dims);
 }
 
@@ -46,15 +64,19 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  const TfLiteTensor* axis = GetInput(context, node, kAxis);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  const TfLiteTensor* axis;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kAxis, &axis));
   // Make sure the axis is only 1 dimension.
   TF_LITE_ENSURE_EQ(context, NumElements(axis), 1);
   // Make sure the axis is only either int32 or int64.
   TF_LITE_ENSURE(context,
                  axis->type == kTfLiteInt32 || axis->type == kTfLiteInt64);
 
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   auto* params = reinterpret_cast<TfLiteArgMaxParams*>(node->builtin_data);
   switch (params->output_type) {
@@ -74,13 +96,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   switch (input->type) {
     case kTfLiteFloat32:
     case kTfLiteUInt8:
+    case kTfLiteInt8:
     case kTfLiteInt32:
       break;
 
     default:
       context->ReportError(
           context,
-          "Unkonwn input type: %d, only float32 and int types are supported",
+          "Unknown input type: %d, only float32 and int types are supported",
           input->type);
       return kTfLiteError;
   }
@@ -106,9 +129,13 @@ std::function<bool(T, T)> GetComparefunction(bool is_arg_max) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node, bool is_arg_max) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  const TfLiteTensor* axis = GetInput(context, node, kAxis);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  const TfLiteTensor* axis;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kAxis, &axis));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
   if (IsDynamicTensor(output)) {
     TF_LITE_ENSURE_STATUS(ResizeOutput(context, input, axis, output));
   }
@@ -129,10 +156,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node, bool is_arg_max) {
           case kTfLiteUInt8:
             TF_LITE_ARG_MIN_MAX(uint8_t, int32_t, int32_t);
             break;
+          case kTfLiteInt8:
+            TF_LITE_ARG_MIN_MAX(int8_t, int32_t, int32_t);
+            break;
           case kTfLiteInt32:
             TF_LITE_ARG_MIN_MAX(int32_t, int32_t, int32_t);
             break;
           default:
+            context->ReportError(context,
+                                 "Only float32, uint8, int8 and int32 are "
+                                 "supported currently, got %s.",
+                                 TfLiteTypeGetName(input->type));
             return kTfLiteError;
         }
       } break;
@@ -144,14 +178,24 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node, bool is_arg_max) {
           case kTfLiteUInt8:
             TF_LITE_ARG_MIN_MAX(uint8_t, int32_t, int64_t);
             break;
+          case kTfLiteInt8:
+            TF_LITE_ARG_MIN_MAX(int8_t, int32_t, int64_t);
+            break;
           case kTfLiteInt32:
             TF_LITE_ARG_MIN_MAX(int32_t, int32_t, int64_t);
             break;
           default:
+            context->ReportError(context,
+                                 "Only float32, uint8, int8 and int32 are "
+                                 "supported currently, got %s.",
+                                 TfLiteTypeGetName(input->type));
             return kTfLiteError;
         }
       } break;
       default:
+        context->ReportError(
+            context, "Only int32 and int64 are supported currently, got %s.",
+            TfLiteTypeGetName(output->type));
         return kTfLiteError;
     }
   } else {
@@ -164,10 +208,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node, bool is_arg_max) {
           case kTfLiteUInt8:
             TF_LITE_ARG_MIN_MAX(uint8_t, int64_t, int32_t);
             break;
+          case kTfLiteInt8:
+            TF_LITE_ARG_MIN_MAX(int8_t, int64_t, int32_t);
+            break;
           case kTfLiteInt32:
             TF_LITE_ARG_MIN_MAX(int32_t, int64_t, int32_t);
             break;
           default:
+            context->ReportError(context,
+                                 "Only float32, uint8, int8 and int32 are "
+                                 "supported currently, got %s.",
+                                 TfLiteTypeGetName(input->type));
             return kTfLiteError;
         }
       } break;
@@ -179,14 +230,24 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node, bool is_arg_max) {
           case kTfLiteUInt8:
             TF_LITE_ARG_MIN_MAX(uint8_t, int64_t, int64_t);
             break;
+          case kTfLiteInt8:
+            TF_LITE_ARG_MIN_MAX(int8_t, int64_t, int64_t);
+            break;
           case kTfLiteInt32:
             TF_LITE_ARG_MIN_MAX(int32_t, int64_t, int64_t);
             break;
           default:
+            context->ReportError(context,
+                                 "Only float32, uint8, int8 and int32 are "
+                                 "supported currently, got %s.",
+                                 TfLiteTypeGetName(input->type));
             return kTfLiteError;
         }
       } break;
       default:
+        context->ReportError(
+            context, "Only int32 and int64 are supported currently, got %s.",
+            TfLiteTypeGetName(output->type));
         return kTfLiteError;
     }
   }

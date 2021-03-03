@@ -16,12 +16,37 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/types/optional.h"
+#include "tensorflow/compiler/xla/error_spec.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
 namespace {
+
+XLA_TEST_F(HloTestBase, IotaReshapeR1) {
+  const string hlo_text = R"(
+  HloModule iota_reshape
+  ENTRY main {
+    i = s32[24] iota(), iota_dimension=0
+    ROOT r = s32[4,3,2] reshape(i)
+  }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, absl::nullopt));
+}
+
+XLA_TEST_F(HloTestBase, IotaReshapeExtraDims) {
+  const string hlo_text = R"(
+  HloModule iota_reshape
+  ENTRY main {
+    i = s32[5,5,111,42] iota(), iota_dimension=0
+    ROOT r = s32[25,3,37,7,6] reshape(i)
+  }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, absl::nullopt));
+}
 
 template <typename T>
 std::vector<T> GetR1Expected(const int64 num_elements) {
@@ -34,7 +59,7 @@ class IotaR1Test
     : public ClientLibraryTestBase,
       public ::testing::WithParamInterface<std::tuple<PrimitiveType, int>> {};
 
-TEST_P(IotaR1Test, DoIt) {
+XLA_TEST_P(IotaR1Test, DoIt) {
   const auto& spec = GetParam();
   const auto element_type = std::get<0>(spec);
   const int64 num_elements = std::get<1>(spec);
@@ -63,11 +88,16 @@ class IotaR2Test : public ClientLibraryTestBase,
                    public ::testing::WithParamInterface<
                        std::tuple<PrimitiveType, int, int>> {};
 
-TEST_P(IotaR2Test, DoIt) {
+XLA_TEST_P(IotaR2Test, DoIt) {
   const auto& spec = GetParam();
   const auto element_type = std::get<0>(spec);
   const int64 num_elements = std::get<1>(spec);
   const int64 iota_dim = std::get<2>(spec);
+#ifdef XLA_BACKEND_DOES_NOT_SUPPORT_BFLOAT16
+  if (element_type == BF16) {
+    return;
+  }
+#endif
   XlaBuilder builder(TestName() + "_" + PrimitiveType_Name(element_type));
   std::vector<int64> dimensions = {42};
   dimensions.insert(dimensions.begin() + iota_dim, num_elements);
@@ -80,7 +110,7 @@ TEST_P(IotaR2Test, DoIt) {
 }
 
 INSTANTIATE_TEST_CASE_P(IotaR2TestInstantiation, IotaR2Test,
-                        ::testing::Combine(::testing::Values(F32, S32),
+                        ::testing::Combine(::testing::Values(F32, S32, BF16),
                                            ::testing::Range(/*start=*/10,
                                                             /*end=*/1001,
                                                             /*step=*/10),
@@ -90,11 +120,16 @@ class IotaR3Test : public ClientLibraryTestBase,
                    public ::testing::WithParamInterface<
                        std::tuple<PrimitiveType, int, int>> {};
 
-TEST_P(IotaR3Test, DoIt) {
+XLA_TEST_P(IotaR3Test, DoIt) {
   const auto& spec = GetParam();
   const auto element_type = std::get<0>(spec);
   const int64 num_elements = std::get<1>(spec);
   const int64 iota_dim = std::get<2>(spec);
+#ifdef XLA_BACKEND_DOES_NOT_SUPPORT_BFLOAT16
+  if (element_type == BF16) {
+    return;
+  }
+#endif
   XlaBuilder builder(TestName() + "_" + PrimitiveType_Name(element_type));
   std::vector<int64> dimensions = {42, 19};
   dimensions.insert(dimensions.begin() + iota_dim, num_elements);

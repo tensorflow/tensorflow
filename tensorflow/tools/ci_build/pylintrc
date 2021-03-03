@@ -10,7 +10,7 @@
 # Profiled execution.
 profile=no
 
-# Add files or directories to the blacklist. They should be base names, not
+# Add files or directories to the denylist. They should be base names, not
 # paths.
 ignore=CVS
 
@@ -19,8 +19,8 @@ persistent=yes
 
 # List of plugins (as comma separated values of python modules names) to load,
 # usually to register additional checkers.
-load-plugins=
-
+load-plugins=pylint.extensions.docparams
+accept-no-param-doc=no
 
 [MESSAGES CONTROL]
 
@@ -38,7 +38,7 @@ enable=indexing-exception,old-raise-syntax
 # --enable=similarities". If you want to run only the classes checker, but have
 # no Warning level messages displayed, use"--disable=all --enable=classes
 # --disable=W"
-disable=design,similarities,no-self-use,attribute-defined-outside-init,locally-disabled,star-args,pointless-except,bad-option-value,global-statement,fixme,suppressed-message,useless-suppression,locally-enabled,no-member,no-name-in-module,import-error,unsubscriptable-object,unbalanced-tuple-unpacking,undefined-variable,not-context-manager
+disable=design,similarities,no-self-use,attribute-defined-outside-init,locally-disabled,star-args,pointless-except,bad-option-value,global-statement,fixme,suppressed-message,useless-suppression,locally-enabled,no-member,no-name-in-module,import-error,unsubscriptable-object,unbalanced-tuple-unpacking,undefined-variable,not-context-manager,invalid-sequence-index
 
 
 # Set the cache size for astng objects.
@@ -316,6 +316,7 @@ deprecated-members=string.atof,string.atoi,string.atol,string.capitalize,string.
 
 [DOCSTRING]
 
+default-docstring-type=google
 # List of exceptions that do not need to be mentioned in the Raises section of
 # a docstring.
 ignore-exceptions=AssertionError,NotImplementedError,StopIteration,TypeError

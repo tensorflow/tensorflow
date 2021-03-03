@@ -18,15 +18,17 @@ limitations under the License.
 #include <fstream>
 #include <map>
 #include <sstream>
+
 #include <gtest/gtest.h>
 #include "re2/re2.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/subprocess.h"
+#include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/lite/kernels/test_delegate_providers.h"
 #include "tensorflow/lite/testing/parse_testdata.h"
 #include "tensorflow/lite/testing/tflite_driver.h"
 #include "tensorflow/lite/testing/util.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/subprocess.h"
-#include "tensorflow/core/util/command_line_flags.h"
 
 namespace tflite {
 namespace testing {
@@ -46,7 +48,6 @@ string* FLAGS_tar_binary_path = new string("/bin/tar");
 string* FLAGS_unzip_binary_path = new string("/system/bin/unzip");
 string* FLAGS_tar_binary_path = new string("/system/bin/tar");
 #endif
-bool FLAGS_use_nnapi = false;
 bool FLAGS_ignore_unsupported_nnapi = false;
 }  // namespace
 
@@ -57,51 +58,113 @@ tensorflow::Env* env = tensorflow::Env::Default();
 //   --test_arg=--ignore_known_bugs=false
 // Key is a substring of the test name and value is a bug number.
 // TODO(ahentz): make sure we clean this list up frequently.
-std::map<string, string> kBrokenTests = {
-    // L2Norm only supports tensors with 4D or fewer.
-    {R"(^\/l2norm_dim=.*,epsilon=.*,input_shape=\[.,.,.,.,.*\])", "67963684"},
+const std::map<string, string>& GetKnownBrokenTests() {
+  static const std::map<string, string>* const kBrokenTests = new std::map<
+      string, string>({
+      // L2Norm only supports tensors with 4D or fewer.
+      {R"(^\/l2norm.*_dim=.*,epsilon=.*,input_shape=\[.,.,.,.,.*\])",
+       "67963684"},
 
-    // SpaceToBatchND only supports 4D tensors.
-    {R"(^\/space_to_batch_nd.*input_shape=\[1,4,4,4,1,1\])", "70848787"},
+      // SpaceToBatchND only supports 4D tensors.
+      {R"(^\/space_to_batch_nd.*input_shape=\[1,4,4,4,1,1\])", "70848787"},
 
-    // L2Norm only works for dim=-1.
-    {R"(^\/l2norm_dim=-2,epsilon=.*,input_shape=\[.,.\])", "67963812"},
-    {R"(^\/l2norm_dim=0,epsilon=.*,input_shape=\[.,.\])", "67963812"},
-    {R"(^\/l2norm_dim=-2,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
-    {R"(^\/l2norm_dim=-2,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
-    {R"(^\/l2norm_dim=2,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
-    {R"(^\/l2norm_dim=2,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
-    {R"(^\/l2norm_dim=0,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
-    {R"(^\/l2norm_dim=0,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
-    {R"(^\/l2norm_dim=1,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
-    {R"(^\/l2norm_dim=1,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
-    {R"(^\/l2norm_dim=\[2,3\],epsilon=.*,input_shape=\[3,15,14,3\])",
-     "67963812"},
-    {R"(^\/l2norm_dim=\[2,3\],epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
+      // BatchToSpaceND only supports 4D tensors.
+      {R"(^\/batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\])", "70848787"},
 
-    // ResizeBilinear looks completely incompatible with Tensorflow
-    {R"(^\/resize_bilinear.*dtype=tf.int32)", "72401107"},
+      // L2Norm only works for dim=-1.
+      {R"(^\/l2norm.*_dim=-2,epsilon=.*,input_shape=\[.,.\])", "67963812"},
+      {R"(^\/l2norm.*_dim=0,epsilon=.*,input_shape=\[.,.\])", "67963812"},
+      {R"(^\/l2norm.*_dim=-2,epsilon=.*,input_shape=\[3,15,14,3\])",
+       "67963812"},
+      {R"(^\/l2norm.*_dim=-2,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
+      {R"(^\/l2norm.*_dim=2,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
+      {R"(^\/l2norm.*_dim=2,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
+      {R"(^\/l2norm.*_dim=0,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
+      {R"(^\/l2norm.*_dim=0,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
+      {R"(^\/l2norm.*_dim=1,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
+      {R"(^\/l2norm.*_dim=1,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
+      {R"(^\/l2norm.*_dim=\[2,3\],epsilon=.*,input_shape=\[3,15,14,3\])",
+       "67963812"},
+      {R"(^\/l2norm.*_dim=\[2,3\],epsilon=.*,input_shape=\[1,3,4,3\])",
+       "67963812"},
 
-    // Transpose only supports 1D-4D input tensors.
-    {R"(^\/transpose.*input_shape=\[.,.,.,.,.\])", "71545879"},
+      // ResizeBilinear looks completely incompatible with Tensorflow
+      {R"(^\/resize_bilinear.*dtype=tf.int32)", "72401107"},
 
-    // No Support for float.
-    {R"(^\/floor_div.*dtype=tf\.float32)", "112859002"},
+      // Relu does not support int32.
+      // These test cases appends a Relu after the tested ops when
+      // activation=True. The tests are failing since Relu doesn't support
+      // int32.
+      {R"(^\/div.*activation=True.*dtype=tf\.int32)", "112968789"},
+      {R"(^\/floor_div.*activation=True.*dtype=tf\.int32)", "112968789"},
+      {R"(^\/floor_mod.*activation=True.*dtype=tf\.int32)", "112968789"},
+      {R"(^\/floor_mod.*activation=True.*dtype=tf\.int64)", "112968789"},
 
-    // Relu does not support int32.
-    // These test cases appends a Relu after the tested ops when
-    // activation=True. The tests are failing since Relu doesn't support int32.
-    {R"(^\/div.*activation=True.*dtype=tf\.int32)", "112968789"},
-    {R"(^\/floor_div.*activation=True.*dtype=tf\.int32)", "112968789"},
-    {R"(^\/floor_mod.*activation=True.*dtype=tf\.int32)", "112968789"},
-    {R"(^\/floor_mod.*activation=True.*dtype=tf\.int64)", "112968789"},
+      {R"(^\/div.*dtype=tf\.int64)", "119126484"},
+      {R"(^\/mul.*dtype=tf\.int64)", "119126484"},
+      {R"(^\/add.*dtype=tf\.int64)", "119126484"},
+      {R"(^\/floor_div.*dtype=tf\.int64)", "119126484"},
+      {R"(^\/squared_difference.*dtype=tf\.int64)", "119126484"},
 
-    {R"(^\/sub.*dtype=tf\.int64)", "119126484"},
-    {R"(^\/div.*dtype=tf\.int64)", "119126484"},
-    {R"(^\/mul.*dtype=tf\.int64)", "119126484"},
-    {R"(^\/add.*dtype=tf\.int64)", "119126484"},
-    {R"(^\/floor_div.*dtype=tf\.int64)", "119126484"},
-};
+      // Strided slice doesn't support ellipsis.
+      {R"(strided_slice.*Ellipsis)", "138098220"},
+  });
+  return *kBrokenTests;
+}
+
+// Additional list of tests that are expected to fail when
+//   --test_arg=--ignore_known_bugs=false
+// and
+//   --test_arg=--use_nnapi=true
+// Note that issues related to lack of NNAPI support for a particular op are
+// handled separately; this list is specifically for broken cases where
+// execution produces broken output.
+// Key is a substring of the test name and value is a bug number.
+const std::map<string, string>& GetKnownBrokenNnapiTests() {
+  static const std::map<string, string>* const kBrokenNnapiTests =
+      new std::map<string, string>({
+          // Certain NNAPI kernels silently fail with int32 types.
+          {R"(^\/add.*dtype=tf\.int32)", "122987564"},
+          {R"(^\/concat.*dtype=tf\.int32)", "122987564"},
+          {R"(^\/mul.*dtype=tf\.int32)", "122987564"},
+          {R"(^\/space_to_depth.*dtype=tf\.int32)", "122987564"},
+
+          // Certain NNAPI fully_connected shape permutations fail.
+          {R"(^\/fully_connected_constant_filter=True.*shape1=\[3,3\])",
+           "122987564"},
+          {R"(^\/fully_connected_constant_filter=True.*shape1=\[4,4\])",
+           "122987564"},
+          {R"(^\/fully_connected.*shape1=\[3,3\].*transpose_b=True)",
+           "122987564"},
+          {R"(^\/fully_connected.*shape1=\[4,4\].*shape2=\[4,1\])",
+           "122987564"},
+      });
+  return *kBrokenNnapiTests;
+}
+
+// List of quantize tests that are probably to fail.
+// Quantized tflite models has high diff error with tensorflow models.
+// Key is a substring of the test name and value is a bug number.
+// TODO(b/134594898): Remove these bugs and corresponding codes or move them to
+// kBrokenTests after b/134594898 is fixed.
+const std::map<string, string>& GetKnownQuantizeBrokenTests() {
+  static const std::map<string, string>* const kQuantizeBrokenTests =
+      new std::map<string, string>({
+          {R"(^\/sum.*fully_quantize=True)", "134594898"},
+          {R"(^\/l2norm.*fully_quantize=True)", "134594898"},
+      });
+  return *kQuantizeBrokenTests;
+}
+
+const std::map<string, int>& GetQuantizeTestsError() {
+  static const std::map<string, int>* const kQuantizeBrokenTests =
+      new std::map<string, int>({
+          {R"(^\/conv_relu1.*fully_quantize=True)", 18},
+          {R"(^\/conv_relu6.*fully_quantize=True)", 8},
+          {R"(^\/maximum.*fully_quantize=True)", 8},
+      });
+  return *kQuantizeBrokenTests;
+}
 
 // Allows test data to be unarchived into a temporary directory and makes
 // sure those temporary directories are removed later.
@@ -192,7 +255,7 @@ tensorflow::Status ReadManifest(const string& original_file, const string& dir,
   size_t pos = 0;
   int added = 0;
   while (true) {
-    size_t end_pos = manifest.find("\n", pos);
+    size_t end_pos = manifest.find('\n', pos);
     if (end_pos == string::npos) break;
     string filename = manifest.substr(pos, end_pos - pos);
     test_paths->push_back(dir + "/" + filename);
@@ -201,7 +264,7 @@ tensorflow::Status ReadManifest(const string& original_file, const string& dir,
   }
   if (!added) {
     string message = "Test had no examples: " + original_file;
-    return tensorflow::Status(tensorflow::error::UNKNOWN, message.c_str());
+    return tensorflow::Status(tensorflow::error::UNKNOWN, message);
   }
   return tensorflow::Status::OK();
 }
@@ -228,39 +291,83 @@ std::vector<string> UnarchiveAndFindTestNames(const string& zip_file,
 class OpsTest : public ::testing::TestWithParam<string> {};
 
 TEST_P(OpsTest, RunZipTests) {
-  string test_path = GetParam();
+  string test_path_and_label = GetParam();
+  string test_path = test_path_and_label;
+  string label = test_path_and_label;
+  size_t end_pos = test_path_and_label.find(' ');
+  if (end_pos != string::npos) {
+    test_path = test_path_and_label.substr(0, end_pos);
+    label = test_path_and_label.substr(end_pos + 1);
+  }
   string tflite_test_case = test_path + "_tests.txt";
-  string tflite_dir = test_path.substr(0, test_path.find_last_of("/"));
-  string test_name = test_path.substr(test_path.find_last_of('/'));
+  string tflite_dir = test_path.substr(0, test_path.find_last_of('/'));
+  string test_name = label.substr(label.find_last_of('/'));
 
   std::ifstream tflite_stream(tflite_test_case);
   ASSERT_TRUE(tflite_stream.is_open()) << tflite_test_case;
-  tflite::testing::TfLiteDriver test_driver(FLAGS_use_nnapi);
+  tflite::testing::TfLiteDriver test_driver;
+  const bool use_nnapi =
+      tflite::KernelTestDelegateProviders::Get()->ConstParams().Get<bool>(
+          "use_nnapi");
+
+  auto quantized_tests_error = GetQuantizeTestsError();
+  bool fully_quantize = false;
+  if (label.find("fully_quantize=True") != std::string::npos) {
+    for (const auto& p : quantized_tests_error) {
+      if (RE2::PartialMatch(test_name, p.first)) {
+        test_driver.SetQuantizationErrorMultiplier(p.second);
+        break;
+      }
+    }
+    fully_quantize = true;
+  }
+
   test_driver.SetModelBaseDir(tflite_dir);
 
-  string bug_number;
-  for (const auto& p : kBrokenTests) {
-    if (RE2::PartialMatch(test_name, p.first)) {
-      bug_number = p.second;
-    }
+  auto broken_tests = GetKnownBrokenTests();
+  if (use_nnapi) {
+    auto kBrokenNnapiTests = GetKnownBrokenNnapiTests();
+    broken_tests.insert(kBrokenNnapiTests.begin(), kBrokenNnapiTests.end());
   }
 
   bool result = tflite::testing::ParseAndRunTests(&tflite_stream, &test_driver);
   string message = test_driver.GetErrorMessage();
-  if (bug_number.empty()) {
-    if (FLAGS_use_nnapi && FLAGS_ignore_unsupported_nnapi && !result) {
-      EXPECT_EQ(message, string("Failed to invoke interpreter")) << message;
+
+  if (!fully_quantize) {
+    string bug_number;
+    for (const auto& p : broken_tests) {
+      if (RE2::PartialMatch(test_name, p.first)) {
+        bug_number = p.second;
+        break;
+      }
+    }
+    if (bug_number.empty()) {
+      if (use_nnapi && FLAGS_ignore_unsupported_nnapi && !result) {
+        EXPECT_EQ(message, string("Failed to invoke interpreter")) << message;
+      } else {
+        EXPECT_TRUE(result) << message;
+      }
     } else {
-      EXPECT_TRUE(result) << message;
+      if (FLAGS_ignore_known_bugs) {
+        EXPECT_FALSE(result) << "Test was expected to fail but is now passing; "
+                                "you can mark http://b/"
+                             << bug_number << " as fixed! Yay!";
+      } else {
+        EXPECT_TRUE(result)
+            << message << ": Possibly due to http://b/" << bug_number;
+      }
     }
   } else {
-    if (FLAGS_ignore_known_bugs) {
-      EXPECT_FALSE(result) << "Test was expected to fail but is now passing; "
-                              "you can mark http://b/"
-                           << bug_number << " as fixed! Yay!";
-    } else {
-      EXPECT_TRUE(result) << message << ": Possibly due to http://b/"
-                          << bug_number;
+    if (!result) {
+      string bug_number;
+      // See if the tests are potential quantize failures.
+      for (const auto& p : GetKnownQuantizeBrokenTests()) {
+        if (RE2::PartialMatch(test_name, p.first)) {
+          bug_number = p.second;
+          break;
+        }
+      }
+      EXPECT_FALSE(bug_number.empty());
     }
   }
 }
@@ -309,8 +416,6 @@ int main(int argc, char** argv) {
       tensorflow::Flag("tar_binary_path",
                        tflite::testing::FLAGS_tar_binary_path,
                        "Location of a suitable tar binary."),
-      tensorflow::Flag("use_nnapi", &tflite::testing::FLAGS_use_nnapi,
-                       "Whether to enable the NNAPI delegate"),
       tensorflow::Flag("ignore_unsupported_nnapi",
                        &tflite::testing::FLAGS_ignore_unsupported_nnapi,
                        "Don't fail tests just because delegation to NNAPI "
@@ -318,7 +423,12 @@ int main(int argc, char** argv) {
   bool success = tensorflow::Flags::Parse(&argc, argv, flags);
   if (!success || (argc == 2 && !strcmp(argv[1], "--helpfull"))) {
     fprintf(stderr, "%s", tensorflow::Flags::Usage(argv[0], flags).c_str());
-    return 1;
+    return EXIT_FAILURE;
+  }
+
+  if (!tflite::testing::TfLiteDriver::InitTestDelegateProviders(
+          &argc, const_cast<const char**>(argv))) {
+    return EXIT_FAILURE;
   }
 
   ::tflite::LogToStderr();

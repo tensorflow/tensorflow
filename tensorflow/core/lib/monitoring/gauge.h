@@ -16,17 +16,25 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_MONITORING_GAUGE_H_
 #define TENSORFLOW_CORE_LIB_MONITORING_GAUGE_H_
 
+// clang-format off
+// Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/platform/platform.h"
+// clang-format on
+
 // We replace this implementation with a null implementation for mobile
 // platforms.
-#include "tensorflow/core/platform/platform.h"
 #ifdef IS_MOBILE_PLATFORM
+#define TENSORFLOW_INCLUDED_FROM_GAUGE_H  // prevent accidental use of
+                                          // mobile_gauge.h
 #include "tensorflow/core/lib/monitoring/mobile_gauge.h"
+#undef TENSORFLOW_INCLUDED_FROM_GAUGE_H
 #else
 
 #include <array>
 #include <atomic>
 #include <map>
 
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
 #include "tensorflow/core/lib/monitoring/metric_def.h"
 #include "tensorflow/core/platform/macros.h"
@@ -53,13 +61,13 @@ class GaugeCell {
   ~GaugeCell() {}
 
   // Atomically sets the value.
-  void Set(const T& value) LOCKS_EXCLUDED(mu_);
+  void Set(const T& value) TF_LOCKS_EXCLUDED(mu_);
 
   // Retrieves the current value.
-  T value() const LOCKS_EXCLUDED(mu_);
+  T value() const TF_LOCKS_EXCLUDED(mu_);
 
  private:
-  T value_ GUARDED_BY(mu_);
+  T value_ TF_GUARDED_BY(mu_);
   mutable mutex mu_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GaugeCell);
@@ -147,7 +155,9 @@ class Gauge {
   // Retrieves the cell for the specified labels, creating it on demand if not
   // already present.
   template <typename... Labels>
-  GaugeCell<ValueType>* GetCell(const Labels&... labels) LOCKS_EXCLUDED(mu_);
+  GaugeCell<ValueType>* GetCell(const Labels&... labels) TF_LOCKS_EXCLUDED(mu_);
+
+  Status GetStatus() { return status_; }
 
  private:
   explicit Gauge(
@@ -161,9 +171,18 @@ class Gauge {
               for (const auto& cell : cells_) {
                 metric_collector.CollectValue(cell.first, cell.second.value());
               }
-            })) {}
+            })) {
+    if (registration_handle_) {
+      status_ = Status::OK();
+    } else {
+      status_ = Status(tensorflow::error::Code::ALREADY_EXISTS,
+                       "Another metric with the same name already exists.");
+    }
+  }
 
   mutable mutex mu_;
+
+  Status status_;
 
   // The metric definition. This will be used to identify the metric when we
   // register it for collection.
@@ -172,7 +191,7 @@ class Gauge {
   std::unique_ptr<CollectionRegistry::RegistrationHandle> registration_handle_;
 
   using LabelArray = std::array<string, NumLabels>;
-  std::map<LabelArray, GaugeCell<ValueType> > cells_ GUARDED_BY(mu_);
+  std::map<LabelArray, GaugeCell<ValueType> > cells_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(Gauge);
 };
@@ -207,7 +226,7 @@ Gauge<ValueType, NumLabels>* Gauge<ValueType, NumLabels>::New(
   static_assert(std::is_same<ValueType, int64>::value ||
                     std::is_same<ValueType, string>::value ||
                     std::is_same<ValueType, bool>::value,
-                "Gauge only allows int64 and string types.");
+                "Gauge only allows bool, int64, and string types.");
   return new Gauge<ValueType, NumLabels>(
       MetricDef<MetricKind::kGauge, ValueType, NumLabels>(
           std::forward<MetricDefArgs>(metric_def_args)...));
@@ -216,7 +235,7 @@ Gauge<ValueType, NumLabels>* Gauge<ValueType, NumLabels>::New(
 template <typename ValueType, int NumLabels>
 template <typename... Labels>
 GaugeCell<ValueType>* Gauge<ValueType, NumLabels>::GetCell(
-    const Labels&... labels) LOCKS_EXCLUDED(mu_) {
+    const Labels&... labels) TF_LOCKS_EXCLUDED(mu_) {
   // Provides a more informative error message than the one during array
   // construction below.
   static_assert(

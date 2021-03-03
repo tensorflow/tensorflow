@@ -37,7 +37,7 @@ import six
 
 from tensorflow.python.util.tf_export import tf_export
 
-# Don't use this directly. Use _get_logger() instead.
+# Don't use this directly. Use get_logger() instead.
 _logger = None
 _logger_lock = threading.Lock()
 
@@ -57,9 +57,21 @@ def _get_caller(offset=3):
     f = f.f_back
   return None, None
 
+# The definition of `findCaller` changed in Python 3.2,
+# and further changed in Python 3.8
+if _sys.version_info.major >= 3 and _sys.version_info.minor >= 8:
 
-# The definition of `findCaller` changed in Python 3.2
-if _sys.version_info.major >= 3 and _sys.version_info.minor >= 2:
+  def _logger_find_caller(stack_info=False, stacklevel=1):  # pylint: disable=g-wrong-blank-lines
+    code, frame = _get_caller(4)
+    sinfo = None
+    if stack_info:
+      sinfo = '\n'.join(_traceback.format_stack())
+    if code:
+      return (code.co_filename, frame.f_lineno, code.co_name, sinfo)
+    else:
+      return '(unknown file)', 0, '(unknown function)', sinfo
+elif _sys.version_info.major >= 3 and _sys.version_info.minor >= 2:
+
   def _logger_find_caller(stack_info=False):  # pylint: disable=g-wrong-blank-lines
     code, frame = _get_caller(4)
     sinfo = None
@@ -78,7 +90,8 @@ else:
       return '(unknown file)', 0, '(unknown function)'
 
 
-def _get_logger():
+@tf_export('get_logger')
+def get_logger():
   """Return TF logger instance."""
   global _logger
 
@@ -130,39 +143,39 @@ def _get_logger():
     _logger_lock.release()
 
 
-@tf_export('logging.log')
+@tf_export(v1=['logging.log'])
 def log(level, msg, *args, **kwargs):
-  _get_logger().log(level, msg, *args, **kwargs)
+  get_logger().log(level, msg, *args, **kwargs)
 
 
-@tf_export('logging.debug')
+@tf_export(v1=['logging.debug'])
 def debug(msg, *args, **kwargs):
-  _get_logger().debug(msg, *args, **kwargs)
+  get_logger().debug(msg, *args, **kwargs)
 
 
-@tf_export('logging.error')
+@tf_export(v1=['logging.error'])
 def error(msg, *args, **kwargs):
-  _get_logger().error(msg, *args, **kwargs)
+  get_logger().error(msg, *args, **kwargs)
 
 
-@tf_export('logging.fatal')
+@tf_export(v1=['logging.fatal'])
 def fatal(msg, *args, **kwargs):
-  _get_logger().fatal(msg, *args, **kwargs)
+  get_logger().fatal(msg, *args, **kwargs)
 
 
-@tf_export('logging.info')
+@tf_export(v1=['logging.info'])
 def info(msg, *args, **kwargs):
-  _get_logger().info(msg, *args, **kwargs)
+  get_logger().info(msg, *args, **kwargs)
 
 
-@tf_export('logging.warn')
+@tf_export(v1=['logging.warn'])
 def warn(msg, *args, **kwargs):
-  _get_logger().warn(msg, *args, **kwargs)
+  get_logger().warning(msg, *args, **kwargs)
 
 
-@tf_export('logging.warning')
+@tf_export(v1=['logging.warning'])
 def warning(msg, *args, **kwargs):
-  _get_logger().warning(msg, *args, **kwargs)
+  get_logger().warning(msg, *args, **kwargs)
 
 
 _level_names = {
@@ -183,20 +196,20 @@ _log_prefix = None  # later set to google2_log_prefix
 _log_counter_per_token = {}
 
 
-@tf_export('logging.TaskLevelStatusMessage')
+@tf_export(v1=['logging.TaskLevelStatusMessage'])
 def TaskLevelStatusMessage(msg):
   error(msg)
 
 
-@tf_export('logging.flush')
+@tf_export(v1=['logging.flush'])
 def flush():
   raise NotImplementedError()
 
 
 # Code below is taken from pyglib/logging
-@tf_export('logging.vlog')
+@tf_export(v1=['logging.vlog'])
 def vlog(level, msg, *args, **kwargs):
-  _get_logger().log(level, msg, *args, **kwargs)
+  get_logger().log(level, msg, *args, **kwargs)
 
 
 def _GetNextLogCountPerToken(token):
@@ -214,7 +227,7 @@ def _GetNextLogCountPerToken(token):
   return _log_counter_per_token[token]
 
 
-@tf_export('logging.log_every_n')
+@tf_export(v1=['logging.log_every_n'])
 def log_every_n(level, msg, n, *args):
   """Log 'msg % args' at level 'level' once per 'n' times.
 
@@ -231,7 +244,7 @@ def log_every_n(level, msg, n, *args):
   log_if(level, msg, not (count % n), *args)
 
 
-@tf_export('logging.log_first_n')
+@tf_export(v1=['logging.log_first_n'])
 def log_first_n(level, msg, n, *args):  # pylint: disable=g-bad-name
   """Log 'msg % args' at level 'level' only first 'n' times.
 
@@ -247,7 +260,7 @@ def log_first_n(level, msg, n, *args):  # pylint: disable=g-bad-name
   log_if(level, msg, count < n, *args)
 
 
-@tf_export('logging.log_if')
+@tf_export(v1=['logging.log_if'])
 def log_if(level, msg, condition, *args):
   """Log 'msg % args' at level 'level' only if condition is fulfilled."""
   if condition:
@@ -296,16 +309,16 @@ def google2_log_prefix(level, timestamp=None, file_and_line=None):
   return s
 
 
-@tf_export('logging.get_verbosity')
+@tf_export(v1=['logging.get_verbosity'])
 def get_verbosity():
   """Return how much logging output will be produced."""
-  return _get_logger().getEffectiveLevel()
+  return get_logger().getEffectiveLevel()
 
 
-@tf_export('logging.set_verbosity')
+@tf_export(v1=['logging.set_verbosity'])
 def set_verbosity(v):
   """Sets the threshold for what messages will be logged."""
-  _get_logger().setLevel(v)
+  get_logger().setLevel(v)
 
 
 def _get_thread_id():
@@ -318,8 +331,8 @@ def _get_thread_id():
 
 _log_prefix = google2_log_prefix
 
-tf_export('logging.DEBUG').export_constant(__name__, 'DEBUG')
-tf_export('logging.ERROR').export_constant(__name__, 'ERROR')
-tf_export('logging.FATAL').export_constant(__name__, 'FATAL')
-tf_export('logging.INFO').export_constant(__name__, 'INFO')
-tf_export('logging.WARN').export_constant(__name__, 'WARN')
+tf_export(v1=['logging.DEBUG']).export_constant(__name__, 'DEBUG')
+tf_export(v1=['logging.ERROR']).export_constant(__name__, 'ERROR')
+tf_export(v1=['logging.FATAL']).export_constant(__name__, 'FATAL')
+tf_export(v1=['logging.INFO']).export_constant(__name__, 'INFO')
+tf_export(v1=['logging.WARN']).export_constant(__name__, 'WARN')

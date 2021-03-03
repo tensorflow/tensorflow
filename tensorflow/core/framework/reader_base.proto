@@ -1,11 +1,12 @@
 syntax = "proto3";
 
 package tensorflow;
+
 option cc_enable_arenas = true;
 option java_outer_classname = "ReaderBaseProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/reader_base_go_proto";
 
 // For serializing and restoring the state of ReaderBase, see
 // reader_base.h for details.
@@ -14,4 +15,4 @@ message ReaderBaseState {
   int64 work_finished = 2;
   int64 num_records_produced = 3;
   bytes current_work = 4;
-};
+}

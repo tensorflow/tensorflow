@@ -1,10 +1,11 @@
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 cc_library(
@@ -53,14 +54,13 @@ cc_library(
         "//tensorflow/lite/toco:model",
         "//tensorflow/lite/toco:toco_port",
         "//tensorflow/lite/toco:tooling_util",
-        "@protobuf_archive//:protobuf_headers",
+        "@com_google_protobuf//:protobuf_headers",
     ],
 )
 
 tf_cc_test(
     name = "resolve_svdf_test",
     srcs = ["resolve_svdf_test.cc"],
-    tags = ["no_oss"],
     deps = [
         ":cluster",
         ":cluster_utils",

@@ -19,6 +19,8 @@ limitations under the License.
 
 #include <Python.h>
 
+#include <string>
+
 namespace tensorflow {
 namespace swig {
 
@@ -32,6 +34,36 @@ namespace swig {
 //   True if the sequence is a not a string and is a collections.Sequence or a
 //   dict.
 bool IsSequence(PyObject* o);
+
+// Implements the same interface as nest.is_sequence_or_composite
+// Returns a true if its input is a collections.Sequence (except strings)
+// or a CompositeTensor or a TypeSpec (except TensorSpec).
+//
+// Args:
+//   seq: an input sequence.
+//
+// Returns:
+//   True if the sequence is a not a string and is a collections.Sequence or a
+//   dict or a CompositeTensor or a TypeSpec.
+bool IsSequenceOrComposite(PyObject* o);
+
+// Returns a true if its input is a CompositeTensor or a TypeSpec.
+//
+// Args:
+//   seq: an input sequence.
+//
+// Returns:
+//   True if the sequence is a CompositeTensor.
+bool IsCompositeTensor(PyObject* o);
+
+// Returns a true if its input is a TypeSpec, but is not a TensorSpec.
+//
+// Args:
+//   seq: an input sequence.
+//
+// Returns:
+//   True if the sequence is a TypeSpec, but is not a TensorSpec.
+bool IsTypeSpec(PyObject* o);
 
 // Implements the same interface as tensorflow.util.nest._is_namedtuple
 // Returns Py_True iff `instance` should be considered a `namedtuple`.
@@ -56,6 +88,51 @@ PyObject* IsNamedtuple(PyObject* o, bool strict);
 //   True if the sequence subclasses mapping.
 bool IsMapping(PyObject* o);
 
+// Returns a true if its input is a collections.MutableMapping.
+//
+// Args:
+//   seq: the input to be checked.
+//
+// Returns:
+//   True if the sequence subclasses mapping.
+bool IsMutableMapping(PyObject* o);
+
+// Returns a true if its input is a (possibly wrapped) tuple.
+//
+// Args:
+//   seq: the input to be checked.
+//
+// Returns:
+//   True if the sequence is a tuple.
+bool IsTuple(PyObject* o);
+
+// Returns a true if its input is a collections.MappingView.
+//
+// Args:
+//   seq: the input to be checked.
+//
+// Returns:
+//   True if the sequence subclasses mapping.
+bool IsMappingView(PyObject* o);
+
+// Returns a true if its input has a `__tf_dispatch__` attribute.
+//
+// Args:
+//   o: the input to be checked.
+//
+// Returns:
+//   True if `o` has a `__tf_dispatch__` attribute.
+bool IsDispatchable(PyObject* o);
+
+// A version of PyMapping_Keys that works in C++11
+//
+// Args:
+//   o: The input to extract keys from
+//
+// Returns:
+//   A new reference to a list of keys in the mapping.
+PyObject* MappingKeys(PyObject* o);
+
 // Returns a true if its input is an instance of an attr.s decorated class.
 //
 // Args:
@@ -68,16 +145,43 @@ bool IsAttrs(PyObject* o);
 // Returns a true if its input is an ops.Tensor.
 //
 // Args:
-//   seq: the input to be checked.
+//   o: the input to be checked.
 //
 // Returns:
 //   True if the object is a tensor.
 bool IsTensor(PyObject* o);
 
+// Returns a true if its input is an eager.EagerTensor.
+//
+// Args:
+//   o: the input to be checked.
+//
+// Returns:
+//   True if the object is an eager tensor (or mimicking as one).
+bool IsEagerTensorSlow(PyObject* o);
+
+// Returns a true if its input is a ResourceVariable.
+//
+// Args:
+//   o: the input to be checked.
+//
+// Returns:
+//   True if the object is a ResourceVariable.
+bool IsResourceVariable(PyObject* o);
+
+// Returns a true if its input is a Variable.
+//
+// Args:
+//   o: the input to be checked.
+//
+// Returns:
+//   True if the object is a Variable.
+bool IsVariable(PyObject* o);
+
 // Returns a true if its input is an ops.IndexesSlices.
 //
 // Args:
-//   seq: the input to be checked.
+//   o: the input to be checked.
 //
 // Returns:
 //   True if the object is an ops.IndexedSlices.
@@ -93,7 +197,7 @@ PyObject* SameNamedtuples(PyObject* o1, PyObject* o2);
 //
 // Note that namedtuples with identical name and fields are always considered
 // to have the same shallow structure (even with `check_types=True`).
-// For intance, this code will print `True`:
+// For instance, this code will print `True`:
 //
 // ```python
 // def nt(a, b):
@@ -118,7 +222,8 @@ PyObject* SameNamedtuples(PyObject* o1, PyObject* o2);
 //
 // Returns:
 //  Py_None on success, nullptr on error.
-PyObject* AssertSameStructure(PyObject* o1, PyObject* o2, bool check_types);
+PyObject* AssertSameStructure(PyObject* o1, PyObject* o2, bool check_types,
+                              bool expand_composites);
 
 // Implements the same interface as tensorflow.util.nest.flatten
 //
@@ -139,6 +244,9 @@ PyObject* AssertSameStructure(PyObject* o1, PyObject* o2, bool check_types);
 // Args:
 //   nest: an arbitrarily nested structure or a scalar object. Note, numpy
 //       arrays are considered scalars.
+//   expand_composites: If true, then composite tensors (such as
+//       `tf.sparse.SparseTensor` and `tf.RaggedTensor` are flattened into their
+//       component tensors.
 //
 // Returns:
 //   A Python list, the flattened version of the input.
@@ -146,7 +254,7 @@ PyObject* AssertSameStructure(PyObject* o1, PyObject* o2, bool check_types);
 //
 // Raises:
 //   TypeError: The nest is or contains a dict with non-sortable keys.
-PyObject* Flatten(PyObject* nested);
+PyObject* Flatten(PyObject* nested, bool expand_composites = false);
 
 // The tensorflow.python.data package has its own nest utility that follows very
 // slightly different semantics for its functions than the tensorflow.python
@@ -173,9 +281,17 @@ PyObject* FlattenForData(PyObject* nested);
 PyObject* AssertSameStructureForData(PyObject* o1, PyObject* o2,
                                      bool check_types);
 
-// RegisterType is used to pass PyTypeObject (which is defined in python) for an
-// arbitrary identifier `type_name` into C++.
+// Registers a Python object so it can be looked up from c++.  The set of
+// valid names, and the expected values for those names, are listed in
+// the documentation for `RegisteredPyObjects`.  Returns PyNone.
+PyObject* RegisterPyObject(PyObject* name, PyObject* value);
+
+// Variant of RegisterPyObject that requires the object's value to be a type.
 PyObject* RegisterType(PyObject* type_name, PyObject* type);
+
+// Returns a borrowed reference to an object that was registered with
+// RegisterPyObject.  (Do not call Py_DECREF on the result).
+PyObject* GetRegisteredPyObject(const std::string& name);
 
 }  // namespace swig
 }  // namespace tensorflow

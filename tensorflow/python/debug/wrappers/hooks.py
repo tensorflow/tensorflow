@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.debug.lib import debug_utils
-from tensorflow.python.debug.lib import stepper
 from tensorflow.python.debug.wrappers import dumping_wrapper
 from tensorflow.python.debug.wrappers import framework
 from tensorflow.python.debug.wrappers import grpc_wrapper
@@ -31,13 +30,17 @@ from tensorflow.python.training import session_run_hook
 class LocalCLIDebugHook(session_run_hook.SessionRunHook):
   """Command-line-interface debugger hook.
 
-  Can be used as a hook for `tf.train.MonitoredSession`s and
+  Can be used as a hook for `tf.compat.v1.train.MonitoredSession`s and
   `tf.estimator.Estimator`s. Provides a substitute for
   `tfdbg.LocalCLIDebugWrapperSession` in cases where the session is not directly
   available.
   """
 
-  def __init__(self, ui_type="curses", dump_root=None, thread_name_filter=None):
+  def __init__(self,
+               ui_type="curses",
+               dump_root=None,
+               thread_name_filter=None,
+               config_file_path=None):
     """Create a local debugger command-line interface (CLI) hook.
 
     Args:
@@ -50,6 +53,8 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
       thread_name_filter: Regular-expression white list for threads on which the
         wrapper session will be active. See doc of `BaseDebugWrapperSession` for
         more details.
+      config_file_path: Optional override to the default configuration file
+        path, which is at `${HOME}/.tfdbg_config`.
     """
 
     self._ui_type = ui_type
@@ -57,6 +62,7 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
     self._thread_name_filter = thread_name_filter
     self._session_wrapper = None
     self._pending_tensor_filters = {}
+    self._config_file_path = config_file_path
 
   def add_tensor_filter(self, filter_name, tensor_filter):
     """Add a tensor filter.
@@ -88,7 +94,8 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
           run_context.session,
           ui_type=self._ui_type,
           dump_root=self._dump_root,
-          thread_name_filter=self._thread_name_filter)
+          thread_name_filter=self._thread_name_filter,
+          config_file_path=self._config_file_path)
 
       # Actually register tensor filters registered prior to the construction
       # of the underlying LocalCLIDebugWrapperSession object.
@@ -117,12 +124,12 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
           run_args.options,
           on_run_start_response.debug_urls,
           debug_ops=on_run_start_response.debug_ops,
-          node_name_regex_whitelist=(
-              on_run_start_response.node_name_regex_whitelist),
-          op_type_regex_whitelist=(
-              on_run_start_response.op_type_regex_whitelist),
-          tensor_dtype_regex_whitelist=(
-              on_run_start_response.tensor_dtype_regex_whitelist),
+          node_name_regex_allowlist=(
+              on_run_start_response.node_name_regex_allowlist),
+          op_type_regex_allowlist=(
+              on_run_start_response.op_type_regex_allowlist),
+          tensor_dtype_regex_allowlist=(
+              on_run_start_response.tensor_dtype_regex_allowlist),
           tolerate_debug_op_creation_failures=(
               on_run_start_response.tolerate_debug_op_creation_failures))
       # pylint: enable=protected-access
@@ -130,18 +137,6 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
       # pylint: disable=protected-access
       self._session_wrapper._decorate_run_options_for_profile(run_args.options)
       # pylint: enable=protected-access
-    elif self._performed_action == framework.OnRunStartAction.INVOKE_STEPPER:
-      # The _finalized property must be set to False so that the NodeStepper
-      # can insert ops for retrieving TensorHandles.
-      # pylint: disable=protected-access
-      run_context.session.graph._finalized = False
-      # pylint: enable=protected-access
-
-      with stepper.NodeStepper(
-          run_context.session, run_context.original_args.fetches,
-          run_context.original_args.feed_dict) as node_stepper:
-        self._session_wrapper.invoke_node_stepper(
-            node_stepper, restore_variable_values_on_exit=True)
 
     return run_args
 
@@ -156,7 +151,7 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
 class DumpingDebugHook(session_run_hook.SessionRunHook):
   """A debugger hook that dumps debug data to filesystem.
 
-  Can be used as a hook for `tf.train.MonitoredSession`s and
+  Can be used as a hook for `tf.compat.v1.train.MonitoredSession`s and
   `tf.estimator.Estimator`s.
   """
 
@@ -210,9 +205,9 @@ class DumpingDebugHook(session_run_hook.SessionRunHook):
         run_context.session.graph,
         debug_urls=debug_urls,
         debug_ops=watch_options.debug_ops,
-        node_name_regex_whitelist=watch_options.node_name_regex_whitelist,
-        op_type_regex_whitelist=watch_options.op_type_regex_whitelist,
-        tensor_dtype_regex_whitelist=watch_options.tensor_dtype_regex_whitelist,
+        node_name_regex_allowlist=watch_options.node_name_regex_allowlist,
+        op_type_regex_allowlist=watch_options.op_type_regex_allowlist,
+        tensor_dtype_regex_allowlist=watch_options.tensor_dtype_regex_allowlist,
         tolerate_debug_op_creation_failures=(
             watch_options.tolerate_debug_op_creation_failures),
         reset_disk_byte_usage=reset_disk_byte_usage)
@@ -235,7 +230,7 @@ class GrpcDebugHook(session_run_hook.SessionRunHook):
   When the arguments of debug_utils.watch_graph changes, strongly consider
   changing arguments here too so that features are available to tflearn users.
 
-  Can be used as a hook for `tf.train.MonitoredSession`s and
+  Can be used as a hook for `tf.compat.v1.train.MonitoredSession`s and
   `tf.estimator.Estimator`s.
   """
 
@@ -297,9 +292,9 @@ class GrpcDebugHook(session_run_hook.SessionRunHook):
         debug_urls=self._grpc_debug_wrapper_session.prepare_run_debug_urls(
             fetches, feed_dict),
         debug_ops=watch_options.debug_ops,
-        node_name_regex_whitelist=watch_options.node_name_regex_whitelist,
-        op_type_regex_whitelist=watch_options.op_type_regex_whitelist,
-        tensor_dtype_regex_whitelist=watch_options.tensor_dtype_regex_whitelist,
+        node_name_regex_allowlist=watch_options.node_name_regex_allowlist,
+        op_type_regex_allowlist=watch_options.op_type_regex_allowlist,
+        tensor_dtype_regex_allowlist=watch_options.tensor_dtype_regex_allowlist,
         tolerate_debug_op_creation_failures=(
             watch_options.tolerate_debug_op_creation_failures))
 

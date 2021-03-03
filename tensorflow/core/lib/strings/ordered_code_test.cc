@@ -129,7 +129,7 @@ void TestWriteAppends(T first, U second) {
   string encoded_first_only = encoded;
   OCWriteToString<U>(&encoded, second);
   EXPECT_NE(encoded, encoded_first_only);
-  EXPECT_TRUE(str_util::StartsWith(encoded, encoded_first_only));
+  EXPECT_TRUE(absl::StartsWith(encoded, encoded_first_only));
 }
 
 template <typename T>
@@ -376,18 +376,18 @@ uint64 NextBits(random::SimplePhilox* rnd, int bits) {
 }
 
 template <typename T>
-void BM_WriteNum(int n, T multiplier) {
+void BM_WriteNum(::testing::benchmark::State& state, T multiplier) {
   constexpr int kValues = 64;
   T values[kValues];
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
   // Use enough distinct values to confuse the branch predictor
   for (int i = 0; i < kValues; i++) {
-    values[i] = NextBits(&rnd, n % 64) * multiplier;
+    values[i] = NextBits(&rnd, state.max_iterations % 64) * multiplier;
   }
   string result;
   int index = 0;
-  while (n-- > 0) {
+  for (auto i : state) {
     result.clear();
     OCWriteToString<T>(&result, values[index % kValues]);
     index++;
@@ -395,8 +395,7 @@ void BM_WriteNum(int n, T multiplier) {
 }
 
 template <typename T>
-void BM_ReadNum(int n, T multiplier) {
-  string x;
+void BM_ReadNum(::testing::benchmark::State& state, T multiplier) {
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
   // Use enough distinct values to confuse the branch predictor
@@ -407,17 +406,21 @@ void BM_ReadNum(int n, T multiplier) {
     values[i] = OCWrite<T>(val);
   }
   uint32 index = 0;
-  while (n-- > 0) {
+  for (auto i : state) {
     T val;
     StringPiece s = values[index++ % kValues];
     OCRead<T>(&s, &val);
   }
 }
 
-#define BENCHMARK_NUM(name, T, multiplier)                      \
-  void BM_Write##name(int n) { BM_WriteNum<T>(n, multiplier); } \
-  BENCHMARK(BM_Write##name);                                    \
-  void BM_Read##name(int n) { BM_ReadNum<T>(n, multiplier); }   \
+#define BENCHMARK_NUM(name, T, multiplier)                  \
+  void BM_Write##name(::testing::benchmark::State& state) { \
+    BM_WriteNum<T>(state, multiplier);                      \
+  }                                                         \
+  BENCHMARK(BM_Write##name);                                \
+  void BM_Read##name(::testing::benchmark::State& state) {  \
+    BM_ReadNum<T>(state, multiplier);                       \
+  }                                                         \
   BENCHMARK(BM_Read##name)
 
 BENCHMARK_NUM(NumIncreasing, uint64, 1);
@@ -1210,8 +1213,7 @@ TEST(EncodingIsExpected, Signed) {
   }
 }
 
-void BM_WriteString(int n, int len) {
-  testing::StopTiming();
+void BM_WriteString(::testing::benchmark::State& state, int len) {
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
   string x;
@@ -1220,16 +1222,14 @@ void BM_WriteString(int n, int len) {
   }
   string y;
 
-  testing::BytesProcessed(n * len);
-  testing::StartTiming();
-  while (n-- > 0) {
+  for (auto s : state) {
     y.clear();
     OCWriteToString<string>(&y, x);
   }
+  state.SetBytesProcessed(state.iterations() * len);
 }
 
-void BM_ReadString(int n, int len) {
-  testing::StopTiming();
+void BM_ReadString(::testing::benchmark::State& state, int len) {
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
   string x;
@@ -1240,17 +1240,20 @@ void BM_ReadString(int n, int len) {
   OCWriteToString<string>(&data, x);
   string result;
 
-  testing::BytesProcessed(n * len);
-  testing::StartTiming();
-  while (n-- > 0) {
+  for (auto i : state) {
     result.clear();
     StringPiece s = data;
     OCRead<string>(&s, &result);
   }
+  state.SetBytesProcessed(state.iterations() * len);
 }
 
-void BM_WriteStringIncreasing(int n, int len) { BM_WriteString(n, len); }
-void BM_ReadStringIncreasing(int n, int len) { BM_ReadString(n, len); }
+void BM_WriteStringIncreasing(::testing::benchmark::State& state) {
+  BM_WriteString(state, state.range(0));
+}
+void BM_ReadStringIncreasing(::testing::benchmark::State& state) {
+  BM_ReadString(state, state.range(0));
+}
 
 BENCHMARK(BM_WriteStringIncreasing)->Range(0, 1024);
 BENCHMARK(BM_ReadStringIncreasing)->Range(0, 1024);

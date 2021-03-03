@@ -15,32 +15,51 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/encapsulate_xla_computations_pass.h"
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/graph/graph_node_util.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
-
-const char* const EncapsulateXlaComputationsPass::kXlaClusterAttr =
-    "_xla_compile_id";
 
 namespace {
 
 const char* const kXlaClusterOutput = "XlaClusterOutput";
 
+bool IsCpuGpuCompile(const Graph* graph) {
+  for (Node* n : graph->nodes()) {
+    string name;
+    // Only consider nodes being compiled.
+    if (!TryGetNodeAttr(n->attrs(), kXlaClusterIdAttr, &name)) continue;
+    // Early return for any node with a device that is not a CPU or GPU.
+    DeviceNameUtils::ParsedName parsed;
+    if (DeviceNameUtils::ParseFullName(n->requested_device(), &parsed)) {
+      if (parsed.type != DEVICE_CPU && parsed.type != DEVICE_GPU) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 // Checks if a graph node is marked to be a guaranteed constant.
 bool is_guaranteed_constant(const Node& n) {
   bool guaranteed_constant = false;
-  if (!GetNodeAttr(n.attrs(), "_is_guaranteed_constant", &guaranteed_constant)
-           .ok()) {
+  if (!TryGetNodeAttr(n.attrs(), "_is_guaranteed_constant",
+                      &guaranteed_constant)) {
     return false;
   }
   return guaranteed_constant;
@@ -156,8 +175,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
     retvals[i]->AddAttr("index", i);
   }
 
-  AddNodeAttr(EncapsulateXlaComputationsPass::kXlaClusterAttr, call_def->name(),
-              call_def);
+  AddNodeAttr(kXlaClusterIdAttr, call_def->name(), call_def);
   AddNodeAttr("_variable_start_index", variable_start_index, call_def);
 
   // Uniquify the function name.
@@ -173,10 +191,11 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
   // Nondeterminism in serialization would not lead to incorrect results, but
   // may cause spurious cache misses. DeterministicSerialization is a
   // best-effort deterministic serialization.
-  string serialized;
-  TF_RET_CHECK(SerializeToStringDeterministic(gdef, &serialized));
-  uint64 fingerprint = Fingerprint64(serialized);
-  LOG(INFO) << "Subgraph fingerprint:" << fingerprint;
+  const size_t size = gdef.ByteSizeLong();
+  auto serialized = absl::make_unique<char[]>(size);
+  TF_RET_CHECK(SerializeToBufferDeterministic(gdef, serialized.get(), size));
+  uint64 fingerprint = Fingerprint64(absl::string_view(serialized.get(), size));
+  VLOG(1) << "Subgraph fingerprint:" << fingerprint;
   call_def->set_op(absl::StrCat(call_def->op(), "_", fingerprint));
   return Status::OK();
 }
@@ -191,12 +210,15 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
   // O(n) pass over the edges.
   for (const Edge* e : (*graph)->edges()) {
     if (!e->IsControlEdge() &&
-        e->src()->attrs().Find(kXlaClusterAttr) != nullptr &&
-        e->dst()->attrs().Find(kXlaClusterAttr) == nullptr &&
+        e->src()->attrs().Find(kXlaClusterIdAttr) != nullptr &&
+        e->dst()->attrs().Find(kXlaClusterIdAttr) == nullptr &&
         e->dst()->type_string() != kXlaClusterOutput) {
       return errors::InvalidArgument(
-          "Undeclared output of XLA computation. A common cause of this error "
-          "is variable initializers that depend on the XLA computation. Edge: ",
+          "Undeclared output of XLA computation. Some common causes of this "
+          "error are: 1) variable initializers that depend on the XLA "
+          "computation; 2) gradient computations that depend on the XLA "
+          "computation, which can be mitigated by moving gradient computations "
+          "inside XLA computation. Offending edge: ",
           e->src()->name(), ":", e->src_output(), " -> ", e->dst()->name(), ":",
           e->dst_input());
     }
@@ -205,7 +227,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
   auto output = absl::make_unique<Graph>((*graph)->op_registry());
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       EncapsulateSubgraphsInFunctions(
-          kXlaClusterAttr, "", **graph, RewriteSubgraph,
+          kXlaClusterIdAttr, **graph, RewriteSubgraph,
           /*reuse_existing_functions=*/true, &output, flib_def),
       "EncapsulateXlaComputationsPass failed");
   graph->swap(output);
@@ -218,8 +240,8 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
   // while iterating.
   std::vector<Node*> launch_nodes;
   for (Node* n : graph->nodes()) {
-    string name;
-    if (GetNodeAttr(n->attrs(), kXlaClusterAttr, &name).ok()) {
+    const string& name = GetNodeAttrString(n->attrs(), kXlaClusterIdAttr);
+    if (!name.empty()) {
       launch_nodes.push_back(n);
     }
   }
@@ -294,6 +316,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
 
     NodeDef def;
     def.set_name(launch->name());
+    MergeDebugInfo(NodeDebugInfo(launch->def()), &def);
 
     // Target the XLA CPU/GPU backends.
     VLOG(2) << "Replacing with XlaLaunch";
@@ -322,14 +345,14 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
     if (!status.ok()) {
       return status;
     }
-    for (int i = 0; i < data_inputs.size(); ++i) {
+    for (int i = 0, end = data_inputs.size(); i < end; ++i) {
       graph->AddEdge(data_inputs[i].first, data_inputs[i].second, xla_launch,
                      i);
     }
     for (Node* n : control_inputs) {
       graph->AddControlEdge(n, xla_launch);
     }
-    for (int i = 0; i < data_outputs.size(); ++i) {
+    for (int i = 0, end = data_outputs.size(); i < end; ++i) {
       for (const auto& successor : data_outputs[i]) {
         graph->AddEdge(xla_launch, i, successor.first, successor.second);
       }
@@ -344,18 +367,25 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
 Status EncapsulateXlaComputationsPass::Run(
     const GraphOptimizationPassOptions& options) {
   VLOG(1) << "EncapsulateXlaComputations(): "
-          << dump_graph::DumpGraphToFile("encapsulate_xla_computations_before",
-                                         **options.graph, options.flib_def);
+          << DumpGraphToFile("encapsulate_xla_computations_before",
+                             **options.graph, options.flib_def);
 
-  TF_RETURN_IF_ERROR(Encapsulate(options.graph, options.flib_def));
+  const char* additional_help =
+      IsCpuGpuCompile(options.graph->get())
+          ? xla::status_macros::kPossibleAutoJitAlternative
+          : "";
+
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(Encapsulate(options.graph, options.flib_def),
+                                  additional_help);
   VLOG(1) << "EncapsulateXlaComputations() half-way: "
-          << dump_graph::DumpGraphToFile("encapsulate_xla_computations_halfway",
-                                         **options.graph, options.flib_def);
+          << DumpGraphToFile("encapsulate_xla_computations_halfway",
+                             **options.graph, options.flib_def);
 
-  TF_RETURN_IF_ERROR(BuildXlaLaunchOps(options.graph->get()));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(BuildXlaLaunchOps(options.graph->get()),
+                                  additional_help);
   VLOG(1) << "EncapsulateXlaComputations() finished: "
-          << dump_graph::DumpGraphToFile("encapsulate_xla_computations_after",
-                                         **options.graph, options.flib_def);
+          << DumpGraphToFile("encapsulate_xla_computations_after",
+                             **options.graph, options.flib_def);
   return Status::OK();
 }
 

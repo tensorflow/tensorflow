@@ -22,66 +22,43 @@ limitations under the License.
 
 #include "absl/container/node_hash_map.h"
 #include "absl/types/optional.h"
-#include "absl/types/span.h"
-#include "tensorflow/compiler/xla/service/executable.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/llvm_compiler.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace xla {
 namespace gpu {
 
-// The GPU compiler generates efficient GPU executables.
-class NVPTXCompiler : public LLVMCompiler {
+void WarnIfBadDriverJITVersion();
+
+// NVPTXCompiler generates efficient GPU executables for NVPTX target.
+class NVPTXCompiler : public GpuCompiler {
  public:
   NVPTXCompiler();
   ~NVPTXCompiler() override {}
 
-  // Bring in
-  // StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-  //     std::vector<std::unique_ptr<HloModule>> modules,
-  //     std::vector<std::vector<se::StreamExecutor*>>
-  //        stream_execs)
-  using LLVMCompiler::Compile;
+  Status OptimizeHloConvolutionCanonicalization(
+      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      se::DeviceMemoryAllocator* device_allocator) override;
 
-  StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
-      std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-      DeviceMemoryAllocator* device_allocator) override;
+  Status OptimizeHloPostLayoutAssignment(
+      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      se::DeviceMemoryAllocator* device_allocator) override;
 
-  StatusOr<std::unique_ptr<Executable>> RunBackend(
-      std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-      DeviceMemoryAllocator* device_allocator) override;
+  HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() override;
 
-  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
-                     AotCompilationOptions const& options) override;
+  GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) override;
 
-  se::Platform::Id PlatformId() const override;
-
-  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override {
-    // Capture just the pointer size, not the entire NVPTXCompiler object.
-    int64 pointer_size = pointer_size_;
-    return [pointer_size](const Shape& shape) {
-      return ShapeUtil::ByteSizeOf(shape, pointer_size);
-    };
-  }
-
-  // The triple that represents our target.
-  static const char* kTargetTriple;
-
-  // The data layout of the emitted module. Copied from computeDataLayout in
-  // NVPTXTargetMachine.cpp.
-  static const char* kDataLayout;
+  StatusOr<std::pair<std::string, std::vector<uint8>>> CompileTargetBinary(
+      const HloModuleConfig& module_config, llvm::Module* llvm_module,
+      GpuVersion gpu_version, se::StreamExecutor* stream_exec, bool relocatable,
+      const HloModule* debug_module) override;
 
  private:
-  // The size in bytes of a pointer. Used by ShapeSizeBytesFunction.
-  const int64 pointer_size_;
+  StatusOr<std::vector<uint8>> LinkModules(
+      se::StreamExecutor* stream_exec,
+      std::vector<std::vector<uint8>> modules) override;
 
   tensorflow::mutex mutex_;
 
@@ -92,13 +69,14 @@ class NVPTXCompiler : public LLVMCompiler {
   // We cache the cuda_data_dir() and the result of our search, so that if the
   // next module we have to compile has the same cuda_data_dir(), we can skip
   // the search.
-  string cached_cuda_data_dir_ GUARDED_BY(mutex_);
-  string cached_libdevice_dir_ GUARDED_BY(mutex_);
+  string cached_cuda_data_dir_ TF_GUARDED_BY(mutex_);
+  string cached_libdevice_dir_ TF_GUARDED_BY(mutex_);
 
   // Tries to compile the given ptx string to cubin.  Returns a vector with the
   // compiled cubin.  If compilation was unsuccessful, returns an empty vector.
-  std::vector<uint8> CompilePtxOrGetCachedResult(const string& ptx,
-                                                 int cc_major, int cc_minor);
+  std::vector<uint8> CompileGpuAsmOrGetCachedResult(
+      se::StreamExecutor* stream_exec, const string& ptx, int cc_major,
+      int cc_minor, const HloModuleConfig& hlo_module_config, bool relocatable);
 
   // The compilation_cache_ map is a cache from {ptx string, cc_major, cc_minor}
   // -> cubin so we don't recompile the same ptx twice.  This is important for
@@ -113,24 +91,32 @@ class NVPTXCompiler : public LLVMCompiler {
   // If compiling the ptx fails, we return an empty cubin, cross our fingers,
   // and leave compilation up to the driver.
   struct CompilationCacheKey {
-    CompilationCacheKey(std::string ptx, int cc_major, int cc_minor)
-        : ptx(std::move(ptx)), cc_major(cc_major), cc_minor(cc_minor) {}
+    CompilationCacheKey(std::string ptx, int cc_major, int cc_minor,
+                        bool relocatable)
+        : ptx(std::move(ptx)),
+          cc_major(cc_major),
+          cc_minor(cc_minor),
+          relocatable(relocatable) {}
     string ptx;
     int cc_major;
     int cc_minor;
+    bool relocatable;
   };
   struct CompilationCacheHash {
     size_t operator()(const CompilationCacheKey& key) const {
       return tensorflow::Hash64Combine(
-          tensorflow::Hash64Combine(tensorflow::Hash64(key.ptx), key.cc_major),
-          key.cc_minor);
+          tensorflow::Hash64Combine(
+              tensorflow::Hash64Combine(tensorflow::Hash64(key.ptx),
+                                        key.cc_major),
+              key.cc_minor),
+          key.relocatable);
     }
   };
   struct CompilationCacheEq {
     size_t operator()(const CompilationCacheKey& a,
                       const CompilationCacheKey& b) const {
       return a.cc_major == b.cc_major && a.cc_minor == b.cc_minor &&
-             a.ptx == b.ptx;
+             a.ptx == b.ptx && a.relocatable == b.relocatable;
     }
   };
   struct CompilationCacheValue {
@@ -145,7 +131,7 @@ class NVPTXCompiler : public LLVMCompiler {
   // is critical here.
   absl::node_hash_map<CompilationCacheKey, CompilationCacheValue,
                       CompilationCacheHash, CompilationCacheEq>
-      compilation_cache_ GUARDED_BY(mutex_);
+      compilation_cache_ TF_GUARDED_BY(mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(NVPTXCompiler);
 };

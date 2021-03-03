@@ -24,10 +24,10 @@ The input matrix should be invertible. If the input matrix is real, it should
 have no eigenvalues which are real and negative (pairs of complex conjugate
 eigenvalues are allowed).
 
-The matrix square root is computed by first reducing the matrix to 
-quasi-triangular form with the real Schur decomposition. The square root 
-of the quasi-triangular matrix is then computed directly. Details of 
-the algorithm can be found in: Nicholas J. Higham, "Computing real 
+The matrix square root is computed by first reducing the matrix to
+quasi-triangular form with the real Schur decomposition. The square root
+of the quasi-triangular matrix is then computed directly. Details of
+the algorithm can be found in: Nicholas J. Higham, "Computing real
 square roots of a real matrix", Linear Algebra Appl., 1987.
 
 The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions

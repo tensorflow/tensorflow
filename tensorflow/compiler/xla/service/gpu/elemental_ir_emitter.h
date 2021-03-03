@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
+#include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
@@ -39,24 +40,17 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
  public:
   // A NestedComputer computes an element of the output of the given computation
   // given a Span of its input elements.
-  using NestedComputer = std::function<StatusOr<llvm::Value*>(
+  using NestedComputer = std::function<StatusOr<std::vector<llvm::Value*>>(
       const HloComputation&, absl::Span<llvm::Value* const>)>;
 
   GpuElementalIrEmitter(const HloModuleConfig& hlo_module_config,
                         llvm::Module* module, llvm::IRBuilder<>* b,
                         NestedComputer compute_nested);
 
-  llvm_ir::ElementGenerator MakeElementGenerator(
-      const HloInstruction* hlo,
-      const HloToElementGeneratorMap& operand_to_generator) override;
-
  protected:
   StatusOr<llvm::Value*> EmitFloatBinaryOp(const HloInstruction* op,
                                            llvm::Value* lhs_value,
                                            llvm::Value* rhs_value) override;
-
-  StatusOr<llvm::Value*> EmitErfcInv(PrimitiveType prim_type,
-                                     llvm::Value* value) override;
 
   StatusOr<llvm::Value*> EmitLog(PrimitiveType prim_type,
                                  llvm::Value* value) override;
@@ -70,35 +64,49 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   StatusOr<llvm::Value*> EmitCos(PrimitiveType prim_type,
                                  llvm::Value* value) override;
 
-  StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type,
-                                 llvm::Value* value) override;
+  StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type, llvm::Value* value,
+                                 absl::string_view name) override;
 
   StatusOr<llvm::Value*> EmitExpm1(PrimitiveType prim_type,
                                    llvm::Value* value) override;
 
+  StatusOr<llvm::Value*> EmitSqrt(PrimitiveType prim_type,
+                                  llvm::Value* value) override;
+
+  StatusOr<llvm::Value*> EmitRsqrt(PrimitiveType prim_type,
+                                   llvm::Value* value) override;
+
   StatusOr<llvm::Value*> EmitPow(PrimitiveType prim_type, llvm::Value* lhs,
-                                 llvm::Value* rhs) override;
+                                 llvm::Value* rhs,
+                                 absl::string_view name) override;
 
   StatusOr<llvm::Value*> EmitAtan2(PrimitiveType prim_type, llvm::Value* lhs,
-                                   llvm::Value* rhs) override;
+                                   llvm::Value* rhs,
+                                   absl::string_view name) override;
 
   StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
                                   llvm::Value* value) override;
 
+  StatusOr<llvm::Value*> EmitComplexAbs(PrimitiveType prim_type,
+                                        llvm::Value* value) override;
+
+  StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
+      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
+      absl::string_view) override {
+    return compute_nested_(callee, parameters);
+  }
+
   llvm::Value* EmitThreadId() override;
+
+  bool fast_min_max() override {
+    return hlo_module_config_.debug_options().xla_gpu_enable_fast_min_max();
+  }
 
  private:
   // Emits IR for op, which must have opcode kPower.
   StatusOr<llvm::Value*> EmitPowerOp(const HloInstruction* op,
                                      llvm::Value* lhs_value,
                                      llvm::Value* rhs_value);
-
-  // Emits IR to call a device function named "callee_name" on the given
-  // operand. Returns the IR value that represents the return value.
-  llvm::Value* EmitDeviceFunctionCall(
-      const string& callee_name, absl::Span<llvm::Value* const> operands,
-      absl::Span<const PrimitiveType> input_type, PrimitiveType output_type,
-      absl::Span<const llvm::Attribute::AttrKind> attributes);
 
   // Emits IR to call an LLVM intrinsic of type [T] -> T.  Adjusts
   // callee_name according to T.  Returns the IR value that represents the
@@ -107,20 +115,23 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
       const string& callee_name, absl::Span<llvm::Value* const> operands,
       absl::Span<const PrimitiveType> input_types, PrimitiveType output_type);
 
-  // Emits IR to call a libdevice function of type [T] -> T.  Adjusts
+  // Emits IR to call a device function of type [T] -> T.  Adjusts
   // callee_name according to T.  Returns the IR value that represents the
   // return value of the function.
-  StatusOr<llvm::Value*> EmitLibdeviceMathCall(
-      const string& callee_name, absl::Span<llvm::Value* const> operands,
-      absl::Span<const PrimitiveType> input_types, PrimitiveType output_type);
+  StatusOr<llvm::Value*> EmitDeviceMathCall(
+      TargetDeviceFunctionID funcid, absl::Span<llvm::Value* const> operands,
+      absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
+      absl::string_view name = "");
 
   // Emits IR to call a function of type [T] -> T.  Does not munge callee_name.
   // Returns the IR value that represents the return value of the function.
   StatusOr<llvm::Value*> EmitMathCall(
       const string& callee_name, absl::Span<llvm::Value* const> operands,
-      absl::Span<const PrimitiveType> input_types, PrimitiveType output_type);
+      absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
+      absl::string_view name = "");
 
   const HloModuleConfig& hlo_module_config_;
+
   NestedComputer compute_nested_;
 };
 

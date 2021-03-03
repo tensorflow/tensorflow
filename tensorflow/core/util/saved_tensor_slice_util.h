@@ -116,7 +116,9 @@ TENSOR_PROTO_EXTRACT_TYPE(double, double, double);
 TENSOR_PROTO_EXTRACT_TYPE_COMPLEX(complex64, scomplex, float);
 TENSOR_PROTO_EXTRACT_TYPE_COMPLEX(complex128, dcomplex, double);
 TENSOR_PROTO_EXTRACT_TYPE(int32, int, int32);
+TENSOR_PROTO_EXTRACT_TYPE(uint32, uint32, uint32);
 TENSOR_PROTO_EXTRACT_TYPE(int64, int64, protobuf_int64);
+TENSOR_PROTO_EXTRACT_TYPE(uint64, uint64, protobuf_uint64);
 TENSOR_PROTO_EXTRACT_TYPE(uint16, int, int32);
 TENSOR_PROTO_EXTRACT_TYPE(uint8, int, int32);
 TENSOR_PROTO_EXTRACT_TYPE(int8, int, int32);
@@ -179,29 +181,29 @@ inline void Fill(const Eigen::half* data, size_t n, TensorProto* t) {
 // Custom implementation for string.
 
 template <>
-struct SaveTypeTraits<string> {
+struct SaveTypeTraits<tstring> {
   static constexpr bool supported = true;
   typedef const string* SavedType;
   typedef protobuf::RepeatedPtrField<string> RepeatedField;
 };
 
 template <>
-inline const string* const* TensorProtoData<string>(const TensorProto& t) {
-  static_assert(SaveTypeTraits<string>::supported,
-                "Specified type string not supported for Restore");
+inline const string* const* TensorProtoData<tstring>(const TensorProto& t) {
+  static_assert(SaveTypeTraits<tstring>::supported,
+                "Specified type tstring not supported for Restore");
   return t.string_val().data();
 }
 
 template <>
-inline protobuf::RepeatedPtrField<string>* MutableTensorProtoData<string>(
+inline protobuf::RepeatedPtrField<string>* MutableTensorProtoData<tstring>(
     TensorProto* t) {
-  static_assert(SaveTypeTraits<string>::supported,
-                "Specified type string not supported for Save");
+  static_assert(SaveTypeTraits<tstring>::supported,
+                "Specified type tstring not supported for Save");
   return t->mutable_string_val();
 }
 
 template <>
-inline void Fill(const string* data, size_t n, TensorProto* t) {
+inline void Fill(const tstring* data, size_t n, TensorProto* t) {
   typename protobuf::RepeatedPtrField<string> copy(data, data + n);
   t->mutable_string_val()->Swap(&copy);
 }

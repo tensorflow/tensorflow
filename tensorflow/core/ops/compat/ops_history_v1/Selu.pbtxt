@@ -1,0 +1,45 @@
+op {
+  name: "Selu"
+  input_arg {
+    name: "features"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "activations"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "Selu"
+  input_arg {
+    name: "features"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "activations"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}

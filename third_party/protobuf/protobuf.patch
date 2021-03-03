@@ -1,0 +1,51 @@
+diff --git a/BUILD b/BUILD
+index b32a1f161..9fa411783 100644
+--- a/BUILD
++++ b/BUILD
+@@ -51,7 +51,7 @@ GTEST_MAIN = select({
+ # ZLIB configuration
+ ################################################################################
+ 
+-ZLIB_DEPS = ["@zlib//:zlib"]
++ZLIB_DEPS = ["@zlib"]
+ 
+ ################################################################################
+ # Protobuf Runtime Library
+@@ -198,6 +198,7 @@ cc_library(
+     copts = COPTS,
+     includes = ["src/"],
+     linkopts = LINK_OPTS,
++    alwayslink = 1,
+     visibility = ["//visibility:public"],
+ )
+ 
+@@ -270,6 +271,7 @@ cc_library(
+     copts = COPTS,
+     includes = ["src/"],
+     linkopts = LINK_OPTS,
++    alwayslink = 1,
+     visibility = ["//visibility:public"],
+     deps = [":protobuf_lite"] + PROTOBUF_DEPS,
+ )
+@@ -849,7 +851,7 @@ py_proto_library(
+     py_extra_srcs = glob(["python/**/__init__.py"]),
+     py_libs = [
+         ":python_srcs",
+-        "@six//:six",
++        "//external:six",
+     ],
+     srcs_version = "PY2AND3",
+     visibility = ["//visibility:public"],
+diff --git a/protobuf.bzl b/protobuf.bzl
+index e2821f5b5..9f6a13ef5 100644
+--- a/protobuf.bzl
++++ b/protobuf.bzl
+@@ -88,6 +88,8 @@ def _proto_gen_impl(ctx):
+     for dep in ctx.attr.deps:
+         import_flags += dep.proto.import_flags
+         deps += dep.proto.deps
++    import_flags = depset(import_flags).to_list()
++    deps = depset(deps).to_list()
+ 
+     if not ctx.attr.gen_cc and not ctx.attr.gen_py and not ctx.executable.plugin:
+         return struct(

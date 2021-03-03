@@ -12,27 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the PrefetchDataset serialization."""
+"""Tests for checkpointing the PrefetchDataset."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
+from absl.testing import parameterized
+
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
-class PrefetchDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+class PrefetchDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                    parameterized.TestCase):
 
   def build_dataset(self, seed):
     return dataset_ops.Dataset.range(100).prefetch(10).shuffle(
         buffer_size=10, seed=seed, reshuffle_each_iteration=False)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testCore(self):
     num_outputs = 100
-    self.run_core_tests(lambda: self.build_dataset(10),
-                        lambda: self.build_dataset(20), num_outputs)
+    self.run_core_tests(lambda: self.build_dataset(10), num_outputs)
 
 
 if __name__ == "__main__":

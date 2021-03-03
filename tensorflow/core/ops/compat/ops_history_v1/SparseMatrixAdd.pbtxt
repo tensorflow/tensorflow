@@ -1,0 +1,35 @@
+op {
+  name: "SparseMatrixAdd"
+  input_arg {
+    name: "a"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "b"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "alpha"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "beta"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "c"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}

@@ -1,0 +1,13 @@
+op {
+  graph_op_name: "CSRSparseMatrixToDense"
+  visibility: HIDDEN
+  in_arg {
+    name: "sparse_input"
+    description: "A batched CSRSparseMatrix."
+  }
+  out_arg {
+    name: "dense_output"
+    description: "A dense tensor."
+  }
+  summary: "Convert a (possibly batched) CSRSparseMatrix to dense."
+}

@@ -149,12 +149,12 @@ struct CompressFlags {
 // The encoded data is returned as a string.
 // If not empty, XMP metadata can be embedded in the image header
 // On error, returns the empty string (which is never a valid jpeg).
-string Compress(const void* srcdata, int width, int height,
-                const CompressFlags& flags);
+tstring Compress(const void* srcdata, int width, int height,
+                 const CompressFlags& flags);
 
 // On error, returns false and sets output to empty.
 bool Compress(const void* srcdata, int width, int height,
-              const CompressFlags& flags, string* output);
+              const CompressFlags& flags, tstring* output);
 
 }  // namespace jpeg
 }  // namespace tensorflow

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_IO_ZLIB_COMPRESSION_OPTIONS_H_
-#define TENSORFLOW_LIB_IO_ZLIB_COMPRESSION_OPTIONS_H_
+#ifndef TENSORFLOW_CORE_LIB_IO_ZLIB_COMPRESSION_OPTIONS_H_
+#define TENSORFLOW_CORE_LIB_IO_ZLIB_COMPRESSION_OPTIONS_H_
 
 #include "tensorflow/core/platform/types.h"
 
@@ -110,6 +110,13 @@ class ZlibCompressionOptions {
   // appropriately. Z_FIXED prevents the use of dynamic Huffman codes, allowing
   // for a simpler decoder for special applications.
   int8 compression_strategy;
+
+  // When this is set to true and we are unable to find the header to correctly
+  // decompress a file, we return an error when `ReadNBytes` is called instead
+  // of CHECK-failing. Defaults to false (i.e. CHECK-failing).
+  //
+  // This option is ignored for `ZlibOutputBuffer`.
+  bool soft_fail_on_error = false;  // NOLINT
 };
 
 inline ZlibCompressionOptions ZlibCompressionOptions::DEFAULT() {
@@ -131,4 +138,4 @@ inline ZlibCompressionOptions ZlibCompressionOptions::GZIP() {
 }  // namespace io
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_IO_ZLIB_COMPRESSION_OPTIONS_H_
+#endif  // TENSORFLOW_CORE_LIB_IO_ZLIB_COMPRESSION_OPTIONS_H_

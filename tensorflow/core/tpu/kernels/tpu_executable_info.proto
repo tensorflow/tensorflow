@@ -1,0 +1,94 @@
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package tensorflow;
+
+import "tensorflow/compiler/xla/service/hlo.proto";
+import "tensorflow/compiler/xla/xla_data.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
+
+// A serialization of TPUExecutable. Only includes fields necessary to load
+// and execute a program on a worker node.
+message TPUExecutableInfoProto {
+  reserved 1;
+
+  // The shapes of the inputs and outputs.
+  repeated xla.ShapeProto input_shapes = 2;
+  reserved 7;  // was input_shape
+  xla.ShapeProto output_shape = 3;
+
+  message UpdateIndexPair {
+    int32 index = 1;
+    bool updated = 2;
+  }
+
+  message ShapeIndex {
+    repeated int32 index = 1;
+  }
+
+  // Dynamic output indices indicate which outputs have dynamic dimensions.
+  repeated ShapeIndex dynamic_output_indices = 11;
+
+  // For each resource variable output, what was the index of the corresponding
+  // input and was it updated? The indices are sorted by input order.
+  repeated UpdateIndexPair variable_indices = 10;
+
+  // The shapes of the outputs when represented as Tensors. These may not
+  // match the output_shape values because we may flatten tensors to avoid
+  // excess padding.
+  repeated TensorShapeProto output_tensor_shapes = 8;
+
+  reserved 4;
+
+  // Optional session module for passing XLA computations between TPUCompileOp
+  // and TPUExecuteOp. This is needed to support the
+  // --xla_dump_hlo_snapshots flag.
+  xla.HloSnapshot session_module = 5;
+
+  // The physical device ids assigned to the replicated cores.
+  xla.DeviceAssignmentProto device_assignment = 6;
+}
+
+// Metadata for a data transfer between device and host.
+message TPUHostTransferProto {
+  enum TransferDirection {
+    NONE = 0;
+    DEVICE_TO_HOST = 1;
+    HOST_TO_DEVICE = 2;
+  }
+  // Channel identifier assigned by compiler and used in host commands.
+  int64 channel = 1;
+  // Direction of the transfer operation.
+  TransferDirection direction = 2;
+  // Channel identifier prodided by XLA client.
+  string key = 3;
+  // Depth of nested loops for this transfer operation.
+  int64 nested_while_level = 4;
+  // Shape of the data to be transferred (including layout).
+  xla.ShapeProto shape = 5;
+  // Address of the device buffer in HBM (byte offset).
+  int64 buffer_offset = 6;
+  // Original data type for this host transfer before X64 rewrite.
+  xla.PrimitiveType original_type = 7;
+  // If this host transfer is a splitted X64 transfer, sepcifies whether this
+  // transfer is for lower bits.
+  bool is_lower_bits = 8;
+}
+
+message TPUHostTransferInfoProto {
+  repeated TPUHostTransferProto host_transfers = 1;
+}

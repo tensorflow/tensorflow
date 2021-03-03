@@ -1,8 +1,9 @@
-package(default_visibility = [
-    "//visibility:public",
-])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "generator",
@@ -24,7 +25,6 @@ cc_binary(
 cc_test(
     name = "generator_test",
     srcs = ["generator_test.cc"],
-    tags = ["no_oss"],
     deps = [
         ":generator",
         "@com_google_googletest//:gtest",
@@ -37,7 +37,6 @@ cc_test(
     data = [
         "//tensorflow/lite:builtin_ops.h",
     ],
-    tags = ["no_oss"],
     deps = [
         ":generator",
         "@com_google_googletest//:gtest",

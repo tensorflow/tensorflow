@@ -16,7 +16,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
+#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/alias_analysis.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
@@ -45,7 +45,7 @@ ENTRY main {
 )";
 
   CompileAndVerifyIr(hlo_string, R"(
-CHECK: @fusion(i8* align 64 dereferenceable(600) %alloc0, i8* align 16 dereferenceable(400) %alloc1, i8* align 64 dereferenceable(864) %temp_buf)
+CHECK: @fusion(i8* noalias align 64 dereferenceable(600) %alloc0, i8* noalias align 16 dereferenceable(400) %alloc1, i8* noalias align 64 dereferenceable(864) %temp_buf)
 )");
 }
 

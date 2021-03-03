@@ -121,7 +121,7 @@ class ExtractOutputFilePathTest(test_util.TensorFlowTestCase):
     self.assertEqual(output_path, "/tmp/foo.txt")
 
   def testHasGreaterThanSignButNoFileNameCausesSyntaxError(self):
-    with self.assertRaisesRegexp(SyntaxError, "Redirect file path is empty"):
+    with self.assertRaisesRegex(SyntaxError, "Redirect file path is empty"):
       command_parser.extract_output_file_path(
           ["pt", "a:0", ">"])
 
@@ -256,15 +256,15 @@ class ParseIndicesTest(test_util.TensorFlowTestCase):
     self.assertEqual([3, 4, -5], command_parser.parse_indices("3,4,-5"))
 
   def testParseInvalidIndicesStringsWithoutBrackets(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r"invalid literal for int\(\) with base 10: 'a'"):
       self.assertEqual([0], command_parser.parse_indices("0,a"))
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r"invalid literal for int\(\) with base 10: '2\]'"):
       self.assertEqual([0], command_parser.parse_indices("1, 2]"))
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r"invalid literal for int\(\) with base 10: ''"):
       self.assertEqual([0], command_parser.parse_indices("3, 4,"))
 
@@ -296,20 +296,20 @@ class ParseRangesTest(test_util.TensorFlowTestCase):
     with self.assertRaises(SyntaxError):
       command_parser.parse_ranges("[[1,2]")
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "Incorrect number of elements in range"):
+    with self.assertRaisesRegex(ValueError,
+                                "Incorrect number of elements in range"):
       command_parser.parse_ranges("[1,2,3]")
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "Incorrect number of elements in range"):
+    with self.assertRaisesRegex(ValueError,
+                                "Incorrect number of elements in range"):
       command_parser.parse_ranges("[inf]")
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "Incorrect type in the 1st element of range"):
+    with self.assertRaisesRegex(ValueError,
+                                "Incorrect type in the 1st element of range"):
       command_parser.parse_ranges("[1j, 1]")
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "Incorrect type in the 2nd element of range"):
+    with self.assertRaisesRegex(ValueError,
+                                "Incorrect type in the 2nd element of range"):
       command_parser.parse_ranges("[1, 1j]")
 
 
@@ -350,11 +350,11 @@ class ParseReadableSizeStrTest(test_util.TensorFlowTestCase):
                      command_parser.parse_readable_size_str("0.25G"))
 
   def testParseUnsupportedUnitRaisesException(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "Failed to parsed human-readable byte size str: \"0foo\""):
       command_parser.parse_readable_size_str("0foo")
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "Failed to parsed human-readable byte size str: \"2E\""):
       command_parser.parse_readable_size_str("2EB")
 
@@ -377,15 +377,13 @@ class ParseReadableTimeStrTest(test_util.TensorFlowTestCase):
     self.assertEqual(2e3, command_parser.parse_readable_time_str("2ms"))
 
   def testParseUnsupportedUnitRaisesException(self):
-    with self.assertRaisesRegexp(
-        ValueError, r".*float.*2us.*"):
+    with self.assertRaisesRegex(ValueError, r".*float.*2us.*"):
       command_parser.parse_readable_time_str("2uss")
 
-    with self.assertRaisesRegexp(
-        ValueError, r".*float.*2m.*"):
+    with self.assertRaisesRegex(ValueError, r".*float.*2m.*"):
       command_parser.parse_readable_time_str("2m")
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r"Invalid time -1. Time value must be positive."):
       command_parser.parse_readable_time_str("-1s")
 
@@ -393,103 +391,104 @@ class ParseReadableTimeStrTest(test_util.TensorFlowTestCase):
 class ParseInterval(test_util.TensorFlowTestCase):
 
   def testParseTimeInterval(self):
-    self.assertEquals(
+    self.assertEqual(
         command_parser.Interval(10, True, 1e3, True),
         command_parser.parse_time_interval("[10us, 1ms]"))
-    self.assertEquals(
+    self.assertEqual(
         command_parser.Interval(10, False, 1e3, False),
         command_parser.parse_time_interval("(10us, 1ms)"))
-    self.assertEquals(
+    self.assertEqual(
         command_parser.Interval(10, False, 1e3, True),
         command_parser.parse_time_interval("(10us, 1ms]"))
-    self.assertEquals(
+    self.assertEqual(
         command_parser.Interval(10, True, 1e3, False),
         command_parser.parse_time_interval("[10us, 1ms)"))
-    self.assertEquals(command_parser.Interval(0, False, 1e3, True),
-                      command_parser.parse_time_interval("<=1ms"))
-    self.assertEquals(
+    self.assertEqual(
+        command_parser.Interval(0, False, 1e3, True),
+        command_parser.parse_time_interval("<=1ms"))
+    self.assertEqual(
         command_parser.Interval(1e3, True, float("inf"), False),
         command_parser.parse_time_interval(">=1ms"))
-    self.assertEquals(command_parser.Interval(0, False, 1e3, False),
-                      command_parser.parse_time_interval("<1ms"))
-    self.assertEquals(
+    self.assertEqual(
+        command_parser.Interval(0, False, 1e3, False),
+        command_parser.parse_time_interval("<1ms"))
+    self.assertEqual(
         command_parser.Interval(1e3, False, float("inf"), False),
         command_parser.parse_time_interval(">1ms"))
 
   def testParseTimeGreaterLessThanWithInvalidValueStrings(self):
-    with self.assertRaisesRegexp(ValueError, "Invalid value string after >= "):
+    with self.assertRaisesRegex(ValueError, "Invalid value string after >= "):
       command_parser.parse_time_interval(">=wms")
-    with self.assertRaisesRegexp(ValueError, "Invalid value string after > "):
+    with self.assertRaisesRegex(ValueError, "Invalid value string after > "):
       command_parser.parse_time_interval(">Yms")
-    with self.assertRaisesRegexp(ValueError, "Invalid value string after <= "):
+    with self.assertRaisesRegex(ValueError, "Invalid value string after <= "):
       command_parser.parse_time_interval("<= _ms")
-    with self.assertRaisesRegexp(ValueError, "Invalid value string after < "):
+    with self.assertRaisesRegex(ValueError, "Invalid value string after < "):
       command_parser.parse_time_interval("<-ms")
 
   def testParseTimeIntervalsWithInvalidValueStrings(self):
-    with self.assertRaisesRegexp(ValueError, "Invalid first item in interval:"):
+    with self.assertRaisesRegex(ValueError, "Invalid first item in interval:"):
       command_parser.parse_time_interval("[wms, 10ms]")
-    with self.assertRaisesRegexp(ValueError,
-                                 "Invalid second item in interval:"):
+    with self.assertRaisesRegex(ValueError, "Invalid second item in interval:"):
       command_parser.parse_time_interval("[ 0ms, _ms]")
-    with self.assertRaisesRegexp(ValueError, "Invalid first item in interval:"):
+    with self.assertRaisesRegex(ValueError, "Invalid first item in interval:"):
       command_parser.parse_time_interval("(xms, _ms]")
-    with self.assertRaisesRegexp(ValueError, "Invalid first item in interval:"):
+    with self.assertRaisesRegex(ValueError, "Invalid first item in interval:"):
       command_parser.parse_time_interval("((3ms, _ms)")
 
   def testInvalidTimeIntervalRaisesException(self):
-    with self.assertRaisesRegexp(
-        ValueError,
-        r"Invalid interval format: \[10us, 1ms. Valid formats are: "
+    with self.assertRaisesRegex(
+        ValueError, r"Invalid interval format: \[10us, 1ms. Valid formats are: "
         r"\[min, max\], \(min, max\), <max, >min"):
       command_parser.parse_time_interval("[10us, 1ms")
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r"Incorrect interval format: \[10us, 1ms, 2ms\]. Interval should "
         r"specify two values: \[min, max\] or \(min, max\)"):
       command_parser.parse_time_interval("[10us, 1ms, 2ms]")
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r"Invalid interval \[1s, 1ms\]. Start must be before end of interval."):
       command_parser.parse_time_interval("[1s, 1ms]")
 
   def testParseMemoryInterval(self):
-    self.assertEquals(
+    self.assertEqual(
         command_parser.Interval(1024, True, 2048, True),
         command_parser.parse_memory_interval("[1k, 2k]"))
-    self.assertEquals(
+    self.assertEqual(
         command_parser.Interval(1024, False, 2048, False),
         command_parser.parse_memory_interval("(1kB, 2kB)"))
-    self.assertEquals(
+    self.assertEqual(
         command_parser.Interval(1024, False, 2048, True),
         command_parser.parse_memory_interval("(1k, 2k]"))
-    self.assertEquals(
+    self.assertEqual(
         command_parser.Interval(1024, True, 2048, False),
         command_parser.parse_memory_interval("[1k, 2k)"))
-    self.assertEquals(
+    self.assertEqual(
         command_parser.Interval(0, False, 2048, True),
         command_parser.parse_memory_interval("<=2k"))
-    self.assertEquals(
+    self.assertEqual(
         command_parser.Interval(11, True, float("inf"), False),
         command_parser.parse_memory_interval(">=11"))
-    self.assertEquals(command_parser.Interval(0, False, 2048, False),
-                      command_parser.parse_memory_interval("<2k"))
-    self.assertEquals(
+    self.assertEqual(
+        command_parser.Interval(0, False, 2048, False),
+        command_parser.parse_memory_interval("<2k"))
+    self.assertEqual(
         command_parser.Interval(11, False, float("inf"), False),
         command_parser.parse_memory_interval(">11"))
 
   def testParseMemoryIntervalsWithInvalidValueStrings(self):
-    with self.assertRaisesRegexp(ValueError, "Invalid value string after >= "):
+    with self.assertRaisesRegex(ValueError, "Invalid value string after >= "):
       command_parser.parse_time_interval(">=wM")
-    with self.assertRaisesRegexp(ValueError, "Invalid value string after > "):
+    with self.assertRaisesRegex(ValueError, "Invalid value string after > "):
       command_parser.parse_time_interval(">YM")
-    with self.assertRaisesRegexp(ValueError, "Invalid value string after <= "):
+    with self.assertRaisesRegex(ValueError, "Invalid value string after <= "):
       command_parser.parse_time_interval("<= _MB")
-    with self.assertRaisesRegexp(ValueError, "Invalid value string after < "):
+    with self.assertRaisesRegex(ValueError, "Invalid value string after < "):
       command_parser.parse_time_interval("<-MB")
 
   def testInvalidMemoryIntervalRaisesException(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r"Invalid interval \[5k, 3k\]. Start of interval must be less than or "
         "equal to end of interval."):

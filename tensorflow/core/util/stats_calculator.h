@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <map>
@@ -70,8 +71,21 @@ class Stat {
                    : static_cast<HighPrecisionValueType>(sum_) / count_;
   }
 
+  // Returns sample variance.
+  ValueType sample_variance() const {
+    return all_same()
+               ? 0
+               : (squared_sum_ - std::pow(sum_, 2.0) / count_) / (count_ - 1);
+  }
+
+  // Returns population variance.
+  ValueType variance() const {
+    return all_same() ? 0 : (squared_sum_ / count_) - (avg() * avg());
+  }
+
+  // Returns population stddev.
   ValueType std_deviation() const {
-    return all_same() ? 0 : sqrt(squared_sum_ / count_ - avg() * avg());
+    return all_same() ? 0 : std::sqrt(variance());
   }
 
   void OutputToStream(std::ostream* stream) const {

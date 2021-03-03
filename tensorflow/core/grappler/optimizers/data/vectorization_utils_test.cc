@@ -1155,7 +1155,7 @@ TEST(VectorizerTest, VectorizeDecodeCSV) {
       /*attr_def=*/{},
       /*node_def=*/
       {FunctionDefHelper::Const("Default0", gtl::ArraySlice<int>({2})),
-       FunctionDefHelper::Const("Default1", gtl::ArraySlice<string>({})),
+       FunctionDefHelper::Const("Default1", gtl::ArraySlice<tstring>({})),
        {{"DecodeCSV"},
         "DecodeCSV",
         {"arg0", "Default0:output:0", "Default1:output:0"},
@@ -1267,7 +1267,7 @@ TEST(VectorizerTest, VectorizeParseSingleExample) {
       /*attr_def=*/{},
       /*node_def=*/
       {FunctionDefHelper::Const("DenseIntDefault", static_cast<int64>(0)),
-       FunctionDefHelper::Const("DenseStrDefault", string("")),
+       FunctionDefHelper::Const("DenseStrDefault", tstring("")),
        {{"Parse"},
         "ParseSingleExample",
         {"arg0", "DenseIntDefault:output:0", "DenseStrDefault:output:0"},

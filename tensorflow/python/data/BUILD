@@ -1,13 +1,15 @@
-package(default_visibility = ["//tensorflow:internal"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
 py_library(
     name = "data",
     srcs = ["__init__.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/data/experimental",

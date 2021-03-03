@@ -1,0 +1,1 @@
+{features:{feature:{age:{float_list:{value:29.0}}},feature:{movie_ratings:{float_list:{value:[[[[[[9.0,9.7]]]]]],value:[[[9.0,-9.2]]]}}},feature:{suggestion_purchased:{float_list:{value:[1.0,[2,3,[4,5,6,[7,8,9,0]]]]}}},feature:{purchase_price:{float_list:{value:9.99}}}}}

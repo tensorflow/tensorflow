@@ -39,6 +39,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 import org.tensorflow.lite.Interpreter;
+import org.tensorflow.lite.gpu.GpuDelegate;
+import org.tensorflow.lite.nnapi.NnApiDelegate;
 
 /**
  * Classifies images with Tensorflow Lite.
@@ -92,6 +94,11 @@ public abstract class ImageClassifier {
               return (o1.getValue()).compareTo(o2.getValue());
             }
           });
+
+  /** holds a gpu delegate */
+  GpuDelegate gpuDelegate = null;
+  /** holds an nnapi delegate */
+  NnApiDelegate nnapiDelegate = null;
 
   /** Initializes an {@code ImageClassifier}. */
   ImageClassifier(Activity activity) throws IOException {
@@ -163,8 +170,24 @@ public abstract class ImageClassifier {
     }
   }
 
-  public void setUseNNAPI(Boolean nnapi) {
-    tfliteOptions.setUseNNAPI(nnapi);
+  public void useGpu() {
+    if (gpuDelegate == null) {
+      GpuDelegate.Options options = new GpuDelegate.Options();
+      options.setQuantizedModelsAllowed(true);
+
+      gpuDelegate = new GpuDelegate(options);
+      tfliteOptions.addDelegate(gpuDelegate);
+      recreateInterpreter();
+    }
+  }
+
+  public void useCPU() {
+    recreateInterpreter();
+  }
+
+  public void useNNAPI() {
+    nnapiDelegate = new NnApiDelegate();
+    tfliteOptions.addDelegate(nnapiDelegate);
     recreateInterpreter();
   }
 
@@ -177,6 +200,14 @@ public abstract class ImageClassifier {
   public void close() {
     tflite.close();
     tflite = null;
+    if (gpuDelegate != null) {
+      gpuDelegate.close();
+      gpuDelegate = null;
+    }
+    if (nnapiDelegate != null) {
+      nnapiDelegate.close();
+      nnapiDelegate = null;
+    }
     tfliteModel = null;
   }
 

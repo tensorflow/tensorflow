@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.util import tf_stack
+import inspect
 
 
 class TraceableObject(object):
@@ -51,23 +51,20 @@ class TraceableObject(object):
       TraceableObject.HEURISTIC_USED if the offset was larger than the stack,
       and TraceableObject.FAILURE if the stack was empty.
     """
-    # Offset is defined in "Args" as relative to the caller.  We are one frame
+    retcode = self.SUCCESS
+    frame = inspect.currentframe()
+    # Offset is defined in "Args" as relative to the caller. We are one frame
     # beyond the caller.
-    local_offset = offset + 1
-
-    frame_records = tf_stack.extract_stack()
-    if not frame_records:
-      return self.FAILURE
-    if len(frame_records) > local_offset:
-      # Negative indexing is one-indexed instead of zero-indexed.
-      negative_offset = -(local_offset + 1)
-      self.filename, self.lineno = frame_records[negative_offset][:2]
-      return self.SUCCESS
-    else:
-      # If the offset is too large then we use the largest offset possible,
-      # meaning we use the outermost stack frame at index 0.
-      self.filename, self.lineno = frame_records[0][:2]
-      return self.HEURISTIC_USED
+    for _ in range(offset + 1):
+      parent = frame.f_back
+      if parent is None:
+        # If the offset is too large then we use the largest offset possible.
+        retcode = self.HEURISTIC_USED
+        break
+      frame = parent
+    self.filename = frame.f_code.co_filename
+    self.lineno = frame.f_lineno
+    return retcode
 
   def copy_metadata(self):
     """Return a TraceableObject like this one, but without the object."""
@@ -109,13 +106,17 @@ class TraceableStack(object):
     """Remove last-inserted object and return it, without filename/line info."""
     return self._stack.pop().obj
 
+  def peek_top_obj(self):
+    """Return the most recent stored object."""
+    return self._stack[-1].obj
+
   def peek_objs(self):
-    """Return list of stored objects ordered newest to oldest."""
-    return [t_obj.obj for t_obj in reversed(self._stack)]
+    """Return iterator over stored objects ordered newest to oldest."""
+    return (t_obj.obj for t_obj in reversed(self._stack))
 
   def peek_traceable_objs(self):
-    """Return list of stored TraceableObjects ordered newest to oldest."""
-    return list(reversed(self._stack))
+    """Return iterator over stored TraceableObjects ordered newest to oldest."""
+    return reversed(self._stack)
 
   def __len__(self):
     """Return number of items on the stack, and used for truth-value testing."""

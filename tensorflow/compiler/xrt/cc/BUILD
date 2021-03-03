@@ -1,12 +1,8 @@
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrappers_cc")
 
 package(
     default_visibility = ["//visibility:public"],
-)
-
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_gen_op_wrappers_cc",
+    licenses = ["notice"],  # Apache 2.0
 )
 
 tf_gen_op_wrappers_cc(

@@ -19,74 +19,72 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.layers.Embedding')
+@keras_export('keras.layers.Embedding')
 class Embedding(Layer):
   """Turns positive integers (indexes) into dense vectors of fixed size.
 
-  eg. [[4], [20]] -> [[0.25, 0.1], [0.6, -0.2]]
+  e.g. `[[4], [20]] -> [[0.25, 0.1], [0.6, -0.2]]`
 
   This layer can only be used as the first layer in a model.
 
   Example:
 
-  ```python
-    model = Sequential()
-    model.add(Embedding(1000, 64, input_length=10))
-    # the model will take as input an integer matrix of size (batch,
-    input_length).
-    # the largest integer (i.e. word index) in the input should be no larger
-    than 999 (vocabulary size).
-    # now model.output_shape == (None, 10, 64), where None is the batch
-    dimension.
+  >>> model = tf.keras.Sequential()
+  >>> model.add(tf.keras.layers.Embedding(1000, 64, input_length=10))
+  >>> # The model will take as input an integer matrix of size (batch,
+  >>> # input_length), and the largest integer (i.e. word index) in the input
+  >>> # should be no larger than 999 (vocabulary size).
+  >>> # Now model.output_shape is (None, 10, 64), where `None` is the batch
+  >>> # dimension.
+  >>> input_array = np.random.randint(1000, size=(32, 10))
+  >>> model.compile('rmsprop', 'mse')
+  >>> output_array = model.predict(input_array)
+  >>> print(output_array.shape)
+  (32, 10, 64)
 
-    input_array = np.random.randint(1000, size=(32, 10))
-
-    model.compile('rmsprop', 'mse')
-    output_array = model.predict(input_array)
-    assert output_array.shape == (32, 10, 64)
-  ```
-
-  Arguments:
-    input_dim: int > 0. Size of the vocabulary,
-        i.e. maximum integer index + 1.
-    output_dim: int >= 0. Dimension of the dense embedding.
-    embeddings_initializer: Initializer for the `embeddings` matrix.
+  Args:
+    input_dim: Integer. Size of the vocabulary,
+      i.e. maximum integer index + 1.
+    output_dim: Integer. Dimension of the dense embedding.
+    embeddings_initializer: Initializer for the `embeddings`
+      matrix (see `keras.initializers`).
     embeddings_regularizer: Regularizer function applied to
-        the `embeddings` matrix.
+      the `embeddings` matrix (see `keras.regularizers`).
     embeddings_constraint: Constraint function applied to
-        the `embeddings` matrix.
-    mask_zero: Whether or not the input value 0 is a special "padding"
-        value that should be masked out.
-        This is useful when using recurrent layers
-        which may take variable length input.
-        If this is `True` then all subsequent layers
-        in the model need to support masking or an exception will be raised.
-        If mask_zero is set to True, as a consequence, index 0 cannot be
-        used in the vocabulary (input_dim should equal size of
-        vocabulary + 1).
+      the `embeddings` matrix (see `keras.constraints`).
+    mask_zero: Boolean, whether or not the input value 0 is a special "padding"
+      value that should be masked out.
+      This is useful when using recurrent layers
+      which may take variable length input.
+      If this is `True`, then all subsequent layers
+      in the model need to support masking or an exception will be raised.
+      If mask_zero is set to True, as a consequence, index 0 cannot be
+      used in the vocabulary (input_dim should equal size of
+      vocabulary + 1).
     input_length: Length of input sequences, when it is constant.
-        This argument is required if you are going to connect
-        `Flatten` then `Dense` layers upstream
-        (without it, the shape of the dense outputs cannot be computed).
+      This argument is required if you are going to connect
+      `Flatten` then `Dense` layers upstream
+      (without it, the shape of the dense outputs cannot be computed).
 
   Input shape:
-      2D tensor with shape: `(batch_size, sequence_length)`.
+    2D tensor with shape: `(batch_size, input_length)`.
 
   Output shape:
-      3D tensor with shape: `(batch_size, sequence_length, output_dim)`.
-
+    3D tensor with shape: `(batch_size, input_length, output_dim)`.
   """
 
   def __init__(self,
@@ -104,8 +102,21 @@ class Embedding(Layer):
         kwargs['input_shape'] = (input_length,)
       else:
         kwargs['input_shape'] = (None,)
-    dtype = kwargs.pop('dtype', K.floatx())
-    super(Embedding, self).__init__(dtype=dtype, **kwargs)
+    if input_dim <= 0 or output_dim <= 0:
+      raise ValueError('Both `input_dim` and `output_dim` should be positive, '
+                       'found input_dim {} and output_dim {}'.format(
+                           input_dim, output_dim))
+    if (not base_layer_utils.v2_dtype_behavior_enabled() and
+        'dtype' not in kwargs):
+      # In TF1, the dtype defaults to the input dtype which is typically int32,
+      # so explicitly set it to floatx
+      kwargs['dtype'] = K.floatx()
+    # We set autocast to False, as we do not want to cast floating- point inputs
+    # to self.dtype. In call(), we cast to int32, and casting to self.dtype
+    # before casting to int32 might cause the int32 values to be different due
+    # to a loss of precision.
+    kwargs['autocast'] = False
+    super(Embedding, self).__init__(**kwargs)
 
     self.input_dim = input_dim
     self.output_dim = output_dim
@@ -116,7 +127,6 @@ class Embedding(Layer):
     self.mask_zero = mask_zero
     self.supports_masking = mask_zero
     self.input_length = input_length
-    self._can_use_graph_functions = True
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
@@ -126,21 +136,23 @@ class Embedding(Layer):
     # When eager execution is enabled, the placement decision has to be made
     # right now. Checking for the presence of GPUs to avoid complicating the
     # TPU codepaths which can handle sparse optimizers.
-    if context.executing_eagerly() and context.context().num_gpus():
+    if context.executing_eagerly() and tf_config.list_logical_devices('GPU'):
       with ops.device('cpu:0'):
         self.embeddings = self.add_weight(
             shape=(self.input_dim, self.output_dim),
             initializer=self.embeddings_initializer,
             name='embeddings',
             regularizer=self.embeddings_regularizer,
-            constraint=self.embeddings_constraint)
+            constraint=self.embeddings_constraint,
+            experimental_autocast=False)
     else:
       self.embeddings = self.add_weight(
           shape=(self.input_dim, self.output_dim),
           initializer=self.embeddings_initializer,
           name='embeddings',
           regularizer=self.embeddings_regularizer,
-          constraint=self.embeddings_constraint)
+          constraint=self.embeddings_constraint,
+          experimental_autocast=False)
     self.built = True
 
   def compute_mask(self, inputs, mask=None):
@@ -177,15 +189,17 @@ class Embedding(Layer):
     dtype = K.dtype(inputs)
     if dtype != 'int32' and dtype != 'int64':
       inputs = math_ops.cast(inputs, 'int32')
-    out = embedding_ops.embedding_lookup(self.embeddings, inputs)
+    out = embedding_ops.embedding_lookup_v2(self.embeddings, inputs)
+    if self._dtype_policy.compute_dtype != self._dtype_policy.variable_dtype:
+      # Instead of casting the variable as in most layers, cast the output, as
+      # this is mathematically equivalent but is faster.
+      out = math_ops.cast(out, self._dtype_policy.compute_dtype)
     return out
 
   def get_config(self):
     config = {
-        'input_dim':
-            self.input_dim,
-        'output_dim':
-            self.output_dim,
+        'input_dim': self.input_dim,
+        'output_dim': self.output_dim,
         'embeddings_initializer':
             initializers.serialize(self.embeddings_initializer),
         'embeddings_regularizer':
@@ -194,10 +208,8 @@ class Embedding(Layer):
             regularizers.serialize(self.activity_regularizer),
         'embeddings_constraint':
             constraints.serialize(self.embeddings_constraint),
-        'mask_zero':
-            self.mask_zero,
-        'input_length':
-            self.input_length
+        'mask_zero': self.mask_zero,
+        'input_length': self.input_length
     }
     base_config = super(Embedding, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))

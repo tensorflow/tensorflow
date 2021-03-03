@@ -17,18 +17,30 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EXECUTOR_H_
 
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/local_executor_params.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/session_state.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/threadpool_interface.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 
 class StepStatsCollector;
+
+// If this is called, we will sample execution cost for "inexpensive" kernels
+// and switch them to "expensive" when the estimated cost exceeds expensive-ness
+// threshold.
+// This is a temporary flag for validating the performance impact of
+// this feature. For simplicity, a global flag is used and once the flag
+// is turned on, it cannot be turned off. We will remove this flag once this
+// feature is validated.
+void EnableAlwaysTrackKernelExecutionCost();
 
 // Executor runs a graph computation.
 // Example:
@@ -82,14 +94,17 @@ class Executor {
   // is backed up by a bounded threadpool.
   struct Args {
     int64 step_id = 0;
-    Rendezvous* rendezvous = nullptr;
+    RendezvousInterface* rendezvous = nullptr;
     StepStatsCollectorInterface* stats_collector = nullptr;
     CallFrameInterface* call_frame = nullptr;
     CancellationManager* cancellation_manager = nullptr;
     SessionState* session_state = nullptr;
+    // Unique session identifier. Can be empty.
+    string session_handle;
     TensorStore* tensor_store = nullptr;
     ScopedStepContainer* step_container = nullptr;
     CollectiveExecutor* collective_executor = nullptr;
+    thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr;
 
     // If true, calls Sync() on the device.
     bool sync_on_finish = false;
@@ -97,12 +112,16 @@ class Executor {
     typedef std::function<void()> Closure;
     typedef std::function<void(Closure)> Runner;
     Runner runner = nullptr;
+
+    // If true, all kernels will be treated as "inexpensive", and hence executed
+    // on the scheduling thread.
+    bool run_all_kernels_inline = false;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void RunAsync(const Args& args, DoneCallback done) = 0;
 
   // Synchronous wrapper for RunAsync().
-  Status Run(const Args& args) {
+  virtual Status Run(const Args& args) {
     Status ret;
     Notification n;
     RunAsync(args, [&ret, &n](const Status& s) {
@@ -121,21 +140,8 @@ class Executor {
 //
 // "params" provides a set of context for the executor. We expect that
 // different context would provide different implementations.
-struct LocalExecutorParams {
-  Device* device;
-
-  // The library runtime support.
-  FunctionLibraryRuntime* function_library = nullptr;
-
-  // create_kernel returns an instance of op kernel based on NodeDef.
-  // delete_kernel is called for every kernel used by the executor
-  // when the executor is deleted.
-  std::function<Status(const NodeDef&, OpKernel**)> create_kernel;
-  std::function<void(OpKernel*)> delete_kernel;
-};
 ::tensorflow::Status NewLocalExecutor(const LocalExecutorParams& params,
-                                      std::unique_ptr<const Graph> graph,
-                                      Executor** executor);
+                                      const Graph& graph, Executor** executor);
 
 // A class to help run multiple executors in parallel and wait until
 // all of them are complete.
@@ -170,44 +176,51 @@ class ExecutorBarrier {
   StatusCallback done_cb_ = nullptr;
 
   mutable mutex mu_;
-  int pending_ GUARDED_BY(mu_) = 0;
-  Status status_ GUARDED_BY(mu_);
+  int pending_ TF_GUARDED_BY(mu_) = 0;
+  StatusGroup status_group_ TF_GUARDED_BY(mu_);
 
   void WhenDone(const Status& s) {
-    bool error = false;
     Rendezvous* error_rendez = nullptr;
     StatusCallback done = nullptr;
     Status status;
+
     {
       mutex_lock l(mu_);
-      // If we are the first error encountered, mark the status
-      // appropriately and later trigger an abort of the Rendezvous
-      // object by this thread only.
-      if (status_.ok() && !s.ok()) {
-        error = true;
+
+      // If we are the first error encountered, trigger an abort of the
+      // Rendezvous object by this thread only.
+      if (status_group_.ok() && !s.ok()) {
         error_rendez = rendez_;
         error_rendez->Ref();
-        status_ = s;
       }
+
+      if (!s.ok() && !StatusGroup::IsDerived(s) &&
+          !status_group_.HasLogMessages()) {
+        status_group_.AttachLogMessages();
+      }
+
+      status_group_.Update(s);
 
       // If this is the last call to WhenDone, call the final callback
       // below.
       if (--pending_ == 0) {
         CHECK(done_cb_ != nullptr);
         std::swap(done, done_cb_);
-      }
-
-      if (!status_.ok()) {
-        status = status_;
+        status = status_group_.as_summary_status();
       }
     }
 
-    if (error) {
-      error_rendez->StartAbort(status);
+    if (error_rendez != nullptr) {
+      error_rendez->StartAbort(
+          errors::Aborted("Stopping remaining executors."));
       error_rendez->Unref();
     }
+
     if (done != nullptr) {
       delete this;
+      if (!status.ok()) {
+        VLOG(1) << "ExecutorBarrier finished with bad status: " << status;
+      }
       done(status);
     }
   }
@@ -217,12 +230,12 @@ class ExecutorBarrier {
 
 // A few helpers to facilitate create/delete kernels.
 
-// Creates a kernel based on "ndef" on device "device". The kernel can
+// Creates a kernel based on "props" on device "device". The kernel can
 // access the functions in the "flib". The caller takes ownership of
 // returned "*kernel".
 Status CreateNonCachedKernel(Device* device, FunctionLibraryRuntime* flib,
-                             const NodeDef& ndef, int graph_def_version,
-                             OpKernel** kernel);
+                             const std::shared_ptr<const NodeProperties>& props,
+                             int graph_def_version, OpKernel** kernel);
 
 // Deletes "kernel" returned by CreateKernel.
 void DeleteNonCachedKernel(OpKernel* kernel);

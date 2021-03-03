@@ -32,7 +32,6 @@ namespace tensorflow {
     return value;                                                          \
   }
 
-ADD_BOOL_CUDNN_FLAG(CanUseCudnn, TF_USE_CUDNN, true);
 ADD_BOOL_CUDNN_FLAG(CudnnUseAutotune, TF_CUDNN_USE_AUTOTUNE, true);
 // Whether to auto-tuning Cudnn RNN forward and backward pass to pick
 // statistically the best cudnnRNNAlgo_t and cudnnMathType_t.
@@ -71,23 +70,12 @@ ADD_BOOL_CUDNN_FLAG(DebugCudnnRnnUseTensorOps,
 ADD_INT64_CUDNN_FLAG(DebugCudnnRnnAlgo, TF_DEBUG_CUDNN_RNN_ALGO, -1);
 #undef ADD_INT64_CUDNN_FLAG
 
-FP16ConvMode CudnnConvComputeMode() {
-  string value;
-  Status status = ReadStringFromEnvVar("TF_FP16_CONV_MODE", "accurate", &value);
-  if (!status.ok()) {
-    LOG(ERROR) << status;
-  }
-  string lowercase_value = str_util::Lowercase(value);
-  if (lowercase_value == "accurate") {
-    return FP16ConvMode::kAccurate;
-  } else if (lowercase_value == "fast") {
-    return FP16ConvMode::kFast;
-  } else {
-    LOG(ERROR) << "FP16ConvMode only supports two modes, ACCURATE and FAST. "
-                  "Got unknown mode: "
-               << value;
-  }
-  return FP16ConvMode::kAccurate;
+bool IsCudnnSupportedFilterSize(const int32 filter_rows,
+                                const int32 filter_cols, const int32 in_depth,
+                                const int32 out_depth) {
+  return in_depth == out_depth && filter_rows == filter_cols &&
+         (filter_rows == 1 || filter_rows == 3 || filter_rows == 5 ||
+          filter_rows == 7);
 }
 
 }  // namespace tensorflow

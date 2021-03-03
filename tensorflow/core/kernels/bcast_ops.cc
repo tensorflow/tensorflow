@@ -46,8 +46,8 @@ class BCastArgsOp : public OpKernel {
     BCast bcast(shapes[0], shapes[1]);
     OP_REQUIRES(ctx, bcast.IsValid(),
                 errors::InvalidArgument(
-                    "Incompatible shapes: [", str_util::Join(shapes[0], ","),
-                    "] vs. [", str_util::Join(shapes[1], ","), "]"));
+                    "Incompatible shapes: [", absl::StrJoin(shapes[0], ","),
+                    "] vs. [", absl::StrJoin(shapes[1], ","), "]"));
     Output(ctx, 0, bcast.output_shape());
   }
 
@@ -95,8 +95,8 @@ class BCastGradArgsOp : public OpKernel {
     BCast bcast(shapes[0], shapes[1]);
     OP_REQUIRES(ctx, bcast.IsValid(),
                 errors::InvalidArgument(
-                    "Incompatible shapes: [", str_util::Join(shapes[0], ","),
-                    "] vs. [", str_util::Join(shapes[1], ","), "]"));
+                    "Incompatible shapes: [", absl::StrJoin(shapes[0], ","),
+                    "] vs. [", absl::StrJoin(shapes[1], ","), "]"));
     Output(ctx, 0, bcast.grad_x_reduce_idx());
     Output(ctx, 1, bcast.grad_y_reduce_idx());
   }
@@ -145,22 +145,6 @@ REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")
                             .HostMemory("r0"),
                         BCastArgsOp<int64>);
 
-#if TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<int32>("T")
-                            .HostMemory("s0")
-                            .HostMemory("s1")
-                            .HostMemory("r0"),
-                        BCastArgsOp<int32>);
-REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<int64>("T")
-                            .HostMemory("s0")
-                            .HostMemory("s1")
-                            .HostMemory("r0"),
-                        BCastArgsOp<int32>);
-#endif
 
 REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
                             .Device(DEVICE_CPU)
@@ -195,22 +179,4 @@ REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
                             .HostMemory("r1"),
                         BCastGradArgsOp<int64>);
 
-#if TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<int32>("T")
-                            .HostMemory("s0")
-                            .HostMemory("s1")
-                            .HostMemory("r0")
-                            .HostMemory("r1"),
-                        BCastGradArgsOp<int32>);
-REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<int64>("T")
-                            .HostMemory("s0")
-                            .HostMemory("s1")
-                            .HostMemory("r0")
-                            .HostMemory("r1"),
-                        BCastGradArgsOp<int64>);
-#endif
 }  // end namespace tensorflow

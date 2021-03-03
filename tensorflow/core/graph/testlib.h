@@ -68,6 +68,10 @@ Node* Recv(Graph* g, const string& tensor, const string& type,
            const string& sender, const uint64 sender_incarnation,
            const string& receiver);
 
+// Adds a cumsum "node" in "g" doing cumsum(data, axes).
+Node* Cumsum(Graph* g, Node* data, Node* axes, bool exclusive = false,
+             bool reverse = false);
+
 // Adds a reduction "node" in "g" doing sum(data, axes).  "reduce" is
 // a reduction, e.g., Sum, Max, Min, Mean, etc.
 Node* Reduce(Graph* g, const string& reduce, Node* data, Node* axes,
@@ -122,12 +126,13 @@ Node* RandomPoisson(Graph* g, Node* shape, Node* lam);
 Node* Roll(Graph* g, Node* input, Node* shift, Node* axis);
 
 // Generates random parameters from the truncated standard normal distribution
-// of the nput shape
+// of the input shape
 Node* TruncatedNormal(Graph* g, Node* input, DataType dtype);
 
 // Adds an error node in "g". The node's computation always
 // generates an error with the given error message "errmsg".
-Node* Error(Graph* g, Node* input, const string& errmsg);
+Node* Error(Graph* g, Node* input, const string& errmsg,
+            bool log_error = false);
 
 // Adds a node that generates a invalid ref output.
 Node* InvalidRefType(Graph* g, DataType out_type, DataType invalid_type);

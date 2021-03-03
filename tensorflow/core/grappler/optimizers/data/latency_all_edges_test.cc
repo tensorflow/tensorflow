@@ -26,13 +26,16 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-TEST(LatencyAllEdgesTest, AddLatenciesAfterTensorMapPrefetch) {
+class LatencyAllEdgesTest : public ::testing::TestWithParam<bool> {};
+
+TEST_P(LatencyAllEdgesTest, AddLatenciesAfterTensorMapPrefetch) {
+  const bool contain_model = GetParam();
   using test::function::NDef;
   GrapplerItem item;
   NodeDef component_node =
-      NDef("component_nodes", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}});
+      NDef("component_node", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}});
   NodeDef from_tensor_node =
-      NDef("from_tensor_nodes", "TensorDataset", {"component_nodes"},
+      NDef("from_tensor_node", "TensorDataset", {"component_node"},
            {{"Toutput_types", {}}, {"output_shapes", {}}});
 
   NodeDef captured_input_node = NDef("captured_input_node", "Const", {},
@@ -45,18 +48,27 @@ TEST(LatencyAllEdgesTest, AddLatenciesAfterTensorMapPrefetch) {
                            {"output_types", {}}});
   NodeDef buffer_size_node = NDef("buffer_size_node", "Const", {},
                                   {{"value", 1}, {"dtype", DT_INT32}});
-  NodeDef prefetch_node = NDef("prefetch_node", "Prefetch_Dataset",
-                               {"map_node", "buffer_size_node"},
-                               {{"output_shapes", {}}, {"output_types", {}}});
+  NodeDef prefetch_node =
+      NDef("prefetch_node", "PrefetchDataset", {"map_node", "buffer_size_node"},
+           {{"output_shapes", {}}, {"output_types", {}}});
+  NodeDef model_node = NDef("model_node", "ModelDataset", {"prefetch_node"},
+                            {{"output_shapes", {}}, {"output_types", {}}});
 
-  item.graph = test::function::GDef({component_node, from_tensor_node,
-                                     captured_input_node, map_node,
-                                     buffer_size_node, prefetch_node});
+  if (contain_model) {
+    item.graph = test::function::GDef(
+        {component_node, from_tensor_node, captured_input_node, map_node,
+         buffer_size_node, prefetch_node, model_node});
+  } else {
+    item.graph = test::function::GDef({component_node, from_tensor_node,
+                                       captured_input_node, map_node,
+                                       buffer_size_node, prefetch_node});
+  }
 
   LatencyAllEdges optimizer;
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
 
+  EXPECT_EQ(output.node_size(), contain_model ? 13 : 12);
   EXPECT_TRUE(graph_utils::ContainsNodeWithOp("LatencyStatsDataset", output));
   std::vector<int> latency_node_indices =
       graph_utils::FindAllGraphNodesWithOp("LatencyStatsDataset", output);
@@ -86,6 +98,9 @@ TEST(LatencyAllEdgesTest, AddLatenciesAfterTensorMapPrefetch) {
     }
   }
 }
+
+INSTANTIATE_TEST_SUITE_P(Test, LatencyAllEdgesTest,
+                         ::testing::Values(false, true));
 
 }  // namespace
 }  // namespace grappler

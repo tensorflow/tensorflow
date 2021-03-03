@@ -1,0 +1,49 @@
+op {
+  graph_op_name: "RaggedCross"
+  visibility: HIDDEN
+  in_arg {
+    name: "ragged_values"
+    description: "The values tensor for each RaggedTensor input."
+  }
+  in_arg {
+    name: "ragged_row_splits"
+    description: "The row_splits tensor for each RaggedTensor input."
+  }
+  in_arg {
+    name: "sparse_indices"
+    description: "The indices tensor for each SparseTensor input."
+  }
+  in_arg {
+    name: "sparse_values"
+    description: "The values tensor for each SparseTensor input."
+  }
+  in_arg {
+    name: "sparse_shape"
+    description: "The dense_shape tensor for each SparseTensor input."
+  }
+  in_arg {
+    name: "dense_inputs"
+    description: "The tf.Tensor inputs."
+  }
+  out_arg {
+    name: "output_values"
+    description: "The `values` for the returned `RaggedTensor`."
+  }
+  out_arg {
+    name: "output_row_splits"
+    description: "The `row_splits` for the returned `RaggedTensor`."
+  }
+  attr {
+    name: "input_order"
+    description: <<END
+String specifying the tensor type for each input.  The `i`th character in
+this string specifies the type of the `i`th input, and is one of: 'R' (ragged),
+'D' (dense), or 'S' (sparse).  This attr is used to ensure that the crossed
+values are combined in the order of the inputs from the call to tf.ragged.cross.
+END
+  }
+  summary: <<END
+Generates a feature cross from a list of tensors, and returns it as a
+RaggedTensor.  See `tf.ragged.cross` for more details.
+END
+}

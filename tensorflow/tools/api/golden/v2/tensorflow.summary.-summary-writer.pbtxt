@@ -1,0 +1,28 @@
+path: "tensorflow.summary.SummaryWriter"
+tf_class {
+  is_instance: "<class \'tensorflow.python.ops.summary_ops_v2.SummaryWriter\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "as_default"
+    argspec: "args=[\'self\', \'step\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "close"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "flush"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "init"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_as_default"
+    argspec: "args=[\'self\', \'step\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

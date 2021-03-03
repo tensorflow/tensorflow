@@ -86,12 +86,12 @@ class ExecutionTracker {
 
  private:
   // The next handle to assign to an execution.
-  int64 next_handle_ GUARDED_BY(execution_mutex_);
+  int64 next_handle_ TF_GUARDED_BY(execution_mutex_);
 
   // Mapping from ExecutionHandle handle to the corresponding registered
   // AsyncExecution object.
   std::map<int64, std::unique_ptr<AsyncExecution>> handle_to_execution_
-      GUARDED_BY(execution_mutex_);
+      TF_GUARDED_BY(execution_mutex_);
 
   tensorflow::mutex execution_mutex_;  // Guards the execution mapping.
 

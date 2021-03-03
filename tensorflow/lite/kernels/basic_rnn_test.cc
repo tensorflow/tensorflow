@@ -14,17 +14,14 @@ limitations under the License.
 ==============================================================================*/
 // Unit test for TFLite RNN op.
 
-#include <string.h>
 #include <initializer_list>
-#include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -175,17 +172,19 @@ class RNNOpModel : public SingleOpModel {
  public:
   RNNOpModel(int batches, int units, int size,
              const TensorType& weights = TensorType_FLOAT32,
-             const TensorType& recurrent_weights = TensorType_FLOAT32)
+             const TensorType& recurrent_weights = TensorType_FLOAT32,
+             bool asymmetric_quantize_inputs = false)
       : batches_(batches), units_(units), input_size_(size) {
     input_ = AddInput(TensorType_FLOAT32);
     weights_ = AddInput(weights);
     recurrent_weights_ = AddInput(recurrent_weights);
     bias_ = AddInput(TensorType_FLOAT32);
-    hidden_state_ = AddInput(TensorType_FLOAT32, true);
+    hidden_state_ = AddVariableInput(TensorType_FLOAT32);
     output_ = AddOutput(TensorType_FLOAT32);
-    SetBuiltinOp(
-        BuiltinOperator_RNN, BuiltinOptions_RNNOptions,
-        CreateRNNOptions(builder_, ActivationFunctionType_RELU).Union());
+    SetBuiltinOp(BuiltinOperator_RNN, BuiltinOptions_RNNOptions,
+                 CreateRNNOptions(builder_, ActivationFunctionType_RELU,
+                                  asymmetric_quantize_inputs)
+                     .Union());
     BuildInterpreter({{batches_, input_size_},  // input tensor
                       {units_, input_size_},    // weights tensor
                       {units_, units_},         // recurrent weights tensor
@@ -233,15 +232,27 @@ class RNNOpModel : public SingleOpModel {
 // The hybrid model has quantized weights and recurrent_weights.
 class HybridRNNOpModel : public RNNOpModel {
  public:
-  HybridRNNOpModel(int batches, int units, int size)
-      : RNNOpModel(batches, units, size, TensorType_UINT8, TensorType_UINT8) {}
-
-  void SetWeights(std::initializer_list<float> f) {
-    SymmetricQuantizeAndPopulate(weights_, f);
+  HybridRNNOpModel(int batches, int units, int size, TensorType tensor_type,
+                   bool asymmetric_quantize_inputs)
+      : RNNOpModel(batches, units, size, tensor_type, tensor_type,
+                   asymmetric_quantize_inputs) {
+    tensor_type_ = tensor_type;
   }
 
+  TensorType tensor_type_;
+
+  void SetWeights(int weights_idx, const std::vector<float>& f) {
+    if (tensor_type_ == TensorType_UINT8) {
+      SymmetricQuantizeAndPopulate(weights_idx, f);
+    } else {
+      SignedSymmetricQuantizeAndPopulate(weights_idx, f);
+    }
+  }
+
+  void SetWeights(std::initializer_list<float> f) { SetWeights(weights_, f); }
+
   void SetRecurrentWeights(std::initializer_list<float> f) {
-    SymmetricQuantizeAndPopulate(recurrent_weights_, f);
+    SetWeights(recurrent_weights_, f);
   }
 };
 
@@ -272,8 +283,10 @@ TEST(RnnOpTest, BlackBoxTest) {
   }
 }
 
-TEST(HybridRnnOpTest, BlackBoxTest) {
-  HybridRNNOpModel rnn(2, 16, 8);
+class HybridRnnOpTest : public ::testing::TestWithParam<bool> {};
+
+TEST_P(HybridRnnOpTest, BlackBoxTestUint8) {
+  HybridRNNOpModel rnn(2, 16, 8, TensorType_UINT8, GetParam());
   rnn.SetWeights(rnn_weights);
   rnn.SetBias(rnn_bias);
   rnn.SetRecurrentWeights(rnn_recurrent_weights);
@@ -300,11 +313,36 @@ TEST(HybridRnnOpTest, BlackBoxTest) {
   }
 }
 
+TEST_P(HybridRnnOpTest, BlackBoxTestInt8) {
+  HybridRNNOpModel rnn(2, 16, 8, TensorType_INT8, GetParam());
+  rnn.SetWeights(rnn_weights);
+  rnn.SetBias(rnn_bias);
+  rnn.SetRecurrentWeights(rnn_recurrent_weights);
+
+  const int input_sequence_size = sizeof(rnn_input) / sizeof(float) /
+                                  (rnn.input_size() * rnn.num_batches());
+
+  for (int i = 0; i < input_sequence_size; i++) {
+    float* batch_start = rnn_input + i * rnn.input_size();
+    float* batch_end = batch_start + rnn.input_size();
+    rnn.SetInput(0, batch_start, batch_end);
+    rnn.SetInput(rnn.input_size(), batch_start, batch_end);
+
+    rnn.Invoke();
+
+    float* golden_start = rnn_golden_output + i * rnn.num_units();
+    float* golden_end = golden_start + rnn.num_units();
+    std::vector<float> expected;
+    expected.insert(expected.end(), golden_start, golden_end);
+    expected.insert(expected.end(), golden_start, golden_end);
+
+    EXPECT_THAT(rnn.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                     expected, /*max_abs_error=*/0.0104)));
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(HybridRnnOpTest, HybridRnnOpTest,
+                         ::testing::ValuesIn({false, true}));
+
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

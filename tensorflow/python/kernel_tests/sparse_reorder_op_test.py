@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import sparse_ops
@@ -60,11 +61,12 @@ class SparseReorderTest(test.TestCase):
       input_val = self._SparseTensorValue_5x6(np.arange(6))
       sp_output = sparse_ops.sparse_reorder(input_val)
 
-      output_val = sess.run(sp_output)
+      output_val = self.evaluate(sp_output)
       self.assertAllEqual(output_val.indices, input_val.indices)
       self.assertAllEqual(output_val.values, input_val.values)
       self.assertAllEqual(output_val.dense_shape, input_val.dense_shape)
 
+  @test_util.run_deprecated_v1
   def testFeedAlreadyInOrder(self):
     with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensorPlaceholder()
@@ -83,12 +85,13 @@ class SparseReorderTest(test.TestCase):
         input_val = self._SparseTensorValue_5x6(np.random.permutation(6))
         sp_output = sparse_ops.sparse_reorder(input_val)
 
-        output_val = sess.run(sp_output)
+        output_val = self.evaluate(sp_output)
         self.assertAllEqual(output_val.indices, expected_output_val.indices)
         self.assertAllEqual(output_val.values, expected_output_val.values)
         self.assertAllEqual(output_val.dense_shape,
                             expected_output_val.dense_shape)
 
+  @test_util.run_deprecated_v1
   def testFeedOutOfOrder(self):
     expected_output_val = self._SparseTensorValue_5x6(np.arange(6))
     with self.session(use_gpu=False) as sess:
@@ -103,6 +106,7 @@ class SparseReorderTest(test.TestCase):
         self.assertAllEqual(output_val.dense_shape,
                             expected_output_val.dense_shape)
 
+  @test_util.run_deprecated_v1
   def testGradients(self):
     with self.session(use_gpu=False):
       for _ in range(5):  # To test various random permutations
@@ -119,6 +123,18 @@ class SparseReorderTest(test.TestCase):
             input_val.values.shape,
             x_init_value=input_val.values)
         self.assertLess(err, 1e-11)
+
+  def testShapeOverflow(self):
+    # Test case for GitHub issue 45392
+    sp_input = sparse_tensor.SparseTensor(
+        indices=[[0, 0, 0, 0, 0, 0]],
+        values=[0.0],
+        dense_shape=[4096, 4096, 4096, 4096, 4096, 4096])
+    self.assertAllEqual((4096, 4096, 4096, 4096, 4096, 4096),
+                        sp_input.get_shape())
+    sp_output = sparse_ops.sparse_reorder(sp_input)
+    self.assertAllEqual((4096, 4096, 4096, 4096, 4096, 4096),
+                        sp_output.get_shape())
 
 
 if __name__ == "__main__":

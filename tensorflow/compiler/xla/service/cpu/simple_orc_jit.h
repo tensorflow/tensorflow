@@ -21,14 +21,15 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/Triple.h"
+#include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/Orc/SymbolStringPool.h"
+#include "llvm/ExecutionEngine/Orc/TargetProcessControl.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
-#include "tensorflow/compiler/xla/service/cpu/disassembler.h"
 #include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
@@ -42,51 +43,48 @@ namespace cpu {
 // Supports JIT-ing multiple modules but without cross-module linking.
 // Implements eager compilation - the module is lowered to binary as soon as
 // it's added to the JIT.
-class SimpleOrcJIT {
+class SimpleOrcJIT : public llvm::JITEventListener {
  public:
-  using ObjLayerT = llvm::orc::LegacyRTDyldObjectLinkingLayer;
-  using CompileFtor = std::function<ObjLayerT::ObjectPtr(llvm::Module&)>;
-  using CompileLayerT = llvm::orc::LegacyIRCompileLayer<ObjLayerT, CompileFtor>;
-  using VModuleKeyT = llvm::orc::VModuleKey;
+  using ObjLayerT = llvm::orc::RTDyldObjectLinkingLayer;
+  using CompileLayerT = llvm::orc::IRCompileLayer;
 
   // Create a new JIT, targeting the host architecture.
-  // The |target_options| parameter allows customization of certain code
-  // generation properties of the TargetMachine (whether or not float point math
-  // can be reassociated, etc.).
-  // The |opt_level| parameter controls the optimization level of the code
-  // generator.
-  // The |optimize_for_size| parameter specifies that the code generator should
-  // optimize to reduce code size, potentially at the cost of performance.
-  // The |disable_expensive_passes| parameter will disable certain optimization
-  // passes
-  // The |pre_optimization_hook| is invoked on the module before any IR
-  // level optimizations are applied.
-  // The |post_optimization_hook| is invoked on the module after all IR
-  // level optimizations are applied.
-  SimpleOrcJIT(const llvm::TargetOptions& target_options,
-               llvm::CodeGenOpt::Level opt_level, bool optimize_for_size,
-               bool enable_fast_math, bool disable_expensive_passes,
-               LLVMCompiler::ModuleHook pre_optimization_hook,
-               LLVMCompiler::ModuleHook post_optimization_hook);
+  //
+  // {pre,post}_optimization_hook is invoked on the module before/after all
+  // LLVM IR-level optimizations.  post_codegen_hook is invoked after
+  // compiling to machine code.
+  SimpleOrcJIT(
+      std::unique_ptr<llvm::orc::TargetProcessControl> target_process_control,
+      std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
+      const llvm::TargetOptions& target_options,
+      llvm::CodeGenOpt::Level opt_level, bool optimize_for_size,
+      bool disable_expensive_passes, llvm::FastMathFlags fast_math_flags,
+      LLVMCompiler::ModuleHook pre_optimization_hook,
+      LLVMCompiler::ModuleHook post_optimization_hook,
+      std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook);
 
-  // Data layout this JIT was created with.
+  static llvm::Expected<std::unique_ptr<SimpleOrcJIT>> Create(
+      const llvm::TargetOptions& target_options,
+      llvm::CodeGenOpt::Level opt_level, bool optimize_for_size,
+      bool disable_expensive_passes, llvm::FastMathFlags fast_math_flags,
+      LLVMCompiler::ModuleHook pre_optimization_hook,
+      LLVMCompiler::ModuleHook post_optimization_hook,
+      std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook);
+
+  ~SimpleOrcJIT() override;
+
   const llvm::DataLayout& data_layout() const { return data_layout_; }
 
-  // Target triple (host) this JIT was created with.
   const llvm::Triple& target_triple() const {
     return target_machine_->getTargetTriple();
   }
 
-  // Add a module to the JIT. Returns an opaque key that can be used to later
-  // remove this module.
-  VModuleKeyT AddModule(std::unique_ptr<llvm::Module> module);
-
-  // Remove a module from the JIT and free the memory associated with it.
-  void RemoveModule(VModuleKeyT key);
+  llvm::Error AddModule(llvm::orc::ThreadSafeModule module);
 
   // Get the runtime address of the compiled symbol whose name is given. Returns
   // nullptr if the symbol cannot be found.
-  llvm::JITSymbol FindCompiledSymbol(const std::string& name);
+  llvm::Expected<llvm::JITEvaluatedSymbol> FindCompiledSymbol(
+      const std::string& name);
 
   llvm::TargetMachine* target_machine() const { return target_machine_.get(); }
 
@@ -96,17 +94,36 @@ class SimpleOrcJIT {
       const llvm::TargetOptions& target_options,
       llvm::CodeGenOpt::Level opt_level);
 
- private:
-  llvm::JITSymbol ResolveRuntimeSymbol(const std::string& name);
+  int64 SizeOfGeneratedCodeInBytes() const {
+    return size_of_generated_code_in_bytes_;
+  }
 
-  std::vector<VModuleKeyT> module_keys_;
+ private:
+  llvm::JITEvaluatedSymbol ResolveRuntimeSymbol(llvm::StringRef name);
+
+  void notifyObjectLoaded(
+      llvm::JITEventListener::ObjectKey key,
+      const llvm::object::ObjectFile& object,
+      const llvm::RuntimeDyld::LoadedObjectInfo& object_info) override;
+  void notifyFreeingObject(llvm::JITEventListener::ObjectKey key) override;
+
   std::unique_ptr<llvm::TargetMachine> target_machine_;
-  const Disassembler disassembler_;
   const llvm::DataLayout data_layout_;
-  llvm::orc::ExecutionSession execution_session_;
-  std::shared_ptr<llvm::orc::SymbolResolver> symbol_resolver_;
+  std::unique_ptr<llvm::orc::TargetProcessControl> target_process_control_;
+  std::unique_ptr<llvm::orc::ExecutionSession> execution_session_;
   ObjLayerT object_layer_;
   CompileLayerT compile_layer_;
+  llvm::orc::JITDylib* main_jit_dylib_;
+  int64 size_of_generated_code_in_bytes_ = 0;
+
+  // Non owning pointer to a JIT event listener that registers the JIT events
+  // with an attached GDB.
+  //
+  // Note: we get a pointer to this event listener using
+  // `createGDBRegistrationListener` which makes it look like we're supposed to
+  // free this, but the function is poorly named and really just returns a
+  // pointer to a static object.
+  llvm::JITEventListener* gdb_jit_event_listener_;
 };
 
 }  // namespace cpu

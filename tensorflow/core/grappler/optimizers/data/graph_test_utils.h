@@ -23,6 +23,23 @@ namespace tensorflow {
 namespace grappler {
 namespace graph_tests_utils {
 
+// Creates a test NodeDef for BatchDatasetV2.
+NodeDef MakeBatchV2Node(StringPiece name, StringPiece input_node_name,
+                        StringPiece batch_size_node_name,
+                        StringPiece drop_remainder_node_name);
+
+// Creates a test NodeDef for ParallelBatchDataset.
+NodeDef MakeParallelBatchNode(StringPiece name, StringPiece input_node_name,
+                              StringPiece batch_size_node_name,
+                              StringPiece num_parallel_calls_node_name,
+                              StringPiece drop_remainder_node_name,
+                              StringPiece deterministic);
+
+// Creates a test NodeDef for ShuffleDatasetV2.
+NodeDef MakeCacheV2Node(StringPiece name, StringPiece input_node_name,
+                        StringPiece filename_node_name,
+                        StringPiece cache_node_name);
+
 // Creates a test NodeDef for FilterDataset.
 NodeDef MakeFilterNode(StringPiece name, StringPiece input_node_name,
                        StringPiece function_name = "IsZero");
@@ -38,26 +55,59 @@ NodeDef MakeMapAndBatchNode(StringPiece name, StringPiece input_node_name,
                             StringPiece drop_remainder_node_name,
                             StringPiece function_name = "XTimesTwo");
 
-// Creates a test NodeDef for ParallelInterleaveDataset.
-NodeDef MakeParallelInterleaveNode(StringPiece name,
-                                   StringPiece input_node_name,
-                                   StringPiece cycle_length_node_name,
-                                   StringPiece block_length_node_name,
-                                   StringPiece num_parallel_calls_node_name,
-                                   StringPiece function_name, bool sloppy);
+// Creates a test NodeDef for ParallelInterleaveDatasetV2.
+NodeDef MakeParallelInterleaveV2Node(StringPiece name,
+                                     StringPiece input_node_name,
+                                     StringPiece cycle_length_node_name,
+                                     StringPiece block_length_node_name,
+                                     StringPiece num_parallel_calls_node_name,
+                                     StringPiece function_name, bool sloppy);
+
+// Creates a test NodeDef for ParallelInterleaveDatasetV4.
+NodeDef MakeParallelInterleaveV4Node(StringPiece name,
+                                     StringPiece input_node_name,
+                                     StringPiece cycle_length_node_name,
+                                     StringPiece block_length_node_name,
+                                     StringPiece num_parallel_calls_node_name,
+                                     StringPiece function_name,
+                                     StringPiece deterministic);
 
 // Creates a test NodeDef for ParallelMapDataset.
 NodeDef MakeParallelMapNode(StringPiece name, StringPiece input_node_name,
                             StringPiece num_parallel_calls_node_name,
                             StringPiece function_name, bool sloppy);
 
+// Creates a test NodeDef for ParallelMapDatasetV2.
+NodeDef MakeParallelMapV2Node(StringPiece name, StringPiece input_node_name,
+                              StringPiece num_parallel_calls_node_name,
+                              StringPiece function_name,
+                              StringPiece deterministic);
+
 // Creates a test NodeDef for ParseExampleDataset.
 NodeDef MakeParseExampleNode(StringPiece name, StringPiece input_node_name,
                              StringPiece num_parallel_calls_node_name,
                              bool sloppy);
 
-}  // end namespace graph_tests_utils
-}  // end namespace grappler
-}  // end namespace tensorflow
+// Creates a test NodeDef for ShuffleDatasetV2.
+NodeDef MakeShuffleV2Node(StringPiece name, StringPiece input_node_name,
+                          StringPiece buffer_size_node_name,
+                          StringPiece seed_generator_node_name);
+
+// Creates a test NodeDef for TakeDataset.
+NodeDef MakeTakeNode(StringPiece name, StringPiece input_node_name,
+                     StringPiece count_node_name);
+
+// Creates a test NodeDef for SkipDataset.
+NodeDef MakeSkipNode(StringPiece name, StringPiece input_node_name,
+                     StringPiece count_node_name);
+
+// Creates a test NodeDef for ShardDataset.
+NodeDef MakeShardNode(StringPiece name, StringPiece input_node_name,
+                      StringPiece num_shards_node_name,
+                      StringPiece index_node_name);
+
+}  // namespace graph_tests_utils
+}  // namespace grappler
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_GRAPH_TEST_UTILS_H_

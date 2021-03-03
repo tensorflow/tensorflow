@@ -33,7 +33,7 @@ class FindDeviceOpKernel : public OpKernel {
     Tensor* device_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output("device_name", TensorShape{},
                                              &device_tensor));
-    device_tensor->scalar<string>()() =
+    device_tensor->scalar<tstring>()() =
         ctx->function_library()->device()->name();
   }
 };

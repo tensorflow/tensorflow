@@ -1,0 +1,20 @@
+op {
+  graph_op_name: "DatasetFromGraph"
+  visibility: HIDDEN
+  in_arg {
+    name: "graph_def"
+    description: <<END
+The graph representation of the dataset (as serialized GraphDef).
+END
+  }
+  out_arg {
+    name: "handle"
+    description: <<END
+A variant tensor representing the dataset.
+END
+  }
+  summary: "Creates a dataset from the given `graph_def`."
+  description: <<END
+Creates a dataset from the provided `graph_def`.
+END
+}

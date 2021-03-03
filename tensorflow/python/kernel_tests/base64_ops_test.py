@@ -31,6 +31,7 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
 
+@test_util.run_deprecated_v1
 class Base64OpsTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -93,7 +94,7 @@ class Base64OpsTest(test_util.TensorFlowTestCase):
         decoded = string_ops.decode_base64(encoded)
 
         with self.cached_session() as sess:
-          encoded_value, decoded_value = sess.run([encoded, decoded])
+          encoded_value, decoded_value = self.evaluate([encoded, decoded])
 
         self.assertEqual(encoded_value.shape, msg.shape)
         self.assertEqual(decoded_value.shape, msg.shape)
@@ -106,7 +107,7 @@ class Base64OpsTest(test_util.TensorFlowTestCase):
       # Invalid length.
       msg = np.random.bytes(99)
       enc = base64.urlsafe_b64encode(msg)
-      with self.assertRaisesRegexp(errors.InvalidArgumentError, "1 modulo 4"):
+      with self.assertRaisesRegex(errors.InvalidArgumentError, "1 modulo 4"):
         try_decode(enc + b"a")
 
       # Invalid char used in encoding.

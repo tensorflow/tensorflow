@@ -10,7 +10,7 @@ tf_module {
   }
   member {
     name: "TFRecordWriter"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
   }
   member_method {
     name: "tf_record_iterator"

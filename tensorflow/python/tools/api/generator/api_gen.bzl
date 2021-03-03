@@ -8,6 +8,31 @@ def get_compat_files(
     """Prepends compat/v<compat_api_version> to file_paths."""
     return ["compat/v%d/%s" % (compat_api_version, f) for f in file_paths]
 
+def get_nested_compat_files(compat_api_versions):
+    """Return __init__.py file paths for files under nested compat modules.
+
+    A nested compat module contains two __init__.py files:
+      1. compat/vN/compat/vK/__init__.py
+      2. compat/vN/compat/vK/compat/__init__.py
+
+    Args:
+      compat_api_versions: list of compat versions.
+
+    Returns:
+      List of __init__.py file paths to include under nested compat modules.
+    """
+    files = []
+    for v in compat_api_versions:
+        files.extend([
+            "compat/v%d/compat/v%d/__init__.py" % (v, sv)
+            for sv in compat_api_versions
+        ])
+        files.extend([
+            "compat/v%d/compat/v%d/compat/__init__.py" % (v, sv)
+            for sv in compat_api_versions
+        ])
+    return files
+
 def gen_api_init_files(
         name,
         output_files = TENSORFLOW_API_INIT_FILES,
@@ -17,10 +42,18 @@ def gen_api_init_files(
         api_version = 2,
         compat_api_versions = [],
         compat_init_templates = [],
-        packages = ["tensorflow.python", "tensorflow.lite.python.lite"],
-        package_deps = ["//tensorflow/python:no_contrib"],
+        packages = [
+            "tensorflow.python",
+            "tensorflow.lite.python.lite",
+            "tensorflow.python.modules_with_exports",
+        ],
+        package_deps = [
+            "//tensorflow/python:no_contrib",
+            "//tensorflow/python:modules_with_exports",
+        ],
         output_package = "tensorflow",
-        output_dir = ""):
+        output_dir = "",
+        root_file_name = "__init__.py"):
     """Creates API directory structure and __init__.py files.
 
     Creates a genrule that generates a directory structure with __init__.py
@@ -54,18 +87,20 @@ def gen_api_init_files(
       output_package: Package where generated API will be added to.
       output_dir: Subdirectory to output API to.
         If non-empty, must end with '/'.
+      root_file_name: Name of the root file with all the root imports.
     """
     root_init_template_flag = ""
     if root_init_template:
-        root_init_template_flag = "--root_init_template=$(location " + root_init_template + ")"
+        root_init_template_flag = "--root_init_template=" + root_init_template
 
     primary_package = packages[0]
-    api_gen_binary_target = ("create_" + primary_package + "_api_%d") % api_version
+    api_gen_binary_target = ("create_" + primary_package + "_api_%s") % name
     native.py_binary(
         name = api_gen_binary_target,
         srcs = ["//tensorflow/python/tools/api/generator:create_python_api.py"],
         main = "//tensorflow/python/tools/api/generator:create_python_api.py",
-        srcs_version = "PY2AND3",
+        python_version = "PY3",
+        srcs_version = "PY3",
         visibility = ["//visibility:public"],
         deps = package_deps + [
             "//tensorflow/python:util",
@@ -73,6 +108,11 @@ def gen_api_init_files(
         ],
     )
 
+    # Replace name of root file with root_file_name.
+    output_files = [
+        root_file_name if f == "__init__.py" else f
+        for f in output_files
+    ]
     all_output_files = ["%s%s" % (output_dir, f) for f in output_files]
     compat_api_version_flags = ""
     for compat_api_version in compat_api_versions:
@@ -84,6 +124,13 @@ def gen_api_init_files(
             " --compat_init_template=$(location %s)" % compat_init_template
         )
 
+    # copybara:uncomment_begin(configurable API loading)
+    # native.vardef("TF_API_INIT_LOADING", "default")
+    # loading_flag = " --loading=$(TF_API_INIT_LOADING)"
+    # copybara:uncomment_end_and_comment_begin
+    loading_flag = " --loading=default"
+    # copybara:comment_end
+
     native.genrule(
         name = name,
         outs = all_output_files,
@@ -92,8 +139,9 @@ def gen_api_init_files(
             root_init_template_flag + " --apidir=$(@D)" + output_dir +
             " --apiname=" + api_name + " --apiversion=" + str(api_version) +
             compat_api_version_flags + " " + compat_init_template_flags +
-            " --package=" + ",".join(packages) +
-            " --output_package=" + output_package + " $(OUTS)"
+            loading_flag + " --packages=" + ",".join(packages) +
+            " --output_package=" + output_package +
+            " --use_relative_imports=True $(OUTS)"
         ),
         srcs = srcs,
         tools = [":" + api_gen_binary_target],

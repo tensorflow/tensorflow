@@ -14,7 +14,7 @@ SQLITE_COPTS = [
     "@org_tensorflow//tensorflow:windows": [
         "-DSQLITE_MAX_TRIGGER_DEPTH=100",
     ],
-    "@org_tensorflow//tensorflow:darwin": [
+    "@org_tensorflow//tensorflow:macos": [
         "-Os",
         "-DHAVE_GMTIME_R=1",
         "-DHAVE_LOCALTIME_R=1",
@@ -58,6 +58,6 @@ cc_library(
 # This is a Copybara sync helper for Google.
 py_library(
     name = "python",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
 )

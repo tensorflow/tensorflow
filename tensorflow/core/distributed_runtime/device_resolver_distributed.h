@@ -18,9 +18,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 class DeviceMgr;
@@ -28,39 +29,21 @@ class WorkerCacheInterface;
 
 class DeviceResolverDistributed : public DeviceResolverInterface {
  public:
-  DeviceResolverDistributed(const DeviceMgr* dev_mgr,
-                            WorkerCacheInterface* worker_cache,
-                            const string& task_name);
+  explicit DeviceResolverDistributed(const DeviceMgr* dev_mgr);
 
-  virtual ~DeviceResolverDistributed() {}
+  Status GetDeviceAttributes(const string& device,
+                             DeviceAttributes* attributes) override;
 
-  void GetDeviceLocalitiesAsync(const CollInstanceParams& inst_params,
-                                std::vector<DeviceLocality>* localities,
-                                const StatusCallback& done) override;
+  Status GetAllDeviceAttributes(
+      const string& task, std::vector<DeviceAttributes>* attributes) override;
 
-  void GetLocalityAsync(const string& device, const string& task,
-                        DeviceLocality* locality,
-                        const StatusCallback& done) override;
-
-  void ClearTask(const string& task) override;
+  Status UpdateDeviceAttributes(
+      const std::vector<DeviceAttributes>& attributes) override;
 
  protected:
-  // Loads attr_table_ with device attributes retrieved from remote task.
-  void RefreshRemoteAttributes(const string& device, const string& task,
-                               const StatusCallback& done) LOCKS_EXCLUDED(mu_);
-
-  // Subroutine used by GetDeviceLocalitiesAsync.  Recursively extends
-  // *localities with DeviceLocality of the corresponding device named
-  // by inst_params.instance.device_names.
-  void GetDeviceLocalitiesRecursive(const CollInstanceParams& inst_params,
-                                    std::vector<DeviceLocality>* localities,
-                                    const StatusCallback& done);
-
-  const DeviceMgr* dev_mgr_;            // Not owned
-  WorkerCacheInterface* worker_cache_;  // Not owned
   const string task_name_;
   mutex mu_;
-  gtl::FlatMap<string, DeviceAttributes> attr_table_ GUARDED_BY(mu_);
+  absl::flat_hash_map<string, DeviceAttributes> attr_table_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

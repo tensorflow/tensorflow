@@ -18,7 +18,12 @@ limitations under the License.
 
 #include <vector>
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#define EIGEN_USE_GPU
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -29,9 +34,9 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/work_sharder.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/maxpooling_op_gpu.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
@@ -40,9 +45,12 @@ typedef Eigen::GpuDevice GPUDevice;
 // A helper class to manage sizes and shapes for pooling operations.
 struct PoolParameters {
   // Updates context->status if there is an invalid input.
+  // explicit_paddings has eight elements if padding==EXPLIICT, and zero
+  // elements otherwise.
   PoolParameters(OpKernelContext* context, const std::vector<int32>& ksize,
                  const std::vector<int32>& stride, Padding padding,
-                 TensorFormat data_format, const TensorShape& tensor_in_shape);
+                 std::vector<int64> explicit_paddings, TensorFormat data_format,
+                 const TensorShape& tensor_in_shape);
 
   // Returns the shape of the output for "forward" pooling operations.
   TensorShape forward_output_shape();
@@ -65,12 +73,20 @@ struct PoolParameters {
   int64 out_width;
   int out_depth;
 
-  int64 pad_rows;
-  int64 pad_cols;
+  int64 pad_top;
+  int64 pad_bottom;
+  int64 pad_left;
+  int64 pad_right;
+
   int pad_depth;
 
   TensorFormat data_format;
 };
+
+// Checks if the sizes of the paddings are less than the size of window.
+// This is required for MaxPool because it pads with -inf, so the pooling
+// window cannot fully cover the padded area.
+Status CheckPaddingSize(PoolParameters& params);
 
 // An implementation of MaxPooling (forward).
 // TODO (yongtang): Remove MaxPoolingOp and use MaxPoolingV2Op,
@@ -96,11 +112,20 @@ class MaxPoolingOp : public OpKernel {
     OP_REQUIRES(context, ksize_.size() == 4,
                 errors::InvalidArgument("Sliding window ksize field must "
                                         "specify 4 dimensions"));
+    for (int i = 0; i < ksize_.size(); ++i) {
+      OP_REQUIRES(context, ksize_[i] > 0,
+                  errors::InvalidArgument("Sliding window ksize for dimension ",
+                                          i, " was zero."));
+    }
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,
                 errors::InvalidArgument("Sliding window stride field must "
                                         "specify 4 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    if (padding_ == Padding::EXPLICIT) {
+      OP_REQUIRES_OK(
+          context, context->GetAttr("explicit_paddings", &explicit_paddings_));
+    }
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));
@@ -108,8 +133,9 @@ class MaxPoolingOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& tensor_in = context->input(0);
-    PoolParameters params{context,  ksize_,      stride_,
-                          padding_, FORMAT_NHWC, tensor_in.shape()};
+    PoolParameters params{
+        context,     ksize_,           stride_, padding_, explicit_paddings_,
+        FORMAT_NHWC, tensor_in.shape()};
     if (!context->status().ok()) {
       return;
     }
@@ -129,9 +155,21 @@ class MaxPoolingOp : public OpKernel {
           context, params.depth_window == params.depth_stride,
           errors::Unimplemented("Depthwise max pooling requires "
                                 "the depth window to equal the depth stride."));
+      OP_REQUIRES(
+          context, padding_ != EXPLICIT,
+          errors::Unimplemented("Depthwise max pooling does not support "
+                                "explicit padding."));
 
       DepthwiseMaxPool(context, output, tensor_in, params);
     } else {
+      // MaxPoolingOp is only called on the GPU when the eigen_tensor label
+      // is used. In this case, explicit padding is not supported
+      if (std::is_same<Device, GPUDevice>::value &&
+          padding_ == Padding::EXPLICIT) {
+        context->SetStatus(errors::Unimplemented(
+            "MaxPoolingOp does not support explicit padding."));
+        return;
+      }
       SpatialMaxPool(context, output, tensor_in, params, padding_);
     }
   }
@@ -197,8 +235,8 @@ class MaxPoolingOp : public OpKernel {
       auto shard = [&params, &in_mat, &out_mat](int64 start, int64 limit) {
         const int32 in_rows = params.tensor_in_rows;
         const int32 in_cols = params.tensor_in_cols;
-        const int32 pad_rows = params.pad_rows;
-        const int32 pad_cols = params.pad_cols;
+        const int32 pad_top = params.pad_top;
+        const int32 pad_left = params.pad_left;
         const int32 window_rows = params.window_rows;
         const int32 window_cols = params.window_cols;
         const int32 row_stride = params.row_stride;
@@ -220,8 +258,8 @@ class MaxPoolingOp : public OpKernel {
             for (int32 w = 0; w < in_cols; ++w) {
               // (h_start, h_end) * (w_start, w_end) is the range that the input
               // vector projects to.
-              const int32 hpad = h + pad_rows;
-              const int32 wpad = w + pad_cols;
+              const int32 hpad = h + pad_top;
+              const int32 wpad = w + pad_left;
               const int32 h_start = (hpad < window_rows)
                                         ? 0
                                         : (hpad - window_rows) / row_stride + 1;
@@ -258,32 +296,39 @@ class MaxPoolingOp : public OpKernel {
   std::vector<int32> ksize_;
   std::vector<int32> stride_;
   Padding padding_;
+  std::vector<int64> explicit_paddings_;
   TensorFormat data_format_;
 };
 
 template <typename Device>
 struct LaunchMaxPoolingNoMask_NCHW_VECT_C;
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <>
 struct LaunchMaxPoolingNoMask_NCHW_VECT_C<Eigen::GpuDevice> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& input, Tensor* output) {
+#if GOOGLE_CUDA
     bool status = functor::MaxPoolForwardNoMask_NCHW_VECT_C()(
         reinterpret_cast<const int32*>(input.flat<qint8>().data()),
         params.tensor_in_batch, params.tensor_in_rows, params.tensor_in_cols,
         params.depth, params.out_height, params.out_width, params.window_rows,
         params.window_cols, params.row_stride, params.col_stride,
-        params.pad_rows, params.pad_cols,
+        params.pad_top, params.pad_left,
         reinterpret_cast<int32*>(output->flat<qint8>().data()),
         context->eigen_gpu_device());
     if (!status) {
       context->SetStatus(errors::Internal(
           "Failed launching LaunchMaxPoolingNoMask_NCHW_VECT_C"));
     }
+#else
+    // ROCm TODO: add support __vmaxs4 on ROCm
+    context->SetStatus(errors::Internal(
+        "Failed launching LaunchMaxPoolingNoMask_NCHW_VECT_C"));
+#endif  // GOOGLE_CUDA
   }
 };
-#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <typename Device, typename T>
 class MaxPoolingV2Op : public OpKernel {
@@ -347,8 +392,15 @@ class MaxPoolingV2Op : public OpKernel {
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));
 
-    PoolParameters params{context,  ksize,        stride,
-                          padding_, data_format_, tensor_in.shape()};
+    PoolParameters params{
+        context,
+        ksize,
+        stride,
+        padding_,
+        /*explicit_paddings=*/{},
+        data_format_,
+        tensor_in.shape(),
+    };
     if (!context->status().ok()) {
       return;
     }
@@ -400,7 +452,7 @@ class MaxPoolingV2Op : public OpKernel {
     // Spatial MaxPooling implementation.
     //
     // TODO(vrv): Remove this once we no longer need it.
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     if (std::is_same<Device, GPUDevice>::value) {
       Eigen::PaddingType pt = BrainPadding2EigenPadding(padding);
       if (std::is_same<T, qint8>::value) {
@@ -444,8 +496,8 @@ class MaxPoolingV2Op : public OpKernel {
       auto shard = [&params, &in_mat, &out_mat](int64 start, int64 limit) {
         const int32 in_rows = params.tensor_in_rows;
         const int32 in_cols = params.tensor_in_cols;
-        const int32 pad_rows = params.pad_rows;
-        const int32 pad_cols = params.pad_cols;
+        const int32 pad_top = params.pad_top;
+        const int32 pad_left = params.pad_left;
         const int32 window_rows = params.window_rows;
         const int32 window_cols = params.window_cols;
         const int32 row_stride = params.row_stride;
@@ -467,8 +519,8 @@ class MaxPoolingV2Op : public OpKernel {
             for (int32 w = 0; w < in_cols; ++w) {
               // (h_start, h_end) * (w_start, w_end) is the range that the input
               // vector projects to.
-              const int32 hpad = h + pad_rows;
-              const int32 wpad = w + pad_cols;
+              const int32 hpad = h + pad_top;
+              const int32 wpad = w + pad_left;
               const int32 h_start = (hpad < window_rows)
                                         ? 0
                                         : (hpad - window_rows) / row_stride + 1;
@@ -556,8 +608,8 @@ void SpatialAvgPool(OpKernelContext* context, Tensor* output,
         for (int w = 0; w < params.tensor_in_cols; ++w) {
           // (h_start, h_end) * (w_start, w_end) is the range that the input
           // vector projects to.
-          const int hpad = h + params.pad_rows;
-          const int wpad = w + params.pad_cols;
+          const int hpad = h + params.pad_top;
+          const int wpad = w + params.pad_left;
           const int h_start =
               (hpad < params.window_rows)
                   ? 0
@@ -594,9 +646,9 @@ void SpatialAvgPool(OpKernelContext* context, Tensor* output,
   // NOTE: Constants in calculation below were estimated based on benchmarking.
   // Nanoseconds/work_unit for benchmarks ranged from 0.01 to 0.001, and
   // so the factor 0.01 (i.e. 1/100) with a max of 10000, was chosen to limit
-  // the work unit cost to an operating range in which it emperically performed
+  // the work unit cost to an operating range in which it empirically performed
   // best.
-  const int64 work_unit_cost = std::max(int64{10000}, work_unit_size / 100LL);
+  const int64 work_unit_cost = std::max(int64{10000}, work_unit_size / 100);
   const DeviceBase::CpuWorkerThreads& worker_threads =
       *(context->device()->tensorflow_cpu_worker_threads());
   Shard(worker_threads.num_threads, worker_threads.workers,

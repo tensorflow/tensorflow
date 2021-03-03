@@ -1,3 +1,4 @@
+# Lint as python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,9 +21,11 @@ from __future__ import print_function
 
 from abc import abstractmethod
 from contextlib import closing
+import errno
+import functools
 import hashlib
 import multiprocessing
-from multiprocessing.pool import ThreadPool
+import multiprocessing.dummy
 import os
 import random
 import shutil
@@ -30,17 +33,20 @@ import sys
 import tarfile
 import threading
 import time
+import weakref
 import zipfile
 
 import numpy as np
 import six
 from six.moves.urllib.error import HTTPError
 from six.moves.urllib.error import URLError
-from six.moves.urllib.request import urlopen
 
+from tensorflow.python.framework import ops
+from six.moves.urllib.request import urlopen
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils.generic_utils import Progbar
-from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.keras.utils.io_utils import path_to_string
+from tensorflow.python.util.tf_export import keras_export
 
 
 try:
@@ -48,24 +54,29 @@ try:
 except ImportError:
   import Queue as queue
 
+try:
+  import typing
+  is_iterator = lambda x: isinstance(x, typing.Iterator)
+except ImportError:
+  # Python2 uses next, and Python3 should have typing so __next__ is not needed.
+  is_iterator = lambda x: hasattr(x, '__iter__') and hasattr(x, 'next')
+
 
 if sys.version_info[0] == 2:
 
   def urlretrieve(url, filename, reporthook=None, data=None):
-    """Replacement for `urlretrive` for Python 2.
+    """Replacement for `urlretrieve` for Python 2.
 
     Under Python 2, `urlretrieve` relies on `FancyURLopener` from legacy
     `urllib` module, known to have issues with proxy management.
 
-    Arguments:
+    Args:
         url: url to retrieve.
         filename: where to store the retrieved data locally.
-        reporthook: a hook function that will be called once
-            on establishment of the network connection and once
-            after each block read thereafter.
-            The hook will be passed three arguments;
-            a count of blocks transferred so far,
-            a block size in bytes, and the total size of the file.
+        reporthook: a hook function that will be called once on establishment of
+          the network connection and once after each block read thereafter. The
+          hook will be passed three arguments; a count of blocks transferred so
+          far, a block size in bytes, and the total size of the file.
         data: `data` argument passed to `urlopen`.
     """
 
@@ -95,13 +106,16 @@ else:
 
 def is_generator_or_sequence(x):
   """Check if `x` is a Keras generator type."""
-  return tf_inspect.isgenerator(x) or isinstance(x, Sequence)
+  builtin_iterators = (str, list, tuple, dict, set, frozenset)
+  if isinstance(x, (ops.Tensor, np.ndarray) + builtin_iterators):
+    return False
+  return tf_inspect.isgenerator(x) or isinstance(x, Sequence) or is_iterator(x)
 
 
 def _extract_archive(file_path, path='.', archive_format='auto'):
   """Extracts an archive if it matches tar, tar.gz, tar.bz, or zip formats.
 
-  Arguments:
+  Args:
       file_path: path to the archive file
       path: path to extract the archive file
       archive_format: Archive format to try for extracting the file.
@@ -120,6 +134,9 @@ def _extract_archive(file_path, path='.', archive_format='auto'):
     archive_format = ['tar', 'zip']
   if isinstance(archive_format, six.string_types):
     archive_format = [archive_format]
+
+  file_path = path_to_string(file_path)
+  path = path_to_string(path)
 
   for archive_type in archive_format:
     if archive_type == 'tar':
@@ -144,7 +161,7 @@ def _extract_archive(file_path, path='.', archive_format='auto'):
   return False
 
 
-@tf_export('keras.utils.get_file')
+@keras_export('keras.utils.get_file')
 def get_file(fname,
              origin,
              untar=False,
@@ -166,13 +183,22 @@ def get_file(fname,
   Passing a hash will verify the file after download. The command line
   programs `shasum` and `sha256sum` can compute the hash.
 
-  Arguments:
+  Example:
+
+  ```python
+  path_to_downloaded_file = tf.keras.utils.get_file(
+      "flower_photos",
+      "https://storage.googleapis.com/download.tensorflow.org/example_images/flower_photos.tgz",
+      untar=True)
+  ```
+
+  Args:
       fname: Name of the file. If an absolute path `/path/to/file.txt` is
           specified the file will be saved at that location.
       origin: Original URL of the file.
-      untar: Deprecated in favor of 'extract'.
+      untar: Deprecated in favor of `extract` argument.
           boolean, whether the file should be decompressed
-      md5_hash: Deprecated in favor of 'file_hash'.
+      md5_hash: Deprecated in favor of `file_hash` argument.
           md5 hash of the file for verification
       file_hash: The expected hash string of the file after download.
           The sha256 and md5 hash algorithms are both supported.
@@ -180,17 +206,16 @@ def get_file(fname,
           saved. If an absolute path `/path/to/folder` is
           specified the file will be saved at that location.
       hash_algorithm: Select the hash algorithm to verify the file.
-          options are 'md5', 'sha256', and 'auto'.
+          options are `'md5'`, `'sha256'`, and `'auto'`.
           The default 'auto' detects the hash algorithm in use.
       extract: True tries extracting the file as an Archive, like tar or zip.
       archive_format: Archive format to try for extracting the file.
-          Options are 'auto', 'tar', 'zip', and None.
-          'tar' includes tar, tar.gz, and tar.bz files.
-          The default 'auto' is ['tar', 'zip'].
+          Options are `'auto'`, `'tar'`, `'zip'`, and `None`.
+          `'tar'` includes tar, tar.gz, and tar.bz files.
+          The default `'auto'` corresponds to `['tar', 'zip']`.
           None or an empty list will return no matches found.
       cache_dir: Location to store cached files, when None it
-          defaults to the [Keras
-            Directory](/faq/#where-is-the-keras-configuration-filed-stored).
+          defaults to the default directory `~/.keras/`.
 
   Returns:
       Path to the downloaded file
@@ -204,8 +229,9 @@ def get_file(fname,
   if not os.access(datadir_base, os.W_OK):
     datadir_base = os.path.join('/tmp', '.keras')
   datadir = os.path.join(datadir_base, cache_subdir)
-  if not os.path.exists(datadir):
-    os.makedirs(datadir)
+  _makedirs_exist_ok(datadir)
+
+  fname = path_to_string(fname)
 
   if untar:
     untar_fpath = os.path.join(datadir, fname)
@@ -246,10 +272,10 @@ def get_file(fname,
     try:
       try:
         urlretrieve(origin, fpath, dl_progress)
-      except URLError as e:
-        raise Exception(error_msg.format(origin, e.errno, e.reason))
       except HTTPError as e:
         raise Exception(error_msg.format(origin, e.code, e.msg))
+      except URLError as e:
+        raise Exception(error_msg.format(origin, e.errno, e.reason))
     except (Exception, KeyboardInterrupt) as e:
       if os.path.exists(fpath):
         os.remove(fpath)
@@ -267,21 +293,32 @@ def get_file(fname,
   return fpath
 
 
+def _makedirs_exist_ok(datadir):
+  if six.PY2:
+    # Python 2 doesn't have the exist_ok arg, so we try-except here.
+    try:
+      os.makedirs(datadir)
+    except OSError as e:
+      if e.errno != errno.EEXIST:
+        raise
+  else:
+    os.makedirs(datadir, exist_ok=True)  # pylint: disable=unexpected-keyword-arg
+
+
 def _hash_file(fpath, algorithm='sha256', chunk_size=65535):
   """Calculates a file sha256 or md5 hash.
 
   Example:
 
   ```python
-      >>> from keras.data_utils import _hash_file
-      >>> _hash_file('/path/to/file.zip')
-      'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+  _hash_file('/path/to/file.zip')
+  'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
   ```
 
-  Arguments:
+  Args:
       fpath: path to the file being validated
-      algorithm: hash algorithm, one of 'auto', 'sha256', or 'md5'.
-          The default 'auto' detects the hash algorithm in use.
+      algorithm: hash algorithm, one of `'auto'`, `'sha256'`, or `'md5'`.
+          The default `'auto'` detects the hash algorithm in use.
       chunk_size: Bytes to read at a time, important for large files.
 
   Returns:
@@ -302,7 +339,7 @@ def _hash_file(fpath, algorithm='sha256', chunk_size=65535):
 def validate_file(fpath, file_hash, algorithm='auto', chunk_size=65535):
   """Validates a file against a sha256 or md5 hash.
 
-  Arguments:
+  Args:
       fpath: path to the file being validated
       file_hash:  The expected hash string of the file.
           The sha256 and md5 hash algorithms are both supported.
@@ -324,7 +361,50 @@ def validate_file(fpath, file_hash, algorithm='auto', chunk_size=65535):
     return False
 
 
-@tf_export('keras.utils.Sequence')
+class ThreadsafeIter(object):
+  """Wrap an iterator with a lock and propagate exceptions to all threads."""
+
+  def __init__(self, it):
+    self.it = it
+    self.lock = threading.Lock()
+
+    # After a generator throws an exception all subsequent next() calls raise a
+    # StopIteration Exception. This, however, presents an issue when mixing
+    # generators and threading because it means the order of retrieval need not
+    # match the order in which the generator was called. This can make it appear
+    # that a generator exited normally when in fact the terminating exception is
+    # just in a different thread. In order to provide thread safety, once
+    # self.it has thrown an exception we continue to throw the same exception.
+    self._exception = None
+
+  def __iter__(self):
+    return self
+
+  def next(self):
+    return self.__next__()
+
+  def __next__(self):
+    with self.lock:
+      if self._exception:
+        raise self._exception  # pylint: disable=raising-bad-type
+
+      try:
+        return next(self.it)
+      except Exception as e:
+        self._exception = e
+        raise
+
+
+def threadsafe_generator(f):
+
+  @functools.wraps(f)
+  def g(*a, **kw):
+    return ThreadsafeIter(f(*a, **kw))
+
+  return g
+
+
+@keras_export('keras.utils.Sequence')
 class Sequence(object):
   """Base object for fitting to a sequence of data, such as a dataset.
 
@@ -342,32 +422,32 @@ class Sequence(object):
   Examples:
 
   ```python
-      from skimage.io import imread
-      from skimage.transform import resize
-      import numpy as np
-      import math
+  from skimage.io import imread
+  from skimage.transform import resize
+  import numpy as np
+  import math
 
-      # Here, `x_set` is list of path to the images
-      # and `y_set` are the associated classes.
+  # Here, `x_set` is list of path to the images
+  # and `y_set` are the associated classes.
 
-      class CIFAR10Sequence(Sequence):
+  class CIFAR10Sequence(Sequence):
 
-          def __init__(self, x_set, y_set, batch_size):
-              self.x, self.y = x_set, y_set
-              self.batch_size = batch_size
+      def __init__(self, x_set, y_set, batch_size):
+          self.x, self.y = x_set, y_set
+          self.batch_size = batch_size
 
-          def __len__(self):
-              return math.ceil(len(self.x) / self.batch_size)
+      def __len__(self):
+          return math.ceil(len(self.x) / self.batch_size)
 
-          def __getitem__(self, idx):
-              batch_x = self.x[idx * self.batch_size:(idx + 1) *
-              self.batch_size]
-              batch_y = self.y[idx * self.batch_size:(idx + 1) *
-              self.batch_size]
+      def __getitem__(self, idx):
+          batch_x = self.x[idx * self.batch_size:(idx + 1) *
+          self.batch_size]
+          batch_y = self.y[idx * self.batch_size:(idx + 1) *
+          self.batch_size]
 
-              return np.array([
-                  resize(imread(file_name), (200, 200))
-                     for file_name in batch_x]), np.array(batch_y)
+          return np.array([
+              resize(imread(file_name), (200, 200))
+                 for file_name in batch_x]), np.array(batch_y)
   ```
   """
 
@@ -375,7 +455,7 @@ class Sequence(object):
   def __getitem__(self, index):
     """Gets batch at position `index`.
 
-    Arguments:
+    Args:
         index: position of the batch in the Sequence.
 
     Returns:
@@ -406,11 +486,11 @@ class Sequence(object):
 def iter_sequence_infinite(seq):
   """Iterates indefinitely over a Sequence.
 
-  Arguments:
-    seq: Sequence instance.
+  Args:
+    seq: `Sequence` instance.
 
   Yields:
-    Batches of data from the Sequence.
+    Batches of data from the `Sequence`.
   """
   while True:
     for item in seq:
@@ -421,6 +501,43 @@ def iter_sequence_infinite(seq):
 _SHARED_SEQUENCES = {}
 # We use a Value to provide unique id to different processes.
 _SEQUENCE_COUNTER = None
+
+
+# Because multiprocessing pools are inherently unsafe, starting from a clean
+# state can be essential to avoiding deadlocks. In order to accomplish this, we
+# need to be able to check on the status of Pools that we create.
+_DATA_POOLS = weakref.WeakSet()
+_WORKER_ID_QUEUE = None  # Only created if needed.
+_WORKER_IDS = set()
+_FORCE_THREADPOOL = False
+_FORCE_THREADPOOL_LOCK = threading.RLock()
+
+
+def dont_use_multiprocessing_pool(f):
+  @functools.wraps(f)
+  def wrapped(*args, **kwargs):
+    with _FORCE_THREADPOOL_LOCK:
+      global _FORCE_THREADPOOL
+      old_force_threadpool, _FORCE_THREADPOOL = _FORCE_THREADPOOL, True
+      out = f(*args, **kwargs)
+      _FORCE_THREADPOOL = old_force_threadpool
+      return out
+  return wrapped
+
+
+def get_pool_class(use_multiprocessing):
+  global _FORCE_THREADPOOL
+  if not use_multiprocessing or _FORCE_THREADPOOL:
+    return multiprocessing.dummy.Pool  # ThreadPool
+  return multiprocessing.Pool
+
+
+def get_worker_id_queue():
+  """Lazily create the queue to track worker ids."""
+  global _WORKER_ID_QUEUE
+  if _WORKER_ID_QUEUE is None:
+    _WORKER_ID_QUEUE = multiprocessing.Queue()
+  return _WORKER_ID_QUEUE
 
 
 def init_pool(seqs):
@@ -435,7 +552,7 @@ def get_index(uid, i):
   get a specific one. A single Sequence would cause the validation to
   overwrite the training Sequence.
 
-  Arguments:
+  Args:
       uid: int, Sequence identifier
       i: index
 
@@ -445,7 +562,7 @@ def get_index(uid, i):
   return _SHARED_SEQUENCES[uid][i]
 
 
-@tf_export('keras.utils.SequenceEnqueuer')
+@keras_export('keras.utils.SequenceEnqueuer')
 class SequenceEnqueuer(object):
   """Base class to enqueue inputs.
 
@@ -461,7 +578,7 @@ class SequenceEnqueuer(object):
       for data in datas:
           # Use the inputs; training, evaluating, predicting.
           # ... stop sometime.
-      enqueuer.close()
+      enqueuer.stop()
   ```
 
   The `enqueuer.get()` should be an infinite stream of datas.
@@ -503,7 +620,7 @@ class SequenceEnqueuer(object):
   def start(self, workers=1, max_queue_size=10):
     """Starts the handler's workers.
 
-    Arguments:
+    Args:
         workers: Number of workers.
         max_queue_size: queue size
             (when full, workers could block on `put()`)
@@ -512,7 +629,7 @@ class SequenceEnqueuer(object):
       self.executor_fn = self._get_executor_init(workers)
     else:
       # We do not need the init since it's threads.
-      self.executor_fn = lambda _: ThreadPool(workers)
+      self.executor_fn = lambda _: get_pool_class(False)(workers)
     self.workers = workers
     self.queue = queue.Queue(max_queue_size)
     self.stop_signal = threading.Event()
@@ -530,7 +647,7 @@ class SequenceEnqueuer(object):
 
     Should be called by the same thread which called `start()`.
 
-    Arguments:
+    Args:
         timeout: maximum time to wait on `thread.join()`
     """
     self.stop_signal.set()
@@ -541,6 +658,10 @@ class SequenceEnqueuer(object):
     self.run_thread.join(timeout)
     _SHARED_SEQUENCES[self.uid] = None
 
+  def __del__(self):
+    if self.is_running():
+      self.stop()
+
   @abstractmethod
   def _run(self):
     """Submits request to the executor and queue the `Future` objects."""
@@ -550,7 +671,7 @@ class SequenceEnqueuer(object):
   def _get_executor_init(self, workers):
     """Gets the Pool initializer for multiprocessing.
 
-    Arguments:
+    Args:
         workers: Number of workers.
 
     Returns:
@@ -570,13 +691,11 @@ class SequenceEnqueuer(object):
     raise NotImplementedError
 
 
-@tf_export('keras.utils.OrderedEnqueuer')
+@keras_export('keras.utils.OrderedEnqueuer')
 class OrderedEnqueuer(SequenceEnqueuer):
   """Builds a Enqueuer from a Sequence.
 
-  Used in `fit_generator`, `evaluate_generator`, `predict_generator`.
-
-  Arguments:
+  Args:
       sequence: A `tf.keras.utils.data_utils.Sequence` object.
       use_multiprocessing: use multiprocessing if True, otherwise threading
       shuffle: whether to shuffle the data at the beginning of each epoch
@@ -589,16 +708,19 @@ class OrderedEnqueuer(SequenceEnqueuer):
   def _get_executor_init(self, workers):
     """Gets the Pool initializer for multiprocessing.
 
-    Arguments:
+    Args:
         workers: Number of workers.
 
     Returns:
         Function, a Function to initialize the pool
     """
     def pool_fn(seqs):
-      return multiprocessing.Pool(workers,
-                                  initializer=init_pool_generator,
-                                  initargs=(seqs, self.random_seed))
+      pool = get_pool_class(True)(
+          workers, initializer=init_pool_generator,
+          initargs=(seqs, None, get_worker_id_queue()))
+      _DATA_POOLS.add(pool)
+      return pool
+
     return pool_fn
 
   def _wait_queue(self):
@@ -620,6 +742,7 @@ class OrderedEnqueuer(SequenceEnqueuer):
         for i in sequence:
           if self.stop_signal.is_set():
             return
+
           self.queue.put(
               executor.apply_async(get_index, (self.uid, i)), block=True)
 
@@ -644,24 +767,45 @@ class OrderedEnqueuer(SequenceEnqueuer):
         `(inputs, targets)` or
         `(inputs, targets, sample_weights)`.
     """
-    try:
-      while self.is_running():
-        inputs = self.queue.get(block=True).get()
-        self.queue.task_done()
+    while self.is_running():
+      try:
+        inputs = self.queue.get(block=True, timeout=5).get()
+        if self.is_running():
+          self.queue.task_done()
         if inputs is not None:
           yield inputs
-    except Exception:  # pylint: disable=broad-except
-      self.stop()
-      six.reraise(*sys.exc_info())
+      except queue.Empty:
+        pass
+      except Exception:  # pylint: disable=broad-except
+        self.stop()
+        six.reraise(*sys.exc_info())
 
 
-def init_pool_generator(gens, random_seed=None):
+def init_pool_generator(gens, random_seed=None, id_queue=None):
+  """Initializer function for pool workers.
+
+  Args:
+    gens: State which should be made available to worker processes.
+    random_seed: An optional value with which to seed child processes.
+    id_queue: A multiprocessing Queue of worker ids. This is used to indicate
+      that a worker process was created by Keras and can be terminated using
+      the cleanup_all_keras_forkpools utility.
+  """
   global _SHARED_SEQUENCES
   _SHARED_SEQUENCES = gens
 
+  worker_proc = multiprocessing.current_process()
+
+  # name isn't used for anything, but setting a more descriptive name is helpful
+  # when diagnosing orphaned processes.
+  worker_proc.name = 'Keras_worker_{}'.format(worker_proc.name)
+
   if random_seed is not None:
-    ident = multiprocessing.current_process().ident
-    np.random.seed(random_seed + ident)
+    np.random.seed(random_seed + worker_proc.ident)
+
+  if id_queue is not None:
+    # If a worker dies during init, the pool will just create a replacement.
+    id_queue.put(worker_proc.ident, block=True, timeout=0.1)
 
 
 def next_sample(uid):
@@ -671,7 +815,7 @@ def next_sample(uid):
   get a specific one. A single generator would cause the validation to
   overwrite the training generator.
 
-  Arguments:
+  Args:
       uid: int, generator identifier
 
   Returns:
@@ -680,42 +824,41 @@ def next_sample(uid):
   return six.next(_SHARED_SEQUENCES[uid])
 
 
-@tf_export('keras.utils.GeneratorEnqueuer')
+@keras_export('keras.utils.GeneratorEnqueuer')
 class GeneratorEnqueuer(SequenceEnqueuer):
   """Builds a queue out of a data generator.
 
   The provided generator can be finite in which case the class will throw
   a `StopIteration` exception.
 
-  Used in `fit_generator`, `evaluate_generator`, `predict_generator`.
-
-  Arguments:
+  Args:
       generator: a generator function which yields data
       use_multiprocessing: use multiprocessing if True, otherwise threading
-      wait_time: time to sleep in-between calls to `put()`
       random_seed: Initial seed for workers,
           will be incremented by one for each worker.
   """
 
-  def __init__(self, sequence,
+  def __init__(self, generator,
                use_multiprocessing=False,
                random_seed=None):
-    super(GeneratorEnqueuer, self).__init__(sequence, use_multiprocessing)
+    super(GeneratorEnqueuer, self).__init__(generator, use_multiprocessing)
     self.random_seed = random_seed
 
   def _get_executor_init(self, workers):
     """Gets the Pool initializer for multiprocessing.
 
-    Arguments:
+    Args:
       workers: Number of works.
 
     Returns:
         A Function to initialize the pool
     """
     def pool_fn(seqs):
-      return multiprocessing.Pool(workers,
-                                  initializer=init_pool_generator,
-                                  initargs=(seqs, self.random_seed))
+      pool = get_pool_class(True)(
+          workers, initializer=init_pool_generator,
+          initargs=(seqs, self.random_seed, get_worker_id_queue()))
+      _DATA_POOLS.add(pool)
+      return pool
     return pool_fn
 
   def _run(self):
@@ -725,6 +868,7 @@ class GeneratorEnqueuer(SequenceEnqueuer):
       while True:
         if self.stop_signal.is_set():
           return
+
         self.queue.put(
             executor.apply_async(next_sample, (self.uid,)), block=True)
 

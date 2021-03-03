@@ -1,14 +1,16 @@
 syntax = "proto3";
 
 package tensorflow;
+
+import "tensorflow/core/framework/tensor.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+
 option cc_enable_arenas = true;
 option java_outer_classname = "AttrValueProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
-import "tensorflow/core/framework/tensor.proto";
-import "tensorflow/core/framework/tensor_shape.proto";
-import "tensorflow/core/framework/types.proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/attr_value_go_proto";
 
 // Protocol buffer representing the value for an attr used to configure an Op.
 // Comment indicates the corresponding attr type.  Only the field matching the

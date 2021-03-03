@@ -36,15 +36,16 @@ class GlobalStepTest(test.TestCase):
   def test_invalid_dtype(self):
     with ops.Graph().as_default() as g:
       self.assertIsNone(training_util.get_global_step())
-      variables.Variable(
+      variables.VariableV1(
           0.0,
           trainable=False,
           dtype=dtypes.float32,
-          name=ops.GraphKeys.GLOBAL_STEP)
-      self.assertRaisesRegexp(TypeError, 'does not have integer type',
-                              training_util.get_global_step)
-    self.assertRaisesRegexp(TypeError, 'does not have integer type',
-                            training_util.get_global_step, g)
+          name=ops.GraphKeys.GLOBAL_STEP,
+          collections=[ops.GraphKeys.GLOBAL_STEP])
+      self.assertRaisesRegex(TypeError, 'does not have integer type',
+                             training_util.get_global_step)
+    self.assertRaisesRegex(TypeError, 'does not have integer type',
+                           training_util.get_global_step, g)
 
   def test_invalid_shape(self):
     with ops.Graph().as_default() as g:
@@ -53,21 +54,22 @@ class GlobalStepTest(test.TestCase):
           [0],
           trainable=False,
           dtype=dtypes.int32,
-          name=ops.GraphKeys.GLOBAL_STEP)
-      self.assertRaisesRegexp(TypeError, 'not scalar',
-                              training_util.get_global_step)
-    self.assertRaisesRegexp(TypeError, 'not scalar',
-                            training_util.get_global_step, g)
+          name=ops.GraphKeys.GLOBAL_STEP,
+          collections=[ops.GraphKeys.GLOBAL_STEP])
+      self.assertRaisesRegex(TypeError, 'not scalar',
+                             training_util.get_global_step)
+    self.assertRaisesRegex(TypeError, 'not scalar',
+                           training_util.get_global_step, g)
 
   def test_create_global_step(self):
     self.assertIsNone(training_util.get_global_step())
     with ops.Graph().as_default() as g:
       global_step = training_util.create_global_step()
       self._assert_global_step(global_step)
-      self.assertRaisesRegexp(ValueError, 'already exists',
-                              training_util.create_global_step)
-      self.assertRaisesRegexp(ValueError, 'already exists',
-                              training_util.create_global_step, g)
+      self.assertRaisesRegex(ValueError, 'already exists',
+                             training_util.create_global_step)
+      self.assertRaisesRegex(ValueError, 'already exists',
+                             training_util.create_global_step, g)
       self._assert_global_step(training_util.create_global_step(ops.Graph()))
 
   def test_get_global_step(self):
@@ -77,7 +79,8 @@ class GlobalStepTest(test.TestCase):
           0,
           trainable=False,
           dtype=dtypes.int32,
-          name=ops.GraphKeys.GLOBAL_STEP)
+          name=ops.GraphKeys.GLOBAL_STEP,
+          collections=[ops.GraphKeys.GLOBAL_STEP])
       self._assert_global_step(
           training_util.get_global_step(), expected_dtype=dtypes.int32)
     self._assert_global_step(

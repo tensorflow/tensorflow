@@ -28,6 +28,8 @@ enum TfOpType {
   kIdentity,
   kAdd,
   kMul,
+  kRfft,
+  kImag,
   // Represents an op that does not exist in TensorFlow.
   kNonExistent,
   // Represents an valid TensorFlow op where the NodeDef is incompatible.
@@ -63,11 +65,13 @@ class FlexModelTest : public ::testing::Test {
   void SetValues(int tensor_index, const std::vector<float>& values) {
     SetTypedValues<float>(tensor_index, values);
   }
+  void SetStringValues(int tensor_index, const std::vector<string>& values);
 
   // Returns the tensor's values at the given index.
   std::vector<float> GetValues(int tensor_index) {
     return GetTypedValues<float>(tensor_index);
   }
+  std::vector<string> GetStringValues(int tensor_index) const;
 
   // Sets the tensor's shape at the given index.
   void SetShape(int tensor_index, const std::vector<int>& values);
@@ -78,6 +82,9 @@ class FlexModelTest : public ::testing::Test {
   // Returns the tensor's type at the given index.
   TfLiteType GetType(int tensor_index);
 
+  // Returns if the tensor at the given index is dynamic.
+  bool IsDynamicTensor(int tensor_index);
+
   const TestErrorReporter& error_reporter() const { return error_reporter_; }
 
   // Adds `num_tensor` tensors to the model. `inputs` contains the indices of
@@ -86,6 +93,11 @@ class FlexModelTest : public ::testing::Test {
   void AddTensors(int num_tensors, const std::vector<int>& inputs,
                   const std::vector<int>& outputs, TfLiteType type,
                   const std::vector<int>& dims);
+
+  // Set a constant tensor of the given shape, type and buffer at the given
+  // index.
+  void SetConstTensor(int tensor_index, const std::vector<int>& values,
+                      TfLiteType type, const char* buffer, size_t bytes);
 
   // Adds a TFLite Mul op. `inputs` contains the indices of the input tensors
   // and `outputs` contains the indices of the output tensors.
@@ -101,6 +113,7 @@ class FlexModelTest : public ::testing::Test {
  protected:
   std::unique_ptr<Interpreter> interpreter_;
   TestErrorReporter error_reporter_;
+  std::vector<int> tf_ops_;
 
  private:
   // Helper method to add a TensorFlow op. tflite_names needs to start with
@@ -110,6 +123,8 @@ class FlexModelTest : public ::testing::Test {
                const std::vector<int>& outputs);
 
   std::vector<std::vector<uint8_t>> flexbuffers_;
+
+  int next_op_index_ = 0;
 };
 
 }  // namespace testing

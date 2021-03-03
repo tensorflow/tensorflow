@@ -41,7 +41,7 @@ TensorFlowReshapeOperator* CreateReshapeFromReorderAxes(
                                    input_shape.dims(3) * input_shape.dims(2)};
 
   // Create a new input array for Reshape.
-  string reshape_array_name =
+  std::string reshape_array_name =
       AvailableArrayName(*model, reshape_op->outputs[0]);
   reshape_op->inputs.push_back(reshape_array_name);
 
@@ -71,7 +71,8 @@ TransposeOperator* CreateTransposeFromReorderAxes(
   GetShuffleShape(input_axes_order, output_axes_order, &permutations_data);
 
   // Create a new input permutations array for Transpose.
-  string perm_array_name = AvailableArrayName(*model, transpose_op->outputs[0]);
+  std::string perm_array_name =
+      AvailableArrayName(*model, transpose_op->outputs[0]);
   transpose_op->inputs.push_back(perm_array_name);
 
   Array& perm_array = model->GetOrCreateArray(perm_array_name);
@@ -104,7 +105,7 @@ TransposeOperator* CreateTransposeFromReorderAxes(
 
   // Get input array. If kFakeQuant is the input into ReorderAxes, get the input
   // array passed into kFakeQuant. kFakeQuant op is dropped when possible.
-  string constant_input_array_name = input_array_name;
+  std::string constant_input_array_name = input_array_name;
   if (!input_array.buffer) {
     const auto* op_producing_input = GetOpWithOutput(*model, input_array_name);
     if (op_producing_input &&
@@ -132,20 +133,16 @@ TransposeOperator* CreateTransposeFromReorderAxes(
     // order of the elements does not change.
     auto* reshape_op =
         CreateReshapeFromReorderAxes(model, reorder_op, input_shape);
-    const auto reshape_it = model->operators.emplace(reorder_it, reshape_op);
-    reorder_it = reshape_it + 1;
+    model->operators.emplace(reorder_it, reshape_op);
   } else {
     // Add Transpose operator into the graph.
     auto* transpose_op = CreateTransposeFromReorderAxes(
         model, reorder_op, input_shape, input_axes_order, output_axes_order);
-    const auto transpose_it =
-        model->operators.emplace(reorder_it, transpose_op);
-    reorder_it = transpose_it + 1;
+    model->operators.emplace(reorder_it, transpose_op);
   }
 
   // Remove ReorderAxes operator from the graph.
-  CHECK_EQ(reorder_it->get(), reorder_op);
-  model->operators.erase(reorder_it);
+  DeleteOpAndArrays(model, reorder_op);
 
   *modified = true;
   return ::tensorflow::Status::OK();
