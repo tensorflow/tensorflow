@@ -2082,7 +2082,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     # pylint: enable=line-too-long
     save.save_model(self, filepath, overwrite, include_optimizer, save_format,
                     signatures, options, save_traces)
-    
+
   def __reduce__(self):
     return pack_model(self)
 
