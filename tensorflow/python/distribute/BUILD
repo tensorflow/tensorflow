@@ -1771,7 +1771,6 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_rocm",
         "notsan",  # TODO(b/160006974)
-        "no_rocm",
     ],
     xla_enable_strict_auto_jit = True,
     deps = [
@@ -1805,7 +1804,6 @@ distribute_py_test(
         "no_cuda_asan",  # times out
         "no_rocm",
         "notsan",  # TODO(b/160006974)
-        "no_rocm",
     ],
     tpu_tags = [
         "no_oss",  # TODO(b/179045543)
@@ -1881,7 +1879,7 @@ distribute_py_test(
     disable_mlir_bridge = False,
     tags = [
         "multi_and_single_gpu",
-        "no_rocm", # known to be flaky up to 3.10
+        "no_rocm",
     ],
     deps = [
         ":combinations",
