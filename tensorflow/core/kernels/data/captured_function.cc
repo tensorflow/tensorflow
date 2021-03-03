@@ -570,13 +570,7 @@ Status CapturedFunction::AddToGraph(
   other_arguments_types->reserve(captured_inputs_.size());
   for (const Tensor& t : captured_inputs_) {
     Node* node;
-    DatasetBase* input;
-    Status s = GetDatasetFromVariantTensor(t, &input);
-    if (s.ok()) {
-      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
-    } else {
-      TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-    }
+    TF_RETURN_IF_ERROR(b->AddDatasetOrTensor(ctx, t, &node));
     other_arguments->emplace_back(node);
     other_arguments_types->emplace_back(t.dtype());
   }
