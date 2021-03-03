@@ -618,6 +618,24 @@ func @FuseFullyConnectedReshapeAdd2DConstWithExistingBias(%arg0: tensor<40x37xf3
   // CHECK: return %[[rs]]
 }
 
+// CHECK-LABEL: @NotFuseFullyConnectedReshapeAdd2DConstIfLastDimIsNotNumElementsOfRhs
+func @NotFuseFullyConnectedReshapeAdd2DConstIfLastDimIsNotNumElementsOfRhs(%arg0: tensor<40x37xf32>, %arg1: tensor<20x37xf32>) -> tensor<1x20x4x10xf32> {
+  %cst = constant unit
+  %cst2 = constant dense<2.0> : tensor<4x10xf32>
+  %shape = constant dense<[1, 20, 4, 10]> : tensor<4xi32>
+
+  %0 = "tfl.fully_connected"(%arg0, %arg1, %cst) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<40x37xf32>, tensor<20x37xf32>, none) -> (tensor<40x20xf32>)
+  %1 = "tfl.reshape"(%0, %shape) : (tensor<40x20xf32>, tensor<4xi32>) -> tensor<1x20x4x10xf32>
+  %2 = "tfl.add"(%1, %cst2) {fused_activation_function = "NONE"} : (tensor<1x20x4x10xf32>, tensor<4x10xf32>) -> tensor<1x20x4x10xf32>
+
+  return %2 : tensor<1x20x4x10xf32>
+
+  // CHECK: %[[fc:.*]] = "tfl.fully_connected"(%arg0, %arg1
+  // CHECK: %[[rs:.*]] = "tfl.reshape"(%[[fc]]
+  // CHECK: %[[add:.*]] = "tfl.add"(%[[rs]]
+  // CHECK: return %[[add]]
+}
+
 // CHECK-LABEL: @NotReorderReshapeAddIfNotBroadcastableAfter
 func @NotReorderReshapeAddIfNotBroadcastableAfter(%arg0: tensor<40x10x4xf32>) -> tensor<40x40xf32> {
   %cst = constant dense<2.0> : tensor<40xf32>
@@ -696,41 +714,13 @@ func @NotReorderReshapeAddIfHighDim(%arg0: tensor<1x1x1x1x30x96xf32>) -> tensor<
   // CHECK: return %[[rs2]]
 }
 
-// CHECK-LABEL: @ReorderReshapeAdd2DConst
-func @ReorderReshapeAdd2DConst(%arg0: tensor<8x15xf32>) -> tensor<1x8x3x5xf32> {
+// CHECK-LABEL: @NotReorderReshapeAdd2DConstIfInputIsNotDefinedByFullyConnected
+func @NotReorderReshapeAdd2DConstIfInputIsNotDefinedByFullyConnected(%arg0: tensor<8x15xf32>) -> tensor<1x8x3x5xf32> {
   %cst = constant dense<2.0> : tensor<3x5xf32>
   %shape = constant dense<[1, 8, 3, 5]> : tensor<4xi32>
   %1 = "tfl.reshape"(%arg0, %shape) : (tensor<8x15xf32>, tensor<4xi32>) -> tensor<1x8x3x5xf32>
   %2 = "tfl.add"(%1, %cst) {fused_activation_function = "NONE"} : (tensor<1x8x3x5xf32>, tensor<3x5xf32>) -> tensor<1x8x3x5xf32>
   return %2 : tensor<1x8x3x5xf32>
-
-  // CHECK: %[[cst1:.*]] = constant dense<[1, 8, 3, 5]> : tensor<4xi32>
-  // CHECK: %[[cst2:.*]] = constant dense<2.000000e+00> : tensor<15xf32>
-  // CHECK: %[[add:.*]] = "tfl.add"(%arg0, %[[cst2]])
-  // CHECK: %[[rs:.*]] = "tfl.reshape"(%[[add]], %[[cst1]])
-  // CHECK: return %[[rs]]
-}
-
-// CHECK-LABEL: @NotReorderReshapeAdd2DConstIfLastDimIsNotNumElementsOfRhs
-func @NotReorderReshapeAdd2DConstIfLastDimIsNotNumElementsOfRhs(%arg0: tensor<15x8xf32>) -> tensor<1x8x3x5xf32> {
-  %cst = constant dense<2.0> : tensor<3x5xf32>
-  %shape = constant dense<[1, 8, 3, 5]> : tensor<4xi32>
-  %1 = "tfl.reshape"(%arg0, %shape) : (tensor<15x8xf32>, tensor<4xi32>) -> tensor<1x8x3x5xf32>
-  %2 = "tfl.add"(%1, %cst) {fused_activation_function = "NONE"} : (tensor<1x8x3x5xf32>, tensor<3x5xf32>) -> tensor<1x8x3x5xf32>
-  return %2 : tensor<1x8x3x5xf32>
-
-  // CHECK: %[[rs:.*]] = "tfl.reshape"(%arg0
-  // CHECK: %[[add:.*]] = "tfl.add"(%[[rs]]
-  // CHECK: return %[[add]]
-}
-
-// CHECK-LABEL: @NotReorderReshapeAdd2DConstIfHighDim
-func @NotReorderReshapeAdd2DConstIfHighDim(%arg0: tensor<1x1x1x1x15xf32>) -> tensor<1x1x3x5xf32> {
-  %cst = constant dense<2.0> : tensor<3x5xf32>
-  %shape = constant dense<[1, 1, 3, 5]> : tensor<4xi32>
-  %1 = "tfl.reshape"(%arg0, %shape) : (tensor<1x1x1x1x15xf32>, tensor<4xi32>) -> tensor<1x1x3x5xf32>
-  %2 = "tfl.add"(%1, %cst) {fused_activation_function = "NONE"} : (tensor<1x1x3x5xf32>, tensor<3x5xf32>) -> tensor<1x1x3x5xf32>
-  return %2 : tensor<1x1x3x5xf32>
 
   // CHECK: %[[rs:.*]] = "tfl.reshape"(%arg0
   // CHECK: %[[add:.*]] = "tfl.add"(%[[rs]]

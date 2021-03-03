@@ -377,6 +377,9 @@ def IsLastDimEqualToNumElements : Constraint<CPred<
   "$0.getType().cast<ShapedType>().getDimSize($0.getType().cast<ShapedType>().getRank() - 1) == "
   "$1.getType().cast<ShapedType>().getNumElements()">>;
 
+def IsDefinedByFullyConnectedOp : Constraint<CPred<
+  "$0.getDefiningOp<TFL::FullyConnectedOp>() != nullptr">>;
+
 // Pattern for skipping Tile if it is mainly for broadcasting and the
 // Op is already supporting broadcasting.
 multiclass FuseTileBroadcastIntoFollowingBinary<dag BinaryOp> {
@@ -477,7 +480,8 @@ foreach BinaryOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp] in {
        // kernel supports up to 4D broadcast.
        (HasRankAtMost<4> $input),
        (HasRankAtMost<4> $lhs),
-       (HasRankAtMost<4> $rhs)]>;
+       (HasRankAtMost<4> $rhs),
+       (IsDefinedByFullyConnectedOp $input)]>;
 }
 
 foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
@@ -543,7 +547,8 @@ foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
        // kernel supports up to 4D broadcast.
        (HasRankAtMost<4> $input),
        (HasRankAtMost<4> $lhs),
-       (HasRankAtMost<4> $rhs)]>;
+       (HasRankAtMost<4> $rhs),
+       (IsDefinedByFullyConnectedOp $input)]>;
 }
 
 // Reorder the element-wise value operations and the element move operations,
