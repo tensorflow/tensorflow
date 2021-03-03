@@ -1558,8 +1558,11 @@ Status LhloDialectEmitter::Initialize() {
               ->shape(),
           alloc->param_shape_index());
 
+      // TODO(jurahul): Revisit this when we can model memrefs with dynamic
+      // shape but static bounds in MLIR.
+      const Shape static_shape = xla::ShapeUtil::MakeStaticShape(buffer_shape);
       TF_ASSIGN_OR_RETURN(auto arg_type, xla::ConvertShapeToType<MemRefType>(
-                                             buffer_shape, builder_));
+                                             static_shape, builder_));
 
       // First map parameters to memrefs on the operation.
       block->addArgument(arg_type);
