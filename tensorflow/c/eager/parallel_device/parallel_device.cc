@@ -181,13 +181,13 @@ absl::optional<std::vector<MaybeParallelTensorOwned>> ExecuteWithSpecialOps(
 // Used as an argument to TFE_NewCustomDeviceTensorHandle, indicating how
 // ParallelTensors wrapped in TFE_TensorHandles should be cleaned up once their
 // reference counts drop to zero.
-void ParallelTensorDeallocator(void* data, void* arg) {
+void ParallelTensorDeallocator(void* data) {
   delete reinterpret_cast<ParallelTensor*>(data);
 }
 
 // Used as an argument to TFE_NewCustomDeviceTensorHandle, for computing the
 // number of dimensions of a parallel tensor.
-int ParallelTensorNumDims(void* data, void* arg, TF_Status* status) {
+int ParallelTensorNumDims(void* data, TF_Status* status) {
   const std::vector<int64_t>* shape;
   Status s = reinterpret_cast<ParallelTensor*>(data)->Shape(&shape);
   if (!s.ok()) {
@@ -199,8 +199,7 @@ int ParallelTensorNumDims(void* data, void* arg, TF_Status* status) {
 
 // Used as an argument to TFE_NewCustomDeviceTensorHandle, for computing a
 // dimension of a parallel tensor.
-int64_t ParallelTensorDim(void* data, int dim_index, void* arg,
-                          TF_Status* status) {
+int64_t ParallelTensorDim(void* data, int dim_index, TF_Status* status) {
   const std::vector<int64_t>* shape;
   Status s = reinterpret_cast<ParallelTensor*>(data)->Shape(&shape);
   if (!s.ok()) {
@@ -217,10 +216,13 @@ TensorHandlePtr ParallelTensorToTensorHandle(
   // for a ParallelDevice is really a ParallelTensor. When the TensorHandle is
   // deleted, it will call ParallelTensorDeallocator to free the struct.
   ParallelTensor* t_released = t.release();
+  TFE_CustomDeviceTensorHandleMethods handle_methods;
+  handle_methods.num_dims = &ParallelTensorNumDims;
+  handle_methods.dim = &ParallelTensorDim;
+  handle_methods.deallocator = &ParallelTensorDeallocator;
   return TensorHandlePtr(TFE_NewCustomDeviceTensorHandle(
       context, parallel_device_name.c_str(), t_released->dtype(), t_released,
-      &ParallelTensorNumDims, &ParallelTensorDim, &ParallelTensorDeallocator,
-      nullptr, status));
+      handle_methods, status));
 }
 
 // For TFE_CustomDevice::copy_tensor_to_device in the parallel device
