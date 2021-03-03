@@ -4040,12 +4040,11 @@ cc_headers_only(
     src = "@llvm-project//llvm:Support",
 )
 
-cc_binary(
-    name = "tools/libcuda-runtime-wrappers.so",
-    srcs = ["tools/mlir-cuda-runner/cuda-runtime-wrappers.cpp"],
+cc_library(
+    name = "mlir_cuda_runtime",
+    srcs = ["lib/ExecutionEngine/CudaRuntimeWrappers.cpp"],
     # Prevent needing EnableABIBreakingChecks symbol from LLVMSupport.
     copts = ["-DLLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1"],
-    linkshared = True,
     deps = [
         ":LLVMSupportHeaders",
         ":mlir_c_runner_utils",
