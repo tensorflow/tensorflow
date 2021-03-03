@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
+
 namespace tensorflow {
 
 static Status InitDeviceModule(void* dso_handle) {
@@ -42,7 +43,8 @@ static Status InitDeviceModule(void* dso_handle) {
 
   TF_RETURN_IF_ERROR(CopyTensor::Register(
       DeviceType(device_type), DeviceType(device_type),
-      PluggableDeviceUtil::DeviceToDeviceCopy));  // register the Copy tensor
+      PluggableDeviceUtil::DeviceToDeviceCopy,
+      /*is_pluggable_device*/ true));  // register the Copy tensor
   return Status::OK();
 }
 
@@ -59,10 +61,10 @@ static Status InitKernelModule(void* dso_handle) {
 }
 
 Status RegisterPluggableDevicePlugin(void* dso_handle) {
-  // Step1 Init Device Module
+  // Step 1 Init Device Module
   TF_RETURN_IF_ERROR(InitDeviceModule(dso_handle));
 
-  // Step2 Init Kernel Module
+  // Step 2 Init Kernel Module
   TF_RETURN_IF_ERROR(InitKernelModule(dso_handle));
 
   return Status::OK();

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -49,9 +49,9 @@ void PluggableDeviceContext::CopyTensorInSameDevice(const Tensor* input_tensor,
 
 Status PluggableDeviceContext::ThenExecute(Device* device, se::Stream* stream,
                                            std::function<void()> func) {
-  const DeviceBase::GpuDeviceInfo* gpu_info =
+  const DeviceBase::GpuDeviceInfo* device_info =
       device->tensorflow_gpu_device_info();
-  gpu_info->event_mgr->ThenExecute(stream, func);
+  device_info->event_mgr->ThenExecute(stream, func);
   return Status::OK();
 }
 

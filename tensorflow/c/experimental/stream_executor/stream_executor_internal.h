@@ -40,7 +40,7 @@ port::Status InitStreamExecutorPlugin(void* dso_handle, string* device_type,
 // testing).
 port::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn,
                                       string* device_type,
-                                      string* device_type_alias);
+                                      string* platform_name);
 
 struct TFStatusDeleter {
   void operator()(TF_Status* s) const { TF_DeleteStatus(s); }

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,12 +40,12 @@ limitations under the License.
 //
 // 1. Within this module, we intentionally LOG(FATAL) if any stream
 //    involved in memcpy becomes !stream->ok(), because TF process
-//    today (1/2016) can not properly recover from such an error.
+//    today (3/2021) can not properly recover from such an error.
 //
 // 2. When 0-size tensor is being copied, we should not schedule a
 //    copy ThenMemcpy since there is no byte to move. However, we must
 //    ensure the causal ordering by arranging the copy done callback
-//    happens-after all activities scheduled on the given stream being
+//    to happen after all activities scheduled on the given stream being
 //    finished.
 
 namespace tensorflow {
@@ -58,24 +58,23 @@ static Status PrepareCopy(Device* device, const DeviceContext* ctx,
                           const DeviceBase::GpuDeviceInfo** dev_info,
                           se::Stream** stream) {
   if (device == nullptr) {
-    return errors::Internal("unexpected null device.");
+    return errors::Internal("Unexpected null device.");
   }
-
   auto di = device->tensorflow_gpu_device_info();
-
   if (di == nullptr) {
-    return errors::Internal("Unexpected null device info");
+    return errors::Internal("Unexpected null device info.");
   }
 
   *dev_info = di;
   if (ctx == nullptr) {
-    return errors::Internal("Unexpected null device context");
+    return errors::Internal("Unexpected null device context.");
   }
-  auto gs = static_cast<const PluggableDeviceContext*>(ctx)->stream();
-  if (gs == nullptr) {
-    return errors::Internal("No pluggabledevice stream is available.");
+  auto device_stream =
+      static_cast<const PluggableDeviceContext*>(ctx)->stream();
+  if (device_stream == nullptr) {
+    return errors::Internal("No PluggableDevice stream is available.");
   }
-  *stream = gs;
+  *stream = device_stream;
   if (dst != nullptr) {
     if (src.dtype() != dst->dtype()) {
       return errors::Internal("Can't copy a tensor of ",
@@ -96,7 +95,7 @@ static Status PrepareCopy(Device* device, const DeviceContext* ctx,
   }
   if (!DMAHelper::CanUseDMA(&src)) {
     return errors::Internal("PluggableDevice copy from non-DMA",
-                            DataTypeString(src.dtype()), " tensor");
+                            DataTypeString(src.dtype()), " tensor.");
   }
   return Status::OK();
 }
@@ -117,7 +116,6 @@ void PluggableDeviceUtil::DeviceToDeviceCopy(
   se::Stream* send_stream = nullptr;
   Status s = PrepareCopy(src, send_dev_context, *input, output, &dev_info,
                          &send_stream);
-
   if (!s.ok()) {
     done(s);
     return;
@@ -128,11 +126,11 @@ void PluggableDeviceUtil::DeviceToDeviceCopy(
           ->device_to_device_stream(dev_to_dev_stream_index);
   if (send_device_to_device_stream == nullptr) {
     done(errors::Internal(
-        "No send pluggable device copy-out-stream is available."));
+        "No send PluggableDevice copy-out-stream is available."));
     return;
   }
   // Wait for the main stream on the sender to make sure the result is
-  // avaliable.
+  // available.
   send_device_to_device_stream->ThenWaitFor(send_stream);
 
   const int64 total_bytes = input->TotalBytes();
@@ -144,7 +142,7 @@ void PluggableDeviceUtil::DeviceToDeviceCopy(
     auto recv_stream =
         static_cast<const PluggableDeviceContext*>(recv_dev_context)->stream();
     if (recv_stream == nullptr) {
-      done(errors::Internal("No recv pluggable stream is available."));
+      done(errors::Internal("No recv PluggableDevice stream is available."));
       return;
     }
     // Since we want to use the memory from recv_stream in the
@@ -152,7 +150,7 @@ void PluggableDeviceUtil::DeviceToDeviceCopy(
     // truly free.
     send_device_to_device_stream->ThenWaitFor(recv_stream);
 
-    VLOG(2) << "src_ptr" << src_ptr << " dst_ptr " << dst_ptr;
+    VLOG(2) << "src_ptr " << src_ptr << " dst_ptr " << dst_ptr;
     send_device_to_device_stream->ThenMemcpy(&device_dst_ptr, device_src_ptr,
                                              total_bytes);
   }
@@ -163,7 +161,7 @@ void PluggableDeviceUtil::DeviceToDeviceCopy(
       [done, send_device_to_device_stream, input_ref]() {
         input_ref.Unref();
         if (!send_device_to_device_stream->ok()) {
-          LOG(FATAL) << "PluggableDevice->PluggableDevice memcpy failed";
+          LOG(FATAL) << "PluggableDevice->PluggableDevice memcpy failed.";
         }
         done(Status::OK());
       });
@@ -188,7 +186,11 @@ void PluggableDeviceUtil::CopyPluggableDeviceTensorToCPU(
   auto send_device_to_host_stream =
       static_cast<const PluggableDeviceContext*>(device_context)
           ->device_to_host_stream();
-
+  if (send_device_to_host_stream == nullptr) {
+    done(errors::Internal(
+        "No send PluggableDevice copy-out-stream is available."));
+    return;
+  }
   // Wait for the sender's main stream to make sure that the data are available.
   send_device_to_host_stream->ThenWaitFor(send_stream);
 
@@ -207,7 +209,7 @@ void PluggableDeviceUtil::CopyPluggableDeviceTensorToCPU(
       send_device_to_host_stream,
       [send_device_to_host_stream, done, input_ref]() {
         if (!send_device_to_host_stream->ok()) {
-          LOG(FATAL) << "PluggableDevice->CPU Memcpy failed";
+          LOG(FATAL) << "PluggableDevice->CPU Memcpy failed.";
         }
         input_ref.Unref();
         done(Status::OK());
@@ -234,7 +236,7 @@ void PluggableDeviceUtil::CopyCPUTensorToPluggableDevice(
           ->host_to_device_stream();
   if (recv_host_to_device_stream == nullptr) {
     done(errors::Internal(
-        "No send pluggable device copy-out-stream is available."));
+        "No send PluggableDevice copy-out-stream is available."));
     return;
   }
   // Wait for the recv-stream to make sure the buffer is truly available.
@@ -257,7 +259,7 @@ void PluggableDeviceUtil::CopyCPUTensorToPluggableDevice(
       [recv_host_to_device_stream, done, input_ref]() {
         input_ref.Unref();
         if (!recv_host_to_device_stream->ok()) {
-          LOG(FATAL) << "CPU->PluggableDevice Memcpy failed";
+          LOG(FATAL) << "CPU->PluggableDevice Memcpy failed.";
         }
         done(Status::OK());
       });
@@ -267,7 +269,7 @@ Status PluggableDeviceUtil::Sync(Device* device) {
   VLOG(1) << "PluggableDeviceUtil::Sync";
   auto* dev_info = device->tensorflow_gpu_device_info();
   if (!dev_info) {
-    return errors::Internal("Failed to find dest device GPUDeviceInfo");
+    return errors::Internal("Failed to find dest device GPUDeviceInfo.");
   }
   return dev_info->stream->BlockHostUntilDone();
 }
@@ -276,11 +278,11 @@ Status PluggableDeviceUtil::SyncAll(Device* device) {
   VLOG(1) << "PluggableDeviceUtil::SyncAll";
   auto* dev_info = device->tensorflow_gpu_device_info();
   if (!dev_info) {
-    return errors::Internal("Failed to find dest device GPUDeviceInfo");
+    return errors::Internal("Failed to find dest device GPUDeviceInfo.");
   }
   if (!dev_info->stream->parent()->SynchronizeAllActivity() ||
       !dev_info->stream->ok()) {
-    return errors::Internal("PluggableDevice sync failed");
+    return errors::Internal("PluggableDevice SyncAll failed.");
   }
   return Status::OK();
 }

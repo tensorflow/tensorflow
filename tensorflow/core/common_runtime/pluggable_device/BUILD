@@ -50,8 +50,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core/common_runtime/device:device_event_mgr",
+        "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core/platform:tensor_float_32_utils",
     ],
     alwayslink = 1,
@@ -69,14 +69,8 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/c/experimental/stream_executor:stream_executor",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:stream_executor",
-        "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime_impl",
+        ":pluggable_device_runtime_impl",
+	"//tensorflow/c/experimental/stream_executor:stream_executor",
     ],
 )
 
@@ -86,13 +80,6 @@ cc_library(
     linkstatic = 1,
     deps = [
         ":pluggable_device_runtime_impl",
-        "//tensorflow/core:core_cpu_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:stream_executor",
     ],
 )
 

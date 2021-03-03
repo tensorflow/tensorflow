@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -74,7 +74,6 @@ class PluggableDeviceContext : public DeviceContext {
   // The default primary stream to use for this context.
   // All the memory belongs to this stream.
   se::Stream* stream_;
-
   // The stream to use for copying data from host into PluggableDevice.
   se::Stream* host_to_device_stream_;
   // The stream to use for copying data from PluggableDevice to host.

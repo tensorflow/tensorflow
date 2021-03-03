@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -63,6 +63,8 @@ namespace tensorflow {
 // there is a single memory allocator per device (see
 // ProcessState::GetPluggableDeviceAllocator) and allocators must not be shared
 // across streams.
+// TODO(penpornk): Consider refactoring StreamGroupFactory to
+// common_runtime/device.
 class PluggableDevice::StreamGroupFactory {
  public:
   // Returns the unique stream group for use with the stream defined by
@@ -193,36 +195,41 @@ Status PluggableDevice::Init(const SessionOptions& options) {
   // Possible values:
   //   * global: PluggableDevice uses threads shared with CPU in the main
   //       compute thread-pool. This is currently the default.
-  //   * gpu_private: PluggableDevice uses threads dedicated to this device.
-  //   * gpu_shared: All PluggableDevice s share a dedicated thread pool.
-  string gpu_thread_mode;
-  TF_RETURN_IF_ERROR(
-      ReadStringFromEnvVar("TF_GPU_THREAD_MODE", "global", &gpu_thread_mode));
-  gpu_thread_mode = absl::AsciiStrToLower(gpu_thread_mode);
-  if (gpu_thread_mode != "global") {
-    int64 gpu_thread_count = -1;
+  //   * device_private: PluggableDevice uses threads dedicated to this device.
+  //   * device_shared: All PluggableDevices share a dedicated thread pool.
+
+  // TODO(penpornk): Read the following configurations from a PluggableDevice
+  // callback instead of GPU environment variables: TF_GPU_THREAD_MODE,
+  // TF_GPU_THREAD_COUNT, TF_FORCE_GPU_ALLOC_GROWTH,
+  // TF_ENABLE_GPU_GARBAGE_COLLECTION, and TF_GPU_HOST_MEM_LIMIT_IN_MB.
+  string device_thread_mode;
+  TF_RETURN_IF_ERROR(ReadStringFromEnvVar("TF_GPU_THREAD_MODE", "global",
+                                          &device_thread_mode));
+  device_thread_mode = absl::AsciiStrToLower(device_thread_mode);
+  if (device_thread_mode != "global") {
+    int64 device_thread_count = -1;
     // Default to two threads. One for device compute and another for memory
     // copies.
     TF_RETURN_IF_ERROR(
-        ReadInt64FromEnvVar("TF_GPU_THREAD_COUNT", 2, &gpu_thread_count));
-    if (gpu_thread_mode == "gpu_private") {
+        ReadInt64FromEnvVar("TF_GPU_THREAD_COUNT", 2, &device_thread_count));
+    if (device_thread_mode == "device_private") {
       thread_pool_.reset(new thread::ThreadPool(
           options.env, ThreadOptions(),
-          strings::StrCat("gpu_private_", tf_device_id_.value()),
-          static_cast<int32>(gpu_thread_count),
+          strings::StrCat("device_private_", tf_device_id_.value()),
+          static_cast<int32>(device_thread_count),
           !options.config.experimental().disable_thread_spinning(),
           /*allocator=*/nullptr));
       set_tensorflow_device_thread_pool(thread_pool_.get());
-    } else if (gpu_thread_mode == "gpu_shared") {
+    } else if (device_thread_mode == "device_shared") {
       static thread::ThreadPool* thread_pool = new thread::ThreadPool(
-          options.env, ThreadOptions(), "gpu_shared",
-          static_cast<int32>(gpu_thread_count),
+          options.env, ThreadOptions(), "device_shared",
+          static_cast<int32>(device_thread_count),
           !options.config.experimental().disable_thread_spinning(),
           /*allocator=*/nullptr);
       set_tensorflow_device_thread_pool(thread_pool);
     } else {
       string error_message =
-          strings::StrCat("Invalid gpu_thread_mode: ", gpu_thread_mode);
+          strings::StrCat("Invalid device_thread_mode: ", device_thread_mode);
       LOG(WARNING) << error_message;
       return errors::InvalidArgument(error_message);
     }
@@ -232,7 +239,7 @@ Status PluggableDevice::Init(const SessionOptions& options) {
 }
 
 Allocator* PluggableDevice::GetAllocator(AllocatorAttributes attr) {
-  DCHECK(cpu_allocator_) << "bad place 1";
+  DCHECK(cpu_allocator_) << "CPU allocator must be set";
   if (attr.on_host()) {
     if (attr.gpu_compatible() || force_gpu_compatible_) {
       PluggableDeviceProcessState* ps =
@@ -288,7 +295,7 @@ void PluggableDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   }
 }
 
-// Based on the semantics of Device::Sync this call should wait for
+// Based on the semantics of Device::Sync, this call should wait for
 // all streams not just the current one.
 Status PluggableDevice::Sync() { return PluggableDeviceUtil::SyncAll(this); }
 

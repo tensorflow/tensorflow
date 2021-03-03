@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,25 +30,25 @@ class TensorProto;
 class PluggableDeviceUtil {
  public:
   // Copies the data in 'device_tensor' into 'cpu_tensor'.
-  // 'device_tensor''s backing memory must be on 'pluggable_device' and
+  // 'device_tensor''s backing memory must be on 'device' and
   // 'cpu_tensor' must be allocated to be of the same size as
   // 'device_tensor'. Synchronous: may block.
   static void CopyPluggableDeviceTensorToCPU(
-      Device* pluggable_device, const DeviceContext* device_context,
+      Device* device, const DeviceContext* device_context,
       const Tensor* device_tensor, Tensor* cpu_tensor, StatusCallback done);
   // Blocks until all operations queued on the stream associated with
-  // "pluggable_device" at the time of the call have completed.  Returns any
+  // 'device' at the time of the call have completed. Returns any
   // error pending on the stream at completion.
-  static Status Sync(Device* pluggable_device);
+  static Status Sync(Device* device);
 
   // Blocks until all operations queued on all streams associated with the
-  // corresponding Plugged device at the time of call have completed.
+  // corresponding 'device' at the time of call have completed.
   // Returns any error pending on the stream at completion.
-  static Status SyncAll(Device* pluggable_device);
+  static Status SyncAll(Device* device);
 
   static void CopyCPUTensorToPluggableDevice(
       const Tensor* cpu_tensor, const DeviceContext* device_context,
-      Device* pluggable_device, Tensor* device_tensor, StatusCallback done,
+      Device* device, Tensor* device_tensor, StatusCallback done,
       bool sync_dst_compute);
 
   static void DeviceToDeviceCopy(
@@ -59,10 +59,10 @@ class PluggableDeviceUtil {
 
   // Deep-copying of PluggableDevice tensor on the same device.
   // 'src_device_tensor''s and 'dst_device_tensor''s backing memory must be on
-  // 'pluggable_device' and 'dst_cpu_tensor' must be allocated to be of the same
+  // 'device' and 'dst_cpu_tensor' must be allocated to be of the same
   // size as 'src_device_tensor'.
   static void CopyPluggableDeviceTensorToSameDevice(
-      Device* pluggable_device, const DeviceContext* device_context,
+      Device* device, const DeviceContext* device_context,
       const Tensor* src_device_tensor, Tensor* dst_device_tensor,
       StatusCallback done);
 };

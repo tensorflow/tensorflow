@@ -90,9 +90,8 @@ class DeviceFactory {
   // for built-in devices.
   static int32 DevicePriority(const std::string& device_type);
 
-  // Return the boolean flag for the device_type. If true, the device_type
-  // is registered from plugin. If false, the device_type is a first party
-  // device.
+  // Returns true if 'device_type' is registered from plugin. Returns false if
+  // 'device_type' is a first-party device.
   static bool IsPluggableDevice(const std::string& device_type);
 };
 

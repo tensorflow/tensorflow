@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -50,7 +50,9 @@ class PluggableDevice : public LocalDevice {
                   const std::string& physical_device_desc,
                   Allocator* device_allocator, Allocator* cpu_allocator,
                   bool sync_every_op);
+
   ~PluggableDevice() override;
+
   // Initialize the device and return the status of initialization.
   Status Init(const SessionOptions& options);
 
@@ -90,6 +92,7 @@ class PluggableDevice : public LocalDevice {
 
   StreamGroup* stream_;
   PluggableDeviceContext* device_context_;
+  // TODO(penpornk): Investigate renaming `GpuDeviceInfo` to `DeviceInfo`.
   GpuDeviceInfo* pluggable_device_info_ = nullptr;
   TfDeviceId tf_device_id_;
   const string platform_name_;
@@ -111,4 +114,5 @@ class PluggableDevice : public LocalDevice {
 };
 
 }  // namespace tensorflow
+
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_PLUGGABLE_DEVICE_PLUGGABLE_DEVICE_H_

@@ -70,7 +70,6 @@ bool DeviceFactory::IsPluggableDevice(const string& device_type) {
   if (iter != factories.end()) {
     return iter->second.is_pluggable_device;
   }
-
   return false;
 }
 

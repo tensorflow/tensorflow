@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ limitations under the License.
 namespace stream_executor {
 class Platform;
 }  // namespace stream_executor
+
 namespace tensorflow {
 
 // Initializes the PluggableDevice platform and returns OK if the
@@ -35,6 +36,7 @@ Status ValidatePluggableDeviceMachineManager(const string& device_type);
 // returns OK).
 stream_executor::Platform* PluggableDeviceMachineManager(
     const string& device_type);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_PLUGGABLE_DEVICE_PLUGGABLE_DEVICE_INIT_H_

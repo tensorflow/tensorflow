@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-PluggableDeviceProcessState* PluggableDeviceProcessState::singleton(
+/*static*/ PluggableDeviceProcessState* PluggableDeviceProcessState::singleton(
     const string& device_type, const string& platform_name) {
   static std::unordered_map<string, PluggableDeviceProcessState*>
       process_state_map;
@@ -62,13 +62,13 @@ PluggableDeviceProcessState::PluggableDeviceProcessState(
 
 int PluggableDeviceProcessState::BusIdForPluggableDevice(
     TfDeviceId tf_device_id) {
-  // Return the NUMA node accociated with the PluggableDevice's StreamExecutor.
+  // Return the NUMA node associated with the PluggableDevice's StreamExecutor.
   se::Platform* platform = PluggableDeviceMachineManager(platform_name_);
   se::StreamExecutor* se = DeviceIdUtil::ExecutorForTfDeviceId(
                                DeviceType(device_type_), platform, tf_device_id)
                                .ValueOrDie();
   int numa_node = se->GetDeviceDescription().numa_node();
-  // bus_id must be non-negative. If the numa_node is unknown, use 0
+  // `bus_id` must be non-negative. If the `numa_node` is unknown, use 0.
   return numa_node >= 0 ? numa_node : 0;
 }
 
@@ -104,12 +104,12 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
       pluggable_device_visitors_.push_back({});
     }
 
+    bool use_unified_memory = options.per_process_gpu_memory_fraction() > 1.0 ||
+                              options.experimental().use_unified_memory();
     DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
         DeviceIdUtil::ExecutorForPlatformDeviceId(platform, platform_device_id)
             .ValueOrDie(),
-        platform_device_id,
-        (options.per_process_gpu_memory_fraction() > 1.0 ||
-         options.experimental().use_unified_memory()),
+        platform_device_id, use_unified_memory,
         pluggable_device_visitors_[bus_id], {});
 
     PluggableDeviceBFCAllocator* device_bfc_allocator =
@@ -127,8 +127,7 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
 Allocator* PluggableDeviceProcessState::GetPluggableDeviceHostAllocator(
     int numa_node) {
   DCHECK(process_state_);
-  if (!HasPluggableDevice() ||
-      !process_state_->ProcessState::FLAGS_brain_mem_reg_gpu_dma) {
+  if (!HasPluggableDevice()) {
     return process_state_->GetCPUAllocator(numa_node);
   }
   if (numa_node == port::kNUMANoAffinity) {
@@ -183,7 +182,7 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceHostAllocator(
                  << status.error_message();
     }
     int64 pluggable_device_host_mem_limit =
-        pluggable_device_host_mem_limit_in_mb * (1LL << 20);
+        pluggable_device_host_mem_limit_in_mb << 20;
 
     Allocator* allocator = new BFCAllocator(
         sub_allocator, pluggable_device_host_mem_limit, true /*allow_growth*/,

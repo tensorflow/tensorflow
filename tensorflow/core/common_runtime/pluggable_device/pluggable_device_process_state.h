@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -44,35 +44,34 @@ class PluggableDeviceProcessState {
                                                 const string& platform_name);
 
   // Query whether any PluggableDevice has been created so far.
-  // Disable thread safety analysis since a race is begin here.
+  // Disable thread safety analysis since a race is benign here.
   bool HasPluggableDevice() const TF_NO_THREAD_SAFETY_ANALYSIS {
     return pluggable_device_enabled_;
   }
 
   // Set the flag to indicate a PluggableDevice has been created.
-  // Disable thread safety analysis since a race is begin here.
+  // Disable thread safety analysis since a race is benign here.
   void EnablePluggableDevice() TF_NO_THREAD_SAFETY_ANALYSIS {
     pluggable_device_enabled_ = true;
   }
 
   // Returns the one PluggableDevice allocator used for the indexed
-  // PluggableDevice. Note that this is a system PluggableDevice index, not
-  // (necessarily) a brain device index.
+  // PluggableDevice. Note that this is a system PluggableDevice index.
   //
   // 'total_bytes' is the total number of bytes that should be made
   // available to the allocator.  The first call to this function for
-  // a given tf_pluggabledevice_id creates the allocator, so only the
+  // a given tf_device_id creates the allocator, so only the
   // total_bytes used on that first call is used.
   //
-  // "Allocator type" describes the type of algorithm to use for the
+  // 'allocator_type' describes the type of algorithm to use for the
   // underlying allocator.  REQUIRES: Must be a valid type (see
   // config.proto for the list of supported strings.).
   //
-  // REQUIRES: tf_pluggabledevice_id must be a valid id for a PluggableDevice
-  // available in the current system environment.  Otherwise returns nullptr.
-  virtual Allocator* GetPluggableDeviceAllocator(
-      const GPUOptions& options, TfDeviceId tf_pluggabledevice_id,
-      size_t total_bytes);
+  // REQUIRES: tf_device_id must be a valid id for a PluggableDevice
+  // available in the current system environment. Otherwise returns nullptr.
+  virtual Allocator* GetPluggableDeviceAllocator(const GPUOptions& options,
+                                                 TfDeviceId tf_device_id,
+                                                 size_t total_bytes);
 
   int NumPluggableDeviceAllocators() {
     mutex_lock l(mu_);
@@ -82,11 +81,11 @@ class PluggableDeviceProcessState {
   virtual Allocator* GetPluggableDeviceHostAllocator(int numa_node);
 
   // Returns bus_id for the given PluggableDevice id.
-  virtual int BusIdForPluggableDevice(TfDeviceId tf_pluggabledevice_id);
+  virtual int BusIdForPluggableDevice(TfDeviceId tf_device_id);
 
  protected:
   // PluggableDeviceProcessState is a singleton that should not normally be
-  // deleted except
+  // deleted except at process shutdown.
   PluggableDeviceProcessState(const string& device_type,
                               const string& platform_name);
   virtual ~PluggableDeviceProcessState() {}
@@ -120,6 +119,7 @@ class PluggableDeviceProcessState {
   std::vector<std::vector<SubAllocator::Visitor>>
       pluggable_device_host_free_visitors_ TF_GUARDED_BY(mu_);
 };
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_PLUGGABLE_DEVICE_PLUGGABLE_DEVICE_PROCESS_STATE_H_

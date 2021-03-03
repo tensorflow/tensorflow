@@ -50,7 +50,7 @@ static Status ProcessMemoryTypes(
     const DeviceType& device_type, const Graph* g,
     const std::function<Status(const Edge*, MemoryType, MemoryType)>& fn) {
   if (device_type != DEVICE_GPU &&
-      !DeviceFactory::IsPluggableDevice(DeviceTypeString(device_type))) {
+      !DeviceFactory::IsPluggableDevice(device_type.type_string())) {
     // On non-GPU devices, HOST_MEMORY and DEVICE_MEMORY are always compatible.
     return Status::OK();
   }
