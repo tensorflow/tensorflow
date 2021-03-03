@@ -3465,6 +3465,15 @@ class SimpleSavedModelMLIRImportInput : public SavedModelMLIRImportInput {
   std::unique_ptr<Graph> graph_;
 };
 
+static absl::flat_hash_set<std::string> GetOriginalTfFuncNamesFromGraphDef(
+    const GraphDef& graph_def) {
+  absl::flat_hash_set<std::string> original_func_tf_names;
+  for (const auto& function : graph_def.library().function()) {
+    original_func_tf_names.insert(function.signature().name());
+  }
+  return original_func_tf_names;
+}
+
 // A helper class to import a TensorFlow model expressed in SavedModel V1 into
 // an MLIR Module in SavedModel dialect.
 //
@@ -3502,6 +3511,8 @@ class SavedModelSignatureDefImporterLite {
                                      mlir::MLIRContext* context,
                                      bool import_restore)
       : input_(input),
+        original_func_tf_names_(GetOriginalTfFuncNamesFromGraphDef(
+            input.meta_graph_def().graph_def())),
         exported_names_(exported_names),
         module_(mlir::ModuleOp::create(mlir::UnknownLoc::get(context))),
         symbol_table_(module_.get()),
@@ -3541,6 +3552,7 @@ class SavedModelSignatureDefImporterLite {
 
  private:
   SavedModelMLIRImportInput& input_;
+  absl::flat_hash_set<std::string> original_func_tf_names_;
   absl::Span<std::string> exported_names_;
   mlir::OwningModuleRef module_;
   mlir::SymbolTable symbol_table_;
@@ -3583,8 +3595,10 @@ Status SavedModelSignatureDefImporterLite::MoveConvertedFunctionsToModule(
   // Functions originally from graphdef library might have a different name
   // after conversion, we build the set of the converted names
   absl::flat_hash_set<std::string> original_func_mlir_names;
-  for (const auto& kv : tf_name_to_mlir_name)
-    original_func_mlir_names.insert(kv.second);
+  for (const auto& kv : tf_name_to_mlir_name) {
+    if (original_func_tf_names_.contains(kv.first))
+      original_func_mlir_names.insert(kv.second);
+  }
 
   // Prefix private functions with the unique signature name, so that it cannot
   // collide with private functions used in the other signatures.
