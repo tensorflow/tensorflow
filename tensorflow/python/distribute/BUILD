@@ -1917,9 +1917,9 @@ tf_py_test(
     name = "parameter_server_strategy_v2_test",
     srcs = ["parameter_server_strategy_v2_test.py"],
     python_version = "PY3",
+    shard_count = 5,
     tags = [
         "no_windows",  # TODO(171349346)
-        "notsan",  # TODO(b/168675975)
     ],
     deps = [
         ":multi_worker_test_base",
