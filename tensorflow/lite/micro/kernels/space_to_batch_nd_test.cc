@@ -54,6 +54,8 @@ TfLiteStatus ValidateSpaceToBatchNdGoldens(TfLiteTensor* tensors,
   TF_LITE_ENSURE_STATUS(runner.Invoke());
 
   for (int i = 0; i < output_size; ++i) {
+    // TODO(b/158102673): workaround for not having fatal test assertions.
+    TF_LITE_MICRO_EXPECT_EQ(golden[i], output[i]);
     if (golden[i] != output[i]) {
       return kTfLiteError;
     }
@@ -147,20 +149,6 @@ TF_LITE_MICRO_TEST(SpaceToBatchBasicInt8) {
           tflite::testing::basic_block_shape, tflite::testing::basic_crops_dims,
           tflite::testing::basic_crops, tflite::testing::basic_output_dims,
           tflite::testing::basic_golden, golden_quantized, 1.0f, 0, output));
-}
-
-TF_LITE_MICRO_TEST(SpaceToBatchInvalidOutputDimensionShouldFail) {
-  constexpr int output_length = 12;
-  const int output_dims[] = {4, 1, 4, 3, 1};
-  float output[output_length];
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteError,
-      tflite::testing::TestSpaceToBatchNdFloat(
-          tflite::testing::basic_input_dims, tflite::testing::basic_input,
-          tflite::testing::basic_block_shape_dims,
-          tflite::testing::basic_block_shape, tflite::testing::basic_crops_dims,
-          tflite::testing::basic_crops, output_dims,
-          tflite::testing::basic_golden, output));
 }
 
 TF_LITE_MICRO_TESTS_END
