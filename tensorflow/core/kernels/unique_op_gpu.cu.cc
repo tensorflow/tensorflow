@@ -86,7 +86,7 @@ Status ExtractFirstOccurrenceIndices(const GPUDevice& d, int64 input_size,
                                      const TIndex* sorted_input_unique_ids,
                                      TIndex* unique_input_inds,
                                      TIndex* segment_ends) {
-  if (input_size == 0) return Status::OK();
+  CHECK_GT(input_size, 0);
   GpuLaunchConfig config = GetGpuLaunchConfig(
       input_size, d, &ExtractFirstOccurrenceIndicesKernel<TIndex>,
       /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
@@ -157,7 +157,7 @@ Status LookupAndScatterUniqueIds(const GPUDevice& d, int64 input_size,
                                  const TIndex* sorted_input_unique_ids,
                                  const TIndex* inv_sorted_unique_perm,
                                  TIndex* idx) {
-  if (input_size == 0) return Status::OK();
+  CHECK_GT(input_size, 0);
   GpuLaunchConfig config = GetGpuLaunchConfig(
       input_size, d, &LookupAndScatterUniqueIdsKernel<TIndex>,
       /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
@@ -363,12 +363,12 @@ class UniqueOpGPU : public AsyncOpKernel {
       // Sort by input index so that output is in order of appearance.
       OP_REQUIRES_OK_ASYNC(
           context,
-          (GpuRadixSort(context, uniq_size,
-                        /*keys_in=*/unique_input_inds_ptr,
-                        /*keys_out=*/sorted_unique_input_inds_ptr,
-                        /*indices_in=*/static_cast<const TIndex*>(nullptr),
-                        /*indices_out=*/sorted_unique_perm_ptr,
-                        /*num_bits=*/Log2Ceiling(input_size))),
+          GpuRadixSort(context, uniq_size,
+                       /*keys_in=*/unique_input_inds_ptr,
+                       /*keys_out=*/sorted_unique_input_inds_ptr,
+                       /*indices_in=*/static_cast<const TIndex*>(nullptr),
+                       /*indices_out=*/sorted_unique_perm_ptr,
+                       /*num_bits=*/Log2Ceiling(input_size)),
           done);
 
       // Free temporary tensor that is no longer needed.
