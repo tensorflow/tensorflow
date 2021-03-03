@@ -402,7 +402,7 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUExtractOutsideCompilationPass();
 
 // Creates a pass that propagates TPU devices to users.
-std::unique_ptr<OperationPass<FuncOp>> CreateTPUDevicePropagationPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPUDevicePropagationPass();
 
 // Populates the supplied passmanager with the passes required to run the
 // bridge.
