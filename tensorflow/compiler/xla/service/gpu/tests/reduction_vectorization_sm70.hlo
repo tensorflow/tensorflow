@@ -2,6 +2,7 @@
 
 HloModule ReducePower2
 
+// CHECK-LABEL: .entry
 // CHECK: ld.global.nc.v2.f32
 // CHECK: ld.global.nc.v2.f32
 // CHECK: ld.global.nc.v2.f32

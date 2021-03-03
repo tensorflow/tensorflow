@@ -2,6 +2,7 @@
 
 HloModule ReduceEvenColumns
 
+// CHECK-LABEL: .entry reduce_even_col
 // CHECK-NOT: ld.global.nc.f32
 // CHECK: ld.global.nc.f32
 // CHECK: ld.global.nc.f32
@@ -22,17 +23,19 @@ HloModule ReduceEvenColumns
 ENTRY %main {
   %param_0 = f32[5,131070] parameter(0)
   %constant.3 = f32[] constant(0)
-  ROOT %reduce.8 = f32[5] reduce(f32[5,131070] %param_0, f32[] %constant.3), dimensions={1}, to_apply=%max_
+  ROOT %reduce.even_col = f32[5] reduce(f32[5,131070] %param_0, f32[] %constant.3), dimensions={1}, to_apply=%max_
 }
 
 // -----
 
-// CHECK: ld.global.nc.v2.f32
+
+// CHECK: .entry exp
+// CHECK-LABEL: .entry reduce_exp
 // CHECK: ld.global.nc.v2.f32
 // CHECK: ld.global.nc.v2.f32
 // CHECK: ld.global.nc.v2.f32
 
-HloModule DisableExp
+HloModule Exp
 
 %add_float {
   %x = f32[] parameter(0)
@@ -42,15 +45,16 @@ HloModule DisableExp
 
 ENTRY %main {
   %arg0.1 = f32[5,131072] parameter(0)
-  %sine = f32[5,131072] exponential(f32[5,131072] %arg0.1)
+  %exp = f32[5,131072] exponential(f32[5,131072] %arg0.1)
   %constant.0 = f32[] constant(0)
-  ROOT %reduce.18 = f32[5] reduce(f32[5,131072] %sine, f32[] %constant.0), dimensions={1}, to_apply=%add_float
+  ROOT %reduce.exp = f32[5] reduce(f32[5,131072] %exp, f32[] %constant.0), dimensions={1}, to_apply=%add_float
 }
 
 // -----
 
 HloModule ReduceTileFit
 
+// CHECK-LABEL: .entry reduce_tile_file
 // CHECK: ld.global.nc.v2.f32
 // CHECK: ld.global.nc.v2.f32
 // CHECK: ld.global.nc.v2.f32
@@ -65,13 +69,14 @@ HloModule ReduceTileFit
 ENTRY %main {
   %param_0 = f32[5,122880] parameter(0)
   %constant.3 = f32[] constant(0)
-  ROOT %reduce.8 = f32[5] reduce(f32[5,122880] %param_0, f32[] %constant.3), dimensions={1}, to_apply=%max_
+  ROOT %reduce.tile_file = f32[5] reduce(f32[5,122880] %param_0, f32[] %constant.3), dimensions={1}, to_apply=%max_
 }
 
 // -----
 
 HloModule ReducePower2
 
+// CHECK-LABEL: .entry reduce_pow_2
 // CHECK: ld.global.nc.v2.f32
 // CHECK: ld.global.nc.v2.f32
 // CHECK: ld.global.nc.v2.f32
@@ -86,5 +91,5 @@ HloModule ReducePower2
 ENTRY %main {
   %param_0 = f32[5,131072] parameter(0)
   %constant.3 = f32[] constant(0)
-  ROOT %reduce.8 = f32[5] reduce(f32[5,131072] %param_0, f32[] %constant.3), dimensions={1}, to_apply=%max_
+  ROOT %reduce.pow_2 = f32[5] reduce(f32[5,131072] %param_0, f32[] %constant.3), dimensions={1}, to_apply=%max_
 }

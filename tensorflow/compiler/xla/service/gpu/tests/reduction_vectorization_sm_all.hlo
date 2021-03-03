@@ -1,5 +1,6 @@
 // RUN: hlo_to_llvm_ir --ptx %s | FileCheck %s
 
+// CHECK-LABEL: .entry reduce_odd_row
 // CHECK-NOT: ld.global.nc.v2.f32
 // CHECK-NOT: ld.global.nc.v4.f32
 // CHECK-NOT: ld.global.nc.u64
@@ -16,11 +17,12 @@ HloModule ReduceOddRowSize
 ENTRY %main {
   %param_0 = f32[5,131071] parameter(0)
   %constant.3 = f32[] constant(0)
-  ROOT %reduce.8 = f32[5] reduce(f32[5,131071] %param_0, f32[] %constant.3), dimensions={1}, to_apply=%max_
+  ROOT %reduce.odd_row = f32[5] reduce(f32[5,131071] %param_0, f32[] %constant.3), dimensions={1}, to_apply=%max_
 }
 
 // -----
 
+// CHECK-LABEL: .entry reduce_sine
 // CHECK-COUNT-32: ld.global.nc.v2.f32
 
 HloModule DisableSin
@@ -35,5 +37,5 @@ ENTRY %main {
   %arg0.1 = f32[5,131072] parameter(0)
   %sine = f32[5,131072] sine(f32[5,131072] %arg0.1)
   %constant.0 = f32[] constant(0)
-  ROOT %reduce.18 = f32[5] reduce(f32[5,131072] %sine, f32[] %constant.0), dimensions={1}, to_apply=%add_float
+  ROOT %reduce.sine = f32[5] reduce(f32[5,131072] %sine, f32[] %constant.0), dimensions={1}, to_apply=%add_float
 }
