@@ -178,7 +178,10 @@ def _SanitizedMRO(obj):
       continue
     str_repr = _NormalizeType(str(cls))
     return_list.append(str_repr)
-    if 'tensorflow' not in str_repr:
+    # Class type that has keras in their name should also be monitored. This
+    # will cover any class that imported from third_party/py/keras or
+    # keras_preprocessing.
+    if 'tensorflow' not in str_repr and 'keras' not in str_repr:
       break
 
     # Hack - tensorflow.test.StubOutForTesting may or may not be type <object>
