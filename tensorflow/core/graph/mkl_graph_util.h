@@ -89,14 +89,14 @@ bool inline DoesControlEdgeExist(const Node* src, const Node* dst) {
 }
 
 // Check if graph should run in layout-dependent mode or native format mode
-// based on environment variable setting. User can set
-// TF_ENABLE_MKL_NATIVE_FORMAT=1 to enable the native format mode.
+// based on environment variable setting. Native format mode is default. User
+// can set TF_ENABLE_MKL_NATIVE_FORMAT=0 to disable the native format mode.
 bool inline NativeFormatEnabled() {
-  static bool native_fmt_enabled = false;
+  static bool native_fmt_enabled = true;
   static absl::once_flag once;
   absl::call_once(once, [&] {
     TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_MKL_NATIVE_FORMAT",
-                                   /*default_value*/ false,
+                                   /*default_value*/ true,
                                    &native_fmt_enabled));
   });
   return native_fmt_enabled;

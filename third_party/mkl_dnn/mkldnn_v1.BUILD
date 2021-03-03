@@ -26,24 +26,33 @@ _DNNL_RUNTIME_OMP = {
     "#cmakedefine DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_${DNNL_CPU_THREADING_RUNTIME}": "#define DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_OMP",
     "#cmakedefine DNNL_CPU_RUNTIME DNNL_RUNTIME_${DNNL_CPU_RUNTIME}": "#define DNNL_CPU_RUNTIME DNNL_RUNTIME_OMP",
     "#cmakedefine DNNL_GPU_RUNTIME DNNL_RUNTIME_${DNNL_GPU_RUNTIME}": "#define DNNL_GPU_RUNTIME DNNL_RUNTIME_NONE",
+    "#cmakedefine DNNL_WITH_SYCL": "#undef DNNL_WITH_SYCL",
+    "#cmakedefine DNNL_WITH_LEVEL_ZERO": "#undef DNNL_WITH_LEVEL_ZERO",
+    "#cmakedefine DNNL_SYCL_CUDA": "#undef DNNL_SYCL_CUDA",
 }
 
 _DNNL_RUNTIME_THREADPOOL = {
     "#cmakedefine DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_${DNNL_CPU_THREADING_RUNTIME}": "#define DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_THREADPOOL",
     "#cmakedefine DNNL_CPU_RUNTIME DNNL_RUNTIME_${DNNL_CPU_RUNTIME}": "#define DNNL_CPU_RUNTIME DNNL_RUNTIME_THREADPOOL",
     "#cmakedefine DNNL_GPU_RUNTIME DNNL_RUNTIME_${DNNL_GPU_RUNTIME}": "#define DNNL_GPU_RUNTIME DNNL_RUNTIME_NONE",
+    "#cmakedefine DNNL_WITH_SYCL": "#undef DNNL_WITH_SYCL",
+    "#cmakedefine DNNL_WITH_LEVEL_ZERO": "#undef DNNL_WITH_LEVEL_ZERO",
+    "#cmakedefine DNNL_SYCL_CUDA": "#undef DNNL_SYCL_CUDA",
 }
 
 _DNNL_RUNTIME_SEQ = {
     "#cmakedefine DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_${DNNL_CPU_THREADING_RUNTIME}": "#define DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_SEQ",
     "#cmakedefine DNNL_CPU_RUNTIME DNNL_RUNTIME_${DNNL_CPU_RUNTIME}": "#define DNNL_CPU_RUNTIME DNNL_RUNTIME_SEQ",
     "#cmakedefine DNNL_GPU_RUNTIME DNNL_RUNTIME_${DNNL_GPU_RUNTIME}": "#define DNNL_GPU_RUNTIME DNNL_RUNTIME_NONE",
+    "#cmakedefine DNNL_WITH_SYCL": "#undef DNNL_WITH_SYCL",
+    "#cmakedefine DNNL_WITH_LEVEL_ZERO": "#undef DNNL_WITH_LEVEL_ZERO",
+    "#cmakedefine DNNL_SYCL_CUDA": "#undef DNNL_SYCL_CUDA",
 }
 
 template_rule(
     name = "dnnl_config_h",
-    src = "include/dnnl_config.h.in",
-    out = "include/dnnl_config.h",
+    src = "include/oneapi/dnnl/dnnl_config.h.in",
+    out = "include/oneapi/dnnl/dnnl_config.h",
     substitutions = select({
         "@org_tensorflow//third_party/mkl_dnn:build_with_mkldnn_threadpool": _DNNL_RUNTIME_THREADPOOL,
         "@org_tensorflow//third_party/mkl:build_with_mkl": _DNNL_RUNTIME_OMP,
@@ -60,29 +69,32 @@ template_rule(
 # TODO(agramesh1): Automatically get the version numbers from CMakeLists.txt.
 template_rule(
     name = "dnnl_version_h",
-    src = "include/dnnl_version.h.in",
-    out = "include/dnnl_version.h",
+    src = "include/oneapi/dnnl/dnnl_version.h.in",
+    out = "include/oneapi/dnnl/dnnl_version.h",
     substitutions = {
-        "@DNNL_VERSION_MAJOR@": "1",
-        "@DNNL_VERSION_MINOR@": "6",
-        "@DNNL_VERSION_PATCH@": "4",
+        "@DNNL_VERSION_MAJOR@": "2",
+        "@DNNL_VERSION_MINOR@": "1",
+        "@DNNL_VERSION_PATCH@": "0",
         "@DNNL_VERSION_HASH@": "N/A",
     },
 )
 
 cc_library(
     name = "mkl_dnn",
-    srcs = glob([
-        "src/common/*.cpp",
-        "src/common/*.hpp",
-        "src/cpu/*.cpp",
-        "src/cpu/*.hpp",
-        "src/cpu/**/*.cpp",
-        "src/cpu/**/*.hpp",
-        "src/cpu/xbyak/*.h",
-        "src/cpu/x64/jit_utils/jitprofiling/*.c",
-        "src/cpu/x64/jit_utils/jitprofiling/*.h",
-    ]) + [
+    srcs = glob(
+        [
+            "src/common/*.cpp",
+            "src/common/*.hpp",
+            "src/cpu/*.cpp",
+            "src/cpu/*.hpp",
+            "src/cpu/**/*.cpp",
+            "src/cpu/**/*.hpp",
+            "src/cpu/x64/xbyak/*.h",
+            "src/cpu/x64/jit_utils/jitprofiling/*.c",
+            "src/cpu/x64/jit_utils/jitprofiling/*.h",
+        ],
+        exclude = ["src/cpu/aarch64/**"],
+    ) + [
         ":dnnl_config_h",
         ":dnnl_version_h",
     ],
@@ -101,7 +113,7 @@ cc_library(
         "src/common",
         "src/cpu",
         "src/cpu/gemm",
-        "src/cpu/xbyak",
+        "src/cpu/x64/xbyak",
     ],
     visibility = ["//visibility:public"],
     deps = if_mkl_ml(
@@ -117,6 +129,7 @@ cc_library(
         "src/cpu/*.cpp",
         "src/cpu/gemm/**/*.cpp",
         "src/cpu/matmul/**/*.cpp",
+        "src/cpu/reorder/*.cpp",
         "src/cpu/rnn/**/*.cpp",
         "src/cpu/x64/**/*.cpp",
         "src/cpu/x64/jit_utils/jitprofiling/*.c",
