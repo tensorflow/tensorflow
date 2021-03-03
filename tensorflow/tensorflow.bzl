@@ -297,6 +297,9 @@ def if_registration_v2(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
+def if_portable(if_true, if_false = []):
+    return if_true
+
 # Linux systems may required -lrt linker flag for e.g. clock_gettime
 # see https://github.com/tensorflow/tensorflow/issues/15129
 def lrt_if_needed():
