@@ -31,12 +31,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
-#include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -85,13 +83,6 @@ class ResourceBase : public core::RefCounted {
 
   // Returns memory used by this resource.
   virtual int64 MemoryUsed() const { return 0; }
-
-  // Writes a representation of this resource into `builder`, so that executing
-  // `*out` will recreate this resource.
-  virtual Status AsGraphDef(GraphDefBuilder& builder, Node** out) const {
-    return errors::Unimplemented("AsGraphDef not implemented for resource ",
-                                 DebugString());
-  }
 };
 
 // Container used for per-step resources.

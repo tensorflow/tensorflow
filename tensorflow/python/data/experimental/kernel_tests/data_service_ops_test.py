@@ -38,7 +38,6 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
@@ -107,18 +106,6 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertAllEqual(results[0], [[0, 0, 0, 0, 0], [0, 1, 2, 3, 4]])
     self.assertAllEqual(results[1], [[0, 1, 2], [0, 1, 0]])
     self.assertAllEqual(results[2], [[0, 1, 2, 3, 4, 5, 6, 7]])
-
-  @combinations.generate(test_base.eager_only_combinations())
-  def testDistributeLookupTable(self):
-    cluster = data_service_test_base.TestCluster(num_workers=1)
-    keys_tensor = constant_op.constant([1, 2])
-    vals_tensor = constant_op.constant([11, 12])
-    table = lookup_ops.StaticHashTable(
-        lookup_ops.KeyValueTensorInitializer(keys_tensor, vals_tensor), -1)
-    ds = dataset_ops.Dataset.range(3, output_type=dtypes.int32)
-    ds = ds.map(table.lookup)
-    ds = self.make_distributed_dataset(ds, cluster)
-    self.assertDatasetProduces(ds, [-1, 11, 12])
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDifferentShuffleOrders(self):

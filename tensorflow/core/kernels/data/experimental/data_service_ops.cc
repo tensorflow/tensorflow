@@ -52,7 +52,6 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
               errors::InvalidArgument(kProtocol, " must be non-empty."));
 
   SerializationContext::Params params;
-  params.resource_mgr = ctx->resource_manager();
   params.external_state_policy = external_state_policy_;
   SerializationContext serialization_ctx(params);
   GraphDef graph_def;

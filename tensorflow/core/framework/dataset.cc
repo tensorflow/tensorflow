@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
@@ -500,14 +499,6 @@ Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensor(
       return s;
     }
   }
-  if (t.dtype() == DT_RESOURCE && ctx->serialize_data_tensors()) {
-    Status s = AddResourceHelper(ctx, t, output);
-    if (!errors::IsUnimplemented(s)) {
-      // Fall through to AddTensor if AsGraphDef is not implemented for this
-      // resource.
-      return s;
-    }
-  }
   return AddTensor(t, output);
 }
 
@@ -531,15 +522,6 @@ Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensorHelper(
   node_builder.Input(std::move(nodes));
   *output = opts.FinalizeBuilder(&node_builder);
   return Status::OK();
-}
-
-Status DatasetBase::DatasetGraphDefBuilder::AddResourceHelper(
-    SerializationContext* ctx, const Tensor& t, Node** output) {
-  const ResourceHandle& handle = t.flat<ResourceHandle>()(0);
-  ResourceBase* resource;
-  TF_RETURN_IF_ERROR(ctx->resource_mgr()->Lookup(handle, &resource));
-  core::ScopedUnref unref(resource);
-  return resource->AsGraphDef(*builder(), output);
 }
 
 DatasetBaseIterator::DatasetBaseIterator(const BaseParams& params)
