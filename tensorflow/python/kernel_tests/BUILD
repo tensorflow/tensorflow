@@ -3324,6 +3324,7 @@ cuda_py_test(
     shard_count = 30,
     tags = [
         "no_cuda11",
+        "no_gpu",  # TODO(b/181773418)
     ],
     deps = [
         "//tensorflow/python:client_testlib",
