@@ -1458,7 +1458,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
                       "probably because cuDNN failed to initialize, so try "
                       "looking to see if a warning log message was printed "
                       "above."));
-      std::vector<tensorflow::AutotuneExecutionPlanResult> results;
+      std::vector<tensorflow::AutotuneResult> results;
       for (auto& profile_plan: exec_plans) {
         DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
                                               context);
@@ -1483,7 +1483,8 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         if (cudnn_launch_status.ok() && profile_result.is_valid()) {
           results.emplace_back();
           auto& result = results.back();
-          result.mutable_conv()->set_exec_plan_id(profile_plan->getTag());
+          result.mutable_cuda_conv_plan()->set_exec_plan_id(
+                                               profile_plan->getTag());
           result.set_scratch_bytes(
               !RedzoneCheckDisabled()
                   ? rz_scratch_allocator
@@ -1500,7 +1501,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
           results.emplace_back();
           auto& result = results.back();
           result.mutable_failure()->set_kind(
-              AutotuneExecutionPlanResult::UNKNOWN);
+              AutotuneResult::UNKNOWN);
           result.mutable_failure()->set_msg(
               absl::StrCat("Profiling failure on CUDNN engine: ",
               profile_plan->getTag()));
@@ -2067,7 +2068,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
                     "probably because cuDNN failed to initialize, so try "
                     "looking to see if a warning log message was printed "
                     "above."));
-			std::vector<tensorflow::AutotuneExecutionPlanResult> results;
+			std::vector<tensorflow::AutotuneResult> results;
 			for (auto& profile_plan: exec_plans) {
         DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                               context);
@@ -2084,7 +2085,8 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         if (cudnn_launch_status.ok() && profile_result.is_valid()) {
           results.emplace_back();
           auto& result = results.back();
-	        result.mutable_conv()->set_exec_plan_id(profile_plan->getTag());
+	        result.mutable_cuda_conv_plan()->set_exec_plan_id(
+                                               profile_plan->getTag());
           result.set_scratch_bytes(scratch_allocator.TotalByteSize());
           *result.mutable_run_time() = proto_utils::ToDurationProto(
               absl::Milliseconds(profile_result.elapsed_time_in_ms()));
@@ -2095,7 +2097,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
           results.emplace_back();
           auto& result = results.back();
           result.mutable_failure()->set_kind(
-              AutotuneExecutionPlanResult::UNKNOWN);
+              AutotuneResult::UNKNOWN);
           result.mutable_failure()->set_msg(
               absl::StrCat("Profiling failure on CUDNN engine: ",
               profile_plan->getTag()));

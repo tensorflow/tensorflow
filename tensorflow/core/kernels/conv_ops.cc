@@ -1025,7 +1025,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     se::DeviceMemory<T> output_tensor(
         WrapRedzoneBestEffort(&rz_allocator, output_ptr));
 
-    std::vector<tensorflow::AutotuneExecutionPlanResult> results;
+    std::vector<tensorflow::AutotuneResult> results;
     for (auto& profile_plan: exec_plans) {
       se::RedzoneAllocator rz_scratch_allocator(
           stream, &tf_allocator_adapter, se::GpuAsmOpts(),
@@ -1050,7 +1050,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       if (cudnn_launch_status.ok() && profile_result.is_valid()) {
         results.emplace_back();
         auto& result = results.back();
-        result.mutable_conv()->set_exec_plan_id(profile_plan->getTag());
+        result.mutable_cuda_conv_plan()->set_exec_plan_id(
+                                             profile_plan->getTag());
 
         result.set_scratch_bytes(
             !RedzoneCheckDisabled()
@@ -1067,7 +1068,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         results.emplace_back();
         auto& result = results.back();
         result.mutable_failure()->set_kind(
-            AutotuneExecutionPlanResult::UNKNOWN);
+            AutotuneResult::UNKNOWN);
         result.mutable_failure()->set_msg(
             absl::StrCat("Profiling failure on CUDNN engine: ",
             profile_plan->getTag()));

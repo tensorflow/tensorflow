@@ -539,7 +539,7 @@ struct LaunchConvOp<GPUDevice, T> {
                       "looking to see if a warning log message was printed "
                       "above."));
 
-			std::vector<tensorflow::AutotuneExecutionPlanResult> results;
+			std::vector<tensorflow::AutotuneResult> results;
 	    for (auto& profile_plan: exec_plans) {
         DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
         se::RedzoneAllocator rz_scratch_allocator(
@@ -562,7 +562,8 @@ struct LaunchConvOp<GPUDevice, T> {
         if (cudnn_launch_status.ok() && profile_result.is_valid()) {
           results.emplace_back();
           auto& result = results.back();
-					result.mutable_conv()->set_exec_plan_id(profile_plan->getTag());
+					result.mutable_cuda_conv_plan()->set_exec_plan_id(
+                                               profile_plan->getTag());
           result.set_scratch_bytes(
               !RedzoneCheckDisabled()
                   ? rz_scratch_allocator
@@ -578,7 +579,7 @@ struct LaunchConvOp<GPUDevice, T> {
           results.emplace_back();
           auto& result = results.back();
           result.mutable_failure()->set_kind(
-              AutotuneExecutionPlanResult::UNKNOWN);
+              AutotuneResult::UNKNOWN);
           result.mutable_failure()->set_msg(
               absl::StrCat("Profiling failure on CUDNN engine: ",
               profile_plan->getTag()));

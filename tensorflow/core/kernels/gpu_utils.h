@@ -41,7 +41,6 @@ namespace tensorflow {
 
 class NodeDef;
 class AutotuneResult;
-class AutotuneExecutionPlanResult;
 
 // Return whether the redzone check is disabled.
 //
@@ -61,9 +60,8 @@ se::DeviceMemoryBase WrapRedzoneBestEffort(se::RedzoneAllocator* rz_allocator,
 // Check the passed allocator for redzone violations.
 // If violations have occurred, mark the corresponding autotune result
 // as a failure.
-template<typename T>
 void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
-                   T* autotune_result);
+                   AutotuneResult* autotune_result);
 
 template <typename T>
 inline se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
@@ -439,16 +437,6 @@ void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
                             se::StreamExecutor* stream_exec,
                             absl::Span<const AutotuneResult> results);
 
-void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
-    se::dnn::DataType element_type, se::DeviceMemoryBase input_buffer,
-    se::DeviceMemoryBase filter_buffer, se::DeviceMemoryBase output_buffer,
-    const se::dnn::BatchDescriptor& input_desc,
-    const se::dnn::FilterDescriptor& filter_desc,
-    const se::dnn::BatchDescriptor& output_desc,
-    const se::dnn::ConvolutionDescriptor& conv_desc,
-    se::StreamExecutor* stream_exec,
-    absl::Span<const AutotuneExecutionPlanResult> results);
-
 // Logs fused convolution results to customized back-storage.
 void LogFusedConvForwardAutotuneResults(
     se::dnn::DataType element_type, se::DeviceMemoryBase input_buffer,
@@ -467,9 +455,8 @@ void LogFusedConvForwardAutotuneResults(
 Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
                               se::dnn::AlgorithmConfig* algo);
 
-Status BestCudnnConvExecutionPlan(
-    absl::Span<const AutotuneExecutionPlanResult> results,
-    int* idx_plan, int* idx_plan_no_scratch);
+Status BestCudnnConvExecutionPlan(absl::Span<const AutotuneResult> results,
+                                  int* idx_plan, int* idx_plan_no_scratch);
 
 }  // namespace tensorflow
 

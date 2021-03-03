@@ -43,9 +43,10 @@ message AutotuneResult {
     oneof key {
       ConvKey reference_conv = 11;
       GemmKey reference_gemm = 12;
+      CudaConvPlanKey reference_cuda_conv_plan = 13;
     }
 
-    int64 buffer_address = 13;
+    int64 buffer_address = 14;
   }
 
   message ConvKey {
@@ -57,57 +58,22 @@ message AutotuneResult {
     int64 algorithm = 1;
   }
 
-  int64 scratch_bytes = 8;
-  google.protobuf.Duration run_time = 9;
-
-  FailureResult failure = 7;
-
-  oneof key {
-    ConvKey conv = 5;
-    GemmKey gemm = 6;
-  }
-
-  // Next ID: 14
-}
-
-message AutotuneExecutionPlanResult {
-  enum FailureKind {
-    UNKNOWN = 0;
-    REDZONE_MODIFIED = 1;
-    WRONG_RESULT = 2;
-  }
-
-  message FailureResult {
-    FailureKind kind = 1;
-    string msg = 2;
-
-    // For failure_kind == WRONG_RESULT, this field indicates the reference
-    // configuration that we compared against.
-    //
-    // Note that the reference algorithm isn't always correct.  However,
-    // empirically it's more correct, as it's "algo 0", less fancy than the
-    // compared one.
-    oneof key {
-      ConvKey reference_conv = 11;
-    }
-
-    int64 buffer_address = 13;
-  }
-
-  message ConvKey {
+  message CudaConvPlanKey {
     string exec_plan_id = 1;
   }
 
   int64 scratch_bytes = 8;
   google.protobuf.Duration run_time = 9;
 
-  FailureResult failure = 7;
+  FailureResult failure = 10;
 
   oneof key {
     ConvKey conv = 5;
+    GemmKey gemm = 6;
+    CudaConvPlanKey cuda_conv_plan = 7;
   }
 
-  // Next ID: 14
+  // Next ID: 15
 }
 
 message AutotuningLog {
@@ -127,19 +93,3 @@ message AutotuningLog {
   // Next ID: 7
 }
 
-message AutotuningExecutionPlanLog {
-  google.protobuf.Any instr = 1;
-
-  // Records all auto-tuning results per algorithm.
-  repeated AutotuneExecutionPlanResult results = 2;
-
-  CudnnVersion cudnn_version = 3;
-  ComputeCapability compute_capability = 4;
-
-  // stream_executor::DeviceDescription::pci_bus_id.
-  string device_pci_bus_id = 5;
-
-  string blas_version = 6;
-
-  // Next ID: 7
-}

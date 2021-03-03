@@ -431,7 +431,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
                     "probably because cuDNN failed to initialize, so try "
                     "looking to see if a warning log message was printed "
                     "above."));
-    std::vector<tensorflow::AutotuneExecutionPlanResult> results;
+    std::vector<tensorflow::AutotuneResult> results;
     for (auto& profile_plan: exec_plans) {
       DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
                                             ctx);
@@ -456,7 +456,8 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       if (cudnn_launch_status.ok() && profile_result.is_valid()) {
         results.emplace_back();
         auto& result = results.back();
-        result.mutable_conv()->set_exec_plan_id(profile_plan->getTag());
+        result.mutable_cuda_conv_plan()->set_exec_plan_id(
+                                             profile_plan->getTag());
         result.set_scratch_bytes(
             !RedzoneCheckDisabled()
                 ? rz_scratch_allocator.TotalAllocatedBytesExcludingRedzones()
@@ -472,7 +473,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
         results.emplace_back();
         auto& result = results.back();
         result.mutable_failure()->set_kind(
-            AutotuneExecutionPlanResult::UNKNOWN);
+            AutotuneResult::UNKNOWN);
         result.mutable_failure()->set_msg(
             absl::StrCat("Profiling failure on CUDNN engine: ",
             profile_plan->getTag()));
