@@ -412,16 +412,6 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# Crosses between platforms and file system libraries not supported on those
-# platforms due to limitations in nested select() statements.
-selects.config_setting_group(
-    name = "with_cuda_support_windows_override",
-    match_all = [
-        ":using_cuda_nvcc",
-        ":windows",
-    ],
-)
-
 config_setting(
     name = "with_xla_support",
     define_values = {"with_xla_support": "true"},
@@ -513,16 +503,22 @@ alias(
     ),
 )
 
-# Config setting whether TensorFlow is built with CUDA support using clang.
-alias(
-    name = "using_cuda_clang",
-    actual = "@local_config_cuda//cuda:using_clang",
+# Config setting that is satisfied when building with --config=cuda in OSS.
+selects.config_setting_group(
+    name = "is_cuda_enabled_and_oss",
+    match_all = [
+        ":is_cuda_enabled",
+        ":oss",
+    ],
 )
 
-# Config setting whether TensorFlow is built with CUDA support using nvcc.
-alias(
-    name = "using_cuda_nvcc",
-    actual = "@local_config_cuda//cuda:using_nvcc",
+# Config setting that is satisfied when building with --config=cuda for Windows
+selects.config_setting_group(
+    name = "is_cuda_enabled_and_windows",
+    match_all = [
+        ":is_cuda_enabled",
+        ":windows",
+    ],
 )
 
 # Config setting to use in select()s to distinguish open source build from
@@ -543,22 +539,6 @@ bool_setting(
     visibility = ["//visibility:private"],
 )
 
-selects.config_setting_group(
-    name = "using_cuda_clang_with_dynamic_build",
-    match_all = [
-        ":using_cuda_clang",
-        ":framework_shared_object",
-    ],
-)
-
-selects.config_setting_group(
-    name = "build_oss_using_cuda_clang",
-    match_all = [
-        ":using_cuda_clang",
-        ":oss",
-    ],
-)
-
 # Setting to use when loading kernels dynamically
 config_setting(
     name = "dynamic_loaded_kernels",
@@ -567,14 +547,6 @@ config_setting(
         "framework_shared_object": "true",
     },
     visibility = ["//visibility:public"],
-)
-
-selects.config_setting_group(
-    name = "build_oss_using_cuda_nvcc",
-    match_all = [
-        ":using_cuda_nvcc",
-        ":oss",
-    ],
 )
 
 config_setting(

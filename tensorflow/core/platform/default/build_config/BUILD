@@ -61,8 +61,7 @@ tf_cuda_library(
         "//tensorflow:macos": ["IOKit"],
         "//conditions:default": [],
     }) + select({
-        "//tensorflow:using_cuda_clang": [":_cuda_runtime"],
-        "//tensorflow:using_cuda_nvcc": [":_cuda_runtime"],
+        "//tensorflow:is_cuda_enabled": [":_cuda_runtime"],
         "//tensorflow:using_rocm_hipcc": [
             "//tensorflow/stream_executor/rocm:all_runtime",
         ],
