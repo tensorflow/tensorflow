@@ -28,8 +28,7 @@ cc_binary(
 build_test(
     name = "build_test",
     targets = [
-      ":generate_circular_buffer_flexbuffers_data",
-      ":generate_flexbuffers_data",
+        ":generate_circular_buffer_flexbuffers_data",
+        ":generate_flexbuffers_data",
     ],
 )
-
