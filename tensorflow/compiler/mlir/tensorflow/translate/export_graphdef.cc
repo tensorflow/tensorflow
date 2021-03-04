@@ -79,6 +79,7 @@ namespace {
 
 constexpr char kDeviceAttr[] = "tf.device";
 constexpr char kResourceArgUniqueIdAttr[] = "tf._resource_arg_unique_id";
+constexpr char kEntryFuncAttr[] = "tf.entry_function";
 
 // OpOrArgLocNameMapper that legalizes the returned name.
 class LegalizedOpOrValLocNameMapper : public OpOrArgLocNameMapper {
@@ -414,7 +415,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   llvm::SmallVector<llvm::StringRef, 2> input_names;
   llvm::SmallVector<llvm::StringRef, 2> output_names;
   auto dict_attr =
-      function->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
+      function->getAttrOfType<mlir::DictionaryAttr>(kEntryFuncAttr);
   if (dict_attr) {
     TF_RET_CHECK(dict_attr.get("inputs").isa<mlir::StringAttr>())
         << "inputs missing in entry function attribute";
@@ -622,9 +623,10 @@ Status Exporter::ConvertLibFunction(
   }
 
   // Ignore the gradient and is_stateful attribute on the function as they have
-  // been handled above.
+  // been handled above. Ignore the entry func attribute as it is an MLIR
+  // metadata attribute and is not required in the function definition.
   absl::flat_hash_set<absl::string_view> attrs_to_ignore = {
-      grad_string.data(), stateful_string.data()};
+      grad_string.data(), stateful_string.data(), kEntryFuncAttr};
   llvm::SmallVector<mlir::NamedAttribute, 8> funcAttrs(
       function->getDialectAttrs());
   TF_RETURN_IF_ERROR(ConvertAttributes(funcAttrs, attrs_to_ignore,
