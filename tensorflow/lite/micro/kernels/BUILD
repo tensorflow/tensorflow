@@ -37,6 +37,16 @@ cc_library(
 )
 
 cc_library(
+    name = "circular_buffer_flexbuffers_generated_data",
+    srcs = [
+        "circular_buffer_flexbuffers_generated_data.cc",
+    ],
+    hdrs = [
+        "circular_buffer_flexbuffers_generated_data.h",
+    ],
+)
+
+cc_library(
     name = "conv",
     srcs = [
         "conv_common.cc",
@@ -457,6 +467,7 @@ cc_test(
         "circular_buffer_test.cc",
     ],
     deps = [
+        "circular_buffer_flexbuffers_generated_data",
         ":kernel_runner",
         ":micro_ops",
         "//tensorflow/lite/c:common",

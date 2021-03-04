@@ -19,3 +19,18 @@ build_test(
     name = "build_test",
     targets = [":generate_flexbuffers_data"],
 )
+
+cc_binary(
+    name = "generate_circular_buffer_flexbuffers_data",
+    srcs = [
+        "generate_circular_buffer_flexbuffers_data.cc",
+    ],
+    deps = [
+        "@flatbuffers",
+    ],
+)
+
+build_test(
+    name = "build_circular_buffer_generator_test",
+    targets = [":generate_circular_buffer_flexbuffers_data"],
+)
