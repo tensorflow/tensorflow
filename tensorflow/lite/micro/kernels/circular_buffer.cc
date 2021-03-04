@@ -104,12 +104,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // The circular buffer custom operator currently only supports int8.
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteInt8);
 
-  // The last circular buffer layer simply accumulates outputs, and does not run
-  // periodically.
-  // TODO(b/150001379): Move this special case logic to the tflite flatbuffer.
-  static int cb_prepare_count = 0;
-  cb_prepare_count++;
   if (op_data->cycles_max <= 0) {
+    // The last circular buffer layer simply accumulates outputs, and does not
+    // run periodically.
+    // TODO(b/150001379): Move this special case logic to the tflite flatbuffer.
+    static int cb_prepare_count = 0;
+    cb_prepare_count++;
     // These checks specifically work for the only two streaming models
     // supported on TFLM. They use the shape of the output tensor along with the
     // layer number to determine if the circular buffer period should be 1 or 2.

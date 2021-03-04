@@ -15,11 +15,6 @@ cc_binary(
     ],
 )
 
-build_test(
-    name = "build_test",
-    targets = [":generate_flexbuffers_data"],
-)
-
 cc_binary(
     name = "generate_circular_buffer_flexbuffers_data",
     srcs = [
@@ -31,6 +26,10 @@ cc_binary(
 )
 
 build_test(
-    name = "build_circular_buffer_generator_test",
-    targets = [":generate_circular_buffer_flexbuffers_data"],
+    name = "build_test",
+    targets = [
+      ":generate_circular_buffer_flexbuffers_data",
+      ":generate_flexbuffers_data",
+    ],
 )
+
