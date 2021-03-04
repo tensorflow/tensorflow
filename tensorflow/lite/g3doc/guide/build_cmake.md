@@ -102,7 +102,7 @@ CMake project. Please refer the
 ["Create a CMake project which uses TensorFlow Lite"](#create_a_cmake_project_which_uses_tensorflow_lite)
 section.
 
-### Step 6. Build TensorFlow Lite Benchmark Tool and Label Image Example
+### Step 6. Build TensorFlow Lite Benchmark Tool and Label Image Example(Optional)
 
 In the tflite_build directory,
 
