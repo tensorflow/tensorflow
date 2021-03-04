@@ -15674,7 +15674,7 @@ Computes the gradient function for function f via backpropagation.
   TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
 }
 
-def TF_TPUCompilationResultOp : TF_Op<"TPUCompilationResult", []> {
+def TF_TPUCompilationResultOp : TF_Op<"TPUCompilationResult", [NoSideEffect]> {
   let summary = "Returns the result of a TPU compilation.";
 
   let description = [{

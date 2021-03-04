@@ -1364,16 +1364,14 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
     // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
     // CHECK-NEXT: "tf._TPUCompileMlir"
-    // CHECK: %[[COMPILE_RESULT_0:.*]] = "tf.Identity"(%[[COMPILE_OUTPUT]]#0)
-    // CHECK: %[[COMPILE_RESULT_1:.*]] = "tf.Identity"(%[[COMPILE_RESULT_0]])
     // CHECK: "tf_device.launch"
     // CHECK-NEXT: "tf.TPUCompileSucceededAssert"
     // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
     // CHECK-NEXT: "tf.TPUExecute"
     %1 = "tf_device.cluster_func"(%arg0) {_tpu_replicate = "cluster0", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<?xi32>) -> tensor<?xi32>
 
-    %compile_result = "tf.TPUCompilationResult"() {_tpu_compilation_status = "cluster0"} : () -> tensor<!tf.string>
-    %compile_result2 = "tf.TPUCompilationResult"() {_tpu_compilation_status = "cluster0"} : () -> tensor<!tf.string>
+    %compile_result = "tf.TPUCompilationResult"() {_tpu_replicate = "cluster0"} : () -> tensor<!tf.string>
+    %compile_result2 = "tf.TPUCompilationResult"() {_tpu_replicate = "cluster0"} : () -> tensor<!tf.string>
 
     // CHECK-NOT: "tf.TPUCompilationResult"
 
