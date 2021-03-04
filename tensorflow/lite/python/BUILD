@@ -65,6 +65,7 @@ py_binary(
     deps = [
         ":tflite_convert_main_lib",
         "//tensorflow:tensorflow_py",
+        "@absl_py//absl:app",
         "@six_archive//:six",
     ],
 )
@@ -77,6 +78,7 @@ py_library(
     deps = [
         ":tflite_convert_lib",
         "//tensorflow:tensorflow_py",
+        "@absl_py//absl:app",
         "@six_archive//:six",
     ],
 )
@@ -91,6 +93,7 @@ py_library(
         "//tensorflow/lite/toco/logging:gen_html",
         "//tensorflow/lite/toco/logging:toco_conversion_log_proto_py",
         "//tensorflow/python:util",
+        "@absl_py//absl:app",
         "@six_archive//:six",
     ],
 )

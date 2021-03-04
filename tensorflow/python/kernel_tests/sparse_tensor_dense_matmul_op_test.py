@@ -21,6 +21,7 @@ from __future__ import print_function
 import sys
 import time
 
+from absl import app
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
@@ -35,7 +36,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
-from tensorflow.python.platform import app
 from tensorflow.python.platform import test
 
 
