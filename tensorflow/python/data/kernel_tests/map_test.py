@@ -28,8 +28,8 @@ import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
 from tensorflow.python.data.experimental.ops import threading_options
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
@@ -1402,9 +1402,8 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     manager.save()
 
 
-class MapDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase,
-    parameterized.TestCase):
+class MapDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                               parameterized.TestCase):
 
   def setUp(self):
     self._tensor_slice_len = 7
