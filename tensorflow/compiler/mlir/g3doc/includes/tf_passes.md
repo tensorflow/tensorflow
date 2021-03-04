@@ -3,14 +3,21 @@
 This pass clusters ops according to the policy specified by the pass options.
 Clustered ops are moved to a tf_device::clusterOp region.
 
-The only currently supported option is 'oplist=<list of ops>'. This option
-specifies the names of the ops that should be clustered if they form
-a single use def-use chain, that is, the next op in the list uses the result
-of the previous op and is the only user of that result. The ops should
-be located in the same block, be assigned to the same device and have no
-side effects.
+First you need to specify the 'oplist=<list of ops>' option. This option
+specifies the names of the ops that should be clustered together. Then you need
+to specify the algorithm for forming a cluster with a `mode=<algorithm>` option:
 
-For example, running this pass with option oplist="tf.Cast, tf.Add" on:
+1. `use-def` (default): cluster ops together if they form a single use def-use
+   chain, that is, the next op in the list uses the result of the previous op
+   and is the only user of that result.
+2. `union-find`: cluster ops together that are connected to each other with
+   potentially different use def chains using union-find algorithm.
+
+For both algorithms the ops should be located in the same block, be assigned to
+the same device and have no side effects.
+
+For example, running this pass with options:
+  "oplist=tf.Cast,tf.Add algorithm=use-def"
 
 ```mlir
 func @cluster_oplist(%arg0 : tensor<f32>, %arg1 : tensor<i32>) -> tensor<i32> {
@@ -35,9 +42,38 @@ func @cluster_oplist(%arg0: tensor<f32>, %arg1: tensor<i32>) -> tensor<i32> {
 }
 ```
 
+Running with `union-find` algorithm allows to cluster together operations that
+do not form a single use-def chain:
+  "oplist=tf.Add,tf.Sub algorithm=union-find"
+
+```mlir
+func @cluster_oplist(%arg0 : tensor<f32>, %arg1 : tensor<i32>) -> tensor<i32> {
+  %0 = "tf.Add"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<i32>
+  %1 = "tf.Sub"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<i32>
+  %2 = "tf.Add"(%0, %1) : (tensor<f32>, tensor<f32>) -> tensor<i32>
+  return %2 : tensor<i32>
+}
+```
+
+will produce tf_device::opCluster enclosing tf.Add and tf.Sub:
+
+```mlir
+func @cluster_oplist(%arg0: tensor<f32>, %arg1: tensor<i32>) -> tensor<i32> {
+  %0 = "tf_device.cluster"() ( {
+    %1 = "tf.Add"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<i32>
+    %2 = "tf.Sub"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<i32>
+    %3 = "tf.Add"(%1, %2) : (tensor<f32>, tensor<f32>) -> tensor<i32>
+    tf_device.return %3 : tensor<i32>
+  }) : () -> tensor<i32>
+  return %0 : tensor<i32>
+}
+
 #### Options
 ```
--oplist : Cluster listed ops when they form a single use def-use chain, such that each op's single user is the next op in the list.
+-policy-name      : Adds a policy string attribute to all extracted clusters. This attribute allows to distinguish clusters formed by different policies or maybe other clustering algorithms.
+-min-cluster-size : Do not form clusters smaller of the given size.
+-algorithm        : Clustering algorithm type: `use-def` or `union-find`
+-oplist           : Cluster listed ops when they form a single use def-use chain, such that each op's single user is the next op in the list.
 ```
 ### `-tf-device-cluster-outlining`: Outlines regions of tf_device.cluster operations
 This pass outlines the body of a `tf_device.cluster` into a function and

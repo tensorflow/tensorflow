@@ -172,121 +172,124 @@ RankedTensorType DropFirstDimension(Type type) {
 bool CanInferTensorListElementType(Value tensorlist,
                                    Value initial_element_shape,
                                    RankedTensorType* potential_element_type) {
+  DCOMMENT("CanInferTensorListElementType " << tensorlist << " with initial "
+                                            << initial_element_shape);
   // Verifies if the new element type has static shape and matches the potential
   // type passed from caller. Updates the potential_element_type, if not defined
   // yet.
   auto verify_and_update_potential_element_type =
       [&](RankedTensorType new_element_type) -> bool {
+    DCOMMENT("\t\tConsidering " << new_element_type << " with old "
+                                << *potential_element_type);
     if (!new_element_type || !new_element_type.hasStaticShape()) return false;
     if (!*potential_element_type) {
+      DCOMMENT("\t\tUpdating potential_element_type " << new_element_type);
       *potential_element_type = new_element_type;
       return true;
     }
     return *potential_element_type == new_element_type;
   };
 
-  // TensorLists are semantically immutable. For example, TensorListSetItem
-  // takes a TensorList as input and produces a TensorList as output. So to
-  // traverse modifications to TensorList and verify that all elements written
-  // to it have the same shape, we need to follow use-def chain of ops that
-  // (conceptually) modify it i.e., ops that take an input TensorList and
-  // produce an output TensorList.
-  for (auto& use : tensorlist.getUses()) {
-    if (auto push = llvm::dyn_cast<TensorListPushBackOp>(use.getOwner())) {
-      auto element_type = push.tensor().getType().dyn_cast<RankedTensorType>();
-      if (!verify_and_update_potential_element_type(element_type)) return false;
-      if (!CanInferTensorListElementType(push.output_handle(),
-                                         initial_element_shape,
-                                         potential_element_type))
-        return false;
-      continue;
-    }
-    if (auto scatter = llvm::dyn_cast<TensorListScatterIntoExistingListOp>(
-            use.getOwner())) {
-      // For scatter op we can get the element shape by dropping the first
-      // dimension of the input tensor.
-      RankedTensorType element_type =
-          DropFirstDimension(scatter.tensor().getType());
-      if (!verify_and_update_potential_element_type(element_type)) return false;
-      if (!CanInferTensorListElementType(scatter.output_handle(),
-                                         initial_element_shape,
-                                         potential_element_type))
-        return false;
-      continue;
-    }
-    if (auto set_item = llvm::dyn_cast<TensorListSetItemOp>(use.getOwner())) {
-      auto element_type =
-          set_item.item().getType().dyn_cast<RankedTensorType>();
-      if (!verify_and_update_potential_element_type(element_type)) return false;
-      if (!CanInferTensorListElementType(set_item.output_handle(),
-                                         initial_element_shape,
-                                         potential_element_type))
-        return false;
-      continue;
-    }
-    if (auto pop = llvm::dyn_cast<TensorListPopBackOp>(use.getOwner())) {
-      if (!CanInferTensorListElementType(pop.output_handle(),
-                                         initial_element_shape,
-                                         potential_element_type))
-        return false;
-      continue;
-    }
-    if (auto resize = llvm::dyn_cast<TensorListResizeOp>(use.getOwner())) {
-      if (!CanInferTensorListElementType(resize.output_handle(),
-                                         initial_element_shape,
-                                         potential_element_type))
-        return false;
-      continue;
-    }
-    // WhileRegionOp can explicitly capture TensorList value to be used inside
-    // its regions. So we check the uses of corresponding block argument in each
-    // region and the use of TensorList returned using YieldOp.
-    if (auto while_region = llvm::dyn_cast<WhileRegionOp>(use.getOwner())) {
-      for (auto branch : while_region.getRegions()) {
-        if (!CanInferTensorListElementType(
-                branch->getArgument(use.getOperandNumber()),
-                initial_element_shape, potential_element_type))
-          return false;
-      }
-      continue;
-    }
-    if (auto yield = llvm::dyn_cast<YieldOp>(use.getOwner())) {
-      Operation* parent = yield->getParentOp();
-      if (!CanInferTensorListElementType(
-              parent->getResult(use.getOperandNumber()), initial_element_shape,
-              potential_element_type))
-        return false;
-      continue;
-    }
-    // Refining the tensor list element type might change the output of
-    // TensorListElementShape which is expected to be the originally assigned
-    // shape to TensorList init ops. So replace it with the original element
-    // shape value.
-    if (auto tl_element_shape =
-            dyn_cast<TensorListElementShapeOp>(use.getOwner())) {
-      // If element types match, we can do a direct replacement.
-      if (getElementTypeOrSelf(tl_element_shape.getResult()) ==
-          getElementTypeOrSelf(initial_element_shape.getType())) {
-        tl_element_shape.replaceAllUsesWith(initial_element_shape);
-      } else {
-        OpBuilder b(use.getOwner());
-        auto cast_op = b.create<TF::CastOp>(
-            use.getOwner()->getLoc(), tl_element_shape.getResult().getType(),
-            initial_element_shape,
-            /*truncate=*/b.getBoolAttr(false));
-        tl_element_shape.replaceAllUsesWith(cast_op.getResult());
-      }
-      continue;
-    }
-    // Ignore ops that just consume a TensorList and do not output another
-    // TensorList.
-    if (isa<TensorListStackOp, TensorListGatherOp, TensorListConcatV2Op,
-            TensorListLengthOp, TensorListGetItemOp>(use.getOwner()))
-      continue;
+  std::stack<Value> worklist;
+  worklist.emplace(tensorlist);
 
-    // For any other unknown users of the TensorList, we are conservative and
-    // stop element shape inference.
-    return false;
+  while (!worklist.empty()) {
+    tensorlist = worklist.top();
+    worklist.pop();
+
+    // TensorLists are semantically immutable. For example, TensorListSetItem
+    // takes a TensorList as input and produces a TensorList as output. So to
+    // traverse modifications to TensorList and verify that all elements written
+    // to it have the same shape, we need to follow use-def chain of ops that
+    // (conceptually) modify it i.e., ops that take an input TensorList and
+    // produce an output TensorList.
+    for (auto& use : tensorlist.getUses()) {
+      if (auto push = llvm::dyn_cast<TensorListPushBackOp>(use.getOwner())) {
+        auto element_type =
+            push.tensor().getType().dyn_cast<RankedTensorType>();
+        if (!verify_and_update_potential_element_type(element_type))
+          return false;
+        worklist.emplace(push.output_handle());
+        continue;
+      }
+      if (auto scatter = llvm::dyn_cast<TensorListScatterIntoExistingListOp>(
+              use.getOwner())) {
+        // For scatter op we can get the element shape by dropping the first
+        // dimension of the input tensor.
+        RankedTensorType element_type =
+            DropFirstDimension(scatter.tensor().getType());
+        if (!verify_and_update_potential_element_type(element_type))
+          return false;
+        worklist.emplace(scatter.output_handle());
+        continue;
+      }
+      if (auto set_item = llvm::dyn_cast<TensorListSetItemOp>(use.getOwner())) {
+        auto element_type =
+            set_item.item().getType().dyn_cast<RankedTensorType>();
+        DCOMMENT("\tTensorListSetItemOp " << element_type);
+        if (!verify_and_update_potential_element_type(element_type))
+          return false;
+        worklist.emplace(set_item.output_handle());
+        continue;
+      }
+      if (auto pop = llvm::dyn_cast<TensorListPopBackOp>(use.getOwner())) {
+        worklist.emplace(pop.output_handle());
+        continue;
+      }
+      if (auto resize = llvm::dyn_cast<TensorListResizeOp>(use.getOwner())) {
+        worklist.emplace(resize.output_handle());
+        continue;
+      }
+      // WhileRegionOp can explicitly capture TensorList value to be used inside
+      // its regions. So we check the uses of corresponding block argument in
+      // each region and the use of TensorList returned using YieldOp.
+      if (auto while_region = llvm::dyn_cast<WhileRegionOp>(use.getOwner())) {
+        DCOMMENT("\tTL WhileRegion");
+        for (auto branch : while_region.getRegions())
+          worklist.emplace(branch->getArgument(use.getOperandNumber()));
+        continue;
+      }
+      if (auto yield = llvm::dyn_cast<YieldOp>(use.getOwner())) {
+        Operation* parent = yield->getParentOp();
+        worklist.emplace(parent->getResult(use.getOperandNumber()));
+        continue;
+      }
+      // TODO(jpienaar): This can be generalized.
+      if (isa<IdentityOp, IdentityNOp, StopGradientOp>(use.getOwner())) {
+        worklist.emplace(use.getOwner()->getResult(use.getOperandNumber()));
+        continue;
+      }
+      // Refining the tensor list element type might change the output of
+      // TensorListElementShape which is expected to be the originally assigned
+      // shape to TensorList init ops. So replace it with the original element
+      // shape value.
+      if (auto tl_element_shape =
+              dyn_cast<TensorListElementShapeOp>(use.getOwner())) {
+        // If element types match, we can do a direct replacement.
+        if (getElementTypeOrSelf(tl_element_shape.getResult()) ==
+            getElementTypeOrSelf(initial_element_shape.getType())) {
+          tl_element_shape.replaceAllUsesWith(initial_element_shape);
+        } else {
+          OpBuilder b(use.getOwner());
+          auto cast_op = b.create<TF::CastOp>(
+              use.getOwner()->getLoc(), tl_element_shape.getResult().getType(),
+              initial_element_shape,
+              /*truncate=*/b.getBoolAttr(false));
+          tl_element_shape.replaceAllUsesWith(cast_op.getResult());
+        }
+        continue;
+      }
+      // Ignore ops that just consume a TensorList and do not output another
+      // TensorList.
+      if (isa<TensorListStackOp, TensorListGatherOp, TensorListConcatV2Op,
+              TensorListLengthOp, TensorListGetItemOp>(use.getOwner()))
+        continue;
+
+      // For any other unknown users of the TensorList, we are conservative and
+      // stop element shape inference.
+      DCOMMENT("TensorListType infer, unknown op " << *use.getOwner());
+      return false;
+    }
   }
   return true;
 }
@@ -778,8 +781,12 @@ bool ShapeInference::InferShapeForTensorListInitOps(Operation* op) {
     if (!element_type || !element_type.hasStaticShape()) return false;
   }
   if (!CanInferTensorListElementType(handle, initial_element_shape,
-                                     &element_type))
+                                     &element_type)) {
+    DCOMMENT("InferShapeForListInitOps " << op << " could not infer");
     return false;
+  }
+  DCOMMENT("InferShapeForListInitOps " << op << " could be inferred "
+                                       << element_type);
   if (!element_type || !element_type.hasStaticShape()) return false;
   auto variant_type = VariantType::get(element_type, op->getContext());
   auto tensor_type = RankedTensorType::get({}, variant_type);
@@ -1049,7 +1056,8 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
   // The shape function of these ops sometimes does not propagate subtypes
   // (handle shapes) for resource and variant types. We use a simple passthrough
   // to make sure they are preserved in the output.
-  if (isa<TF::IdentityOp, TF::IdentityNOp, TF::ZerosLikeOp>(op)) {
+  if (isa<TF::IdentityOp, TF::IdentityNOp, TF::StopGradientOp, TF::ZerosLikeOp>(
+          op)) {
     return RefineTypeForPassThroughOperands(op, op->getOperands(),
                                             op->getResults());
   }

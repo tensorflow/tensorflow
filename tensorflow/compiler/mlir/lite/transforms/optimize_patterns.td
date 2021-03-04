@@ -367,6 +367,19 @@ def OperandsBroadcastToOutputType : Constraint<CPred<
 def IsTailOfShape : Constraint<CPred<
   "TFL::IsTailOfShape($0.getType(), $1.getType())">>;
 
+def Flatten : NativeCodeCall<
+  "$0.cast<DenseElementsAttr>()"
+    ".reshape(RankedTensorType::get({$0.getType().cast<ShapedType>().getNumElements()}, "
+                                   "$0.getType().cast<ShapedType>().getElementType()))">;
+
+def IsLastDimEqualToNumElements : Constraint<CPred<
+  "$0.getType().cast<ShapedType>().getRank() >= 1 && "
+  "$0.getType().cast<ShapedType>().getDimSize($0.getType().cast<ShapedType>().getRank() - 1) == "
+  "$1.getType().cast<ShapedType>().getNumElements()">>;
+
+def IsDefinedByFullyConnectedOp : Constraint<CPred<
+  "$0.getDefiningOp<TFL::FullyConnectedOp>() != nullptr">>;
+
 // Pattern for skipping Tile if it is mainly for broadcasting and the
 // Op is already supporting broadcasting.
 multiclass FuseTileBroadcastIntoFollowingBinary<dag BinaryOp> {
@@ -446,6 +459,29 @@ foreach BinaryOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp] in {
        (IsTailOfShape $lhs, $rhs),
        (IsTailOfShape $input1, $input2),
        (IsTailOfShape $input2, $input1)]>;
+
+    // Move binary op before reshape:
+    // binary(reshape(lhs), rhs) => reshape(binary(lhs, flatten(rhs)))
+    // This is valid only when the last dimension of lhs is equal to the
+    // number of elements in constant rhs.
+    // Therefore, after transformation broadcast of binary op is always
+    // applied to the last dimension of $input.
+    def MoveBinaryOpFlattenConstBeforeReshape#BinaryOp : Pat<
+      (BinaryOp (TFL_ReshapeOp:$lhs $input, (ConstantOp:$shape $s)),
+                (ConstantOp:$rhs ElementsAttr:$rhs_attr), $act_fn),
+      (TFL_ReshapeOp (BinaryOp $input, (ConstantOp (Flatten $rhs_attr)),
+                               $act_fn),
+                     $shape),
+      [(AnyStaticShapeTensor $input),
+       (IsTailOfShape $rhs, $lhs),
+       (IsLastDimEqualToNumElements $input, $rhs),
+       (HasOneUse $lhs),
+       // Restrict operands to have at most rank 4 because TFLite binary
+       // kernel supports up to 4D broadcast.
+       (HasRankAtMost<4> $input),
+       (HasRankAtMost<4> $lhs),
+       (HasRankAtMost<4> $rhs),
+       (IsDefinedByFullyConnectedOp $input)]>;
 }
 
 foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
@@ -491,6 +527,28 @@ foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
        (IsTailOfShape $lhs, $rhs),
        (IsTailOfShape $input1, $input2),
        (IsTailOfShape $input2, $input1)]>;
+
+    // Move binary op before reshape:
+    // binary(reshape(lhs), rhs) => reshape(binary(lhs, flatten(rhs)))
+    // This is valid only when the last dimension of lhs is equal to the
+    // number of elements in constant rhs.
+    // Therefore, after transformation broadcast of binary op is always
+    // applied to the last dimension of $input.
+    def MoveBinaryOpFlattenConstBeforeReshape#BinaryOp : Pat<
+      (BinaryOp (TFL_ReshapeOp:$lhs $input, (ConstantOp:$shape $s)),
+                (ConstantOp:$rhs ElementsAttr:$rhs_attr)),
+      (TFL_ReshapeOp (BinaryOp $input, (ConstantOp (Flatten $rhs_attr))),
+                     $shape),
+      [(AnyStaticShapeTensor $input),
+       (IsTailOfShape $rhs, $lhs),
+       (IsLastDimEqualToNumElements $input, $rhs),
+       (HasOneUse $lhs),
+       // Restrict operands to have at most rank 4 because TFLite binary
+       // kernel supports up to 4D broadcast.
+       (HasRankAtMost<4> $input),
+       (HasRankAtMost<4> $lhs),
+       (HasRankAtMost<4> $rhs),
+       (IsDefinedByFullyConnectedOp $input)]>;
 }
 
 // Reorder the element-wise value operations and the element move operations,

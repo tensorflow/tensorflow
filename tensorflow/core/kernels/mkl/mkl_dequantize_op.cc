@@ -75,7 +75,8 @@ class MklDequantizeOp : public OpKernel {
       MklDnnData<float> dst(&cpu_engine);
 
       std::shared_ptr<stream> reorder_stream;
-      reorder_stream.reset(CreateStream(ctx, cpu_engine));
+      MklDnnThreadPool eigen_tp(ctx);
+      reorder_stream.reset(CreateStream(&eigen_tp, cpu_engine));
 
       // If input is in MKL layout, then simply grab input layout; otherwise,
       // construct input TF layout. For TF layout, although input shape

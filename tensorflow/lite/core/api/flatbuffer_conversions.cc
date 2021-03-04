@@ -309,6 +309,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseLogistic(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_LOG_SOFTMAX: {
+      return ParseLogSoftmax(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_MAXIMUM: {
       return ParseMaximum(op, error_reporter, allocator, builtin_data);
     }
@@ -814,7 +818,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_CUSTOM:
     case BuiltinOperator_EMBEDDING_LOOKUP:
     case BuiltinOperator_EQUAL:
-    case BuiltinOperator_LOG_SOFTMAX:
     case BuiltinOperator_MATRIX_DIAG:
     case BuiltinOperator_MATRIX_SET_DIAG:
     case BuiltinOperator_RELU_N1_TO_1:
@@ -1465,6 +1468,14 @@ TfLiteStatus ParseLogicalOr(const Operator*, ErrorReporter*,
 // selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseLogistic(const Operator*, ErrorReporter*,
                            BuiltinDataAllocator*, void**) {
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseLogSoftmax(const Operator*, ErrorReporter*,
+                             BuiltinDataAllocator*, void**) {
   return kTfLiteOk;
 }
 

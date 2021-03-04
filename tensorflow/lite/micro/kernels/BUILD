@@ -258,8 +258,9 @@ cc_library(
         "dequantize.cc",
         "detection_postprocess.cc",
         "elementwise.cc",
-        "exp.cc",
         "elu.cc",
+        "exp.cc",
+        "fill.cc",
         "floor.cc",
         "l2norm.cc",
         "logical.cc",
@@ -583,6 +584,20 @@ cc_test(
         ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "fill_test",
+    srcs = [
+        "fill_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",

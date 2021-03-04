@@ -1,5 +1,6 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
+# Import third party config rules.
 load("//tensorflow:version_check.bzl", "check_bazel_version_at_least")
 load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
 load("//third_party/gpus:rocm_configure.bzl", "rocm_configure")
@@ -8,13 +9,13 @@ load("//third_party/nccl:nccl_configure.bzl", "nccl_configure")
 load("//third_party/git:git_configure.bzl", "git_configure")
 load("//third_party/py:python_configure.bzl", "python_configure")
 load("//third_party/systemlibs:syslibs_configure.bzl", "syslibs_configure")
-load("//third_party/toolchains/remote:configure.bzl", "remote_execution_configure")
-load("//third_party/toolchains/clang6:repo.bzl", "clang6_configure")
 load("//third_party/toolchains/cpus/arm:arm_compiler_configure.bzl", "arm_compiler_configure")
 load("//third_party/toolchains/embedded/arm-linux:arm_linux_toolchain_configure.bzl", "arm_linux_toolchain_configure")
 load("//third_party:repo.bzl", "tf_http_archive")
 load("//third_party/clang_toolchain:cc_configure_clang.bzl", "cc_download_clang_toolchain")
 load("//tensorflow/tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
+
+# Import third party repository rules. See go/tfbr-thirdparty.
 load("//third_party/FP16:workspace.bzl", FP16 = "repo")
 load("//third_party/absl:workspace.bzl", absl = "repo")
 load("//third_party/aws:workspace.bzl", aws = "repo")
@@ -39,49 +40,45 @@ load("//third_party/psimd:workspace.bzl", psimd = "repo")
 load("//third_party/ruy:workspace.bzl", ruy = "repo")
 load("//third_party/sobol_data:workspace.bzl", sobol_data = "repo")
 load("//third_party/vulkan_headers:workspace.bzl", vulkan_headers = "repo")
+
+# Import external repository rules.
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 load("@tf_toolchains//toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
+load("@tf_toolchains//toolchains/remote:configure.bzl", "remote_execution_configure")
+load("@tf_toolchains//toolchains/clang6:repo.bzl", "clang6_configure")
 
 def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
     FP16()
+    absl()
     aws()
     clog()
     cpuinfo()
     dlpack()
+    eigen3()
+    farmhash()
     flatbuffers()
+    gemmlowp()
     hexagon_nn()
     highwayhash()
     hwloc()
     icu()
-    kissfft()
     jpeg()
+    kissfft()
     nasm()
     opencl_headers()
     pasta()
     psimd()
+    ruy()
     sobol_data()
     vulkan_headers()
-    ruy()
-
-# Sanitize a dependency so that it works correctly from code that includes
-# TensorFlow as a submodule.
-def _clean_dep(dep):
-    return str(Label(dep))
 
 # Toolchains & platforms required by Tensorflow to build.
 def _tf_toolchains():
     native.register_execution_platforms("@local_execution_config_platform//:platform")
     native.register_toolchains("@local_execution_config_python//:py_toolchain")
-
-# Define all external repositories required by TensorFlow
-def _tf_repositories():
-    """All external dependencies for TF builds."""
-
-    # Initialize toolchains and platforms.
-    _tf_toolchains()
 
     # Loads all external repos to configure RBE builds.
     initialize_rbe_configs()
@@ -97,8 +94,6 @@ def _tf_repositories():
     python_configure(name = "local_config_python")
     rocm_configure(name = "local_config_rocm")
     remote_execution_configure(name = "local_config_remote_execution")
-
-    _initialize_third_party()
 
     # For windows bazel build
     # TODO: Remove def file filter when TensorFlow can export symbols properly on Windows.
@@ -119,6 +114,10 @@ def _tf_repositories():
         aarch64_repo = "../aarch64_linux_toolchain",
         armhf_repo = "../armhf_linux_toolchain",
     )
+
+# Define all external repositories required by TensorFlow
+def _tf_repositories():
+    """All external dependencies for TF builds."""
 
     # To update any of the dependencies bellow:
     # a) update URL and strip_prefix to the new git commit hash
@@ -176,10 +175,6 @@ def _tf_repositories():
             "https://github.com/oneapi-src/oneDNN/archive/v1.6.4.tar.gz",
         ],
     )
-
-    absl("com_google_absl")
-
-    eigen3(name = "eigen_archive")
 
     tf_http_archive(
         name = "arm_compiler",
@@ -299,10 +294,6 @@ def _tf_repositories():
             "https://github.com/googleapis/googleapis/archive/541b1ded4abadcc38e8178680b0677f65594ea6f.zip",
         ],
     )
-
-    gemmlowp("gemmlowp")
-
-    farmhash("farmhash_archive")
 
     tf_http_archive(
         name = "png",
@@ -538,15 +529,15 @@ def _tf_repositories():
     tf_http_archive(
         name = "com_google_protobuf",
         patch_file = "//third_party/protobuf:protobuf.patch",
-        sha256 = "cfcba2df10feec52a84208693937c17a4b5df7775e1635c1e3baffc487b24c9b",
-        strip_prefix = "protobuf-3.9.2",
+        sha256 = "9748c0d90e54ea09e5e75fb7fac16edce15d2028d4356f32211cfa3c0e956564",
+        strip_prefix = "protobuf-3.11.4",
         system_build_file = "//third_party/systemlibs:protobuf.BUILD",
         system_link_files = {
             "//third_party/systemlibs:protobuf.bzl": "protobuf.bzl",
         },
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/protocolbuffers/protobuf/archive/v3.9.2.zip",
-            "https://github.com/protocolbuffers/protobuf/archive/v3.9.2.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/protocolbuffers/protobuf/archive/v3.11.4.zip",
+            "https://github.com/protocolbuffers/protobuf/archive/v3.11.4.zip",
         ],
     )
 
@@ -1078,8 +1069,17 @@ def workspace():
     # those rules rely on the version we require here.
     check_bazel_version_at_least("1.0.0")
 
-    # Load tf_repositories() before loading dependencies for other repository so
-    # that dependencies like com_google_protobuf won't be overridden.
+    # Initialize toolchains and platforms.
+    _tf_toolchains()
+
+    # Import third party repositories according to go/tfbr-thirdparty.
+    _initialize_third_party()
+
+    # Import all other repositories. This should happen before initializing
+    # any external repositories, because those come with their own
+    # dependencies. Those recursive dependencies will only be imported if they
+    # don't already exist (at least if the external repository macros were
+    # written according to common practice to query native.existing_rule()).
     _tf_repositories()
 
 # Alias so it can be loaded without assigning to a different symbol to prevent

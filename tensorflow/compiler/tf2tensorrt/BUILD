@@ -580,6 +580,7 @@ cc_library(
     copts = tf_copts(),
     deps = [
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib_proto_parsing",

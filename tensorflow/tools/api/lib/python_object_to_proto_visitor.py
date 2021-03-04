@@ -102,6 +102,8 @@ _NORMALIZE_TYPE[(
 _NORMALIZE_TYPE['typing.Generic'] = "<class 'typing.Generic'>"
 # TODO(mdan): Remove once the golden files are generated in Python 3.7.
 _NORMALIZE_TYPE["<class 'typing._GenericAlias'>"] = 'typing.Union'
+# TODO(mdan): Remove once the golden files are generated in Python 3.9.
+_NORMALIZE_TYPE["<class 'typing._UnionGenericAlias'>"] = 'typing.Union'
 
 
 if sys.version_info.major == 3 and sys.version_info.minor >= 8:
@@ -176,7 +178,10 @@ def _SanitizedMRO(obj):
       continue
     str_repr = _NormalizeType(str(cls))
     return_list.append(str_repr)
-    if 'tensorflow' not in str_repr:
+    # Class type that has keras in their name should also be monitored. This
+    # will cover any class that imported from third_party/py/keras or
+    # keras_preprocessing.
+    if 'tensorflow' not in str_repr and 'keras' not in str_repr:
       break
 
     # Hack - tensorflow.test.StubOutForTesting may or may not be type <object>

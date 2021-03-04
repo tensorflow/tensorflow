@@ -628,7 +628,7 @@ class Loader(object):
     return imported_constant, setattr
 
   def _recreate_resource(self, proto):
-    return _RestoredResource(device=proto.device), setattr
+    return _RestoredResource(device=proto.device), _setattr_and_track
 
 
 # TODO(b/124205571,b/124092991): Solve destruction of resources.
@@ -670,6 +670,13 @@ class _RestoredResource(tracking.TrackableResource):
 
 def _call_attribute(instance, *args, **kwargs):
   return instance.__call__(*args, **kwargs)
+
+
+def _setattr_and_track(obj, name, value):
+  """Sets new attribute and marks it as a dependency if Trackable."""
+  setattr(obj, name, value)
+  if isinstance(value, base.Trackable):
+    obj._track_trackable(value, name)  # pylint:disable=protected-access
 
 
 @tf_export("__internal__.saved_model.load_partial", v1=[])

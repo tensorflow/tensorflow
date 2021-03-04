@@ -108,6 +108,8 @@
        ML authoring is generally discouraged.
     *  Add support for static hash tables through
          `TFLiteConverter.from_saved_model`.
+	  *  Quantized x86 execution defaults to Ruy GEMM library for platforms with
+	     AVX support.
 
 *   TF Core:
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,

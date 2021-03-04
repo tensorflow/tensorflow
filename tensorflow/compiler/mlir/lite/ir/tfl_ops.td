@@ -478,9 +478,13 @@ class TFL_Op<string mnemonic, list<OpTrait> traits = []> :
   string customOption = ?;
 }
 
-class TFL_ConvOp<string mnemonic, string opSummary, int index> :
-    TFL_Op<mnemonic, [NoSideEffect, AccumulatorUniformScale<2, 0, 1>,
-    AffineQuantizedOpInterface, AffineOpCoefficient<index, 1>, TFL_SparseOp]> {
+class TFL_ConvOp<string mnemonic, string opSummary, int index,
+                 list<OpTrait> additional_traits = []> :
+    TFL_Op<mnemonic,[NoSideEffect,
+                     AccumulatorUniformScale<2, 0, 1>,
+                     AffineQuantizedOpInterface,
+                     AffineOpCoefficient<index, 1>,
+                     TFL_SparseOp] # additional_traits> {
   let summary = opSummary # " operator";
 
   let description = [{
@@ -863,7 +867,8 @@ def TFL_ExternalConstOp : Op<TFL_Dialect, "external_const", [NoSideEffect]> {
   let results = (outs AnyTensor:$output);
 }
 
-def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0> {
+def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0,
+      [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
@@ -874,6 +879,9 @@ def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0> {
     std::vector<int> GetSparseOperands() { return {1}; }
     std::vector<std::vector<int>> GetFloatBlockSize() { return {}; }
     std::vector<std::vector<int>> GetQuantizedBlockSize() { return {}; }
+
+    // Returns whether the return types are compatible.
+    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r);
   }];
 }
 
@@ -1003,9 +1011,7 @@ def TFL_BatchMatMulOp : TFL_Op<"batch_matmul", [
    TFL_OperandHasAtleastRank<0, 2>,
    TFL_OperandHasAtleastRank<1, 2>,
    PredOpTrait<"x and output must have same element type",
-       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-   PredOpTrait<"y and output must have same element type",
-       TFL_TCresVTEtIsSameAsOp<0, 1>>]> {
+       TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
 
   let summary = "Batch Matrix Multiply Operator";
 
@@ -2766,7 +2772,7 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2", [
 def TFL_SelectOp : TFL_Op<"select", [
   NoSideEffect,
   SameOperandsAndResultsScale,
-  PredOpTrait<"operands have same element type", TCopVTEtIsSameAs<1, 2>>,
+  PredOpTrait<"operands have same element type", TFL_TCopVTEtAreSameAt<1, 2>>,
   PredOpTrait<"operands and result have same element type",
     TFL_TCresVTEtIsSameAsOp<0, 1>>]> {
   let summary = "Select operator";
@@ -2802,8 +2808,9 @@ def TFL_SelectOp : TFL_Op<"select", [
 def TFL_SelectV2Op : TFL_Op<"select_v2", [
     ResultsBroadcastableShape,
     NoSideEffect,
+    SameOperandsAndResultsScale,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1, 2], 4>,
-    PredOpTrait<"operands have same element type", TCopVTEtIsSameAs<1, 2>>,
+    PredOpTrait<"operands have same element type", TFL_TCopVTEtAreSameAt<1, 2>>,
     PredOpTrait<"operands and result have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 1>>]> {
   let summary = "SelectV2 operator";

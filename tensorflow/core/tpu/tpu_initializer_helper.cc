@@ -87,7 +87,7 @@ GetLibTpuInitArguments() {
     arg_ptrs.push_back(args[i].data());
   }
 
-  return {args, arg_ptrs};
+  return {std::move(args), std::move(arg_ptrs)};
 }
 
 }  // namespace tpu

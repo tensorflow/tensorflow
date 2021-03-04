@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-# Warning: as of Jan 20, 2020, MacOS(_EXTERNAL) images do not support Python3.9.
 set -e
 set -x
 
@@ -32,7 +30,7 @@ PYENV_ROOT="$(pwd)/pyenv"
 export PYENV_ROOT
 export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init -)"
-PY_VERSION=3.9.1
+PY_VERSION=3.9.0
 pyenv install -s "${PY_VERSION}"
 pyenv local "${PY_VERSION}"
 python --version

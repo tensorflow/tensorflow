@@ -114,6 +114,7 @@ class XlaOp {
   int64 handle() const { return handle_; }
 
   friend class XlaBuilder;
+  friend class ValueInference;
   friend class MlirHloBuilder;
   friend struct internal::XlaBuilderFriend;
 
@@ -295,31 +296,6 @@ class XlaBuilder {
   // This will copy the needed ops/computations to the subgraph.
   StatusOr<XlaComputation> BuildConstantSubGraph(
       XlaOp root_op, bool dynamic_dimension_is_uint_max = false);
-
-  // Similar to BuildConstantSubGraph, but with root element type changed to
-  // boolean. A true value in the root indicates that the value is dynamic while
-  // false value indicates that the value is a constant. This will copy the
-  // needed ops/computations to the subgraph.
-  //
-  // E.g.,
-  // Compuptation {
-  //   a = 3
-  //   b = param(0)
-  //   ROOT Tuple(a + b, a + 1, b + 1)
-  // }
-  // Calling BuildDynamicInferenceGraph on root will produce the following
-  // graph:
-  //
-  // Compuptation {
-  //   a = False
-  //   b = True
-  //   ROOT Tuple(a | b, a, b)
-  // }
-  //
-  // The result, which is (True, False, True) after evaluation, can be
-  // interpreted as "First element is dynamic; Second element is static; Third
-  // element is dynamic".
-  StatusOr<XlaComputation> BuildDynamicInferenceGraph(XlaOp root_op);
 
   // Returns the first error that was encountered while building the
   // computation. When an error is encountered, by default we return a vacuous
@@ -1478,6 +1454,8 @@ class XlaBuilder {
   }
 
   friend struct internal::XlaBuilderFriend;
+
+  friend class ValueInference;
 };
 
 // RAII-style object: sets the current sharding assignment in builder on

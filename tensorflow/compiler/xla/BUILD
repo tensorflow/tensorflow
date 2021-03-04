@@ -17,6 +17,7 @@ package_group(
     packages = [
         "//tensorflow/compiler/...",
         "//tensorflow/python/tpu/...",
+        "//third_party/iree/...",
         "//third_party/py/jax/...",
     ],
 )

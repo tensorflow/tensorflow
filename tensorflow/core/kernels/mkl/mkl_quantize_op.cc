@@ -474,7 +474,8 @@ class MklQuantizeV2Op : public OpKernel {
         MklReorderWithScalePrimitiveFactory<T>::Get(src.GetUsrMem(),
                                                     dst.GetUsrMem(), fwdParams);
     std::shared_ptr<stream> cpu_stream;
-    cpu_stream.reset(CreateStream(ctx, reorder_prim->GetEngine()));
+    MklDnnThreadPool eigen_tp(ctx);
+    cpu_stream.reset(CreateStream(&eigen_tp, reorder_prim->GetEngine()));
     reorder_prim->Execute(src.GetUsrMemDataHandle(), dst.GetUsrMemDataHandle(),
                           cpu_stream);
 

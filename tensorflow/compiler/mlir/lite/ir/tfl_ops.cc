@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_structs.cc.inc"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 
 namespace mlir {
 namespace TFL {
@@ -946,6 +947,108 @@ void Conv2DOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
   // TODO(b/180121750): Enable the pattern after the integration tests are
   // fixed.
   // results.insert<RemoveOptionalZeroBias<Conv2DOp>>(context);
+}
+
+static LogicalResult ComputeConvWindowedOutputSize(
+    int64_t input_size, int64_t filter_size, int64_t dilation_rate,
+    int64_t stride, tensorflow::Padding padding, int64_t *output_size) {
+  int64_t pad_low;
+  int64_t pad_high;
+
+  tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
+      input_size, filter_size, dilation_rate, stride, padding, output_size,
+      &pad_low, &pad_high);
+  // Return failure if expected_output_size could not be calculated.
+  if (!status.ok()) return failure();
+  return success();
+}
+
+LogicalResult Conv2DOp::inferReturnTypes(
+    MLIRContext *, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attr, RegionRange,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  Conv2DOpAdaptor op(operands, attr);
+
+  const Value input = op.input();
+  const Value filter = op.filter();
+
+  const RankedTensorType input_ty =
+      input.getType().dyn_cast_or_null<RankedTensorType>();
+  const RankedTensorType filter_ty =
+      filter.getType().dyn_cast_or_null<RankedTensorType>();
+  // If indeed both input type & filter type are ranked type and have ranks.
+  // We will need to check their ranks are valid.
+  if ((input_ty && input_ty.hasRank() && input_ty.getRank() != 4) ||
+      (filter_ty && filter_ty.hasRank() && filter_ty.getRank() != 4)) {
+    return emitOptionalError(location, "Invalid ranks");
+  }
+
+  // If either input or filter is unranked, we will just return unranked output
+  // shape.
+  if (!input_ty || !filter_ty || !input_ty.hasRank() || !filter_ty.hasRank()) {
+    Type result_type;
+    result_type = UnrankedTensorType::get(
+        input.getType().cast<ShapedType>().getElementType());
+    inferredReturnTypes.assign({result_type});
+    return success();
+  }
+
+  auto stride_h = op.stride_h().getInt();
+  auto stride_w = op.stride_w().getInt();
+  auto dilation_h = op.dilation_h_factor().getInt();
+  auto dilation_w = op.dilation_w_factor().getInt();
+
+  // We don't have EXPLICIT PADDING in TfLite.
+  auto paddings = op.padding().getValue();
+  tensorflow::Padding padding;
+  auto padding_is_valid = GetPaddingFromString(paddings.str(), &padding);
+  if (!padding_is_valid.ok()) {
+    return emitOptionalError(location, "invalid padding format provided");
+  }
+
+  // Output always have rank 4. All dimensions are initialized to
+  // dynamic size and can be partially inferred.
+  // TFL's conv2d is always NHWC format & the filter is OHWI.
+  SmallVector<int64_t, 4> return_shape(4, ShapedType::kDynamicSize);
+  return_shape[0] = input_ty.getDimSize(0);
+  return_shape[3] = filter_ty.getDimSize(0);
+
+  // Spatial dimensions can be inferred only when both input and filter are
+  // ranked because we need to get their spatial dimensions.
+
+  // Height.
+  if (!input_ty.isDynamicDim(1) && !filter_ty.isDynamicDim(1)) {
+    int64_t output_height;
+    if (failed(ComputeConvWindowedOutputSize(
+            input_ty.getDimSize(1), filter_ty.getDimSize(1), dilation_h,
+            stride_h, padding, &output_height))) {
+      return failure();
+    }
+    return_shape[1] = output_height;
+  }
+
+  // Width.
+  if (!input_ty.isDynamicDim(2) && !filter_ty.isDynamicDim(2)) {
+    int64_t output_width;
+    if (failed(ComputeConvWindowedOutputSize(
+            input_ty.getDimSize(2), filter_ty.getDimSize(2), dilation_w,
+            stride_w, padding, &output_width))) {
+      return failure();
+    }
+    return_shape[2] = output_width;
+  }
+
+  auto result_type =
+      mlir::RankedTensorType::get(return_shape, input_ty.getElementType());
+
+  inferredReturnTypes.assign({result_type});
+  return success();
+}
+
+bool Conv2DOp::isCompatibleReturnTypes(ArrayRef<Type> lhs, ArrayRef<Type> rhs) {
+  if (lhs.size() != rhs.size() || lhs.size() != 1) return false;
+  if (failed(mlir::verifyCompatibleShape(lhs[0], rhs[0]))) return false;
+  return true;
 }
 
 //===----------------------------------------------------------------------===//

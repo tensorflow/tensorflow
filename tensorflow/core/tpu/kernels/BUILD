@@ -956,6 +956,7 @@ cc_library(
     name = "tpu_ordinal_selector_op",
     srcs = ["tpu_ordinal_selector_op.cc"],
     deps = [
+        ":tpu_ordinal_selector",
         "//tensorflow/core:framework",
     ],
     alwayslink = 1,
@@ -966,5 +967,16 @@ cc_library(
     hdrs = ["tpu_ordinal_selector_interface.h"],
     deps = [
         "//tensorflow/core:framework",
+    ],
+)
+
+cc_library(
+    name = "tpu_ordinal_selector",
+    hdrs = ["tpu_ordinal_selector.h"],
+    deps = [
+        ":tpu_ordinal_selector_interface",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
     ],
 )
