@@ -31,6 +31,7 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.kernel_tests.random import util as \
 random_test_util
 from tensorflow.python.ops import gen_stateful_random_ops
@@ -76,6 +77,7 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       gen.uniform_full_int(shape=(3,))
 
   @parameterized.parameters(ALGS)
+  @test_util.disable_mlir_bridge("TODO(b/180412889): Crashes with MLIR bridge.")
   def testDefun(self, alg):
     """Test for defun."""
     with ops.device(xla_device_name()):
@@ -248,6 +250,36 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
                     shape=shape, dtype=dtype))
       self.assertAllEqual(cpu, xla)
 
+  def testXLAEqualsCPUAroundCounterOverflow(self):
+    """Tests XLA and CPU kernels generate the same integers in overflow case.
+
+       Specifically this tests the case where the counter is incremented past
+       what can fit within 64 bits of the 128 bit Philox counter.
+    """
+    dtype = dtypes.uint64
+    seed = 2**64 - 10
+    shape = [315, 49]
+    if compat.forward_compatible(2020, 10, 25):
+      with ops.device("/device:CPU:0"):
+        cpu_gen = random.Generator.from_seed(
+            seed=seed, alg=random.RNG_ALG_PHILOX)
+      with ops.device(xla_device_name()):
+        xla_gen = random.Generator.from_seed(
+            seed=seed, alg=random.RNG_ALG_PHILOX)
+      # Repeat multiple times to make sure that the state after
+      # number-generation are the same between CPU and XLA.
+      for _ in range(5):
+        with ops.device("/device:CPU:0"):
+          # Test both number-generation and skip
+          cpu = cpu_gen.uniform_full_int(shape=shape, dtype=dtype)
+          cpu_gen.skip(100)
+        with ops.device(xla_device_name()):
+          xla = xla_gen.uniform_full_int(shape=shape, dtype=dtype)
+          xla_gen.skip(100)
+        self.assertAllEqual(cpu, xla)
+        self.assertAllEqual(cpu_gen.state, xla_gen.state)
+      self.assertAllEqual(cpu, xla)
+
   def _testRngIsNotConstant(self, rng, dtype):
     # Tests that 'rng' does not always return the same value.
     # The random-number generator, if working correctly, should produce the
@@ -352,6 +384,8 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
           mean_atol=2e-3, median_atol=4e-3,
           variance_rtol=1e-2 if dtype == dtypes.bfloat16 else 5e-3)
 
+  @test_util.disable_mlir_bridge(
+      "b/180412086: MLIR bridge gives wrong error messages.")
   def testErrors(self):
     """Tests that proper errors are raised.
     """

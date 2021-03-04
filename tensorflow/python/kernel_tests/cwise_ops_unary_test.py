@@ -139,10 +139,10 @@ class UnaryOpTest(test.TestCase):
     with test_util.use_gpu():
       result = tf_func(ops.convert_to_tensor(x))
       tf_gpu = self.evaluate(result)
-    if x.dtype == np.float16:
-      self.assertAllClose(np_ans, tf_gpu, rtol=1e-3, atol=1e-3)
-    else:
-      self.assertAllClose(np_ans, tf_gpu)
+      # Slightly increase the tolerance for float64 computations. This is
+      # desired for specifically lgamma but shouldn't be of concern for other
+      # functions.
+      self.assertAllCloseAccordingToType(np_ans, tf_gpu, atol=2e-6)
     # TODO(zhifengc/ke): make gradient checker work on GPU.
 
   def _compareSparseGpu(self, x, np_func, tf_func, tol):
@@ -466,7 +466,7 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, math_ops.negative)
     self._compareBoth(x, np.negative, _NEG)
-    self._compareCpu(y, self._inv, math_ops.reciprocal)
+    self._compareBoth(y, self._inv, math_ops.reciprocal)
     self._compareCpu(x, np.square, math_ops.square)
     self._compareCpu(y, np.sqrt, math_ops.sqrt)
     self._compareCpu(y, self._rsqrt, math_ops.rsqrt)
@@ -511,7 +511,7 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, math_ops.negative)
     self._compareBoth(x, np.negative, _NEG)
-    self._compareCpu(y, self._inv, math_ops.reciprocal)
+    self._compareBoth(y, self._inv, math_ops.reciprocal)
     self._compareCpu(x, np.square, math_ops.square)
     self._compareCpu(y, np.sqrt, math_ops.sqrt)
     self._compareCpu(y, self._rsqrt, math_ops.rsqrt)

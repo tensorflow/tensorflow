@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the FilterDataset serialization."""
+"""Tests for checkpointing the FilterDataset."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -28,9 +28,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class FilterDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase,
-    parameterized.TestCase):
+class FilterDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                  parameterized.TestCase):
 
   def _build_filter_range_graph(self, div):
     return dataset_ops.Dataset.range(100).filter(

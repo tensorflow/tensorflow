@@ -88,7 +88,8 @@ class DispatchServer(object):
 
   >>> dispatcher = tf.data.experimental.service.DispatchServer()
   >>> dispatcher_address = dispatcher.target.split("://")[1]
-  >>> worker = tf.data.experimental.service.WorkerServer(WorkerConfig(
+  >>> worker = tf.data.experimental.service.WorkerServer(
+  ...     tf.data.experimental.service.WorkerConfig(
   ...     dispatcher_address=dispatcher_address))
   >>> dataset = tf.data.Dataset.range(10)
   >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
@@ -299,14 +300,17 @@ class WorkerServer(object):
     """
     if config.dispatcher_address is None:
       raise ValueError("must specify a dispatcher_address")
-    self._config = config
-    config_proto = service_config_pb2.WorkerConfig(
-        dispatcher_address=config.dispatcher_address,
-        worker_address=config.worker_address,
-        port=config.port,
-        protocol=config.protocol,
-        heartbeat_interval_ms=config.heartbeat_interval_ms,
-        dispatcher_timeout_ms=config.dispatcher_timeout_ms)
+    if isinstance(config, service_config_pb2.WorkerConfig):
+      config_proto = config
+    else:
+      config_proto = service_config_pb2.WorkerConfig(
+          dispatcher_address=config.dispatcher_address,
+          worker_address=config.worker_address,
+          port=config.port,
+          protocol=config.protocol,
+          heartbeat_interval_ms=config.heartbeat_interval_ms,
+          dispatcher_timeout_ms=config.dispatcher_timeout_ms,
+          data_transfer_protocol=None)
     self._server = _pywrap_server_lib.TF_DATA_NewWorkerServer(
         config_proto.SerializeToString())
     if start:

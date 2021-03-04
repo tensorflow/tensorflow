@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/softmax.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/softmax1x1.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/space_to_depth.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/split.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/strided_slice.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/transpose.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/winograd.h"
@@ -134,6 +135,17 @@ void SelectSpaceToDepth(const SpaceToDepthAttributes& attr,
   *ptr = absl::make_unique<GPUOperation>(std::move(operation));
 }
 
+absl::Status SelectSplit(const SplitAttributes& attr,
+                         const OperationDef& op_def,
+                         std::unique_ptr<GPUOperation>* ptr) {
+  if (attr.axis != Axis::CHANNELS) {
+    return absl::UnimplementedError("No split for this axis.");
+  }
+  Split operation = CreateSplit(op_def, attr);
+  *ptr = absl::make_unique<Split>(std::move(operation));
+  return absl::OkStatus();
+}
+
 void SelectPadding(const PadAttributes& attr, const OperationDef& op_def,
                    std::unique_ptr<GPUOperation>* ptr) {
   GPUOperation operation = CreatePadding(op_def, attr);
@@ -176,15 +188,37 @@ void SelectTranspose(const TransposeAttributes& attr,
 std::unique_ptr<GPUOperation> SelectWinograd4x4To36(
     const GpuInfo& gpu_info, const Padding2D& padding,
     const OperationDef& op_def) {
-  return absl::make_unique<Winograd4x4To36>(
-      CreateWinograd4x4To36(gpu_info, op_def, padding));
+  if (gpu_info.IsApple()) {
+    const auto src_storage = op_def.src_tensors[0].storage_type;
+    const auto dst_storage = op_def.src_tensors[0].storage_type;
+    if ((src_storage == TensorStorageType::BUFFER ||
+         src_storage == TensorStorageType::IMAGE_BUFFER) &&
+        (dst_storage == TensorStorageType::BUFFER ||
+         dst_storage == TensorStorageType::IMAGE_BUFFER)) {
+      Winograd4x4To36 operation = CreateWinograd4x4To36(op_def, padding);
+      return absl::make_unique<Winograd4x4To36>(std::move(operation));
+    }
+  }
+  return absl::make_unique<Winograd4x4To36TileX6>(
+      CreateWinograd4x4To36TileX6(gpu_info, op_def, padding));
 }
 
 std::unique_ptr<GPUOperation> SelectWinograd36To4x4(
     const GpuInfo& gpu_info, const OperationDef& op_def,
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases) {
-  return absl::make_unique<Winograd36To4x4>(
-      CreateWinograd36To4x4(gpu_info, op_def, biases));
+  if (gpu_info.IsApple()) {
+    const auto src_storage = op_def.src_tensors[0].storage_type;
+    const auto dst_storage = op_def.src_tensors[0].storage_type;
+    if ((src_storage == TensorStorageType::BUFFER ||
+         src_storage == TensorStorageType::IMAGE_BUFFER) &&
+        (dst_storage == TensorStorageType::BUFFER ||
+         dst_storage == TensorStorageType::IMAGE_BUFFER)) {
+      Winograd36To4x4 operation = CreateWinograd36To4x4(op_def, biases);
+      return absl::make_unique<Winograd36To4x4>(std::move(operation));
+    }
+  }
+  return absl::make_unique<Winograd36To4x4Tile4x1>(
+      CreateWinograd36To4x4Tile4x1(gpu_info, op_def, biases));
 }
 
 std::unique_ptr<GPUOperation> SelectQuantizeAndDequantize(

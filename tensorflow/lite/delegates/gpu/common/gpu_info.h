@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_GPU_INFO_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_GPU_INFO_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -124,6 +125,8 @@ struct AdrenoInfo {
   // Not supported on some Adreno devices with specific driver version.
   // b/131099086
   bool support_one_layer_texture_array = true;
+
+  bool compiler_bugs_in_a6xx = false;
 };
 
 enum class AppleGpu {
@@ -213,6 +216,9 @@ struct OpenGlInfo {
   int max_work_group_invocations = 0;
   int max_texture_size = 0;
   int max_array_texture_layers = 0;
+  int max_fragment_image_units = 0;
+  int max_fragment_uniform_vec4_count = 0;
+  int max_color_atttachments = 0;
 
   std::vector<std::string> extensions;
   int max_compute_work_group_size_x;
@@ -227,10 +233,13 @@ struct VulkanInfo {
   uint32_t api_version_minor = -1;
   uint32_t api_version_patch = -1;
 
-  uint32_t max_per_stage_descriptor_sampled_images = 0;
+  int max_per_stage_descriptor_sampled_images = 0;
   uint32_t max_compute_work_group_invocations;
   uint32_t max_image_dimension_2d;
   uint32_t max_image_array_layers;
+
+  uint32_t subgroup_size = 0;
+  bool supports_subgroup_arithmetic = false;
 
   std::vector<std::string> extensions;
   int max_compute_work_group_size_x;
@@ -256,8 +265,10 @@ struct OpenClInfo {
   std::vector<std::string> extensions;
   bool supports_fp16;
   bool supports_image3d_writes;
+  bool supports_images;
   int compute_units_count;
   uint64_t buffer_max_size;
+  uint64_t max_allocation_size;
   uint64_t image2d_max_width;
   uint64_t image2d_max_height;
   uint64_t image_buffer_max_size;
@@ -289,6 +300,27 @@ struct OpenClInfo {
   bool supports_rgba_f32_tex2d = false;
 };
 
+enum class MetalLanguageVersion {
+  kMetal1_0,
+  kMetal1_1,
+  kMetal1_2,
+  kMetal2_0,
+  kMetal2_1,
+  kMetal2_2,
+  kMetal2_3,
+  kUnknown,
+};
+
+struct MetalInfo {
+  MetalLanguageVersion language_version;
+
+  int max_work_group_size_x;
+  int max_work_group_size_y;
+  int max_work_group_size_z;
+
+  uint64_t buffer_max_size;
+};
+
 struct GpuInfo {
   bool IsAdreno() const;
   bool IsApple() const;
@@ -303,6 +335,7 @@ struct GpuInfo {
 
   bool SupportsFP16() const;
 
+  bool SupportsImages() const;
   bool SupportsTextureArray() const;
   bool SupportsImageBuffer() const;
   bool SupportsImage3D() const;
@@ -330,6 +363,7 @@ struct GpuInfo {
   uint64_t GetMaxImage3DHeight() const;
   uint64_t GetMaxImage3DDepth() const;
   uint64_t GetMaxBufferSize() const;
+  uint64_t GetMaxMemoryAllocationSize() const;
   uint64_t GetMaxImageBufferWidth() const;
 
   GpuVendor vendor = GpuVendor::kUnknown;
@@ -350,6 +384,7 @@ struct GpuInfo {
   VulkanInfo vulkan_info;
   bool IsApiVulkan() const;
 
+  MetalInfo metal_info;
   bool IsApiMetal() const;
 
   OpenClInfo opencl_info;

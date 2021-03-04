@@ -440,7 +440,7 @@ class TensorTieFactory {
   std::unique_ptr<TensorObjectConverterBuilder> converter_builder_;
 };
 
-class InferenceRunnerImpl : public InferenceRunner {
+class InferenceRunnerImpl : public CLInferenceRunner {
  public:
   InferenceRunnerImpl(Environment* environment,
                       std::unique_ptr<InferenceContext> context
@@ -503,25 +503,49 @@ class InferenceRunnerImpl : public InferenceRunner {
     return outputs_[index]->SetExternalObject(object);
   }
 
+  absl::Status CopyFromExternalInput(int index) override {
+    if (index > inputs_.size()) {
+      return absl::NotFoundError(
+          absl::StrCat("Input id ", index, " is an invalid input index."));
+    }
+    return inputs_[index]->CopyFromExternalObject();
+  }
+
+  absl::Status CopyToExternalOutput(int index) override {
+    if (index > outputs_.size()) {
+      return absl::NotFoundError(
+          absl::StrCat("Output id ", index, " is an invalid output index"));
+    }
+    return outputs_[index]->CopyToExternalObject();
+  }
+
   absl::Status Run() override {
 #ifdef CL_DELEGATE_ALLOW_GL
     if (gl_interop_fabric_) {
       RETURN_IF_ERROR(gl_interop_fabric_->Start());
     }
 #endif
-    for (auto& obj : inputs_) {
-      RETURN_IF_ERROR(obj->CopyFromExternalObject());
+    for (int i = 0; i < inputs_.size(); i++) {
+      RETURN_IF_ERROR(CopyFromExternalInput(i));
     }
-    RETURN_IF_ERROR(context_->AddToQueue(queue_));
-    clFlush(queue_->queue());
-    for (auto& obj : outputs_) {
-      RETURN_IF_ERROR(obj->CopyToExternalObject());
+
+    RETURN_IF_ERROR(RunWithoutExternalBufferCopy());
+
+    for (int i = 0; i < outputs_.size(); i++) {
+      RETURN_IF_ERROR(CopyToExternalOutput(i));
     }
 #ifdef CL_DELEGATE_ALLOW_GL
     if (gl_interop_fabric_) {
       RETURN_IF_ERROR(gl_interop_fabric_->Finish());
     }
 #endif
+    return absl::OkStatus();
+  }
+
+  absl::Status RunWithoutExternalBufferCopy() override {
+    RETURN_IF_ERROR(context_->AddToQueue(queue_));
+    clFlush(queue_->queue());
+
     return absl::OkStatus();
   }
 

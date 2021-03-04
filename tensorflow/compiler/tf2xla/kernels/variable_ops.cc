@@ -59,7 +59,7 @@ class VariableShapeOp : public XlaOpKernel {
  private:
   DataType out_dtype_;
 };
-REGISTER_XLA_OP(Name("VariableShape").IsMetadataOp(), VariableShapeOp);
+REGISTER_XLA_OP(Name("VariableShape").CompilationOnly(), VariableShapeOp);
 
 class ReadVariableOp : public XlaOpKernel {
  public:

@@ -152,7 +152,7 @@ Status ConvertGraphDefToEngine(
     TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
     const bool use_implicit_batch, bool* convert_successfully,
-    TrtShapeOptimizationProfile* profiles);
+    TrtShapeOptimizationProfile* profiles, absl::string_view engine_name);
 
 // Helper class for the segmenter to determine whether an output edge from the
 // TRT segment is valid.
@@ -191,6 +191,8 @@ class TRT_ShapedWeights {
   // Fills all the weight values with value.
   template <typename T>
   Status SetValues(T value);
+
+  Status SetShape(nvinfer1::Dims dims);
 
   int64_t count() const;
 
@@ -455,7 +457,8 @@ class Converter {
 
   static StatusOr<std::unique_ptr<Converter>> Create(
       TrtPrecisionMode precision_mode, bool use_calibration,
-      nvinfer1::ILogger* trt_logger, const bool use_implicit_batch);
+      nvinfer1::ILogger* trt_logger, const bool use_implicit_batch,
+      absl::string_view engine_name);
 
   //////////////////////////////////////////////////////////////////////////////
   // Methods used by the TRT engine builder to build a TRT network from a TF
@@ -557,10 +560,12 @@ class Converter {
   // This can be achieved by calling DynamicReshape(input, {{2,4},{0,2}},
   // params).
   //
-  // Before each slice we can insert a new dim if the corresponding
+  // Before each slice we can insert new dims if the corresponding
   // size_for_added_dims element is not negative. The size_for_added_dims array
   // can have more than slices.size() elements, in order to insert a dimension
-  // ater the last slice.
+  // after the last slice. For example, to add two leading 1 dimensions, and
+  // three trailing 1 dimensions, call DynamicReshape(input, {{0,nbDims}},
+  // {2, 3}).
   //
   // Parameters:
   // input - input tensor
@@ -597,9 +602,18 @@ class Converter {
   Status GetWeightRange(const TRT_ShapedWeights& weights, float* out_min,
                         float* out_max) const;
 
+  // Constructs a name and passed it to the TensorRT layer to support xprof.
+  void SetLayerName(nvinfer1::ILayer* layer, const NodeDef& node_def,
+                    absl::string_view sub_op_name = "",
+                    absl::optional<int> sub_op_instance = absl::nullopt);
+  void SetLayerName(nvinfer1::ILayer* layer, absl::string_view main_op_name,
+                    absl::string_view sub_op_name,
+                    absl::optional<int> sub_op_instance = absl::nullopt);
+
  private:
   Converter(TrtPrecisionMode precision_mode, bool use_calibration,
-            nvinfer1::ILogger* trt_logger, const bool use_implicit_batch);
+            nvinfer1::ILogger* trt_logger, const bool use_implicit_batch,
+            absl::string_view engine_name);
 
   Status Init(nvinfer1::ILogger* trt_logger);
 
@@ -669,6 +683,9 @@ class Converter {
   // Assign a ID to each constant layer we create, so that we can assign a
   // unique name to the layer.
   int next_constant_layer_id_ = 0;
+
+  // The name of the TRTEngineOp node.
+  absl::string_view engine_name_;
 
   friend class ConverterTest;
   friend class OpConverterTest;

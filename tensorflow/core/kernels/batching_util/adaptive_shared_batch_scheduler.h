@@ -24,6 +24,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/periodic_function.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/platform/types.h"
@@ -128,8 +130,14 @@ class AdaptiveSharedBatchScheduler
       std::shared_ptr<AdaptiveSharedBatchScheduler<TaskType>>* scheduler);
 
   struct QueueOptions {
-    // Maximum size of each batch.
+    // Maximum size of a batch that's formed within
+    // `ASBSQueue<TaskType>::Schedule`.
     int max_batch_size = 1000;
+    // Maximum size of input task, which is submitted to the queue by
+    // calling `ASBSQueue<TaskType>::Schedule` and used to form batches.
+    //
+    // If specified, it should be larger than or equal to 'max_batch_size'.
+    absl::optional<int> max_input_task_size = absl::nullopt;
     // Maximum number of enqueued (i.e. non-scheduled) batches.
     int max_enqueued_batches = 10;
     // Amount of time non-full batches must wait before becoming schedulable.
@@ -144,7 +152,7 @@ class AdaptiveSharedBatchScheduler
     // Including this option allows the scheduler to pack batches better and
     // should usually improve overall throughput.
     std::function<Status(std::unique_ptr<TaskType>* input_task, int first_size,
-                         int max_size,
+                         int max_batch_size,
                          std::vector<std::unique_ptr<TaskType>>* output_tasks)>
         split_input_task_func;
   };
@@ -407,6 +415,15 @@ Status AdaptiveSharedBatchScheduler<TaskType>::AddQueue(
         "max_enqueued_batches must be positive; was ",
         options.max_enqueued_batches);
   }
+  if (options.max_input_task_size.has_value()) {
+    if (options.max_input_task_size.value() < options.max_batch_size) {
+      return errors::InvalidArgument(
+          "max_input_task_size must be larger than or equal to max_batch_size;"
+          "got max_input_task_size as ",
+          options.max_input_task_size.value(), " and max_batch_size as ",
+          options.max_batch_size);
+    }
+  }
   internal::ASBSQueue<TaskType>* asbs_queue_raw;
   queue->reset(asbs_queue_raw = new internal::ASBSQueue<TaskType>(
                    this->shared_from_this(), options));
@@ -608,6 +625,13 @@ Status ASBSQueue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
                                    " is larger than maximum batch size ",
                                    options_.max_batch_size);
   }
+  if (options_.max_input_task_size.has_value() &&
+      (size > options_.max_input_task_size.value())) {
+    return errors::InvalidArgument("Task size ", size,
+                                   " is larger than max input task size ",
+                                   options_.max_input_task_size.value());
+  }
+
   std::vector<std::unique_ptr<TaskType>> tasks_to_schedule;
   std::vector<ASBSBatch<TaskType>*> new_batches;
   bool closed_batch = false;

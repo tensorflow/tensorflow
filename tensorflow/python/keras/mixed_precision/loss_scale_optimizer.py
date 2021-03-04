@@ -323,7 +323,7 @@ class _DynamicLossScaleState(trackable.Trackable):
 
   def __call__(self):
     """Returns the current loss scale as a scalar `float32` tensor."""
-    return ops.convert_to_tensor(self._current_loss_scale)
+    return ops.convert_to_tensor_v2_with_dispatch(self._current_loss_scale)
 
   def update(self, grads):
     """Updates the value of the loss scale.
@@ -567,9 +567,10 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
   def loss_scale(self):
     """The current loss scale as a float32 scalar tensor."""
     if isinstance(self._loss_scale, _DynamicLossScaleState):
-      return ops.convert_to_tensor(self._loss_scale.current_loss_scale)
+      return ops.convert_to_tensor_v2_with_dispatch(
+          self._loss_scale.current_loss_scale)
     else:
-      return ops.convert_to_tensor(self._loss_scale)
+      return ops.convert_to_tensor_v2_with_dispatch(self._loss_scale)
 
   @property
   def dynamic_counter(self):
@@ -1022,23 +1023,23 @@ class LossScaleOptimizerV1(LossScaleOptimizer):
 
     if isinstance(loss_scale, (int, float)):
       tf_logging.warn(
-          warn_msg_prefix + 'For example\n'
-          '  opt = tf.keras.mixed_precision.experimental.LossScaleOptimizer('
+          warn_msg_prefix + 'For example:\n'
+          '  opt = tf.keras.mixed_precision.LossScaleOptimizer('
           'opt, dynamic=False, initial_scale={})'.format(loss_scale))
       super(LossScaleOptimizerV1, self).__init__(optimizer, dynamic=False,
                                                  initial_scale=loss_scale)
     elif isinstance(loss_scale, loss_scale_module.FixedLossScale):
       ls_val = loss_scale._loss_scale_value  # pylint: disable=protected-access
       tf_logging.warn(
-          warn_msg_prefix + 'For example\n'
-          '  opt = tf.keras.mixed_precision.experimental.LossScaleOptimizer('
+          warn_msg_prefix + 'For example:\n'
+          '  opt = tf.keras.mixed_precision.LossScaleOptimizer('
           'opt, dynamic=False, initial_scale={})'.format(ls_val))
       super(LossScaleOptimizerV1, self).__init__(optimizer, dynamic=False,
                                                  initial_scale=ls_val)
     elif loss_scale == 'dynamic':
       tf_logging.warn(
-          warn_msg_prefix + 'For example\n'
-          '  opt = tf.keras.mixed_precision.experimental.LossScaleOptimizer('
+          warn_msg_prefix + 'For example:\n'
+          '  opt = tf.keras.mixed_precision.LossScaleOptimizer('
           'opt)')
       super(LossScaleOptimizerV1, self).__init__(optimizer)
     elif isinstance(loss_scale, loss_scale_module.DynamicLossScale):
@@ -1061,7 +1062,7 @@ class LossScaleOptimizerV1(LossScaleOptimizer):
           'Note that the non-experimental LossScaleOptimizer does not take a '
           'DynamicLossScale but instead takes the dynamic configuration '
           'directly in the constructor. For example:\n'
-          '  opt = tf.keras.mixed_precision.experimental.LossScaleOptimizer('
+          '  opt = tf.keras.mixed_precision.LossScaleOptimizer('
           'opt{})\n'.format(extra_arguments))
       super(LossScaleOptimizerV1, self).__init__(optimizer, **kwargs)
     elif isinstance(loss_scale, loss_scale_module.LossScale):

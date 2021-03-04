@@ -194,7 +194,7 @@ llvm::CallInst* EmitDeviceFunctionCall(
     const string& callee_name, absl::Span<llvm::Value* const> operands,
     absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
     absl::Span<const llvm::Attribute::AttrKind> attributes,
-    llvm::IRBuilder<>* b) {
+    llvm::IRBuilder<>* b, absl::string_view name) {
   std::vector<llvm::Type*> ir_input_types;
   llvm::Module* module = b->GetInsertBlock()->getModule();
   for (PrimitiveType input_type : input_types) {
@@ -217,7 +217,7 @@ llvm::CallInst* EmitDeviceFunctionCall(
     callee->addFnAttr(attribute);
   }
 
-  return b->CreateCall(callee, llvm_ir::AsArrayRef(operands));
+  return b->CreateCall(callee, llvm_ir::AsArrayRef(operands), name.data());
 }
 
 llvm::CallInst* EmitCallToTargetIntrinsic(

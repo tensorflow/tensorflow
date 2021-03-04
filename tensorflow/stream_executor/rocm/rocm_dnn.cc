@@ -2578,6 +2578,7 @@ bool MIOpenSupport::DoRnnForward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<Eigen::half>& input_data,
+    const DeviceMemory<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
     const DeviceMemory<Eigen::half>& input_h_data,
     const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -2621,6 +2622,7 @@ bool MIOpenSupport::DoRnnForward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<float>& input_data,
+    const DeviceMemory<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
     const DeviceMemory<float>& input_h_data,
     const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -2663,6 +2665,7 @@ bool MIOpenSupport::DoRnnForward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<double>& input_data,
+    const DeviceMemory<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
     const DeviceMemory<double>& input_h_data,
     const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -2685,6 +2688,7 @@ bool MIOpenSupport::DoRnnBackward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<Eigen::half>& input_data,
+    const DeviceMemory<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
     const DeviceMemory<Eigen::half>& input_h_data,
     const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -2737,6 +2741,7 @@ bool MIOpenSupport::DoRnnBackward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<float>& input_data,
+    const DeviceMemory<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
     const DeviceMemory<float>& input_h_data,
     const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -2788,6 +2793,7 @@ bool MIOpenSupport::DoRnnBackward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<double>& input_data,
+    const DeviceMemory<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
     const DeviceMemory<double>& input_h_data,
     const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -3584,8 +3590,6 @@ bool MIOpenSupport::DoBatchNormalizationForwardImpl(
 
   auto status = miopenStatusInvalidValue;
   if (is_training) {
-    stream->ThenMemZero(batch_mean, batch_mean->size());
-    stream->ThenMemZero(batch_var, batch_var->size());
     status = wrap::miopenBatchNormalizationForwardTraining(
         miopen.handle(), mode, &one, &zero, x_descriptor.handle(), x.opaque(),
         x_descriptor.handle(), y->opaque(), scale_offset_descriptor.handle(),

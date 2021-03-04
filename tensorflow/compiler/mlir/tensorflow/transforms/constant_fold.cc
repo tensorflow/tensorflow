@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -85,6 +86,27 @@ LogicalResult ConstantFoldFallbackHook(
         return failure();
       }
     }
+  }
+
+  // If all the results are empty and has numerical element types, set results
+  // to empty elements attribute. This is restricted to the numerical element
+  // types as the DenseElementsAttr only supports numerical and string types.
+  // TODO(hinsu): Handle ops that have one of the results empty for constant
+  // propagation.
+  bool has_empty_numerical_results =
+      llvm::all_of(inst->getResultTypes(), [](Type ty) {
+        ShapedType shaped_ty = ty.cast<ShapedType>();
+        Type element_ty = shaped_ty.getElementType();
+        return shaped_ty.hasStaticShape() && shaped_ty.getNumElements() == 0 &&
+               element_ty.isIntOrFloat();
+      });
+  if (has_empty_numerical_results) {
+    for (Type ty : inst->getResultTypes()) {
+      auto shaped_ty = ty.cast<ShapedType>();
+      results.push_back(
+          DenseElementsAttr::get(shaped_ty, llvm::ArrayRef<Attribute>()));
+    }
+    return success();
   }
 
   // Do not execute function calls.

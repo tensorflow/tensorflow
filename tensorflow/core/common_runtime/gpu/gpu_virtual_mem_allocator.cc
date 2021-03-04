@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_virtual_mem_allocator.h"
 
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/stream_executor/lib/status.h"
 
 #if CUDA_VERSION >= 10020
 
@@ -23,14 +25,34 @@ namespace tensorflow {
 namespace {
 
 using ::stream_executor::gpu::GpuContext;
+using ::stream_executor::gpu::GpuDeviceHandle;
 using ::stream_executor::gpu::GpuDevicePtr;
 using ::stream_executor::gpu::GpuDriver;
+using ::stream_executor::port::Status;
+using ::stream_executor::port::StatusOr;
 
 // Rounds value up to the specified power of two alignment.
 size_t AlignUp(size_t value, size_t alignment) {
   DCHECK_EQ(alignment & (alignment - 1), 0)
       << "Alignment must be a power of two; alignment=" << alignment;
   return (value + alignment - 1) & ~(alignment - 1);
+}
+
+StatusOr<bool> SupportsVirtualAddressManagement(GpuDeviceHandle device) {
+  return GpuDriver::GetDeviceAttribute(
+      CU_DEVICE_ATTRIBUTE_VIRTUAL_ADDRESS_MANAGEMENT_SUPPORTED, device);
+}
+
+Status CheckVirtualAddressManagementSupport(GpuDeviceHandle device,
+                                            PlatformGpuId gpu_id) {
+  TF_ASSIGN_OR_RETURN(bool supports_virtual_address_management,
+                      SupportsVirtualAddressManagement(device));
+  if (!supports_virtual_address_management) {
+    return stream_executor::port::InternalError(absl::StrFormat(
+        "GPU %d does not support virtual memory address management.",
+        gpu_id.value()));
+  }
+  return {};
 }
 
 }  // namespace
@@ -42,19 +64,31 @@ GpuVirtualMemAllocator::Create(const std::vector<Visitor>& alloc_visitors,
                                GpuContext& gpu_context, PlatformGpuId gpu_id,
                                size_t virtual_address_space_size,
                                const std::vector<PlatformGpuId>& peer_gpu_ids) {
-  std::vector<int> access_gpu_ordinals;
-  access_gpu_ordinals.reserve(peer_gpu_ids.size() + 1);
-  access_gpu_ordinals.push_back(gpu_id.value());
+  std::vector<GpuDeviceHandle> access_gpu_handles;
+  access_gpu_handles.reserve(peer_gpu_ids.size() + 1);
+
+  GpuDeviceHandle gpu_handle;
+  TF_RETURN_IF_ERROR(GpuDriver::GetDevice(gpu_id.value(), &gpu_handle));
+  TF_RETURN_IF_ERROR(CheckVirtualAddressManagementSupport(gpu_handle, gpu_id));
+
+  access_gpu_handles.push_back(gpu_handle);
   for (const auto& peer_id : peer_gpu_ids) {
-    access_gpu_ordinals.push_back(peer_id.value());
+    GpuDeviceHandle peer_handle;
+    TF_RETURN_IF_ERROR(GpuDriver::GetDevice(peer_id.value(), &peer_handle));
+    TF_ASSIGN_OR_RETURN(bool supports_virtual_address_management,
+                        SupportsVirtualAddressManagement(peer_handle));
+    if (GpuDriver::CanEnablePeerAccess(gpu_handle, peer_handle) &&
+        supports_virtual_address_management) {
+      access_gpu_handles.push_back(peer_handle);
+    }
   }
 
   // Find the min granularity for all devices that have access to this memory;
   // that is, the maximum min granularity among all devices.
   size_t max_granularity = 1;
-  for (const int device_ordinal : access_gpu_ordinals) {
+  for (const auto device_handle : access_gpu_handles) {
     TF_ASSIGN_OR_RETURN(size_t granularity,
-                        GpuDriver::GetMinAllocationGranularity(device_ordinal));
+                        GpuDriver::GetMinAllocationGranularity(device_handle));
     max_granularity = std::max(max_granularity, granularity);
   }
 
@@ -71,18 +105,18 @@ GpuVirtualMemAllocator::Create(const std::vector<Visitor>& alloc_visitors,
 
   return std::unique_ptr<GpuVirtualMemAllocator>(new GpuVirtualMemAllocator(
       alloc_visitors, free_visitors, gpu_context, gpu_id,
-      std::move(access_gpu_ordinals), vmem, max_granularity));
+      std::move(access_gpu_handles), vmem, max_granularity));
 }
 
 GpuVirtualMemAllocator::GpuVirtualMemAllocator(
     const std::vector<Visitor>& alloc_visitors,
     const std::vector<Visitor>& free_visitors, GpuContext& gpu_context,
-    PlatformGpuId gpu_id, const std::vector<int> access_gpu_ordinals,
+    PlatformGpuId gpu_id, const std::vector<GpuDeviceHandle> access_gpu_handles,
     GpuDriver::VmemSpan vmem, size_t granularity)
     : SubAllocator(alloc_visitors, free_visitors),
       gpu_context_(gpu_context),
       gpu_id_(gpu_id),
-      access_gpu_ordinals_(access_gpu_ordinals),
+      access_gpu_handles_(access_gpu_handles),
       vmem_(vmem),
       granularity_(granularity) {}
 
@@ -122,8 +156,8 @@ void* GpuVirtualMemAllocator::Alloc(size_t alignment, size_t num_bytes,
   GpuDriver::GenericMemoryHandle handle = std::move(maybe_handle).ValueOrDie();
 
   // Map VAs for this physical memory.
-  auto status = GpuDriver::MapMemory(&gpu_context_, next_va, handle,
-                                     access_gpu_ordinals_);
+  auto status =
+      GpuDriver::MapMemory(&gpu_context_, next_va, handle, access_gpu_handles_);
   if (!status.ok()) {
     LOG(ERROR) << status;
     GpuDriver::ReleaseMemoryHandle(&gpu_context_, std::move(handle));

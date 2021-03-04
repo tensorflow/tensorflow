@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "numpy/arrayobject.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
 #include "pybind11/numpy.h"
@@ -35,9 +34,6 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
-
-// Initializes the NumPy API for the use of the types module.
-bool InitializeNumpyAPIForTypes();
 
 // Helper that converts a failing StatusOr to an exception.
 // For use only inside pybind11 code.

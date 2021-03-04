@@ -609,6 +609,12 @@ class BackendShapeOpsTest(test.TestCase):
     y = backend.resize_images(x, height_factor, width_factor, data_format)
     self.assertEqual(y.shape.as_list(), [1, 3, 4, 4])
 
+    # Use with a dynamic axis:
+    if not context.executing_eagerly():
+      x = backend.placeholder(shape=(1, 3, None, None))
+      y = backend.resize_images(x, height_factor, width_factor, data_format)
+      self.assertEqual(y.shape.as_list(), [1, 3, None, None])
+
     # Invalid use:
     with self.assertRaises(ValueError):
       backend.resize_images(

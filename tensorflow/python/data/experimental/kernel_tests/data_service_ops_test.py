@@ -56,18 +56,36 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
       combinations.times(test_base.eager_only_combinations(),
                          data_service_test_base.all_cluster_configurations()))
   def testDistributeBasic(self, work_dir, fault_tolerant_mode):
-    cluster = self.create_cluster(
+    cluster = data_service_test_base.TestCluster(
         num_workers=1,
         work_dir=work_dir,
         fault_tolerant_mode=fault_tolerant_mode)
     num_elements = 10
-    ds = self.make_distributed_range_dataset(10, cluster)
+    ds = self.make_distributed_range_dataset(num_elements, cluster)
     results = [elem.numpy() for elem in ds]
     self.assertEqual(list(range(num_elements)), results)
 
+  @combinations.generate(
+      combinations.times(test_base.eager_only_combinations(),
+                         combinations.combine(compression=[None, "AUTO"])))
+  def testDistributeCompression(self, compression):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    num_elements = 10
+    ds = self.make_distributed_range_dataset(
+        num_elements, cluster, compression=compression)
+    results = [elem.numpy() for elem in ds]
+    self.assertEqual(list(range(num_elements)), results)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDistributeInvalidCompression(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    with self.assertRaisesRegex(ValueError,
+                                "Invalid compression argument"):
+      self.make_distributed_range_dataset(10, cluster, compression="foo")
+
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeSparse(self):
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     element = sparse_tensor.SparseTensor(
         indices=[[0]],
         values=constant_op.constant([0], dtype=dtypes.int32),
@@ -79,7 +97,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeRagged(self):
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     ds = dataset_ops.Dataset.from_tensor_slices([1, 5, 3, 2, 8])
     ds = ds.map(math_ops.range)
     ds = ds.apply(batching.dense_to_ragged_batch(2))
@@ -93,7 +111,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   def testDifferentShuffleOrders(self):
     random_seed.set_random_seed(None)
     num_elements = 100
-    cluster = self.create_cluster(num_workers=2)
+    cluster = data_service_test_base.TestCluster(num_workers=2)
     ds = dataset_ops.Dataset.range(num_elements)
     ds = ds.shuffle(num_elements)
     ds = self.make_distributed_dataset(ds, cluster)
@@ -113,7 +131,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testMultipleEpochs(self):
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     num_elements = 3
     ds = self.make_distributed_range_dataset(num_elements, cluster)
     for _ in range(10):
@@ -121,7 +139,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testRepeatedDataset(self):
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     num_elements = 10
     num_repetitions = 5
     ds = self.make_distributed_range_dataset(num_elements, cluster)
@@ -131,7 +149,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testConcurrentEpoch(self):
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     num_elements = 10
     num_datasets = 3
     iterators = []
@@ -151,7 +169,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   @combinations.generate(test_base.eager_only_combinations())
   def testSharedEpoch(self):
     self.skipTest("Not yet implemented")
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     num_elements = 10
     num_iterators = 3
     ds = self.make_distributed_range_dataset(num_elements, cluster)
@@ -175,7 +193,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   @combinations.generate(test_base.eager_only_combinations())
   def testMultiWorker(self):
     num_workers = 3
-    cluster = self.create_cluster(num_workers=num_workers)
+    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     num_elements = 10
     ds = self.make_distributed_range_dataset(num_elements, cluster)
     results = [elem.numpy() for elem in ds]
@@ -184,7 +202,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   @combinations.generate(test_base.eager_only_combinations())
   def testMaxOutstandingRequests(self):
     num_workers = 3
-    cluster = self.create_cluster(num_workers=num_workers)
+    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     num_elements = 10
     ds = self.make_distributed_range_dataset(
         num_elements, cluster, max_outstanding_requests=1)
@@ -194,7 +212,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   @combinations.generate(test_base.eager_only_combinations())
   def testInsideFunction(self):
     num_workers = 3
-    cluster = self.create_cluster(num_workers=num_workers)
+    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     num_elements = 10
 
     @def_function.function
@@ -213,7 +231,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testSharedJobName(self):
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     num_elements = 1000
 
     def make_ds():
@@ -235,7 +253,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDifferentJobNames(self):
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     num_elements = 10
     ds1 = self.make_distributed_range_dataset(
         num_elements, cluster, job_name="job_name1")
@@ -246,7 +264,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testSharedJobNameMultiIteration(self):
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     num_elements = 10
     ds1 = self.make_distributed_range_dataset(
         num_elements, cluster, job_name="job_name")
@@ -261,7 +279,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testSharedJobNameRepeat(self):
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     num_elements = 100
     num_repetitions = 3
     ds1 = self.make_distributed_range_dataset(
@@ -284,24 +302,152 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertCountEqual(num_repetitions * list(range(num_elements)), results)
 
   @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(num_workers=[1, 3], num_consumers=[1, 2, 5])))
+  def testRoundRobin(self, num_workers, num_consumers):
+    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
+    # Round robin reads can cause slow cluster shutdown.
+    data_service_test_base.GLOBAL_CLUSTERS.add(cluster)
+    ds = self.make_round_robin_dataset(cluster, num_consumers)
+    ds = ds.take(1000)
+    results = self.getDatasetOutput(ds, requires_initialization=True)
+    self.checkRoundRobinGroups(results, num_consumers)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testRoundRobinBucketizing(self):
+    # Tests a common use case for round robin reads. At each step, all
+    # consumers should get batches with the same bucket size.
+    cluster = data_service_test_base.TestCluster(num_workers=4)
+    # Round robin reads can cause slow cluster shutdown.
+    data_service_test_base.GLOBAL_CLUSTERS.add(cluster)
+    num_elements = 100
+    low_bucket_max = 30
+    mid_bucket_max = 60
+    bucket_boundaries = [low_bucket_max, mid_bucket_max]
+    batch_size = 10
+    num_consumer_hosts = 3
+    replicas_per_consumer_host = 5
+    num_consumers = num_consumer_hosts * replicas_per_consumer_host
+    bucket_batch_sizes = [batch_size] * (len(bucket_boundaries) + 1)
+    # Set up the dataset that will run on the tf.data workers.
+    ds = dataset_ops.Dataset.range(num_elements, output_type=dtypes.int32)
+    ds = ds.shuffle(num_elements)
+    ds = ds.repeat()
+    ds = ds.apply(
+        grouping.bucket_by_sequence_length(
+            lambda x: x,
+            bucket_boundaries,
+            bucket_batch_sizes,
+            drop_remainder=True))
+    ds = ds.apply(
+        grouping.group_by_window(
+            lambda x: math_ops.cast(x[1], dtypes.int64),
+            lambda _, x: dataset_ops.Dataset.from_tensors(x),
+            window_size=num_consumers))
+    ds = ds.flat_map(lambda x: x)
+
+    # Set up the per-consumer-host datasets. During each global step, we pull
+    # `replicas_per_consumer_host` batches from each of these datasets.
+    host_datasets = []
+    for host_index in range(num_consumer_hosts):
+      per_replica_datasets = []
+      for i in range(replicas_per_consumer_host):
+        consumer_index = host_index * replicas_per_consumer_host + i
+        per_replica_datasets.append(
+            self.make_distributed_dataset(
+                ds,
+                cluster,
+                job_name="test",
+                consumer_index=consumer_index,
+                num_consumers=num_consumers))
+      host_dataset = dataset_ops.Dataset.from_tensor_slices(
+          per_replica_datasets)
+      host_dataset = host_dataset.interleave(
+          lambda x: x,
+          cycle_length=len(per_replica_datasets),
+          num_parallel_calls=len(per_replica_datasets),
+          deterministic=True)
+      host_datasets.append(host_dataset)
+
+    # Use parallel interleave to read from host datasets in parallel.
+    ds = dataset_ops.Dataset.from_tensor_slices(host_datasets)
+    ds = ds.interleave(
+        lambda x: x,
+        block_length=replicas_per_consumer_host,
+        cycle_length=len(host_datasets),
+        num_parallel_calls=len(host_datasets),
+        deterministic=True)
+
+    num_rounds = 10
+    get_next = self.getNext(ds, requires_initialization=True)
+    results = []
+    for _ in range(num_rounds * num_consumers):
+      results.append(self.evaluate(get_next()))
+
+    def get_bucket(elem):
+      bucket_ind = 0
+      while bucket_ind < len(
+          bucket_boundaries) and elem >= bucket_boundaries[bucket_ind]:
+        bucket_ind += 1
+      return bucket_ind
+
+    # Check that the batches for each step contain elements from the same
+    # bucket.
+    for i in range(0, len(results), num_consumers):
+      batches = results[num_consumers * i:num_consumers * (i + 1)]
+      bucket_inds = [get_bucket(batch[0]) for batch in batches]
+      for bucket_ind in bucket_inds[1:]:
+        self.assertEqual(
+            bucket_inds[0], bucket_ind,
+            "Batches: {}, Buckets: {}".format(batches, bucket_inds))
+
+  @combinations.generate(test_base.v1_only_combinations())
+  def testRoundRobinFiniteV1(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    num_elements = 100
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = self.make_distributed_dataset(
+        ds, cluster, job_name="test", consumer_index=0, num_consumers=1)
+
+    with self.assertRaisesRegex(
+        errors.FailedPreconditionError, "Encountered end of sequence on a "
+        "round-robin read iterator"):
+      self.getDatasetOutput(ds, requires_initialization=True)
+
+  @combinations.generate(test_base.v2_only_combinations())
+  def testRoundRobinFiniteV2(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    num_elements = 100
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = self.make_distributed_dataset(
+        ds, cluster, job_name="test", consumer_index=0, num_consumers=1)
+
+    with self.assertRaisesRegex(
+        errors.FailedPreconditionError, "Round robin reads "
+        "require that the input dataset has infinite "
+        "cardinality, but the dataset has cardinality " + str(num_elements)):
+      self.getDatasetOutput(ds, requires_initialization=True)
+
+  @combinations.generate(
       combinations.times(test_base.eager_only_combinations(),
                          combinations.combine(job_name=[None, "test"])))
   def testGcUnusedJob(self, job_name):
-    cluster = self.create_cluster(
+    cluster = data_service_test_base.TestCluster(
         num_workers=1, job_gc_check_interval_ms=50, job_gc_timeout_ms=20)
     num_elements = 100
     ds = self.make_distributed_range_dataset(
         num_elements, cluster, job_name=job_name)
     it = iter(ds)
     self.assertEqual(next(it).numpy(), 0)
-    self.assertEqual(cluster.num_tasks_on_worker(), 1)
+    self.assertEqual(cluster.workers[0].num_tasks(), 1)
     del it
-    while cluster.num_tasks_on_worker() > 0:
+    while cluster.workers[0].num_tasks() > 0:
       time.sleep(0.1)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDontGcUsedJob(self):
-    cluster = self.create_cluster(
+    cluster = data_service_test_base.TestCluster(
         num_workers=1, job_gc_check_interval_ms=50, job_gc_timeout_ms=20)
     num_elements = 10
     it1 = iter(
@@ -313,19 +459,19 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     it3 = iter(  # this iterator keeps the task alive. pylint: disable=unused-variable
         self.make_distributed_range_dataset(
             num_elements, cluster, job_name="test2"))
-    self.assertEqual(2, cluster.num_tasks_on_worker())
+    self.assertEqual(cluster.workers[0].num_tasks(), 2)
     del it1
     del it2
     # Check that only the first job is gced. The second job will not be gced
     # because there is still an outstanding iterator for it.
-    while cluster.num_tasks_on_worker() > 1:
+    while cluster.workers[0].num_tasks() > 1:
       time.sleep(0.1)
-    self.assertEqual(1, cluster.num_tasks_on_worker())
+    self.assertEqual(cluster.workers[0].num_tasks(), 1)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testApplyDeterminismOption(self):
     elements = list(range(10))
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
 
     def dataset_fn(delay_ms):
 
@@ -359,7 +505,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     options.experimental_external_state_policy = external_state_policy
     ds = ds.with_options(options)
 
-    cluster = self.create_cluster(num_workers=3)
+    cluster = data_service_test_base.TestCluster(num_workers=3)
     ds = self.make_distributed_dataset(ds, cluster)
     next(iter(ds))
 
@@ -380,7 +526,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeDistributedEpochTensorSlices(self):
-    cluster = self.create_cluster(num_workers=2)
+    cluster = data_service_test_base.TestCluster(num_workers=2)
     vals = [5, 1, 2, 4]
     ds = dataset_ops.Dataset.from_tensor_slices(vals)
     ds = self.make_distributed_dataset(
@@ -389,7 +535,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeDistributedEpochInterleave(self):
-    cluster = self.create_cluster(num_workers=2)
+    cluster = data_service_test_base.TestCluster(num_workers=2)
     elements = [1, 5, 0]
     ds = dataset_ops.Dataset.from_tensor_slices(elements)
     ds = ds.interleave(lambda x: dataset_ops.Dataset.from_tensor_slices([x]))
@@ -399,7 +545,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeDistributedEpochParallelInterleave(self):
-    cluster = self.create_cluster(num_workers=2)
+    cluster = data_service_test_base.TestCluster(num_workers=2)
     elements = [1, 5, 0]
     ds = dataset_ops.Dataset.from_tensor_slices(elements)
     ds = ds.interleave(
@@ -411,7 +557,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeDistributedEpochFlatMap(self):
-    cluster = self.create_cluster(num_workers=2)
+    cluster = data_service_test_base.TestCluster(num_workers=2)
     elements = [1, 5, 0]
     ds = dataset_ops.Dataset.from_tensor_slices(elements)
     ds = ds.flat_map(lambda x: dataset_ops.Dataset.from_tensor_slices([x]))
@@ -421,7 +567,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeDistributedEpochRepeat(self):
-    cluster = self.create_cluster(num_workers=2)
+    cluster = data_service_test_base.TestCluster(num_workers=2)
     num_repeats = 5
     num_elements = 20
     ds = dataset_ops.Dataset.range(num_elements).repeat(num_repeats)
@@ -432,7 +578,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeDistributedEpochForeverRepeat(self):
-    cluster = self.create_cluster(num_workers=2)
+    cluster = data_service_test_base.TestCluster(num_workers=2)
     num_elements = 20
     elements_to_read = 1000
     ds = dataset_ops.Dataset.range(num_elements).repeat()
@@ -442,7 +588,8 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     results = {}
     for _ in range(elements_to_read):
       val = next(it).numpy()
-      if val not in results: results[val] = 0
+      if val not in results:
+        results[val] = 0
       results[val] += 1
     for i in range(num_elements):
       self.assertGreater(results[i], elements_to_read / num_elements / 2)
@@ -450,7 +597,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeDistributedEpochForeverRepeatFewElements(self):
     num_workers = 5
-    cluster = self.create_cluster(num_workers=num_workers)
+    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     # Less than the number of workers, so that some workers get zero elements on
     # the first repetition.
     num_elements = 1
@@ -463,13 +610,13 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
     # Stop all but one worker and check that we can still read.
     for i in range(num_workers - 1):
-      cluster.workers[i]._stop()
+      cluster.workers[i].stop()
     for _ in range(100):
       self.assertEqual(next(it).numpy(), 0)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeDistributedEpochShuffleAndRepeat(self):
-    cluster = self.create_cluster(num_workers=2)
+    cluster = data_service_test_base.TestCluster(num_workers=2)
     num_repeats = 5
     num_elements = 20
     ds = dataset_ops.Dataset.range(num_elements).shuffle(num_elements).repeat(
@@ -480,7 +627,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
         ds, num_repeats * list(range(num_elements)), assert_items_equal=True)
 
   def testDistributeFromInterleave(self):
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     ds = dataset_ops.Dataset.range(2)
 
     def interleave_fn(_):
@@ -493,7 +640,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeDistributedEpoch(self):
-    cluster = self.create_cluster(num_workers=2)
+    cluster = data_service_test_base.TestCluster(num_workers=2)
     num_elements = 100
     ds = dataset_ops.Dataset.range(num_elements)
     ds = self.make_distributed_dataset(
@@ -528,8 +675,39 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
               processing_mode="invalid", service="grpc://localhost:5000"))
 
   @combinations.generate(test_base.eager_only_combinations())
+  def testZipDifferentProcessingModesDatasets(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    num_elements = 100
+    ds1 = dataset_ops.Dataset.range(num_elements)
+    ds1 = self.make_distributed_dataset(
+        ds1, cluster, processing_mode="distributed_epoch")
+    ds2 = dataset_ops.Dataset.range(num_elements)
+    ds2 = self.make_distributed_dataset(
+        ds2, cluster, processing_mode="parallel_epochs")
+    ds = dataset_ops.Dataset.zip((ds1, ds2))
+    self.assertDatasetProduces(
+        ds,
+        list(zip(range(num_elements), range(num_elements))),
+        assert_items_equal=True)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testZipDifferentProcessingModesDatasetsSharedJobName(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    num_elements = 100
+    ds1 = dataset_ops.Dataset.range(num_elements)
+    ds1 = self.make_distributed_dataset(
+        ds1, cluster, processing_mode="distributed_epoch", job_name="job_name")
+    ds2 = dataset_ops.Dataset.range(num_elements)
+    ds2 = self.make_distributed_dataset(
+        ds2, cluster, processing_mode="parallel_epochs", job_name="job_name")
+    ds = dataset_ops.Dataset.zip((ds1, ds2))
+    with self.assertRaisesRegex(errors.FailedPreconditionError,
+                                "but there is already an existing job"):
+      self.getDatasetOutput(ds)
+
+  @combinations.generate(test_base.eager_only_combinations())
   def testFromDatasetId(self):
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
 
     num_elements = 10
     ds = dataset_ops.Dataset.range(num_elements)
@@ -540,7 +718,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testFromDatasetIdMultipleComponents(self):
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
 
     num_elements = 10
     ds = dataset_ops.Dataset.range(num_elements)
@@ -556,7 +734,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testFromDatasetIdWrongElementSpec(self):
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
 
     num_elements = 10
     ds = dataset_ops.Dataset.range(num_elements)
@@ -570,7 +748,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testFromDatasetIdNotRegistered(self):
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
 
     dataset_id = 0
     element_spec = tensor_spec.TensorSpec(shape=(), dtype=dtypes.variant)
@@ -584,7 +762,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.skipTest("b/162521601")
     sleep_microseconds = int(1e6) * 1000
 
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     # Create a dataset which produces the first element quickly, and the second
     # element slowly. Fetching the first element triggers prefetching of the
     # second element, which we should be able to cancel.
@@ -602,7 +780,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   def testRegisterEquivalentDatasets(self):
     ds_1 = dataset_ops.Dataset.range(10)
     ds_2 = dataset_ops.Dataset.range(10)
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     id_1 = data_service_ops.register_dataset(cluster.target, ds_1)
     id_2 = data_service_ops.register_dataset(cluster.target, ds_2)
     self.assertEqual(id_1.numpy(), id_2.numpy())
@@ -611,16 +789,50 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   def testRegisterDifferentDatasets(self):
     ds_1 = dataset_ops.Dataset.range(10)
     ds_2 = dataset_ops.Dataset.range(20)
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     id_1 = data_service_ops.register_dataset(cluster.target, ds_1)
     id_2 = data_service_ops.register_dataset(cluster.target, ds_2)
     self.assertNotEqual(id_1.numpy(), id_2.numpy())
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testDistributedEpochOnZippedDataset(self):
+    ds_1 = dataset_ops.Dataset.range(10)
+    ds_2 = dataset_ops.Dataset.range(10)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+
+    ds_3 = dataset_ops.Dataset.zip((ds_1, ds_2))
+    ds_3 = self.make_distributed_dataset(
+        ds_3, cluster, processing_mode="distributed_epoch")
+
+    error_regex = "Cannot create a split provider for dataset " + \
+        "of type ZipDataset"
+    with self.assertRaisesRegex(errors.UnimplementedError, error_regex):
+      self.getDatasetOutput(ds_3, requires_initialization=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDistributedEpochOnDistributedDataset(self):
+    cluster_1 = data_service_test_base.TestCluster(num_workers=1)
+    cluster_2 = data_service_test_base.TestCluster(num_workers=1)
+    num_sizes = 10
+    size_repeats = 5
+    numbers = [1 * i for i in range(num_sizes)] * size_repeats
+    ds = dataset_ops.Dataset.from_tensor_slices(numbers)
+    ds = self.make_distributed_dataset(
+        ds, cluster_1, processing_mode="parallel_epochs")
+    ds = ds.map(lambda x: x + 1)
+    ds = self.make_distributed_dataset(
+        ds, cluster_2, processing_mode="distributed_epoch")
+
+    error_regex = "Cannot create a split provider for dataset " + \
+        "of type DataServiceDataset"
+    with self.assertRaisesRegex(errors.UnimplementedError, error_regex):
+      self.getDatasetOutput(ds, requires_initialization=True)
+
   @combinations.generate(test_base.eager_only_combinations())
   def testTwoLevelDistribute(self):
     cluster_1_size = 3
-    cluster_1 = self.create_cluster(num_workers=cluster_1_size)
-    cluster_2 = self.create_cluster(num_workers=1)
+    cluster_1 = data_service_test_base.TestCluster(num_workers=cluster_1_size)
+    cluster_2 = data_service_test_base.TestCluster(num_workers=1)
     num_sizes = 10
     size_repeats = 5
     strings = ["a" * i for i in range(num_sizes)] * size_repeats
@@ -651,7 +863,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   @combinations.generate(
       combinations.times(test_base.eager_only_combinations()))
   def testDistributeLargeGraph(self):
-    cluster = self.create_cluster(
+    cluster = data_service_test_base.TestCluster(
         num_workers=1, work_dir=NO_WORK_DIR, fault_tolerant_mode=False)
     # Larger than default OSS grpc message size limit of 4MB.
     tensor = array_ops.ones((2, 1000, 1000), dtype=dtypes.float32)

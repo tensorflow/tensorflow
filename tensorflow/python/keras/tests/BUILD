@@ -10,6 +10,7 @@ load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 package(
     default_visibility = [
+        "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/tools/pip_package:__pkg__",
     ],
     licenses = ["notice"],  # Apache 2.0
@@ -56,6 +57,7 @@ tpu_py_test(
         "automatic_outside_compilation_test.py",
     ],
     disable_experimental = True,
+    disable_mlir_bridge = False,
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
@@ -165,7 +167,7 @@ py_library(
     srcs = [
         "model_architectures.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/keras",
     ],
@@ -187,7 +189,7 @@ tf_py_test(
 py_library(
     name = "model_subclassing_test_util",
     srcs = ["model_subclassing_test_util.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/keras",
     ],
@@ -482,6 +484,6 @@ tf_xla_py_test(
 py_library(
     name = "get_config_samples",
     srcs = ["get_config_samples.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [],
 )

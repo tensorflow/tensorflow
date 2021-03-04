@@ -12,3 +12,17 @@ def workspace():
             "https://github.com/bazelbuild/rules_closure/archive/308b05b2419edb5c8ee0471b67a40403df940149.tar.gz",  # 2019-06-13
         ],
     )
+
+    http_archive(
+        name = "tf_toolchains",
+        sha256 = "abc6d1b705e3a36e029fef4a85009deafbd7dfc725de2a224c2d22f0778ef092",
+        strip_prefix = "toolchains-1.1.7",
+        urls = [
+            "http://mirror.tensorflow.org/github.com/tensorflow/toolchains/archive/v1.1.7.tar.gz",
+            "https://github.com/tensorflow/toolchains/archive/v1.1.7.tar.gz",
+        ],
+    )
+
+# Alias so it can be loaded without assigning to a different symbol to prevent
+# shadowing previous loads and trigger a buildifier warning.
+tf_workspace3 = workspace

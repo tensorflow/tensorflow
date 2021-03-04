@@ -254,12 +254,6 @@ float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToCompute(
           cost_analysis_.per_second_rate(HloCostAnalysis::kTranscendentalsKey));
 }
 
-float MemorySpaceAssignmentCostAnalysis::
-    GetInstructionElapsedDueToMemorySlowdown(int64 bytes) const {
-  return bytes /
-         cost_analysis_.per_second_rate(HloCostAnalysis::kBytesAccessedKey);
-}
-
 float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToMemory(
     const HloInstruction& instruction,
     absl::optional<int64> operand_in_alternate_mem,
@@ -941,12 +935,8 @@ bool AlternateMemoryBestFitHeap::IsUseAllowedInAlternateMemory(
     int64 while_time = instruction_schedule.at(use.instruction);
     auto existing_required_assignment =
         RequiredMemoryAssignmentAt(while_value, while_time);
-    if (existing_required_assignment) {
-      // TODO(berkin): Failing for now when the output is requested to be in
-      // alternate memory, and the buffer is a while loop output.
-      CHECK(existing_required_assignment->memory_space == MemorySpace::kDefault)
-          << "While loop buffers pinned to alternate memory not "
-             "currently supported.";
+    if (existing_required_assignment &&
+        existing_required_assignment->memory_space == MemorySpace::kDefault) {
       VLOG(4) << "While allocation not allowed in alternate memory because "
                  "there is a required default memory assignment.";
       return false;

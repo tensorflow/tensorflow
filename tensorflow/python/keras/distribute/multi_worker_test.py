@@ -33,7 +33,12 @@ from tensorflow.python import keras
 from tensorflow.python.distribute import collective_all_reduce_strategy as collective_strategy
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import distribute_coordinator as dc
+from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base as test_base
+from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks
@@ -41,8 +46,14 @@ from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import models
 from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras.distribute import multi_worker_testing_utils
+from tensorflow.python.keras.optimizer_v2 import rmsprop
+from tensorflow.python.keras.utils import kpl_test_utils
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
+
+# pylint: disable=g-direct-tensorflow-import
 
 
 def _clone_and_build_model(model, strategy):
@@ -243,9 +254,69 @@ class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
     verification_callback.verify(self)
 
 
+class KPLMultiWorkerTest(test.TestCase,
+                         parameterized.TestCase):
+
+  @ds_combinations.generate(
+      combinations.combine(
+          mode=['eager'],
+          use_adapt=[False],  # TODO(b/180742437): Add tests for using adapt.
+          strategy=[
+              strategy_combinations.multi_worker_mirrored_2x1_gpu,
+              strategy_combinations.multi_worker_mirrored_2x2_gpu,
+          ]))
+  def testTrainAndServeWithKPL(self, use_adapt, strategy):
+    test_utils_obj = kpl_test_utils.DistributeKplTestUtils()
+    with strategy.scope():
+      feature_mapper, label_mapper = test_utils_obj.define_kpls_for_training(
+          use_adapt)
+      model = test_utils_obj.define_model()
+      optimizer = rmsprop.RMSprop(learning_rate=0.1)
+      accuracy = keras.metrics.Accuracy()
+
+      def dataset_fn(_):
+        return test_utils_obj.dataset_fn(feature_mapper, label_mapper)
+
+      @def_function.function
+      def train_step(iterator):
+        """The step function for one training step."""
+
+        def step_fn(inputs):
+          """The computation to run on each worker."""
+          features, labels = inputs
+          with backprop.GradientTape() as tape:
+            pred = model(features, training=True)
+            loss = keras.losses.binary_crossentropy(labels, pred)
+            loss = nn.compute_average_loss(loss)
+          grads = tape.gradient(loss, model.trainable_variables)
+          optimizer.apply_gradients(list(zip(grads, model.trainable_variables)))
+
+          actual_pred = math_ops.cast(math_ops.greater(pred, 0.5), dtypes.int64)
+          accuracy.update_state(labels, actual_pred)
+
+        strategy.run(step_fn, args=(next(iterator),))
+
+      distributed_dataset = strategy.distribute_datasets_from_function(
+          dataset_fn)
+      distributed_iterator = iter(distributed_dataset)
+      num_epochs = 4
+      num_steps = 7
+      for _ in range(num_epochs):
+        accuracy.reset_states()
+        for _ in range(num_steps):
+          train_step(distributed_iterator)
+
+      self.assertGreater(accuracy.result().numpy(), 0.5)
+      self.assertEqual(optimizer.iterations.numpy(), num_epochs * num_steps)
+
+    # Test save/load/serving the trained model.
+    test_utils_obj.test_save_load_serving_model(
+        model, feature_mapper, test_utils_obj.define_reverse_lookup_layer())
+
+
 if __name__ == '__main__':
   # Enable manual variable initialization to make sure variables are initialized
   # by `init_restore_or_wait_for_variables`.
   backend.manual_variable_initialization(True)
   with test.mock.patch.object(sys, 'exit', os._exit):
-    test.main()
+    multi_process_runner.test_main()

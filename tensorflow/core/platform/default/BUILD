@@ -433,7 +433,6 @@ tf_cc_test(
     name = "test_benchmark_test",
     srcs = ["test_benchmark_test.cc"],
     tags = [
-        "no_windows",  # TODO(b/174616766): re-enable once it's fixed.
         "nobuilder",
         "notap",
     ],

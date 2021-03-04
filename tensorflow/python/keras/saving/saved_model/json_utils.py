@@ -26,6 +26,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections.abc as collections_abc
+import enum
 import json
 import numpy as np
 import wrapt
@@ -83,7 +84,7 @@ def _decode_helper(obj):
 def get_json_type(obj):
   """Serializes any object to a JSON-serializable structure.
 
-  Arguments:
+  Args:
       obj: the object to serialize
 
   Returns:
@@ -140,5 +141,7 @@ def get_json_type(obj):
                        'class {} has not been registered.'
                        .format(obj, type(obj)))
 
-  raise TypeError('Not JSON Serializable:', obj)
+  if isinstance(obj, enum.Enum):
+    return obj.value
 
+  raise TypeError('Not JSON Serializable:', obj)

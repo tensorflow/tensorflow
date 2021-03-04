@@ -35,22 +35,15 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-#ifdef INTEL_MKL_DNN_ONLY
-// Temporarily copying some definitions from mkl_cblas.h so the same code can
-// be used when calling oneDNN or CBLAS batchmatmul in mkl_batch_matmul_op.cc.
-typedef enum { CblasRowMajor, CblasColumnMajor } CBLAS_LAYOUT;
-#define MKL_INT int
-#endif
-
 // This structure aggregates multiple inputs to MklDnnMatMul* methods.
 struct MklDnnMatMulFwdParams {
   memory::dims src_dims;
   memory::dims weight_dims;
   memory::dims bias_dims;
   memory::dims dst_dims;
-  MEMORY_FORMAT src_format;
-  MEMORY_FORMAT weight_format;
-  MEMORY_FORMAT dst_format;
+  memory::format_tag src_format;
+  memory::format_tag weight_format;
+  memory::format_tag dst_format;
   string dtypes = string("");
   struct PostOpParam {
     string name;
@@ -58,11 +51,12 @@ struct MklDnnMatMulFwdParams {
   };
   std::vector<PostOpParam> post_op_params;
 
-  MklDnnMatMulFwdParams(memory::dims src_dims, memory::dims weight_dims,
-                        memory::dims bias_dims, memory::dims dst_dims,
-                        MEMORY_FORMAT src_format = MEMORY_FORMAT::any,
-                        MEMORY_FORMAT weight_format = MEMORY_FORMAT::any,
-                        MEMORY_FORMAT dst_format = MEMORY_FORMAT::any)
+  MklDnnMatMulFwdParams(
+      memory::dims src_dims, memory::dims weight_dims, memory::dims bias_dims,
+      memory::dims dst_dims,
+      memory::format_tag src_format = memory::format_tag::any,
+      memory::format_tag weight_format = memory::format_tag::any,
+      memory::format_tag dst_format = memory::format_tag::any)
       : src_dims(src_dims),
         weight_dims(weight_dims),
         bias_dims(bias_dims),
@@ -204,7 +198,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     mkldnn::post_ops post_ops;
     if (!post_op_params.empty()) {
       for (auto const& post_op_param : post_op_params) {
-        if (post_op_param.name == "relu") {
+        if (post_op_param.name == "relu" || post_op_param.name == "leakyrelu") {
           DCHECK_EQ(post_op_param.param.size(), 3);
           float op_scale = post_op_param.param[0];
           float op_alpha = post_op_param.param[1];
@@ -249,6 +243,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
                  (post_op_param.name == "elu") ||
                  (post_op_param.name == "tanh") ||
                  (post_op_param.name == "sum") ||
+                 (post_op_param.name == "leakyrelu") ||
                  (post_op_param.name == "output_scale"));
         }
       }
@@ -342,7 +337,8 @@ class MklDnnMatMulFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     // Generate keys for post-ops
     for (auto const& post_op_param : mkldnn_matmul_fwd_dims.post_op_params) {
       if (post_op_param.name == "relu" || post_op_param.name == "relu6" ||
-          post_op_param.name == "elu" || post_op_param.name == "tanh") {
+          post_op_param.name == "elu" || post_op_param.name == "tanh" ||
+          post_op_param.name == "leakyrelu") {
         DCHECK_EQ(post_op_param.param.size(), 3);
         key_creator.AddAsKey(post_op_param.name);
         key_creator.AddAsKey(post_op_param.param[0]);
@@ -716,7 +712,8 @@ void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
 
   // Execute matmul primitive.
   std::shared_ptr<stream> cpu_stream;
-  cpu_stream.reset(CreateStream(ctx, matmul_prim->GetEngine()));
+  MklDnnThreadPool eigen_tp(ctx);
+  cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
   matmul_prim->Execute(a, b, c, cpu_stream);
 }
 

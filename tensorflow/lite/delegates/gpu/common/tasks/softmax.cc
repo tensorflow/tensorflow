@@ -26,10 +26,9 @@ namespace gpu {
 namespace {
 std::string GetSoftmaxKernelCode(const OperationDef& op_def) {
   std::string c;
-  c += "__kernel void main_function(\n";
-  c += "$0) {\n";
-  c += "  int X = get_global_id(0);\n";
-  c += "  int Y = get_global_id(1);\n";
+  c += "MAIN_FUNCTION($0) {\n";
+  c += "  int X = GLOBAL_ID_0;\n";
+  c += "  int Y = GLOBAL_ID_1;\n";
   c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height()) "
        "return; \n";
   c += "  float sum = 0.0f;\n";
@@ -46,7 +45,7 @@ std::string GetSoftmaxKernelCode(const OperationDef& op_def) {
   c += "  }\n";
   c += "  for (int d = 0; d < args.dst_tensor.Slices(); ++d) {\n";
   c += "    float4 t = args.src_tensor.Read<float>(X, Y, d) - "
-       "(float4)(maximum);\n";
+       "INIT_FLOAT4(maximum);\n";
   c += "    sum += exp(t.x);\n";
   c += "    if (d * 4 + 1 < args.dst_tensor.Channels()) sum += exp(t.y);\n";
   c += "    if (d * 4 + 2 < args.dst_tensor.Channels()) sum += exp(t.z);\n";
@@ -54,7 +53,7 @@ std::string GetSoftmaxKernelCode(const OperationDef& op_def) {
   c += "  }\n";
   c += "  for (int d = 0; d < args.dst_tensor.Slices(); ++d) {\n";
   c += "    float4 t = args.src_tensor.Read<float>(X, Y, d) - "
-       "(float4)(maximum);\n";
+       "INIT_FLOAT4(maximum);\n";
   c += "    t = exp(t) / sum;\n";
   c += "    FLT4 result = TO_FLT4(t);\n";
   c += "    args.dst_tensor.Write(result, X, Y, d);\n";

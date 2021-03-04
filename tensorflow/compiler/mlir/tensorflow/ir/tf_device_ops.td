@@ -289,6 +289,7 @@ For example:
     bool IsPackedBlockArgument(BlockArgument block_arg);
     unsigned GetReplicaOperandIndexForBlockArgument(BlockArgument block_arg, unsigned replica);
     Value GetReplicaOperandForBlockArgument(BlockArgument block_arg, unsigned replica);
+    MutableArrayRef<OpOperand> GetOperandsForBlockArgument(BlockArgument block_arg);
     bool WrapsSingleOp();
   }];
 
@@ -315,15 +316,25 @@ The `tf_device.cluster` op wraps containing operations in a region.
 
   let description = [{
 This op can be used to group operations, and captures all needed live-in values.
+
+Optional policy attribute allows to tag clusters with a policy name that was
+used to form the cluster.
   }];
 
-  let arguments = (ins);
+  let arguments = (ins OptionalAttr<StrAttr>:$policy);
 
   let results = (outs
     Variadic<AnyType>:$results
   );
 
   let regions = (region SizedRegion<1>:$body);
+
+  let builders = [
+    OpBuilderDAG<(ins "ArrayRef<Type>":$resultTypes),
+    [{
+      build($_builder, $_state, resultTypes, mlir::StringAttr {});
+    }]>
+  ];
 
   let extraClassDeclaration = [{
     Block &GetBody() { return getOperation()->getRegion(0).front(); }

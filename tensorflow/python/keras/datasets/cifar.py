@@ -26,7 +26,7 @@ from six.moves import cPickle
 def load_batch(fpath, label_key='labels'):
   """Internal utility for parsing CIFAR data.
 
-  Arguments:
+  Args:
       fpath: path the file to parse.
       label_key: key for label data in the retrieve
           dictionary.

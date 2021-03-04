@@ -497,7 +497,7 @@ class HloInstruction {
   static StatusOr<std::unique_ptr<HloInstruction>> CreateFromProto(
       const HloInstructionProto& proto,
       const absl::flat_hash_map<int64, HloInstruction*>& instruction_map,
-      const absl::flat_hash_map<int64, HloComputation*>& computation_map,
+      const absl::flat_hash_map<int64, HloComputation*>& computation_map = {},
       bool prohibit_empty_literal = true);
 
   // Creates a parameter-retrieving instruction.
@@ -1043,6 +1043,7 @@ class HloInstruction {
 
   // Returns the opcode for this instruction.
   HloOpcode opcode() const { return opcode_; }
+  HloOpcode* mutable_opcode() { return &opcode_; }
 
   // Returns true if this instruction has a side effect, irrespective of whether
   // any called computations may contain an instruction with side effects.
@@ -1614,6 +1615,9 @@ class HloInstruction {
   void set_metadata_op_name(const std::string& name) {
     metadata_.set_op_name(name);
   }
+  void set_logical_creation_pass_id(int64 pass_id) {
+    metadata_.set_logical_creation_pass_id(pass_id);
+  }
   const OpMetadata& metadata() const { return metadata_; }
 
   // Set/get the computation containing this instruction. set_parent should only
@@ -2159,7 +2163,6 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
 string PaddingConfigToString(const PaddingConfig& padding);
 string FrontendAttributesToString(
     const FrontendAttributes& frontend_attributes);
-string OpMetadataToString(const OpMetadata& metadata);
 string RandomAlgorithmToString(const RandomAlgorithm& algorithm);
 string RandomDistributionToString(const RandomDistribution& distribution);
 string PrecisionToString(const PrecisionConfig::Precision& precision);

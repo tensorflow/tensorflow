@@ -137,9 +137,9 @@ void ModifyFunctionSignature(
   if (handle_new_size_vars) {
     handle_new_size_vars(func.getArguments().drop_front(original_arg_count));
   }
-  func.setType(FunctionType::get(
-      new_input_types, func.front().getTerminator()->getOperandTypes(),
-      func.getContext()));
+  func.setType(
+      FunctionType::get(func.getContext(), new_input_types,
+                        func.front().getTerminator()->getOperandTypes()));
 }
 
 // Contains cached information for decomposed callee functions for (stateful)
@@ -204,7 +204,7 @@ LogicalResult HandleWhileOp(
   }
   auto new_while =
       builder.create<TF::WhileOp>(while_op.getLoc(), body.getType().getInputs(),
-                                  new_while_operands, while_op.getAttrs());
+                                  new_while_operands, while_op->getAttrs());
   for (int64_t i = 0; i < while_op.getNumResults(); ++i) {
     if (!getElementTypeOrSelf(while_op.getOperand(i).getType())
              .isa<TF::ResourceType>()) {
@@ -257,7 +257,7 @@ LogicalResult HandleIfOp(
   }
   auto new_if = OpBuilder(if_op).create<TF::IfOp>(
       if_op.getLoc(), then_func.getType().getResults(), new_if_operands,
-      if_op.getAttrs());
+      if_op->getAttrs());
   for (auto result : if_op.getResults()) {
     if (!getElementTypeOrSelf(result.getType()).isa<TF::ResourceType>()) {
       continue;
@@ -306,7 +306,7 @@ LogicalResult HandlePartitionedCallOp(
     OpBuilder builder(call);
     auto new_call = builder.create<CallOp>(
         call.getLoc(), info.decomposed_callee.getType().getResults(),
-        new_operands, call.getAttrs());
+        new_operands, call->getAttrs());
     new_call->setAttr(
         "f", builder.getSymbolRefAttr(
                  const_cast<FuncOp&>(info.decomposed_callee).getName()));

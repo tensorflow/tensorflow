@@ -94,7 +94,6 @@ tf_cc_binary(
     ],
 )
 
-# To run with MLIR GPU plugin enabled, pass --define=with_mlir_gpu_support=true.
 tf_cc_binary(
     name = "replay_computation_gpu",
     tags = ["gpu"],
@@ -260,6 +259,7 @@ cc_library(
     name = "hlo_module_loader",
     srcs = ["hlo_module_loader.cc"],
     hdrs = ["hlo_module_loader.h"],
+    visibility = ["//tensorflow/compiler/xla:friends"],
     deps = [
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
@@ -328,7 +328,6 @@ cc_library(
     ],
 )
 
-# To run with MLIR GPU plugin enabled, pass --define=with_mlir_gpu_support=true.
 tf_cc_binary(
     name = "run_hlo_module",
     testonly = True,

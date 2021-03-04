@@ -31,7 +31,12 @@ PYBIND11_MODULE(_pywrap_tensorflow_lite_calibration_wrapper, m) {
   });
   py::class_<CalibrationWrapper>(m, "CalibrationWrapper")
       .def(py::init([](py::handle& data) {
-        return ::CalibrationWrapper::CreateWrapperCPPFromBuffer(data.ptr());
+        auto* wrapper =
+            ::CalibrationWrapper::CreateWrapperCPPFromBuffer(data.ptr());
+        if (PyErr_Occurred()) {
+          throw py::error_already_set();
+        }
+        return wrapper;
       }))
       .def("Prepare",
            [](CalibrationWrapper& self, py::handle& input_shapes) {

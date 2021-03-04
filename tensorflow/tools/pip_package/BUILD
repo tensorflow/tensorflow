@@ -68,7 +68,7 @@ transitive_hdrs(
 py_binary(
     name = "simple_console",
     srcs = ["simple_console.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = ["//tensorflow:tensorflow_py"],
 )
 
@@ -95,7 +95,6 @@ COMMON_PIP_DEPS = [
     ":included_headers",
     ":xla_compiled_cpu_runtime_srcs.txt_file",
     ":xla_cmake",
-    "//tensorflow:tensorflow_py",
     "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_hdrs",
     "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
     "//tensorflow/compiler/mlir/tensorflow:gen_mlir_passthrough_op_py",
@@ -117,13 +116,13 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python:memory_checker",
     "//tensorflow/python:meta_graph_testdata",
     "//tensorflow/python/data/benchmarks:benchmark_base",
-    "//tensorflow/python/data/experimental/kernel_tests/serialization:dataset_serialization_test_base",
     "//tensorflow/python/data/experimental/kernel_tests:data_service_test_base",
     "//tensorflow/python/data/experimental/kernel_tests:reader_dataset_ops_test_base",
     "//tensorflow/python/data/experimental/kernel_tests:stats_dataset_test_base",
     "//tensorflow/python/data/experimental/ops:testing",
     "//tensorflow/python/data/experimental/service:server_lib",
     "//tensorflow/python/ops/ragged:ragged_tensor_test_ops",
+    "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
     "//tensorflow/python/data/kernel_tests:test_base",
     "//tensorflow/python/debug:debug_pip",
     "//tensorflow/python/distribute:combinations",
@@ -135,6 +134,8 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/keras/mixed_precision:test_util",
     "//tensorflow/python/keras/tests:model_subclassing_test_util",
     "//tensorflow/python/keras/tests:model_architectures",
+    "//tensorflow/python/keras/utils:dataset_creator",
+    "//tensorflow/python/keras/utils:kpl_test_utils",
     "//tensorflow/python/keras/benchmarks:keras_benchmark_lib_pip",
     "//tensorflow/python/kernel_tests:cudnn_deterministic_base",
     "//tensorflow/python/kernel_tests:bias_op_base",
@@ -157,6 +158,8 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/distribute/coordinator:cluster_coordinator",
     "//tensorflow/python/distribute/coordinator:remote_eager_lib",
     "//tensorflow/python/distribute/coordinator:metric_utils",
+    "//tensorflow:tensorflow_py",
+    "//tensorflow/tools/docs:tf_doctest_lib",
 ]
 
 # On Windows, python binary is a zip file of runfiles tree.
@@ -168,7 +171,7 @@ py_binary(
     data = COMMON_PIP_DEPS + [
         "//tensorflow/python:pywrap_tensorflow_import_lib_file",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = ["//tensorflow:tensorflow_py"],
 )
 

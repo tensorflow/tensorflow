@@ -105,16 +105,14 @@ ncclComm_t NcclClique::GetCommForDeviceOrdinal(int device_ordinal) const {
   return comms_by_device_ordinal_.at(device_ordinal).get();
 }
 
-RefcountingHashMap<NcclCliqueKey, NcclClique>& NcclCliqueCache() {
-  // Global cache of NCCL cliques.  An entry in this map is kept alive as long
-  // as there's a reference to it somewhere.  A Thunk holds a reference to each
-  // Clique it's ever used.
+NcclCliqueMap& NcclCliqueCache() {
+  // Global cache of NCCL cliques.  An entry in this map is always kept alive.
   //
   // A consequence of the fact that this is process-global is that we'll only
   // ever have one clique alive for a given set of GPUs.  This means that a
   // process will never do two collective operations concurrently on the same
   // set of GPUs.
-  static auto& cache = *new RefcountingHashMap<NcclCliqueKey, NcclClique>();
+  static auto& cache = *new NcclCliqueMap();
   return cache;
 }
 
@@ -237,14 +235,13 @@ class NcclCliqueRendezvous
           });
       initialized_ = true;
     }
-    TF_ASSIGN_OR_RETURN(std::shared_ptr<NcclClique> clique, maybe_clique_);
+    TF_ASSIGN_OR_RETURN(NcclClique * clique, maybe_clique_);
     std::unique_ptr<absl::MutexLock> clique_lock;
     if (primary) {
       clique_lock = std::make_unique<absl::MutexLock>(clique->mu());
       counter_ = new absl::BlockingCounter(local_participants_.size());
     }
-    return LockedNcclClique(std::move(clique), std::move(clique_lock),
-                            counter_);
+    return LockedNcclClique(*clique, std::move(clique_lock), counter_);
   }
 
  private:
@@ -252,7 +249,7 @@ class NcclCliqueRendezvous
   const std::vector<LocalParticipant>& local_participants_;
   const NcclUniqueIdCallback* callback_;
 
-  StatusOr<std::shared_ptr<NcclClique>> maybe_clique_;
+  StatusOr<NcclClique*> maybe_clique_;
   absl::BlockingCounter* counter_;
 };
 
@@ -288,13 +285,13 @@ StatusOr<std::vector<LocalParticipant>> GetLocalParticipants(
   return local_participants;
 }
 
-LockedNcclClique::LockedNcclClique(std::shared_ptr<NcclClique> clique,
+LockedNcclClique::LockedNcclClique(NcclClique& clique,
                                    std::unique_ptr<absl::MutexLock> lock,
                                    absl::BlockingCounter* counter)
-    : clique(std::move(clique)), lock_(std::move(lock)), counter_(counter) {}
+    : clique(clique), lock_(std::move(lock)), counter_(counter) {}
 
 LockedNcclClique::LockedNcclClique(LockedNcclClique&& other)
-    : clique(std::move(other.clique)),
+    : clique(other.clique),
       lock_(std::move(other.lock_)),
       counter_(std::exchange(other.counter_, nullptr)) {}
 
@@ -305,6 +302,27 @@ LockedNcclClique::~LockedNcclClique() {
       counter_->Wait();  // Don't release lock until all threads are finished.
       delete counter_;
     }
+  }
+}
+
+StatusOr<NcclClique*> NcclCliqueMap::GetOrTryCreateIfAbsent(
+    const NcclCliqueKey& key,
+    const std::function<StatusOr<std::unique_ptr<NcclClique>>(
+        const NcclCliqueKey&)>& value_factory) {
+  absl::MutexLock lock(&mu_);
+  auto it = map_.find(key);
+  if (it == map_.end()) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<NcclClique> value, value_factory(key));
+    it = map_.emplace(key, std::move(value)).first;
+  }
+  return it->second.get();
+}
+
+void NcclCliqueMap::ForEach(
+    const std::function<void(const NcclCliqueKey&, const NcclClique&)>& fn) {
+  absl::MutexLock lock(&mu_);
+  for (const auto& kv : map_) {
+    fn(kv.first, *kv.second);
   }
 }
 

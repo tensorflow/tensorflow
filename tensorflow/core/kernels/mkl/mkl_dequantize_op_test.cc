@@ -69,10 +69,11 @@ Tensor CreateMklInput() {
   mkl_shape.SetMklTensor(true);
   mkl_shape.SetMklLayout(&md);
   mkl_shape.SetElemType(MklDnnType<uint8>());
-  mkl_shape.SetTfLayout(4, {1, 2, 2, 2}, MKL_TENSOR_FORMAT_NHWC);
+  mkl_shape.SetTfLayout(4, {1, 2, 2, 2}, MklTensorFormat::FORMAT_NHWC);
 
   DataType dtype = DataTypeToEnum<uint8>::v();
-  Tensor mkl_tensor(dtype, {mkl_shape.GetSerializeBufferSize()});
+  Tensor mkl_tensor(dtype,
+                    {static_cast<int64>(mkl_shape.GetSerializeBufferSize())});
   mkl_shape.SerializeMklDnnShape(
       mkl_tensor.flat<uint8>().data(),
       mkl_tensor.flat<uint8>().size() * sizeof(uint8));

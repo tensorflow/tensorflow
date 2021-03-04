@@ -193,8 +193,8 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
           diff_bias_mem(nullptr),
           diff_dst_mem(nullptr),
           bwd_filter_desc(nullptr),
-          fwd_desc(nullptr),
           fwd_pd(nullptr),
+          fwd_desc(nullptr),
           src_md(nullptr),
           diff_filter_md(nullptr),
           diff_bias_md(nullptr),
@@ -585,7 +585,9 @@ class MklConvCustomBackpropFilterOp
 
       // Execute convolution backward filter.
       std::shared_ptr<stream> bwd_cpu_stream;
-      bwd_cpu_stream.reset(CreateStream(context, conv_bwd_filter->GetEngine()));
+      MklDnnThreadPool eigen_tp(context);
+      bwd_cpu_stream.reset(
+          CreateStream(&eigen_tp, conv_bwd_filter->GetEngine()));
       if (bias_enabled) {
         T* diff_bias_data =
             static_cast<T*>(const_cast<T*>(diff_bias_tensor->flat<T>().data()));

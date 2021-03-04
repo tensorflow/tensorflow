@@ -448,8 +448,8 @@ class MklConcatOp : public OpKernel {
 
   explicit MklConcatOp(OpKernelConstruction* c)
       : OpKernel(c),
-        eigen_concat_op_(c),
-        data_format_(TensorFormat::FORMAT_NCHW) {}
+        data_format_(TensorFormat::FORMAT_NCHW),
+        eigen_concat_op_(c) {}
 
   void Compute(OpKernelContext* context) override {
     try {
@@ -732,7 +732,8 @@ class MklConcatOp : public OpKernel {
           DCHECK(dst_tensor != nullptr) << "Output tensor pointer is NULL";
 
           std::shared_ptr<stream> fwd_cpu_stream;
-          fwd_cpu_stream.reset(CreateStream(context, cpu_engine));
+          MklDnnThreadPool eigen_tp(context);
+          fwd_cpu_stream.reset(CreateStream(&eigen_tp, cpu_engine));
 
           if (dnn_shape_dst.IsMklTensor())
             dst_md = dnn_shape_dst.GetMklLayout();
@@ -769,7 +770,9 @@ class MklConcatOp : public OpKernel {
           dst_md = dnn_shape_dst.IsMklTensor() ? dnn_shape_dst.GetMklLayout()
                                                : dst_md;
           std::shared_ptr<stream> fwd_cpu_stream;
-          fwd_cpu_stream.reset(CreateStream(context, concat_fwd->GetEngine()));
+          MklDnnThreadPool eigen_tp(context);
+          fwd_cpu_stream.reset(
+              CreateStream(&eigen_tp, concat_fwd->GetEngine()));
           dst.SetUsrMem(dst_md, dst_tensor);
           dst.SetUsrMemDataHandle(dst_tensor, fwd_cpu_stream);
           // Execute concat

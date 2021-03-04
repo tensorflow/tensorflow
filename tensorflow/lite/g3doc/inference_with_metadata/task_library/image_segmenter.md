@@ -61,7 +61,7 @@ dependencies {
     // Other dependencies
 
     // Import the Task Vision Library dependency
-    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.0.0-nightly'
+    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.1.0'
 }
 ```
 

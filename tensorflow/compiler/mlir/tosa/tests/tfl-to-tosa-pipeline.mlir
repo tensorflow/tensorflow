@@ -81,6 +81,13 @@ func @test_add(%arg0: tensor<13x21x1xf32>, %arg1: tensor<13x21x3xf32>) -> tensor
   return %0 : tensor<13x21x3xf32>
 }
 
+// CHECK-LABEL: test_gather
+// CHECK: tosa.gather
+func @test_gather(%arg0: tensor<100x25xf32>, %arg1: tensor<1x20xi32>) -> tensor<20x25x3xf32> {
+  %0 = "tfl.gather"(%arg0, %arg1) {axis = 0 : i32} : (tensor<100x25xf32>, tensor<1x20xi32>) -> tensor<20x25x3xf32>
+  return %0 : tensor<20x25x3xf32>
+}
+
 // -----
 
 // CHECK-LABEL: test_sub

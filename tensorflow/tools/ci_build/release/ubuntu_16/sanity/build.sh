@@ -21,16 +21,12 @@ install_bazelisk
 which bazel
 
 # We need py3 lint
-sudo pip3 install pep8
+sudo python3.8 -m pip install pep8
 
-# TODO(gunan): figure out why we get stuck with later versions of pylint.
-# Install pylint.
-sudo python3 -m pip install setuptools --upgrade
-sudo python2 -m pip install pylint==1.6.4
-sudo python3 -m pip install pylint==1.6.4
-
-# TODO(yifeif): print pylint version for debug. remove later.
-python3 -m pylint --version
+# Install pylint
+sudo python3.8 -m pip install setuptools --upgrade
+sudo python3.8 -m pip install pylint==2.7.2
+python3.8 -m pylint --version
 
 # Run tensorflow sanity checks.
 tensorflow/tools/ci_build/ci_sanity.sh

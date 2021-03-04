@@ -38,7 +38,7 @@ def load_data(path='boston_housing.npz', test_split=0.2, seed=113):
   The attributes themselves are defined in the
   [StatLib website](http://lib.stat.cmu.edu/datasets/boston).
 
-  Arguments:
+  Args:
       path: path where to cache the dataset locally
           (relative to `~/.keras/datasets`).
       test_split: fraction of the data to reserve as test set.

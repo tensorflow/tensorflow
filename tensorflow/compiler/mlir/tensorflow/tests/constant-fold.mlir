@@ -626,3 +626,12 @@ func @testBroadcastGradientArgI64() -> (tensor<2xi64>, tensor<0xi64>) {
 
   return %r0, %r1 : tensor<2xi64>, tensor<0xi64>
 }
+
+// CHECK-LABEL: func @testEmptyResults
+func @testEmptyResults(%arg0: tensor<0x2xf32>) -> tensor<0x2xf32> {
+  %indices = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+
+  // CHECK: "tf.Const"() {value = dense<> : tensor<0x2xf32>} : () -> tensor<0x2xf32>
+  %0 = "tf.DynamicStitch"(%indices, %arg0) : (tensor<0xi32>, tensor<0x2xf32>) -> tensor<0x2xf32>
+  return %0 : tensor<0x2xf32>
+}

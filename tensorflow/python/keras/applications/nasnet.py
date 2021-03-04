@@ -85,7 +85,7 @@ def NASNet(input_shape=None,
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
 
-  Arguments:
+  Args:
     input_shape: Optional shape tuple, the input shape
       is by default `(331, 331, 3)` for NASNetLarge and
       `(224, 224, 3)` for NASNetMobile.
@@ -340,7 +340,7 @@ def NASNetMobile(input_shape=None,
   For NASNet, call `tf.keras.applications.nasnet.preprocess_input` on your
   inputs before passing them to the model.
 
-  Arguments:
+  Args:
       input_shape: Optional shape tuple, only to be specified
           if `include_top` is False (otherwise the input shape
           has to be `(224, 224, 3)` for NASNetMobile
@@ -417,7 +417,7 @@ def NASNetLarge(input_shape=None,
   For NASNet, call `tf.keras.applications.nasnet.preprocess_input` on your
   inputs before passing them to the model.
 
-  Arguments:
+  Args:
       input_shape: Optional shape tuple, only to be specified
           if `include_top` is False (otherwise the input shape
           has to be `(331, 331, 3)` for NASNetLarge.
@@ -479,7 +479,7 @@ def _separable_conv_block(ip,
                           block_id=None):
   """Adds 2 blocks of [relu-separable conv-batchnorm].
 
-  Arguments:
+  Args:
       ip: Input tensor
       filters: Number of output filters per layer
       kernel_size: Kernel size of separable convolutions
@@ -538,7 +538,7 @@ def _adjust_block(p, ip, filters, block_id=None):
 
   Used in situations where the output number of filters needs to be changed.
 
-  Arguments:
+  Args:
       p: Input tensor which needs to be modified
       ip: Input tensor whose shape needs to be matched
       filters: Number of output filters to be matched
@@ -621,7 +621,7 @@ def _adjust_block(p, ip, filters, block_id=None):
 def _normal_a_cell(ip, p, filters, block_id=None):
   """Adds a Normal cell for NASNet-A (Fig. 4 in the paper).
 
-  Arguments:
+  Args:
       ip: Input tensor `x`
       p: Input tensor `p`
       filters: Number of output filters
@@ -700,7 +700,7 @@ def _normal_a_cell(ip, p, filters, block_id=None):
 def _reduction_a_cell(ip, p, filters, block_id=None):
   """Adds a Reduction cell for NASNet-A (Fig. 4 in the paper).
 
-  Arguments:
+  Args:
     ip: Input tensor `x`
     p: Input tensor `p`
     filters: Number of output filters

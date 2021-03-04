@@ -15,6 +15,7 @@ package(
 py_library(
     name = "util",
     srcs = ["util.py"],
+    srcs_version = "PY3",
     deps = [
         "//third_party/py/numpy",
     ],

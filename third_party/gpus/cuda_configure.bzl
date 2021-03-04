@@ -1087,21 +1087,15 @@ def _create_local_cuda_repository(repository_ctx):
 
     # copy files mentioned in third_party/nccl/build_defs.bzl.tpl
     file_ext = ".exe" if is_windows(repository_ctx) else ""
+    bin_files = (
+        ["crt/link.stub"] +
+        [f + file_ext for f in ["bin2c", "fatbinary", "nvlink", "nvprune"]]
+    )
     copy_rules.append(make_copy_files_rule(
         repository_ctx,
         name = "cuda-bin",
-        srcs = [
-            cuda_config.cuda_toolkit_path + "/bin/" + "crt/link.stub",
-            cuda_config.cuda_toolkit_path + "/bin/" + "nvlink" + file_ext,
-            cuda_config.cuda_toolkit_path + "/bin/" + "fatbinary" + file_ext,
-            cuda_config.cuda_toolkit_path + "/bin/" + "bin2c" + file_ext,
-        ],
-        outs = [
-            "cuda/bin/" + "crt/link.stub",
-            "cuda/bin/" + "nvlink" + file_ext,
-            "cuda/bin/" + "fatbinary" + file_ext,
-            "cuda/bin/" + "bin2c" + file_ext,
-        ],
+        srcs = [cuda_config.cuda_toolkit_path + "/bin/" + f for f in bin_files],
+        outs = ["cuda/bin/" + f for f in bin_files],
     ))
 
     # Select the headers based on the cuDNN version (strip '64_' for Windows).
@@ -1384,6 +1378,8 @@ def _create_remote_cuda_repository(repository_ctx, remote_config_repo):
 
 def _cuda_autoconf_impl(repository_ctx):
     """Implementation of the cuda_autoconf repository rule."""
+    build_file = Label("//third_party/gpus:local_config_cuda.BUILD")
+
     if not enable_cuda(repository_ctx):
         _create_dummy_repository(repository_ctx)
     elif get_host_environ(repository_ctx, _TF_CUDA_CONFIG_REPO) != None:
@@ -1398,6 +1394,23 @@ def _cuda_autoconf_impl(repository_ctx):
         )
     else:
         _create_local_cuda_repository(repository_ctx)
+
+    repository_ctx.symlink(build_file, "BUILD")
+
+# For @bazel_tools//tools/cpp:windows_cc_configure.bzl
+_MSVC_ENVVARS = [
+    "BAZEL_VC",
+    "BAZEL_VC_FULL_VERSION",
+    "BAZEL_VS",
+    "BAZEL_WINSDK_FULL_VERSION",
+    "VS90COMNTOOLS",
+    "VS100COMNTOOLS",
+    "VS110COMNTOOLS",
+    "VS120COMNTOOLS",
+    "VS140COMNTOOLS",
+    "VS150COMNTOOLS",
+    "VS160COMNTOOLS",
+]
 
 _ENVIRONS = [
     _GCC_HOST_COMPILER_PATH,
@@ -1416,7 +1429,7 @@ _ENVIRONS = [
     "TMP",
     "TMPDIR",
     "TF_CUDA_PATHS",
-]
+] + _MSVC_ENVVARS
 
 remote_cuda_configure = repository_rule(
     implementation = _create_local_cuda_repository,

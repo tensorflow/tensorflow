@@ -112,7 +112,7 @@ class TrtShapeOptimizationProfileTest : public ::testing::Test {
   TrtUniquePtrType<nvinfer1::IBuilderConfig> builder_config_;
 #endif
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
-  std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>> exec_context_;
+  std::vector<ExecutionContext> exec_context_;
   // The order is important: exec_context_ must be destroyed first, and logger
   // at last.
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
@@ -123,14 +123,14 @@ class TrtShapeOptimizationProfileTest : public ::testing::Test {
 };
 
 TEST_F(TrtShapeOptimizationProfileTest, Static) {
-  // Network with static input shape
+  // Network with static input shape.
   nvinfer1::Dims3 dims(8, 8, 10);
   DefineNetwork(network_.get(), dims);
 
   TrtShapeOptimizationProfile profile;
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  // Configure and build engine - should be a no-op
+  // Configure and build engine - should be a no-op.
   TF_CHECK_OK(profile.ConfigureBuilder(builder_.get(), builder_config_.get(),
                                        network_.get()));
 
@@ -141,44 +141,48 @@ TEST_F(TrtShapeOptimizationProfileTest, Static) {
       builder_->buildCudaEngine(*network_));
 #endif
   EXPECT_NE(nullptr, engine);
-  TF_CHECK_OK(profile.CreateExecutionContexts(engine.get(), exec_context_));
+  TF_CHECK_OK(
+      profile.CreateExecutionContexts(engine.get(), exec_context_, nullptr));
   // A single execution context should be created for a graph with static input
   ASSERT_EQ(exec_context_.size(), 1);
   EXPECT_NE(nullptr, exec_context_[0]);
 
   std::vector<nvinfer1::Dims3> dim_vec(2, dims);
   std::vector<TensorShape> shape_vec = DimVecToShapeVec(dim_vec);
-  EXPECT_EQ(-1, profile.GetProfileNumber(shape_vec));
+  EXPECT_EQ(0, profile.GetProfileNumber(shape_vec));
 }
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
 TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
-  // Network with dynamic input shapes
+  // Network with dynamic input shapes.
   nvinfer1::Dims3 dims(-1, -1, 10);
   DefineNetwork(network_.get(), dims);
 
-  TrtShapeOptimizationProfile profile;
+  TrtShapeOptimizationProfile profile(ProfileStrategy::kOptimal);
   std::vector<std::vector<nvinfer1::Dims3>> input_profiles{
       {nvinfer1::Dims3(2, 2, 10), nvinfer1::Dims3(2, 2, 10)},
       {nvinfer1::Dims3(3, 3, 10), nvinfer1::Dims3(3, 3, 10)},
       {nvinfer1::Dims3(16, 16, 10), nvinfer1::Dims3(16, 16, 10)},
   };
 
-  // Simulate a profile collection phase
+  // Simulate a profile collection phase.
   for (auto dim_vec : input_profiles) {
     std::vector<TensorShape> shape_vec = DimVecToShapeVec(dim_vec);
     profile.AddShape(shape_vec);
   }
-  profile.InitProfiles();
+  std::vector<PartialTensorShape> input_partial_shapes;
+  TF_CHECK_OK(GetNetworkInputShapes(network_.get(), &input_partial_shapes));
+  profile.InitProfiles(input_partial_shapes);
 
-  // Configure and build engine
+  // Configure and build engine.
   TF_CHECK_OK(profile.ConfigureBuilder(builder_.get(), builder_config_.get(),
                                        network_.get()));
   engine = TrtUniquePtrType<nvinfer1::ICudaEngine>(
       builder_->buildEngineWithConfig(*network_.get(), *builder_config_.get()));
   ASSERT_NE(nullptr, engine);
 
-  TF_CHECK_OK(profile.CreateExecutionContexts(engine.get(), exec_context_));
+  TF_CHECK_OK(
+      profile.CreateExecutionContexts(engine.get(), exec_context_, nullptr));
 
   // Each profile has an associated execution context.
   EXPECT_EQ(exec_context_.size(), input_profiles.size());
@@ -187,7 +191,8 @@ TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
   for (auto dimvec : input_profiles) {
     std::vector<TensorShape> shape_vec = DimVecToShapeVec(dimvec);
     int idx = profile.GetProfileNumber(shape_vec);
-    int prof_idx = exec_context_[idx]->getOptimizationProfile();
+    int prof_idx =
+        exec_context_[idx].GetIExecutionContext()->getOptimizationProfile();
     ASSERT_GE(prof_idx, 0);
 
     for (int j = 0; j < dimvec.size(); j++) {

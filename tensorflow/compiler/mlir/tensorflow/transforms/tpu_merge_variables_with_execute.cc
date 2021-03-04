@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #define DEBUG_TYPE "tf-tpu-merge-variables-with-execute"
@@ -135,16 +136,15 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
   // consider resource accesses in other islands since they ordering is enforced
   // by inter-island dependencies.
   Operation* first_read = nullptr;
-  Operation& execute = execute_launch.GetBody().front();
+  auto execute = cast<TF::TPUExecuteOp>(execute_launch.GetBody().front());
   auto parallel_execute = llvm::dyn_cast<tf_device::ParallelExecuteOp>(
       execute_launch->getParentOp());
   Operation* execute_parent =
       parallel_execute ? parallel_execute.getOperation() : execute_launch;
   // Find inputs that are variable reads.
-  for (auto operand : llvm::enumerate(execute.getOpOperands())) {
+  for (auto operand : llvm::enumerate(execute->getOpOperands())) {
     infos.new_operand_values.push_back(operand.value().get());
-    if (!operand.value().get().getDefiningOp()) continue;
-    auto read_op = llvm::dyn_cast<TF::ReadVariableOp>(
+    auto read_op = llvm::dyn_cast_or_null<TF::ReadVariableOp>(
         operand.value().get().getDefiningOp());
     if (!read_op) continue;
     if (check_same_region &&
@@ -478,19 +478,17 @@ LogicalResult UpdateSerializedModule(tf_device::LaunchOp execute_launch,
   // Serialize the updated module back into the TPUCompileMlir op.
   auto module_string = tensorflow::SerializeMlirModule(module_ref.get());
   compile.mlir_moduleAttr(
-      mlir::StringAttr::get(module_string, module_ref->getContext()));
+      mlir::StringAttr::get(module_ref->getContext(), module_string));
   return success();
 }
 
 // Merges the variable accesses into one TPUExecute op.
-void MergeForOneTPUExecute(tf_device::LaunchOp execute_launch,
-                           bool check_device, bool check_same_region,
-                           OpBuilder* builder) {
+LogicalResult MergeForOneTPUExecute(tf_device::LaunchOp execute_launch,
+                                    bool check_device, bool check_same_region,
+                                    OpBuilder* builder) {
   auto infos =
       BuildVariableAccessInfo(execute_launch, check_device, check_same_region);
-  if (infos.per_resource_info.empty()) {
-    return;
-  }
+  if (infos.per_resource_info.empty()) return success();
 
   // Update the serialized module with aliasing information for better memory
   // management on device.
@@ -523,6 +521,23 @@ void MergeForOneTPUExecute(tf_device::LaunchOp execute_launch,
     device_var_reads_indices.push_back(info.execute_input_index);
     device_var_updates_indices.push_back(info.execute_output_index);
   }
+
+  // Check that all resources op are either read or written to.
+  for (auto it : llvm::enumerate(infos.new_operand_values)) {
+    Type type = it.value().getType();
+    if (type.isa<TensorType>() &&
+        type.cast<TensorType>().getElementType().isa<TF::ResourceType>()) {
+      if (!llvm::is_contained(device_var_reads_indices, it.index()) &&
+          !llvm::is_contained(device_var_updates_indices, it.index())) {
+        return execute_launch.GetBody().front().emitError("operand #")
+               << it.index()
+               << " is a resource that was neither read nor written to; this "
+                  "resource potentially failed to be hoisted";
+      }
+    }
+  }
+
+  // Create the merged execute and update variables op.
   auto merged_execute = builder->create<TF::TPUExecuteAndUpdateVariablesOp>(
       execute_launch.getLoc(), new_output_types, infos.new_operand_values,
       llvm::ArrayRef<NamedAttribute>{
@@ -564,6 +579,7 @@ void MergeForOneTPUExecute(tf_device::LaunchOp execute_launch,
     const auto& info = entry.getSecond();
     if (info.read->use_empty()) info.read->erase();
   }
+  return success();
 }
 
 // Checks if an ops parent is a tf_device.parallel_execute and the region the
@@ -601,8 +617,12 @@ void TPUMergeVariablesWithExecutePass::runOnFunction() {
     // to be on the same device as the TPUExecute op. Skip device checking in
     // that case, but we need to check that we are only merging reads/assigns
     // that are also in this replicated region.
-    MergeForOneTPUExecute(execute_launch, /*check_device=*/!parent_is_replicate,
-                          /*check_same_region=*/parent_is_replicate, &builder);
+    if (failed(MergeForOneTPUExecute(
+            execute_launch, /*check_device=*/!parent_is_replicate,
+            /*check_same_region=*/parent_is_replicate, &builder))) {
+      signalPassFailure();
+      return;
+    }
   }
 }
 

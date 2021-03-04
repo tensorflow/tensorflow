@@ -18,7 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.util import options
+from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
@@ -37,12 +41,14 @@ class _NestedTestOptions(options.OptionsBase):
       name="opts", ty=_TestOptions, docstring="nested options")
 
 
-class OptionsTest(test.TestCase):
+class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testDocumentation(self):
     self.assertEqual(_TestOptions.x.__doc__, "the answer to everything")
     self.assertEqual(_TestOptions.y.__doc__, "a tasty pie")
 
+  @combinations.generate(test_base.default_test_combinations())
   def testCreateOption(self):
     opts = _TestOptions()
     self.assertEqual(opts.x, 42)
@@ -58,6 +64,7 @@ class OptionsTest(test.TestCase):
     with self.assertRaises(TypeError):
       opts.y = 42
 
+  @combinations.generate(test_base.default_test_combinations())
   def testMergeOptions(self):
     options1, options2 = _TestOptions(), _TestOptions()
     with self.assertRaises(ValueError):
@@ -71,6 +78,7 @@ class OptionsTest(test.TestCase):
     self.assertEqual(merged_options.x, 0)
     self.assertEqual(merged_options.y, 0.0)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testMergeNestedOptions(self):
     options1, options2 = _NestedTestOptions(), _NestedTestOptions()
     merged_options = options.merge_options(options1, options2)
@@ -87,6 +95,7 @@ class OptionsTest(test.TestCase):
     self.assertEqual(merged_options.opts.x, 0)
     self.assertEqual(merged_options.opts.y, 0.0)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testMergeOptionsInvalid(self):
     with self.assertRaises(TypeError):
       options.merge_options(0)
@@ -94,6 +103,7 @@ class OptionsTest(test.TestCase):
     with self.assertRaises(TypeError):
       options.merge_options(options1, options2)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testNoSpuriousAttrs(self):
     test_options = _TestOptions()
     with self.assertRaises(AttributeError):

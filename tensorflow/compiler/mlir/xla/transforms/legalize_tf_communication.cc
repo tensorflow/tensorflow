@@ -215,7 +215,7 @@ void SetOpSharding(Operation* op, int64_t tpu_core) {
   std::string sharding_serialized =
       ::xla::sharding_builder::AssignDevice(tpu_core).SerializeAsString();
   op->setAttr(kShardingAttr,
-              StringAttr::get(sharding_serialized, op->getContext()));
+              StringAttr::get(op->getContext(), sharding_serialized));
 }
 
 // Assigns frontend attributes holding information about data type and
@@ -229,7 +229,7 @@ void SetFrontendAttributes(Operation* op, int32_t index, StringRef key,
       device_to_host ? llvm::formatv("{0}_dtoh_{1}", key, index).str()
                      : llvm::formatv("{0}_htod_{1}", key, index).str();
 
-  auto rendezvous_name = StringAttr::get(formatted_key, context);
+  auto rendezvous_name = StringAttr::get(context, formatted_key);
   auto rendezvous_name_attr = NamedAttribute(
       Identifier::get(kXlaHostTransferRendezvousNameAttr, context),
       rendezvous_name);
@@ -238,14 +238,14 @@ void SetFrontendAttributes(Operation* op, int32_t index, StringRef key,
   auto xla_element_type = ::xla::TypeToPrimitiveType(element_type);
   const std::string& xla_element_type_str =
       ::xla::primitive_util::LowercasePrimitiveTypeName(xla_element_type);
-  auto original_type = StringAttr::get(xla_element_type_str, context);
+  auto original_type = StringAttr::get(context, xla_element_type_str);
   auto original_type_attr =
       NamedAttribute(Identifier::get(kXlaHostTransferOriginalTypeAttr, context),
                      original_type);
 
   auto frontend_attributes = DictionaryAttr::get(
-      ArrayRef<NamedAttribute>{rendezvous_name_attr, original_type_attr},
-      context);
+      context,
+      ArrayRef<NamedAttribute>{rendezvous_name_attr, original_type_attr});
   op->setAttr(kFrontendAttributesAttr, frontend_attributes);
 }
 
@@ -281,7 +281,7 @@ Value CreateRecvOp(OpBuilder& builder, int64_t& channel_id, Location loc,
       /*type=*/builder.getI64IntegerAttr(3), builder.getContext());
   auto result_type = result.getType();
   auto recv_result_type =
-      TupleType::get({result_type, token.getType()}, builder.getContext());
+      TupleType::get(builder.getContext(), {result_type, token.getType()});
   auto recv =
       builder.create<RecvOp>(loc, recv_result_type, token, channel_handle,
                              /*is_host_transfer=*/builder.getBoolAttr(true));
@@ -712,8 +712,8 @@ void UpdateFunctionType(OpBuilder& builder, FuncOp func, Block& func_body) {
   auto new_argument_types = llvm::to_vector<4>(func_body.getArgumentTypes());
   auto new_result_types =
       llvm::to_vector<4>(func_body.getTerminator()->getOperandTypes());
-  func.setType(FunctionType::get(new_argument_types, new_result_types,
-                                 builder.getContext()));
+  func.setType(FunctionType::get(builder.getContext(), new_argument_types,
+                                 new_result_types));
 }
 
 // Replaces a function terminator `return` with another `return` that has an

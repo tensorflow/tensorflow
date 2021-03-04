@@ -146,7 +146,8 @@ int64 HloCostAnalysis::FusionParameterReadBytes(
     const HloInstruction* hlo) const {
   int64 size = 0;
   bool seen_trivial_user = false;
-  CHECK(hlo->IsFused() && hlo->opcode() == HloOpcode::kParameter);
+  CHECK(hlo->IsFused() && (hlo->opcode() == HloOpcode::kParameter ||
+                           hlo->opcode() == HloOpcode::kGetTupleElement));
   for (const HloInstruction* user : hlo->users()) {
     switch (user->opcode()) {
       case HloOpcode::kFusion: {
@@ -335,11 +336,34 @@ Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleInfeed(const HloInstruction*) {
+Status HloCostAnalysis::HandleInfeed(const HloInstruction* infeed) {
+  // Count nested infeed output tuples.
+  int64 size = 0;
+  for (const auto& indexed_shape : ShapeUtil::GetLeafShapes(infeed->shape())) {
+    size += GetShapeSize(indexed_shape.shape);
+    SetOutputBytesAccessed(indexed_shape.index,
+                           GetShapeSize(indexed_shape.shape));
+  }
+  SetOutputBytesAccessed(size);
+  current_properties_[kBytesAccessedKey] = size;
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleOutfeed(const HloInstruction*) {
+Status HloCostAnalysis::HandleOutfeed(const HloInstruction* outfeed) {
+  // Count nested outfeed operand tuples.
+  current_properties_[kBytesAccessedKey] = 0;
+  for (int64 i = 0; i < outfeed->operand_count(); ++i) {
+    const HloInstruction* operand = outfeed->operand(i);
+    int64 size = 0;
+    for (const auto& indexed_shape :
+         ShapeUtil::GetLeafShapes(operand->shape())) {
+      size += GetShapeSize(indexed_shape.shape);
+      SetOperandBytesAccessed(i, indexed_shape.index,
+                              GetShapeSize(indexed_shape.shape));
+    }
+    SetOperandBytesAccessed(i, size);
+    current_properties_[kBytesAccessedKey] += size;
+  }
   return Status::OK();
 }
 
@@ -872,9 +896,31 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
 
   for (int64 i = 0; i < fusion->fused_parameters().size(); ++i) {
     const HloInstruction* operand = fusion->fused_parameter(i);
-    int64 size = FusionParameterReadBytes(operand);
-    current_properties_[kBytesAccessedKey] += size;
-    SetOperandBytesAccessed(i, size);
+    int64 operand_size = 0;
+    if (!fusion->shape().IsTuple()) {
+      operand_size = FusionParameterReadBytes(operand);
+    } else {
+      // If the fusion parameter is a tuple type, find the gte for the leaf
+      // shape and calculate the bytes accessed for those array types.
+      for (const auto& indexed_shape :
+           ShapeUtil::GetLeafShapes(operand->shape())) {
+        const HloInstruction* gte = operand;
+        for (int64 index : indexed_shape.index) {
+          for (const HloInstruction* user : gte->users()) {
+            if (user->opcode() == HloOpcode::kGetTupleElement &&
+                user->tuple_index() == index) {
+              gte = user;
+              break;
+            }
+          }
+        }
+        int64 size = FusionParameterReadBytes(gte);
+        operand_size += size;
+        SetOperandBytesAccessed(i, indexed_shape.index, size);
+      }
+    }
+    current_properties_[kBytesAccessedKey] += operand_size;
+    SetOperandBytesAccessed(i, operand_size);
   }
 
   return Status::OK();

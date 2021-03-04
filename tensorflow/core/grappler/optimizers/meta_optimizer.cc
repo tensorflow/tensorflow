@@ -189,7 +189,8 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
   MK_OPT("constfold",
          new ConstantFolding(
              cpu_device_,
-             cfg_.experimental_disable_compressed_tensor_optimization()));
+             cfg_.experimental_disable_compressed_tensor_optimization(),
+             !cfg_.experimental_disable_folding_quantization_emulation()));
   MK_OPT("shape", new ShapeOptimizer());
   MK_OPT("remap", new Remapper(cfg_.remapping()));
   MK_OPT("layout", new GenericLayoutOptimizer(
@@ -253,7 +254,8 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.constant_folding() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<ConstantFolding>(
         cfg_.constant_folding(), cpu_device_,
-        cfg_.experimental_disable_compressed_tensor_optimization()));
+        cfg_.experimental_disable_compressed_tensor_optimization(),
+        !cfg_.experimental_disable_folding_quantization_emulation()));
   }
   if (cfg_.shape_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<ShapeOptimizer>());
@@ -1018,9 +1020,12 @@ Status OptimizeGraph(
     for (const FunctionDef& fdef : out_graph.library().function()) {
       const string& func_name = fdef.signature().name();
       if (flib->Contains(func_name)) {
-        TF_RETURN_IF_ERROR(flib->ReplaceFunction(func_name, fdef));
+        StackTracesMap stack_traces = flib->GetStackTraces(func_name);
+        TF_RETURN_IF_ERROR(
+            flib->ReplaceFunction(func_name, fdef, stack_traces));
       } else {
-        TF_RETURN_IF_ERROR(flib->AddFunctionDef(fdef));
+        TF_RETURN_IF_ERROR(
+            flib->AddFunctionDef(fdef, flib->GetStackTraces(func_name)));
       }
     }
   }

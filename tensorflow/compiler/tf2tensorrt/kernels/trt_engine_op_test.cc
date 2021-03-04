@@ -245,16 +245,11 @@ TEST_F(TRTEngineOpTestBase, ExplicitBatch) {
       device_->resource_manager()->Lookup("TF-TRT", "myop", &cache_resource));
   core::ScopedUnref sc(cache_resource);
 
-  // Due to the way the engine lookup is implemented, explicit batch mode
-  // requires profile generation. Currently profile generaton is not enabled in
-  // this test therfore engine creation fails.
-  //
-  // TODO(Tamas) find a way to enable profile generation mode and test it
   auto cache = &cache_resource->cache_;
-  EXPECT_EQ(0, cache->size());
-  // ASSERT_EQ(1, cache->count({input_shape}));
-  // EngineContext* ectx = cache->at({input_shape}).get();
-  // EXPECT_NE(ectx->cuda_engine, nullptr);
+  EXPECT_EQ(1, cache->size());
+  ASSERT_EQ(1, cache->count({input_shape}));
+  EngineContext* ectx = cache->at({input_shape}).get();
+  EXPECT_NE(ectx->cuda_engine, nullptr);
 }
 
 TEST_F(TRTEngineOpTestBase, DynamicShapes) {
@@ -278,13 +273,11 @@ TEST_F(TRTEngineOpTestBase, DynamicShapes) {
       device_->resource_manager()->Lookup("TF-TRT", "myop", &cache_resource));
   core::ScopedUnref sc(cache_resource);
 
-  // We did not have profile generation mode therfore engine creation failed.
-  // TODO(Tamas) find a way to enable profile generation mode and test it
   auto cache = &cache_resource->cache_;
-  EXPECT_EQ(0, cache->size());
-  // ASSERT_EQ(1, cache->count({input_shape}));
-  // EngineContext* ectx = cache->at({input_shape}).get();
-  // EXPECT_NE(ectx->cuda_engine, nullptr);
+  EXPECT_EQ(1, cache->size());
+  ASSERT_EQ(1, cache->count({input_shape}));
+  EngineContext* ectx = cache->at({input_shape}).get();
+  EXPECT_NE(ectx->cuda_engine, nullptr);
 }
 
 template <typename T>

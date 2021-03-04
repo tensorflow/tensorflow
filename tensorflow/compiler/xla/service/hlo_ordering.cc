@@ -34,10 +34,28 @@ namespace xla {
 
 bool HloOrdering::ExecutesBefore(const HloInstruction* a,
                                  const HloInstruction* b) const {
+  switch (GetExecutionConstraint(a, b)) {
+    case ExecutionConstraint::kIsSame:  // a and b are the same instruction;
+      return false;
+    case ExecutionConstraint::kRunBefore:
+    case ExecutionConstraint::kRunExclusiveBefore:
+      return true;
+    case ExecutionConstraint::kRunExclusiveAfter:
+    case ExecutionConstraint::kRunAfter:
+    case ExecutionConstraint::kUnordered:
+      return false;
+  }
+}
+
+HloOrdering::ExecutionConstraint HloOrdering::GetExecutionConstraint(
+    const HloInstruction* a, const HloInstruction* b) const {
   // 'a' and 'b' may be in different computations. In this case, find the
   // callgraph ancestor instructions which call (potentially transitively) the
   // computations containing 'a' and 'b' and use these ancestor instructions to
   // compare order.
+  if (a == b) {
+    return ExecutionConstraint::kIsSame;
+  }
   const HloInstruction* a_ancestor;
   const HloInstruction* b_ancestor;
   std::tie(a_ancestor, b_ancestor) =
@@ -45,9 +63,10 @@ bool HloOrdering::ExecutesBefore(const HloInstruction* a,
           const_cast<HloInstruction*>(a), const_cast<HloInstruction*>(b));
 
   if (a_ancestor == nullptr) {
-    // Ancestors in a common computation could not be found so consider the
-    // instructions 'a' and 'b' to be unordered.
-    return false;
+    VLOG(4) << "Ancestors in a common computation could not be found between"
+            << a->ToString() << "\n and \n"
+            << b->ToString() << "\n so consider them to be unordered.\n";
+    return ExecutionConstraint::kUnordered;
   }
   // a_ancestor and b_ancestor must be either both null or both non-null.
   CHECK_NE(b_ancestor, nullptr);
@@ -62,7 +81,7 @@ bool HloOrdering::ExecutesBefore(const HloInstruction* a,
     const HloComputation* condition = a_ancestor->while_condition();
     if (call_graph_->InstructionIsNestedIn(a, condition) &&
         call_graph_->InstructionIsNestedIn(b, body)) {
-      return true;
+      return ExecutionConstraint::kRunBefore;
     }
   }
 
@@ -85,17 +104,40 @@ bool HloOrdering::ExecutesBefore(const HloInstruction* a,
         b_branch = j;
       }
     }
-    if (a_branch != -1 && a_branch < b_branch) {
-      return true;
+    // If neither a nor b is inside the branches they both are the ancestor.
+    if (a_branch == -1 && b_branch == -1) {
+      CHECK_EQ(a, a_ancestor);
+      CHECK_EQ(b, b_ancestor);
+      CHECK_EQ(a, b);
+      return ExecutionConstraint::kIsSame;
     }
     // If 'b' is the conditional ancestor, and 'a' is within a branch
     // computation, 'a' executes before 'b'.
-    if (b == a_ancestor && a_branch != -1) {
-      return true;
+    if (b_branch == -1) {
+      CHECK_EQ(b, a_ancestor);
+      return ExecutionConstraint::kRunBefore;
+    }
+    if (a_branch == -1) {
+      CHECK_EQ(a, a_ancestor);
+      return ExecutionConstraint::kRunAfter;
+    }
+    if (a_branch < b_branch) {
+      return ExecutionConstraint::kRunExclusiveBefore;
+    }
+    if (b_branch < a_branch) {
+      return ExecutionConstraint::kRunExclusiveAfter;
     }
   }
 
-  return ExecutesBeforeInSameComputation(a_ancestor, b_ancestor);
+  if (ExecutesBeforeInSameComputation(a_ancestor, b_ancestor)) {
+    return ExecutionConstraint::kRunBefore;
+  }
+  if (ExecutesBeforeInSameComputation(b_ancestor, a_ancestor)) {
+    return ExecutionConstraint::kRunAfter;
+  }
+  VLOG(1) << "Cannot determine order between:" << a->ToString() << "\n"
+          << "and " << b->ToString() << " which are in the same computation\n";
+  return ExecutionConstraint::kUnordered;
 }
 
 bool HloOrdering::IsDefinedBefore(const HloValue& a, const HloValue& b) const {
@@ -167,102 +209,169 @@ bool HloOrdering::IsDefinedBefore(const HloValue& a, const HloValue& b) const {
 }
 
 /* static */
-bool HloOrdering::UseIsBeforeValueDefinition(
-    const HloUse& use, const HloValue& value,
+bool HloOrdering::UsesBeforeValueDefinition(
+    absl::Span<const HloUse* const> uses, const HloValue& value,
     const HloDataflowAnalysis& dataflow) const {
-  VLOG(4) << "UseIsBeforeValueDefinition(use=" << use
-          << ", value=" << value.ToShortString() << ")";
-  if (ExecutesBefore(use.instruction, value.defining_instruction())) {
-    VLOG(4) << "  use instruction executes before value-defining instruction";
-    return true;
-  }
-
-  // If the use is at the instruction where the value is defined, then the use
-  // is before the def if the instruction allows buffer sharing (in place
-  // computation).
-  if (use.instruction == value.defining_instruction() &&
-      dataflow.CanShareOperandBufferWithUser(
-          use.instruction->mutable_operand(use.operand_number),
-          use.operand_index, value.defining_instruction(),
-          value.defining_index())) {
-    VLOG(4) << "  use is value def, and instruction can share use buffer";
-    return true;
-  }
-
-  // The use at a while is an input to a phi, and logically occurs before values
-  // are defined in the body. Note that the use is *not* before the value if the
-  // value is defined in the condition and is not the condition parameter, since
-  // the input of a while's life range is only ended at the start the body.
-  if (use.instruction->opcode() == HloOpcode::kWhile) {
-    const HloInstruction* xla_while = use.instruction;
-    if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
-                                           xla_while->while_body())) {
-      VLOG(4) << "  use is while " << use.instruction->name()
-              << " and def is in body";
-      return true;
+  bool has_use_in_exclusive_branches = false;
+  bool has_escaped_use_in_conditional = false;
+  auto UseIsBeforeValueDefinition = [&](const HloUse& use) {
+    VLOG(4) << "UseIsBeforeValueDefinition(use=" << use
+            << ", value=" << value.ToShortString() << ")";
+    switch (
+        GetExecutionConstraint(use.instruction, value.defining_instruction())) {
+      case HloOrdering::ExecutionConstraint::kIsSame:
+        // If the use is at the instruction where the value is defined, then the
+        // use is before the def if the instruction allows buffer sharing (in
+        // place computation).
+        if (dataflow.CanShareOperandBufferWithUser(
+                use.instruction->mutable_operand(use.operand_number),
+                use.operand_index, value.defining_instruction(),
+                value.defining_index())) {
+          VLOG(4)
+              << "  use is value def, and instruction can share use buffer.";
+          return true;
+        }
+        break;
+      case HloOrdering::ExecutionConstraint::kRunExclusiveAfter:
+        // If the use is located in a branch that is exclusive to the branch
+        // where value is located, in order for them to interfere, there must be
+        // an execution path where the value's definition can reach the use, so
+        // that the wrong value would reach use if their live ranges are merged.
+        // If there is such a path, it would have to pass through the point
+        // where the two exclusive branches are joined --- specifically the end
+        // of the conditional operation. For the join point to reach back to the
+        // use at the other exclusive branch, there has to be a be a surrounding
+        // loop, where the result of the conditional is passed back inside the
+        // conditional through one of its parameters. This use-def conflict
+        // between the parameter of a conditional and one of its branches is
+        // caught in the has_escaped_use_in_conditinoal variable.
+        VLOG(4) << " use and value def are in exclusive branches.";
+        if (!has_escaped_use_in_conditional) {
+          has_use_in_exclusive_branches = true;
+          VLOG(4) << "Allowing them to share buffer.\n";
+          return true;
+        }
+        VLOG(4) << "value def has escaped use in conditional. \n";
+        break;
+      case HloOrdering::ExecutionConstraint::kRunExclusiveBefore:
+      case HloOrdering::ExecutionConstraint::kRunBefore:
+        VLOG(4)
+            << "  use instruction executes before value-defining instruction";
+        return true;
+      case HloOrdering::ExecutionConstraint::kRunAfter:
+      case HloOrdering::ExecutionConstraint::kUnordered:
+        break;
     }
-    if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
-                                           xla_while->while_condition())) {
-      if (value.defining_instruction() !=
-          xla_while->while_condition()->parameter_instruction(0)) {
+
+    // The use at a while is an input to a phi, and logically occurs before
+    // values are defined in the body. Note that the use is *not* before the
+    // value if the value is defined in the condition and is not the condition
+    // parameter, since the input of a while's live range is only ended at the
+    // start the body.
+    if (use.instruction->opcode() == HloOpcode::kWhile) {
+      const HloInstruction* xla_while = use.instruction;
+      if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
+                                             xla_while->while_body())) {
         VLOG(4) << "  use is while " << use.instruction->name()
-                << " and def is in condition and is not the parameter";
-        return false;
-      } else {
-        VLOG(4) << "  use is while " << use.instruction->name()
-                << " and def is in condition and is the parameter";
+                << " and def is in body";
+        return true;
+      }
+      if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
+                                             xla_while->while_condition())) {
+        if (value.defining_instruction() !=
+            xla_while->while_condition()->parameter_instruction(0)) {
+          VLOG(4) << "  use is while " << use.instruction->name()
+                  << " and def is in condition and is not the parameter";
+          return false;
+        } else {
+          VLOG(4) << "  use is while " << use.instruction->name()
+                  << " and def is in condition and is the parameter";
+          return true;
+        }
+      }
+    }
+    // Similarly if the value is defined at a while, it logically occurs after
+    // any uses in the body or condition computations.
+    if (value.defining_instruction()->opcode() == HloOpcode::kWhile) {
+      CHECK(value.is_phi());
+      const HloInstruction* xla_while = value.defining_instruction();
+      if (call_graph_->InstructionIsNestedIn(use.instruction,
+                                             xla_while->while_body()) ||
+          call_graph_->InstructionIsNestedIn(use.instruction,
+                                             xla_while->while_condition())) {
+        VLOG(4) << "  value is while " << value.defining_instruction()->name()
+                << " and use is in condition or body";
         return true;
       }
     }
-  }
-
-  // Similarly if the value is defined at a while, it logically occurs after any
-  // uses in the body or condition computations.
-  if (value.defining_instruction()->opcode() == HloOpcode::kWhile) {
-    CHECK(value.is_phi());
-    const HloInstruction* xla_while = value.defining_instruction();
-    if (call_graph_->InstructionIsNestedIn(use.instruction,
-                                           xla_while->while_body()) ||
-        call_graph_->InstructionIsNestedIn(use.instruction,
-                                           xla_while->while_condition())) {
-      VLOG(4) << "  value is while " << value.defining_instruction()->name()
-              << " and use is in condition or body";
-      return true;
-    }
-  }
-
-  // The use at a call occurs before values that are defined in the called
-  // computation.
-  if (use.instruction->opcode() == HloOpcode::kCall) {
-    const HloInstruction* call = use.instruction;
-    if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
-                                           call->to_apply())) {
-      VLOG(4) << "  use is call " << use.instruction->name()
-              << " and def is in called computation";
-      return true;
-    }
-  }
-
-  if (use.instruction->opcode() == HloOpcode::kConditional) {
-    const HloInstruction* conditional = use.instruction;
-    for (int j = 0; j < conditional->branch_count(); ++j) {
-      if (call_graph_->InstructionIsNestedIn(
-              value.defining_instruction(),
-              conditional->branch_computation(j))) {
-        VLOG(4) << "  use is conditional " << use.instruction->name()
-                << " and def is in " << j << "th branch computation";
+    // The use at a call occurs before values that are defined in the called
+    // computation.
+    if (use.instruction->opcode() == HloOpcode::kCall) {
+      const HloInstruction* call = use.instruction;
+      if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
+                                             call->to_apply())) {
+        VLOG(4) << "  use is call " << use.instruction->name()
+                << " and def is in called computation";
         return true;
       }
     }
-    if (value.defining_instruction() == use.instruction) {
-      VLOG(4) << "  use is conditional " << use << " and def is "
-              << value.ToShortString();
-      return true;
+    if (use.instruction->opcode() == HloOpcode::kConditional) {
+      const HloInstruction* conditional = use.instruction;
+      // In general the use of a value in the conditional parameter should be
+      // considered to be before a definition in one of its branches, and
+      // therefore allowed in live range merging, if there is no
+      // surrounding loop that creates a backward control flow path that
+      // allows the definition in the branch to have its value flow backward
+      // into the conditional and then flow into another branch in the
+      // conditional that uses the value. This is reflected by checking that
+      // the use-def in exclusive branches has not been already allowed.
+      // Further, if the def value escapes its branch, we conservatively
+      // assume a backward control flow path could exist, and set
+      // has_escaped_use_in_conditinoal to disallow any later uses in
+      // exclusive branches.
+      for (int j = 0; j < conditional->branch_count(); ++j) {
+        if (call_graph_->InstructionIsNestedIn(
+                value.defining_instruction(),
+                conditional->branch_computation(j))) {
+          // If the use operand does not create a new value, and the value def
+          // is returned by as part of the result of the conditional, it
+          // is possible for the branch definition to flow backward through a
+          // surrounding loop and then back into the conditional parameter.
+          if (!dataflow.ValueIsDefinedAt(
+                  use.instruction->operand(use.operand_number), {})) {
+            for (auto value_use : value.uses()) {
+              VLOG(4) << "def have use:" << value_use << "\n";
+              if (value_use.instruction ==
+                  value_use.instruction->parent()->root_instruction()) {
+                VLOG(4) << "def use is conditional root \n";
+                has_escaped_use_in_conditional = true;
+                break;
+              }
+            }
+          }
+          if (!has_use_in_exclusive_branches) {
+            VLOG(4) << "  use is conditional " << use.instruction->name()
+                    << " and def is in " << j << "th branch computation";
+            return true;
+          }
+        }
+      }
+      if (value.defining_instruction() == use.instruction) {
+        VLOG(4) << "  use is conditional " << use << " and def is "
+                << value.ToShortString();
+        return true;
+      }
+    }
+
+    VLOG(4) << "  use is not before value definition";
+    return false;
+  };
+  for (auto* use : uses) {
+    if (!UseIsBeforeValueDefinition(*use)) {
+      return false;
     }
   }
-
-  VLOG(4) << "  use is not before value";
-  return false;
+  return true;
 }
 
 bool HloOrdering::LiveRangeStrictlyBefore(
@@ -270,6 +379,7 @@ bool HloOrdering::LiveRangeStrictlyBefore(
     const HloDataflowAnalysis& dataflow) const {
   VLOG(4) << "LiveRangeStrictlyBefore(a = " << a.ToShortString()
           << ", b = " << b.ToShortString() << ")";
+  VLOG(4) << "Parent:" << a.instruction()->parent()->ToString() << "\n";
   if (!IsDefinedBefore(a, b)) {
     VLOG(4) << a << " not defined before " << b;
     return false;
@@ -294,16 +404,17 @@ bool HloOrdering::LiveRangeStrictlyBefore(
   }
 
   // All uses of 'a' must be before 'b' is defined.
+  std::vector<const HloUse*> uses;
   for (const HloUse& use : a.uses()) {
     if (dataflow.DoesNotUseOperandBuffer(a.instruction(), a.index(),
                                          use.instruction)) {
       continue;
     }
-    if (!UseIsBeforeValueDefinition(use, b, dataflow)) {
-      VLOG(4) << "use of " << a << " (" << use << ") not before " << b
-              << " is defined";
-      return false;
-    }
+    uses.push_back(&use);
+  }
+  if (!UsesBeforeValueDefinition(uses, b, dataflow)) {
+    VLOG(4) << "uses of " << a << "not before " << b << " is defined";
+    return false;
   }
 
   if (a.instruction()->parent() == b.instruction()->parent()) {

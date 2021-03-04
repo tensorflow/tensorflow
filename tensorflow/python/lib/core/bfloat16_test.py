@@ -292,6 +292,25 @@ class Bfloat16NumPyTest(parameterized.TestCase):
     b = np.array([82432], bfloat16)
     self.assertFalse(a.__eq__(b))
 
+  def testCanCast(self):
+    allowed_casts = [
+        (np.bool_, bfloat16),
+        (np.int8, bfloat16),
+        (np.uint8, bfloat16),
+        (bfloat16, np.float32),
+        (bfloat16, np.float64),
+        (bfloat16, np.complex64),
+        (bfloat16, np.complex128),
+    ]
+    all_dtypes = [
+        np.float16, np.float32, np.float64, np.int8, np.int16, np.int32,
+        np.int64, np.complex64, np.complex128, np.uint8, np.uint16, np.uint32,
+        np.uint64, np.intc, np.int_, np.longlong, np.uintc, np.ulonglong
+    ]
+    for d in all_dtypes:
+      self.assertEqual((bfloat16, d) in allowed_casts, np.can_cast(bfloat16, d))
+      self.assertEqual((d, bfloat16) in allowed_casts, np.can_cast(d, bfloat16))
+
   def testCasts(self):
     for dtype in [
         np.float16, np.float32, np.float64, np.int8, np.int16, np.int32,

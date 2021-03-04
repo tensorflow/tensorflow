@@ -107,6 +107,7 @@ class LocalDeviceState {
   se::Stream* host_to_device_stream() const {
     return host_to_device_stream_.get();
   }
+  se::Stream* callback_stream() const { return callback_stream_.get(); }
 
   // Returns a device to host stream. Allocates streams in a round-robin fashion
   // amongst the available streams.
@@ -144,14 +145,14 @@ class LocalDeviceState {
   // thread or on the worker thread (depending on thread schedules), not a
   // device callback, so it is safe if the destructor frees device resource
   // (e.g., GPU objects).
-  // TODO(phawkins): use move-capture when we can use C++14 features.
   template <typename T>
-  void ThenRelease(se::Stream* stream, T object) const {
+  void ThenRelease(se::Stream* stream, T&& object) const {
     if (callback_stream_.get() != stream) {
       callback_stream_->ThenWaitFor(stream);
     }
-    ThenExecuteOnCallbackThread(callback_stream_.get(),
-                                [object]() { /* releases object */ });
+    ThenExecuteOnCallbackThread(
+        callback_stream_.get(),
+        [object = std::forward<T>(object)]() { /* releases object */ });
   }
 
   Semaphore& compute_semaphore() { return compute_semaphore_; }

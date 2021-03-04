@@ -103,6 +103,13 @@ TfLiteStatus EvalQuantizeReference(TfLiteContext* context, TfLiteNode* node) {
             data->input_zero_point, data->quantization_params.zero_point,
             tflite::micro::GetTensorData<int8_t>(output));
         break;
+      case kTfLiteInt32:
+        reference_ops::Requantize(
+            tflite::micro::GetTensorData<int8_t>(input), size,
+            data->requantize_output_multiplier, data->requantize_output_shift,
+            data->input_zero_point, data->quantization_params.zero_point,
+            tflite::micro::GetTensorData<int32_t>(output));
+        break;
       default:
         TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
                            TfLiteTypeGetName(input->type),

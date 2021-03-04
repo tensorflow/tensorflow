@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
 #define DEBUG_TYPE "tf-region-cf-to-functional"
@@ -45,9 +46,12 @@ namespace TF {
 
 namespace {
 
+constexpr char kElseFuncNameAttr[] = "_else_func_name";
+constexpr char kThenFuncNameAttr[] = "_then_func_name";
+
 struct RegionControlFlowToFunctional
-    : public PassWrapper<RegionControlFlowToFunctional,
-                         OperationPass<ModuleOp>> {
+    : public TF::RegionControlFlowToFunctionalPassBase<
+          RegionControlFlowToFunctional> {
   void runOnOperation() override;
 
  private:
@@ -121,7 +125,7 @@ void ExtractSingleBlockRegion(Region& region, StringRef name,
   if (extern_values_passthrough)
     for (auto input : extern_values) return_types.push_back(input.getType());
 
-  auto type = FunctionType::get(input_types, return_types, region.getContext());
+  auto type = FunctionType::get(region.getContext(), input_types, return_types);
 
   // Create new function and extract region body into the function.
   auto outlined_func = builder.create<FuncOp>(loc, name, type);
@@ -216,8 +220,16 @@ bool MatchCallArgs(CallOp first, CallOp second, ArgMatcherFn matcher) {
   for (auto it : llvm::zip(first.getArgOperands(), second.getArgOperands())) {
     // Get the defining Op, skipping over casts.
     auto get_defining_op = [](Value value) {
-      while (llvm::isa_and_nonnull<CastOp>(value.getDefiningOp()))
-        value = cast<CastOp>(value.getDefiningOp()).getOperand();
+      while (auto cast_op =
+                 llvm::dyn_cast_or_null<CastOp>(value.getDefiningOp())) {
+        // Consider cast compatibility in case
+        //    %cast = "tf.Cast"(%0) : (tensor<2xi64>) -> tensor<2xf32>
+        // is skipped.
+        if (cast_op.SrcT() != cast_op.DstT()) {
+          break;
+        }
+        value = cast_op.getOperand();
+      }
       return value;
     };
     Value first_arg = get_defining_op(std::get<0>(it));
@@ -298,11 +310,25 @@ LogicalResult RegionControlFlowToFunctional::ConvertIfOp(IfRegionOp if_region) {
     // Create 2 new functions with the input signature matching this order,
     // and outline the `then` and `else` regions by moving the bodies of these
     // regions into these functions. Replace tf.yield with a regular return.
-    then_name = GetName(if_region, "_then");
+    if (if_region->hasAttrOfType<StringAttr>(kThenFuncNameAttr) &&
+        !if_region._then_func_nameAttr().getValue().empty()) {
+      then_name =
+          mapper.GetUniqueName(if_region._then_func_nameAttr().getValue())
+              .str();
+    } else {
+      then_name = GetName(if_region, "_then");
+    }
     ExtractSingleBlockRegion(if_region.then_branch(), then_name, extern_values,
                              worklist, /*extern_values_passthrough=*/false);
 
-    else_name = GetName(if_region, "_else");
+    if (if_region->hasAttrOfType<StringAttr>(kElseFuncNameAttr) &&
+        !if_region._else_func_nameAttr().getValue().empty()) {
+      else_name =
+          mapper.GetUniqueName(if_region._else_func_nameAttr().getValue())
+              .str();
+    } else {
+      else_name = GetName(if_region, "_else");
+    }
     ExtractSingleBlockRegion(if_region.else_branch(), else_name, extern_values,
                              worklist, /*extern_values_passthrough=*/false);
   }
@@ -444,10 +470,6 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFRegionControlFlowToFunctional() {
   return std::make_unique<RegionControlFlowToFunctional>();
 }
-
-static PassRegistration<RegionControlFlowToFunctional> pass(
-    "tf-region-control-flow-to-functional",
-    "Transform region bases control flow Ops to functional counterparts");
 
 }  // namespace TF
 }  // namespace mlir

@@ -367,7 +367,18 @@ def OperandsBroadcastToOutputType : Constraint<CPred<
 def IsTailOfShape : Constraint<CPred<
   "TFL::IsTailOfShape($0.getType(), $1.getType())">>;
 
-def HaveSameType : Constraint<CPred<"$0.getType(), $1.getType()">>;
+def Flatten : NativeCodeCall<
+  "$0.cast<DenseElementsAttr>()"
+    ".reshape(RankedTensorType::get({$0.getType().cast<ShapedType>().getNumElements()}, "
+                                   "$0.getType().cast<ShapedType>().getElementType()))">;
+
+def IsLastDimEqualToNumElements : Constraint<CPred<
+  "$0.getType().cast<ShapedType>().getRank() >= 1 && "
+  "$0.getType().cast<ShapedType>().getDimSize($0.getType().cast<ShapedType>().getRank() - 1) == "
+  "$1.getType().cast<ShapedType>().getNumElements()">>;
+
+def IsDefinedByFullyConnectedOp : Constraint<CPred<
+  "$0.getDefiningOp<TFL::FullyConnectedOp>() != nullptr">>;
 
 // Pattern for skipping Tile if it is mainly for broadcasting and the
 // Op is already supporting broadcasting.
@@ -417,7 +428,7 @@ foreach BinaryOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp] in {
   // transformation, the shape of the binary op result is [40x1600], which
   // couldn't be reshaped to [1,40,40]. `IsTailOfShape` constraint is added to
   // make sure $rhs is the tail shape of $lhs.
-  def MoveBinaryOpBeforeReshape#BinaryOp : Pat<
+  def MoveBinaryOpConstBeforeReshape#BinaryOp : Pat<
     (BinaryOp (TFL_ReshapeOp:$lhs $input, (ConstantOp:$shape $s)),
       (ConstantOp:$rhs $a), $act_fn),
     (TFL_ReshapeOp (BinaryOp $input, $rhs, $act_fn), $shape),
@@ -434,6 +445,43 @@ foreach BinaryOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp] in {
      (HasRankAtMost<4> $input),
      (HasRankAtMost<4> $lhs),
      (HasRankAtMost<4> $rhs)]>;
+
+    // Move binary op before reshape:
+    // binary(reshape(lhs), reshape(rhs)) => reshape(binary(lhs, rhs))
+    // This is valid only when both side of the binary operand is reshaped, and
+    // the sizes are the same both before and after the reshape.
+    def MoveBinaryOpBeforeReshape#BinaryOp : Pat<
+      (BinaryOp (TFL_ReshapeOp:$lhs $input1, (ConstantOp:$shape1 $s1)),
+                (TFL_ReshapeOp:$rhs $input2, (ConstantOp:$shape2 $s2)),
+                $act_fn),
+      (TFL_ReshapeOp (BinaryOp $input1, $input2, $act_fn), $shape1),
+      [(IsTailOfShape $rhs, $lhs),
+       (IsTailOfShape $lhs, $rhs),
+       (IsTailOfShape $input1, $input2),
+       (IsTailOfShape $input2, $input1)]>;
+
+    // Move binary op before reshape:
+    // binary(reshape(lhs), rhs) => reshape(binary(lhs, flatten(rhs)))
+    // This is valid only when the last dimension of lhs is equal to the
+    // number of elements in constant rhs.
+    // Therefore, after transformation broadcast of binary op is always
+    // applied to the last dimension of $input.
+    def MoveBinaryOpFlattenConstBeforeReshape#BinaryOp : Pat<
+      (BinaryOp (TFL_ReshapeOp:$lhs $input, (ConstantOp:$shape $s)),
+                (ConstantOp:$rhs ElementsAttr:$rhs_attr), $act_fn),
+      (TFL_ReshapeOp (BinaryOp $input, (ConstantOp (Flatten $rhs_attr)),
+                               $act_fn),
+                     $shape),
+      [(AnyStaticShapeTensor $input),
+       (IsTailOfShape $rhs, $lhs),
+       (IsLastDimEqualToNumElements $input, $rhs),
+       (HasOneUse $lhs),
+       // Restrict operands to have at most rank 4 because TFLite binary
+       // kernel supports up to 4D broadcast.
+       (HasRankAtMost<4> $input),
+       (HasRankAtMost<4> $lhs),
+       (HasRankAtMost<4> $rhs),
+       (IsDefinedByFullyConnectedOp $input)]>;
 }
 
 foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
@@ -449,7 +497,7 @@ foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
   // transformation, the shape of the binary op result is [40x1600], which
   // couldn't be reshaped to [1,40,40]. `IsTailOfShape` constraint is added to
   // make sure $rhs is the tail shape of $lhs.
-  def MoveBinaryOpBeforeReshape#BinaryOp : Pat<
+  def MoveBinaryOpConstBeforeReshape#BinaryOp : Pat<
     (BinaryOp (TFL_ReshapeOp:$lhs $input, (ConstantOp:$shape $s)),
       (ConstantOp:$rhs $a)),
     (TFL_ReshapeOp (BinaryOp $input, $rhs), $shape),
@@ -466,13 +514,48 @@ foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
      (HasRankAtMost<4> $input),
      (HasRankAtMost<4> $lhs),
      (HasRankAtMost<4> $rhs)]>;
+
+    // Move binary op before reshape:
+    // binary(reshape(lhs), reshape(rhs)) => reshape(binary(lhs, rhs))
+    // This is valid only when both side of the binary operand is reshaped, and
+    // the sizes are the same both before and after the reshape.
+    def MoveBinaryOpBeforeReshape#BinaryOp : Pat<
+      (BinaryOp (TFL_ReshapeOp:$lhs $input1, (ConstantOp:$shape1 $s1)),
+                (TFL_ReshapeOp:$rhs $input2, (ConstantOp:$shape2 $s2))),
+      (TFL_ReshapeOp (BinaryOp $input1, $input2), $shape1),
+      [(IsTailOfShape $rhs, $lhs),
+       (IsTailOfShape $lhs, $rhs),
+       (IsTailOfShape $input1, $input2),
+       (IsTailOfShape $input2, $input1)]>;
+
+    // Move binary op before reshape:
+    // binary(reshape(lhs), rhs) => reshape(binary(lhs, flatten(rhs)))
+    // This is valid only when the last dimension of lhs is equal to the
+    // number of elements in constant rhs.
+    // Therefore, after transformation broadcast of binary op is always
+    // applied to the last dimension of $input.
+    def MoveBinaryOpFlattenConstBeforeReshape#BinaryOp : Pat<
+      (BinaryOp (TFL_ReshapeOp:$lhs $input, (ConstantOp:$shape $s)),
+                (ConstantOp:$rhs ElementsAttr:$rhs_attr)),
+      (TFL_ReshapeOp (BinaryOp $input, (ConstantOp (Flatten $rhs_attr))),
+                     $shape),
+      [(AnyStaticShapeTensor $input),
+       (IsTailOfShape $rhs, $lhs),
+       (IsLastDimEqualToNumElements $input, $rhs),
+       (HasOneUse $lhs),
+       // Restrict operands to have at most rank 4 because TFLite binary
+       // kernel supports up to 4D broadcast.
+       (HasRankAtMost<4> $input),
+       (HasRankAtMost<4> $lhs),
+       (HasRankAtMost<4> $rhs),
+       (IsDefinedByFullyConnectedOp $input)]>;
 }
 
 // Reorder the element-wise value operations and the element move operations,
 // such that the value operation happens before move operation.
 foreach ValueOp = [TFL_CeilOp, TFL_ExpOp, TFL_FloorOp, TFL_NegOp,
                    TFL_ReluOp, TFL_Relu1Op, TFL_Relu6Op, TFL_RoundOp,
-                   TFL_TanhOp, TFL_SqrtOp, TFL_SquareOp] in {
+                   TFL_TanhOp, TFL_SqrtOp, TFL_SquareOp, TFL_LogisticOp] in {
   foreach MoveOp = [TFL_DepthToSpaceOp, TFL_ExpandDimsOp, TFL_SqueezeOp,
                    TFL_ReshapeOp, TFL_TransposeOp] in {
     def ReorderElementwiseAndMoveOperations#ValueOp#MoveOp : Pat<
@@ -640,8 +723,8 @@ def HasTwoUse : Constraint<CPred<
   "std::distance($0.use_begin(), $0.use_end()) == 2">>;
 def AxesIsLastDimension : Constraint<CPred<
   "$0.cast<DenseIntElementsAttr>().getNumElements() == 1 && "
-  "$0.cast<DenseIntElementsAttr>().getValue<APInt>({0}) == "
-  "$1.getType().cast<ShapedType>().getRank() - 1">>;
+  "($0.cast<DenseIntElementsAttr>().getValue<APInt>({0}) == "
+  "$1.getType().cast<ShapedType>().getRank() - 1 || $0.cast<DenseIntElementsAttr>().getValue<int32_t>({0}) == -1)">>;
 
 // Convert exp(x)/sum(exp(x)) into softmax.
 def OptimizeToSoftmax : Pat<
@@ -668,3 +751,78 @@ def FoldNormalizationIntoSoftmax : Pat<
    (AxesIsLastDimension $axes, $max_input),
    (HasOneUse $sub),
    (HasOneUse $max)]>;
+
+def HaveSameType : Constraint<CPred<"($0.getType() == $1.getType())">>;
+
+class AllElementsAreF32<string val> : Constraint<CPred<
+  "($0.isa<DenseElementsAttr>() && "
+   "$0.cast<DenseElementsAttr>().getType().cast<ShapedType>().getElementType().isF32() && "
+   "std::all_of($0.cast<DenseElementsAttr>().getValues<float>().begin(), "
+               "$0.cast<DenseElementsAttr>().getValues<float>().end(), "
+               "[](float v){ return v == " #val# ";}))">>;
+
+// Optimize X*1 to X
+def OptimizeMul1ToIdentity : Pat<
+  (TFL_MulOp $input,
+             (ConstantOp $constant),
+             TFL_AF_None),
+  (replaceWithValue $input),
+  [(HaveSameType $input, $constant),
+   (AllElementsAreF32<"1.0f"> $constant)]>;
+
+class AllElementsAreBool<string val> : Constraint<CPred<
+  "($0.isa<DenseElementsAttr>() && "
+   "$0.cast<DenseElementsAttr>().getType().cast<ShapedType>().getElementType().isInteger(1) && "
+   "std::all_of($0.cast<DenseElementsAttr>().getValues<bool>().begin(), "
+               "$0.cast<DenseElementsAttr>().getValues<bool>().end(), "
+               "[](bool v){ return v == " #val# ";}))">>;
+
+// Remove select operators when the result is known in advance.
+foreach SelectOp = [TFL_SelectOp, TFL_SelectV2Op] in {
+  // select(true_tensor, A, B) -> A
+  def Optimize#SelectOp#True : Pat<
+    (SelectOp (ConstantOp $constant),
+               $input1,
+               $input2),
+    (replaceWithValue $input1),
+    [(HaveSameType $input1, $input2),
+     (IsTailOfShape $input1, $constant),
+     (IsTailOfShape $constant, $input1),
+     (AllElementsAreBool<"true"> $constant)]>;
+  // select(false_tensor, A, B) -> B
+  def Optimize#SelectOp#False : Pat<
+    (SelectOp (ConstantOp $constant),
+               $input1,
+               $input2),
+    (replaceWithValue $input2),
+    [(HaveSameType $input1, $input2),
+     (IsTailOfShape $input1, $constant),
+     (IsTailOfShape $constant, $input1),
+     (AllElementsAreBool<"false"> $constant)]>;
+}
+
+// Remove (log-)softmax before arg-minmax as (log-)softmax is monotonic.
+foreach ArgMinMaxOp = [TFL_ArgMinOp, TFL_ArgMaxOp] in {
+  def RemoveSoftmaxOpBefore#ArgMinMaxOp : Pat<
+    (ArgMinMaxOp (TFL_SoftmaxOp:$softmax $logits, TFL_FloatNonNegative:$beta),
+                 (ConstantOp:$const_axes I32ElementsAttr:$axes)),
+    (ArgMinMaxOp $logits, $const_axes),
+    [(HasOneUse $softmax),
+     (AxesIsLastDimension $axes, $logits)]>;
+
+  def RemoveLogSoftmaxOpBefore#ArgMinMaxOp : Pat<
+    (ArgMinMaxOp (TFL_LogSoftmaxOp:$log_softmax $logits),
+                 (ConstantOp:$const_axes I32ElementsAttr:$axes)),
+    (ArgMinMaxOp $logits, $const_axes),
+    [(HasOneUse $log_softmax),
+     (AxesIsLastDimension $axes, $logits)]>;
+}
+
+def CanOptimizeIdentitySliceOp : Constraint<CPred<
+  "TFL::CanOptimizeIdentitySliceOp($0, $1, $2)">>;
+
+// Remove Slice ops slicing the whole input tensor, effectively no-op.
+def OptimizeSliceOp : Pat<
+  (TFL_SliceOp:$output $input, (ConstantOp $begin), (ConstantOp $size)),
+  (replaceWithValue $input),
+  [(CanOptimizeIdentitySliceOp $input, $begin, $size)]>;

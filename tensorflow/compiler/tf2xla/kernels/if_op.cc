@@ -216,7 +216,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
     OP_REQUIRES_OK(ctx, FindMustBeConstNodes(ctx, then_branch_,
                                              &then_branch_must_be_const_nodes,
                                              &then_body));
-    OP_REQUIRES_OK(ctx, FindMustBeConstNodes(ctx, then_branch_,
+    OP_REQUIRES_OK(ctx, FindMustBeConstNodes(ctx, else_branch_,
                                              &else_branch_must_be_const_nodes,
                                              &else_body));
 

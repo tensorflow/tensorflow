@@ -1371,7 +1371,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
                               tf_gpu_id.value());
     }
     TF_RETURN_IF_ERROR(CreateGPUDevice(options, name_prefix, tf_gpu_id, bytes,
-                                       it->second, devices));
+                                       it->second, num_tf_gpus, devices));
   }
   return Status::OK();
 }
@@ -1400,7 +1400,7 @@ static string GetShortDeviceDescription(PlatformGpuId platform_gpu_id,
 
 Status BaseGPUDeviceFactory::CreateGPUDevice(
     const SessionOptions& options, const string& name_prefix, TfGpuId tf_gpu_id,
-    int64 memory_limit, const DeviceLocality& dev_locality,
+    int64 memory_limit, const DeviceLocality& dev_locality, size_t num_tf_gpus,
     std::vector<std::unique_ptr<Device>>* devices) {
   CHECK_GE(tf_gpu_id.value(), 0);
   const string device_name =
@@ -1418,9 +1418,19 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
     return desc_status.status();
   }
   auto desc = desc_status.ConsumeValueOrDie();
+
+  std::vector<TfGpuId> peer_gpu_ids;
+  peer_gpu_ids.reserve(num_tf_gpus);
+  for (int id = 0; id < num_tf_gpus; ++id) {
+    TfGpuId peer_tf_gpu_id(id);
+    if (peer_tf_gpu_id != tf_gpu_id) {
+      peer_gpu_ids.push_back(peer_tf_gpu_id);
+    }
+  }
+
   GPUProcessState* process_state = GPUProcessState::singleton();
   Allocator* gpu_allocator = process_state->GetGPUAllocator(
-      options.config.gpu_options(), tf_gpu_id, memory_limit);
+      options.config.gpu_options(), tf_gpu_id, memory_limit, peer_gpu_ids);
   if (gpu_allocator == nullptr) {
     return errors::Internal("Failed to get memory allocator for TF GPU ",
                             tf_gpu_id.value(), " with ", memory_limit,
@@ -1770,15 +1780,11 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
               << strings::HumanReadableNumBytes(description->memory_bandwidth())
               << "/s";
 #elif TENSORFLOW_USE_ROCM
-    int isa_version;
-    if (!description->rocm_amdgpu_isa_version(&isa_version)) {
-      // Logs internally on failure.
-      isa_version = 0;
-    }
+    std::string gcn_arch_name = description->rocm_amdgpu_gcn_arch_name();
     LOG(INFO) << "Found device " << i << " with properties: "
               << "\npciBusID: " << description->pci_bus_id()
               << " name: " << description->name()
-              << "     ROCm AMD GPU ISA: gfx" << isa_version
+              << "     ROCm AMDGPU Arch: " << gcn_arch_name
               << "\ncoreClock: " << description->clock_rate_ghz() << "GHz"
               << " coreCount: " << description->core_count()
               << " deviceMemorySize: "

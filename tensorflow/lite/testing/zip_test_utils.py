@@ -111,6 +111,10 @@ def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
 
   if dtype in (tf.float32, tf.float16, tf.float64):
     value = (max_value - min_value) * np.random.random_sample(shape) + min_value
+  elif dtype in (tf.complex64, tf.complex128):
+    real = (max_value - min_value) * np.random.random_sample(shape) + min_value
+    imag = (max_value - min_value) * np.random.random_sample(shape) + min_value
+    value = real + imag * 1j
   elif dtype in (tf.int32, tf.uint8, tf.int64, tf.int16):
     value = np.random.randint(min_value, max_value + 1, shape)
   elif dtype == tf.bool:
@@ -368,11 +372,6 @@ def make_zip_of_tests(options,
           "fully_quantize", False) or param_dict.get("quant_16x8", False)):
         continue
 
-      # Skips the new quantizer tests when `fully_quantize` is set to false
-      # or it is not set.
-      if options.mlir_quantizer and not param_dict.get("fully_quantize", False):
-        continue
-
       def generate_inputs_outputs(tflite_model_binary,
                                   min_value=0,
                                   max_value=255):
@@ -427,11 +426,11 @@ def make_zip_of_tests(options,
         """
 
         np.random.seed(RANDOM_SEED)
-        report = {"toco": report_lib.NOTRUN, "tf": report_lib.FAILED}
+        report = {"converter": report_lib.NOTRUN, "tf": report_lib.FAILED}
 
         # Build graph
         report["tf_log"] = ""
-        report["toco_log"] = ""
+        report["converter_log"] = ""
         tf.reset_default_graph()
 
         with tf.Graph().as_default():
@@ -451,7 +450,7 @@ def make_zip_of_tests(options,
                   ValueError):
             report["tf_log"] += traceback.format_exc()
             return None, report
-          report["toco"] = report_lib.FAILED
+          report["converter"] = report_lib.FAILED
           report["tf"] = report_lib.SUCCESS
           # Convert graph to toco
           input_tensors = [(input_tensor.name.split(":")[0], input_tensor.shape,
@@ -473,14 +472,14 @@ def make_zip_of_tests(options,
             output_tensors,
             extra_toco_options=extra_toco_options,
             test_params=param_dict_real)
-        report["toco"] = (
+        report["converter"] = (
             report_lib.SUCCESS
             if tflite_model_binary is not None else report_lib.FAILED)
-        report["toco_log"] = toco_log
+        report["converter_log"] = toco_log
 
         if options.save_graphdefs:
-          archive.writestr(zip_path_label + ".pbtxt",
-                           text_format.MessageToString(graph_def),
+          zipinfo = zipfile.ZipInfo(zip_path_label + ".pbtxt")
+          archive.writestr(zipinfo, text_format.MessageToString(graph_def),
                            zipfile.ZIP_DEFLATED)
 
         if tflite_model_binary:
@@ -488,19 +487,20 @@ def make_zip_of_tests(options,
             # Set proper min max values according to input dtype.
             baseline_inputs, baseline_outputs = generate_inputs_outputs(
                 tflite_model_binary, min_value=0, max_value=255)
-          archive.writestr(zip_path_label + ".bin", tflite_model_binary,
-                           zipfile.ZIP_DEFLATED)
+          zipinfo = zipfile.ZipInfo(zip_path_label + ".bin")
+          archive.writestr(zipinfo, tflite_model_binary, zipfile.ZIP_DEFLATED)
           example = {"inputs": baseline_inputs, "outputs": baseline_outputs}
 
           example_fp = StringIO()
           write_examples(example_fp, [example])
-          archive.writestr(zip_path_label + ".inputs", example_fp.getvalue(),
-                           zipfile.ZIP_DEFLATED)
+          zipinfo = zipfile.ZipInfo(zip_path_label + ".inputs")
+          archive.writestr(zipinfo, example_fp.getvalue(), zipfile.ZIP_DEFLATED)
 
           example_fp2 = StringIO()
           write_test_cases(example_fp2, zip_path_label + ".bin", [example])
-          archive.writestr(zip_path_label + "_tests.txt",
-                           example_fp2.getvalue(), zipfile.ZIP_DEFLATED)
+          zipinfo = zipfile.ZipInfo(zip_path_label + "_tests.txt")
+          archive.writestr(zipinfo, example_fp2.getvalue(),
+                           zipfile.ZIP_DEFLATED)
 
           zip_manifest_label = zip_path_label + " " + label
           if zip_path_label == label:
@@ -512,7 +512,7 @@ def make_zip_of_tests(options,
 
       _, report = build_example(label, param_dict, zip_path_label)
 
-      if report["toco"] == report_lib.FAILED:
+      if report["converter"] == report_lib.FAILED:
         ignore_error = False
         if not options.known_bugs_are_errors:
           for pattern, bug_number in options.known_bugs.items():
@@ -522,7 +522,7 @@ def make_zip_of_tests(options,
         if not ignore_error:
           toco_errors += 1
           print("-----------------\nconverter error!\n%s\n-----------------\n" %
-                report["toco_log"])
+                report["converter_log"])
 
       convert_report.append((param_dict, report))
 
@@ -530,23 +530,25 @@ def make_zip_of_tests(options,
     report_io = StringIO()
     report_lib.make_report_table(report_io, zip_path, convert_report)
     if options.multi_gen_state:
-      archive.writestr("report_" + options.multi_gen_state.test_name + ".html",
-                       report_io.getvalue())
+      zipinfo = zipfile.ZipInfo("report_" + options.multi_gen_state.test_name +
+                                ".html")
+      archive.writestr(zipinfo, report_io.getvalue())
     else:
-      archive.writestr("report.html", report_io.getvalue())
+      zipinfo = zipfile.ZipInfo("report.html")
+      archive.writestr(zipinfo, report_io.getvalue())
 
   if options.multi_gen_state:
     options.multi_gen_state.zip_manifest.extend(zip_manifest)
   else:
-    archive.writestr("manifest.txt", "".join(zip_manifest),
-                     zipfile.ZIP_DEFLATED)
+    zipinfo = zipfile.ZipInfo("manifest.txt")
+    archive.writestr(zipinfo, "".join(zip_manifest), zipfile.ZIP_DEFLATED)
 
   # Log statistics of what succeeded
   total_conversions = len(convert_report)
   tf_success = sum(
       1 for x in convert_report if x[1]["tf"] == report_lib.SUCCESS)
   toco_success = sum(
-      1 for x in convert_report if x[1]["toco"] == report_lib.SUCCESS)
+      1 for x in convert_report if x[1]["converter"] == report_lib.SUCCESS)
   percent = 0
   if tf_success > 0:
     percent = float(toco_success) / float(tf_success) * 100.

@@ -2,6 +2,8 @@ path: "tensorflow.keras.preprocessing.image.Iterator"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras.preprocessing.image.Iterator\'>"
   is_instance: "<class \'keras_preprocessing.image.iterator.Iterator\'>"
+  is_instance: "<class \'tensorflow.python.keras.utils.data_utils.Sequence\'>"
+  is_instance: "<type \'object\'>"
   member {
     name: "white_list_formats"
     mtype: "<type \'tuple\'>"

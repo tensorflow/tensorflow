@@ -23,6 +23,18 @@ namespace tensorflow {
 namespace grappler {
 namespace graph_tests_utils {
 
+// Creates a test NodeDef for BatchDatasetV2.
+NodeDef MakeBatchV2Node(StringPiece name, StringPiece input_node_name,
+                        StringPiece batch_size_node_name,
+                        StringPiece drop_remainder_node_name);
+
+// Creates a test NodeDef for ParallelBatchDataset.
+NodeDef MakeParallelBatchNode(StringPiece name, StringPiece input_node_name,
+                              StringPiece batch_size_node_name,
+                              StringPiece num_parallel_calls_node_name,
+                              StringPiece drop_remainder_node_name,
+                              StringPiece deterministic);
+
 // Creates a test NodeDef for ShuffleDatasetV2.
 NodeDef MakeCacheV2Node(StringPiece name, StringPiece input_node_name,
                         StringPiece filename_node_name,
@@ -51,10 +63,25 @@ NodeDef MakeParallelInterleaveV2Node(StringPiece name,
                                      StringPiece num_parallel_calls_node_name,
                                      StringPiece function_name, bool sloppy);
 
+// Creates a test NodeDef for ParallelInterleaveDatasetV4.
+NodeDef MakeParallelInterleaveV4Node(StringPiece name,
+                                     StringPiece input_node_name,
+                                     StringPiece cycle_length_node_name,
+                                     StringPiece block_length_node_name,
+                                     StringPiece num_parallel_calls_node_name,
+                                     StringPiece function_name,
+                                     StringPiece deterministic);
+
 // Creates a test NodeDef for ParallelMapDataset.
 NodeDef MakeParallelMapNode(StringPiece name, StringPiece input_node_name,
                             StringPiece num_parallel_calls_node_name,
                             StringPiece function_name, bool sloppy);
+
+// Creates a test NodeDef for ParallelMapDatasetV2.
+NodeDef MakeParallelMapV2Node(StringPiece name, StringPiece input_node_name,
+                              StringPiece num_parallel_calls_node_name,
+                              StringPiece function_name,
+                              StringPiece deterministic);
 
 // Creates a test NodeDef for ParseExampleDataset.
 NodeDef MakeParseExampleNode(StringPiece name, StringPiece input_node_name,

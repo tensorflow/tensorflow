@@ -1184,6 +1184,27 @@ REGISTER_OP("DataServiceDataset")
     .Attr("task_refresh_interval_hint_ms: int = -1")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("data_transfer_protocol: string = ''")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape);
+
+// Adds `consumer_index` and `num_consumers` arguments to support round-robin
+// reads.
+REGISTER_OP("DataServiceDatasetV2")
+    .Input("dataset_id: int64")
+    .Input("processing_mode: string")
+    .Input("address: string")
+    .Input("protocol: string")
+    .Input("job_name: string")
+    .Input("consumer_index: int64")
+    .Input("num_consumers: int64")
+    .Input("max_outstanding_requests: int64")
+    .Input("iteration_counter: resource")
+    .Output("handle: variant")
+    .Attr("task_refresh_interval_hint_ms: int = -1")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("data_transfer_protocol: string = ''")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape);
 

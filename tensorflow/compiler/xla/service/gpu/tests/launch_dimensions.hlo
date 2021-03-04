@@ -1,0 +1,13 @@
+// RUN: hlo_to_llvm_ir %s | FileCheck %s
+// This test that we do not increase the grid launch size when
+// few_waves is enabled.
+
+// CHECK:       !2 = !{i32 0, i32 2}
+// CHECK:       !3 = !{i32 0, i32 256}
+
+HloModule Test
+
+ENTRY main {
+  a = f32[100, 20]{1,0} parameter(0)
+  ROOT b = f32[100, 20]{1,0} tanh(a)
+}

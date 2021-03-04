@@ -32,7 +32,6 @@ from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import save as save_lib
 
-
 # To avoid circular dependencies between keras/engine and keras/saving,
 # code in keras/saving must delay imports.
 
@@ -81,6 +80,9 @@ def save(model, filepath, overwrite, include_optimizer, signatures=None,
   if not include_optimizer:
     orig_optimizer = model.optimizer
     model.optimizer = None
+    # TODO(b/180760306) Change to del model.optimizer if Layer's __delattr__
+    # calls AutoTrackable's __delattr__.
+    model._delete_tracking("optimizer")  # pylint: disable=protected-access
 
   # Trace all functions and signatures with `training=0` instead of using an
   # already-set learning phase placeholder.

@@ -1118,6 +1118,8 @@ class PForConfig(object):
 
   def _set_iters(self, iters):
     """Set number of pfor iterations."""
+    if isinstance(iters, ops.Tensor):
+      iters = tensor_util.constant_value(iters)
     self._maybe_iters = iters
 
   def reduce(self, fn, *args):
@@ -1427,7 +1429,7 @@ class PFor(object):
 
   def _convert_reduction(self, y):
     # Handle reductions.
-    if self._pfor_config is None:
+    if self._pfor_config is None or isinstance(y, ops.Operation):
       return None
     reduction = self._pfor_config._lookup_reduction(y)
     if reduction is None:

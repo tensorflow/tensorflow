@@ -14,3 +14,7 @@ def workspace():
     android_configure(name = "local_config_android")
 
     grpc_deps()
+
+# Alias so it can be loaded without assigning to a different symbol to prevent
+# shadowing previous loads and trigger a buildifier warning.
+tf_workspace1 = workspace

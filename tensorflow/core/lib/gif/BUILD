@@ -5,6 +5,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
     "if_mobile",
+    "tf_cc_test",
     "tf_copts",
 )
 load(
@@ -62,5 +63,20 @@ cc_library(
         "//tensorflow/core/platform:stringpiece",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "lib_gif_io_test",
+    srcs = ["gif_io_test.cc"],
+    data = ["//tensorflow/core/lib/gif/testdata:gif_testdata"],
+    deps = [
+        ":gif_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/lib/png:png_io",
+        "@com_google_absl//absl/base",
     ],
 )

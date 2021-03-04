@@ -22,6 +22,10 @@ from __future__ import print_function
 from tensorflow.python.ops import gen_risc_ops
 
 
+def risc_abs(x, name='RISC_ABS'):
+  return gen_risc_ops.risc_abs(x, name=name)
+
+
 def risc_add(
     input_lhs,
     input_rhs,
@@ -47,6 +51,14 @@ def risc_broadcast(x, shape, name='RISC_BROADCAST'):
 
 def risc_cast(x, dtype, name='RISC_CAST'):
   return gen_risc_ops.risc_cast(x, dtype, name=name)
+
+
+def risc_ceil(x, name='RISC_CEIL'):
+  return gen_risc_ops.risc_ceil(x, name=name)
+
+
+def risc_cos(x, name='RISC_COS'):
+  return gen_risc_ops.risc_cos(x, name=name)
 
 
 def risc_cholesky(x, name='RISC_CHOLESKY'):
@@ -87,6 +99,10 @@ def risc_conv(x,
       name=name)
 
 
+def risc_div(input_lhs, input_rhs, name='RISC_DIV'):
+  return gen_risc_ops.risc_div(input_lhs, input_rhs, name=name)
+
+
 def risc_dot(input_lhs,
              input_rhs,
              transpose_a=False,
@@ -100,8 +116,16 @@ def risc_dot(input_lhs,
       name=name)
 
 
+def risc_exp(x, name='RISC_EXP'):
+  return gen_risc_ops.risc_exp(x, name=name)
+
+
 def risc_fft(x, name='RISC_FFT'):
   return gen_risc_ops.risc_fft(x, name=name)
+
+
+def risc_floor(x, name='RISC_FLOOR'):
+  return gen_risc_ops.risc_floor(x, name=name)
 
 
 def risc_gather(params,
@@ -119,8 +143,16 @@ def risc_gather(params,
       batch_dims=batch_dims)
 
 
+def risc_imag(x, name='RISC_IMAG'):
+  return gen_risc_ops.risc_imag(x, name=name)
+
+
 def risc_is_finite(x, name='RISC_IS_FINITE'):
   return gen_risc_ops.risc_is_finite(x, name=name)
+
+
+def risc_log(x, name='RISC_LOG'):
+  return gen_risc_ops.risc_log(x, name=name)
 
 
 def risc_logical_and(a, b, name='RISC_LOGICAL_AND'):
@@ -139,6 +171,18 @@ def risc_max(input_lhs, input_rhs, name='RISC_MAX'):
   return gen_risc_ops.risc_max(input_lhs, input_rhs, name=name)
 
 
+def risc_min(input_lhs, input_rhs, name='RISC_MIN'):
+  return gen_risc_ops.risc_min(input_lhs, input_rhs, name=name)
+
+
+def risc_mul(input_lhs, input_rhs, name='RISC_MUL'):
+  return gen_risc_ops.risc_mul(input_lhs, input_rhs, name=name)
+
+
+def risc_neg(x, name='RISC_NEG'):
+  return gen_risc_ops.risc_neg(x, name=name)
+
+
 def risc_pad(x, padding, constant_values, name='RISC_PAD'):
   return gen_risc_ops.risc_pad(x, padding, constant_values, name=name)
 
@@ -148,12 +192,24 @@ def risc_pool(x, ksize, strides, pooling_type='MAX', name='RISC_POOL'):
       x, ksize, strides, pooling_type=pooling_type, name=name)
 
 
+def risc_pow(input_lhs, input_rhs, name='RISC_POW'):
+  return gen_risc_ops.risc_pow(input_lhs, input_rhs, name=name)
+
+
 def risc_random_uniform(shape, seed, name='RISC_RANDOM_UNIFORM'):
   return gen_risc_ops.risc_random_uniform(shape, seed, name=name)
 
 
+def risc_real(x, name='RISC_REAL'):
+  return gen_risc_ops.risc_real(x, name=name)
+
+
 def risc_reduce(x, axis, reduce_type, name='RISC_REDUCE'):
   return gen_risc_ops.risc_reduce(x, axis, reduce_type=reduce_type, name=name)
+
+
+def risc_rem(x, name='RISC_REM'):
+  return gen_risc_ops.risc_rem(x, name=name)
 
 
 def risc_reshape(x, shape, name='RISC_RESHAPE'):
@@ -172,8 +228,16 @@ def risc_shape(x, name='RISC_SHAPE'):
   return gen_risc_ops.risc_shape(x, name=name)
 
 
+def risc_sign(x, name='RISC_SIGN'):
+  return gen_risc_ops.risc_sign(x, name=name)
+
+
 def risc_slice(x, begin, size, name='RISC_SLICE'):
   return gen_risc_ops.risc_slice(x, begin, size, name=name)
+
+
+def risc_sub(input_lhs, input_rhs, name='RISC_SUB'):
+  return gen_risc_ops.risc_sub(input_lhs, input_rhs, name=name)
 
 
 def risc_sort(x, axis, direction='ASCENDING', name='RISC_SORT'):

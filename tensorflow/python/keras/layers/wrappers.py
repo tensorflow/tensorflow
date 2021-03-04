@@ -45,7 +45,7 @@ class Wrapper(Layer):
   Do not use this class as a layer, it is only an abstract base class.
   Two usable wrappers are the `TimeDistributed` and `Bidirectional` wrappers.
 
-  Arguments:
+  Args:
     layer: The layer to be wrapped.
   """
 
@@ -105,7 +105,7 @@ class TimeDistributed(Wrapper):
   Because `TimeDistributed` applies the same instance of `Conv2D` to each of the
   timestamps, the same set of weights are used at each timestamp.
 
-  Arguments:
+  Args:
     layer: a `tf.keras.layers.Layer` instance.
 
   Call arguments:
@@ -142,7 +142,7 @@ class TimeDistributed(Wrapper):
 
     The static shapes are replaced with the corresponding dynamic shapes of the
     tensor.
-    Arguments:
+    Args:
       init_tuple: a tuple, the first part of the output shape
       tensor: the tensor from which to get the (static and dynamic) shapes
         as the last part of the output shape
@@ -310,7 +310,7 @@ class TimeDistributed(Wrapper):
     (E.g., `mask` is not used at all)
     Return `None`.
 
-    Arguments:
+    Args:
       inputs: Tensor with shape [batch size, timesteps, ...] indicating the
         input to TimeDistributed. If static shape information is available for
         "batch size", `mask` is returned unmodified.
@@ -384,7 +384,7 @@ class TimeDistributed(Wrapper):
 class Bidirectional(Wrapper):
   """Bidirectional wrapper for RNNs.
 
-  Arguments:
+  Args:
     layer: `keras.layers.RNN` instance, such as `keras.layers.LSTM` or
       `keras.layers.GRU`. It could also be a `keras.layers.Layer` instance
       that meets the following criteria:
@@ -407,7 +407,7 @@ class Bidirectional(Wrapper):
       automatically.
       Note that the provided `backward_layer` layer should have properties
       matching those of the `layer` argument, in particular it should have the
-      same values for `stateful`, `return_states`, `return_sequence`, etc.
+      same values for `stateful`, `return_states`, `return_sequences`, etc.
       In addition, `backward_layer` and `layer` should have different
       `go_backwards` argument values.
       A `ValueError` will be raised if these requirements are not met.

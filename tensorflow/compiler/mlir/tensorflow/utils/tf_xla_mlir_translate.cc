@@ -371,7 +371,9 @@ static mlir::OwningModuleRef SerializedMlirStringAttrToMlirModuleTranslate(
   }
   auto str_attr = attr.cast<mlir::StringAttr>();
 
-  RegisterMlirInputDialects(context->getDialectRegistry());
+  mlir::DialectRegistry registry;
+  RegisterMlirInputDialects(registry);
+  context->appendDialectRegistry(registry);
   mlir::OwningModuleRef module_ref;
   auto status =
       DeserializeMlirModule(str_attr.getValue().str(), context, &module_ref);
