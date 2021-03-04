@@ -169,8 +169,8 @@ def bucket_by_sequence_length(element_length_func,
 
   There is also a possibility to pad the dataset till the bucket boundary.
   You can also provide which value to be used while padding the data.
-  Below example uses `-1` as padding and it also shows the input data being bucketizied to two buckets
-  "[0,3], [4,6]"
+  Below example uses `-1` as padding and it also shows the input data
+  being bucketizied to two buckets "[0,3], [4,6]".
   
   >>> elements = [
   ...   [0], [1, 2, 3, 4], [5, 6, 7],
@@ -196,10 +196,11 @@ def bucket_by_sequence_length(element_length_func,
   [[21 22 -1]]
   [[13 14 15 16 19 20]]
   
-  When using `pad_to_bucket_boundary` option, it can be seen that it is not always possible
-  to maintain the bucket batch size.
-  You can drop the batches that do not maintain the bucket batch size by using the option `drop_remainder`.
-  Using the same input data as in the above example you get the following result.
+  When using `pad_to_bucket_boundary` option, it can be seen that it is
+  not always possible to maintain the bucket batch size.
+  You can drop the batches that do not maintain the bucket batch size by
+  using the option `drop_remainder`. Using the same input data as in the
+  above example you get the following result.
   
   >>> elements = [
   ...   [0], [1, 2, 3, 4], [5, 6, 7],
