@@ -114,11 +114,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-template <typename Tin, typename Tout>
-void memCopyN(Tout* out, Tin* in, const int num_elements) {
+template <typename T>
+void memCopyN(T* out, const T* in, const int num_elements) {
   std::cout << "in memCopyN()" << std::endl;
   for (int i = 0; i < num_elements; ++i) {
-    out[i] = static_cast<Tout>(in[i]);
+    out[i] = in[i];
   }
   std::cout << "end of memCopyN() OK" << std::endl;
 }
