@@ -1,4 +1,4 @@
-load("@org_tensorflow//third_party/mlir:tblgen.bzl", "gentbl")
+load("@org_tensorflow//third_party/mlir:tblgen.bzl", "gentbl", "td_library")
 
 package(
     default_visibility = [":test_friends"],
@@ -32,13 +32,11 @@ cc_library(
     ],
 )
 
-filegroup(
+td_library(
     name = "TestOpTdFiles",
     srcs = [
         "lib/Dialect/Test/TestInterfaces.td",
         "lib/Dialect/Test/TestOps.td",
-        "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:SideEffectTdFiles",
         "@llvm-project//mlir:include/mlir/IR/OpAsmInterface.td",
         "@llvm-project//mlir:include/mlir/IR/RegionKindInterface.td",
         "@llvm-project//mlir:include/mlir/IR/SymbolInterfaces.td",
@@ -46,6 +44,10 @@ filegroup(
         "@llvm-project//mlir:include/mlir/Interfaces/ControlFlowInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/CopyOpInterface.td",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
+    ],
+    deps = [
+        "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:SideEffectTdFiles",
     ],
 )
 
@@ -88,10 +90,10 @@ gentbl(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "lib/Dialect/Test/TestOps.td",
-    td_srcs = [
+    test = True,
+    deps = [
         ":TestOpTdFiles",
     ],
-    test = True,
 )
 
 gentbl(
@@ -117,11 +119,11 @@ gentbl(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "lib/Dialect/Test/TestInterfaces.td",
-    td_srcs = [
-        "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:SideEffectBaseTdFiles",
-    ],
     test = True,
+    deps = [
+        "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
+    ],
 )
 
 gentbl(
@@ -160,10 +162,10 @@ gentbl(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "lib/Dialect/Test/TestTypeDefs.td",
-    td_srcs = [
+    test = True,
+    deps = [
         ":TestOpTdFiles",
     ],
-    test = True,
 )
 
 cc_library(
