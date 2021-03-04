@@ -37,7 +37,6 @@ class OptionsBase(object):
   def __init__(self):
     # NOTE: Cannot use `self._options` here as we override `__setattr__`
     object.__setattr__(self, "_options", {})
-    object.__setattr__(self, "_mutable", True)
 
   def __eq__(self, other):
     if not isinstance(other, self.__class__):
@@ -54,18 +53,11 @@ class OptionsBase(object):
       return NotImplemented
 
   def __setattr__(self, name, value):
-    if not self._mutable:
-      raise ValueError("Mutating `tf.data.Options()` returned by "
-                       "`tf.data.Dataset.options()` has no effect.")
     if hasattr(self, name):
       object.__setattr__(self, name, value)
     else:
       raise AttributeError(
           "Cannot set the property %s on %s." % (name, type(self).__name__))
-
-  def _set_mutable(self, mutable):
-    """Change the mutability property to `mutable`."""
-    object.__setattr__(self, "_mutable", mutable)
 
   def _to_proto(self):
     """Convert options to protocol buffer."""

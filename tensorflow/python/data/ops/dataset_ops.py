@@ -218,7 +218,6 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       input_options = input_dataset.options()
       if input_options is not None:
         self._options_attr = self._options_attr.merge(input_options)
-    self._options_attr._set_mutable(False)  # pylint: disable=protected-access
 
   @property
   def _variant_tensor(self):
@@ -2991,9 +2990,15 @@ class Options(options_lib.OptionsBase):
   The options are set for the entire dataset and are carried over to datasets
   created through tf.data transformations.
 
-  The options can be set by constructing an `Options` object and using the
-  `tf.data.Dataset.with_options(options)` transformation, which returns a
+  The options can be set either by mutating the object returned by
+  `tf.data.Dataset.options()` or by constructing an `Options` object and using
+  the `tf.data.Dataset.with_options(options)` transformation, which returns a
   dataset with the options set.
+
+  >>> dataset = tf.data.Dataset.range(42)
+  >>> dataset.options().experimental_deterministic = False
+  >>> print(dataset.options().experimental_deterministic)
+  False
 
   >>> dataset = tf.data.Dataset.range(42)
   >>> options = tf.data.Options()
@@ -3093,14 +3098,6 @@ class Options(options_lib.OptionsBase):
     if pb.WhichOneof("optional_slack") is not None:
       self.experimental_slack = pb.slack
     self.experimental_threading._from_proto(pb.threading_options)  # pylint: disable=protected-access
-
-  def _set_mutable(self, mutable):
-    """Change the mutability value to `mutable` on this options and children."""
-    # pylint: disable=protected-access
-    object.__setattr__(self, "_mutable", mutable)
-    self.experimental_distribute._set_mutable(mutable)
-    self.experimental_optimization._set_mutable(mutable)
-    self.experimental_threading._set_mutable(mutable)
 
   def _graph_rewrites(self):
     """Produces lists of enabled, disabled, default static graph rewrites.
@@ -4668,17 +4665,17 @@ class _OptionsDataset(UnaryUnchangedStructureDataset):
   """An identity `Dataset` that stores options."""
 
   def __init__(self, input_dataset, options):
-    # pylint: disable=protected-access
     self._input_dataset = input_dataset
-    variant_tensor = input_dataset._variant_tensor
+    variant_tensor = input_dataset._variant_tensor  # pylint: disable=protected-access
     super(_OptionsDataset, self).__init__(input_dataset, variant_tensor)
 
     if self._options_attr:
-      self._options_attr._set_mutable(True)
       self._options_attr = self._options_attr.merge(options)
     else:
       self._options_attr = options
-    self._options_attr._set_mutable(False)
+
+  def options(self):
+    return self._options_attr
 
 
 class _ModelDataset(UnaryUnchangedStructureDataset):
