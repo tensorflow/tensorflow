@@ -87,7 +87,6 @@ tf_cuda_library(
     deps = [
         ":eager_executor",
         ":kernel_and_device",
-        ":custom_device_op_handler",
         ":custom_device",
         "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/c:tf_tensor_internal",
@@ -124,31 +123,16 @@ tf_cuda_library(
 
 tf_cuda_library(
     name = "custom_device",
-    srcs = ["custom_device.cc"],
-    hdrs = ["custom_device.h"],
+    srcs = [
+        "custom_device.cc",
+        "custom_device_op_handler.cc",
+    ],
+    hdrs = [
+        "custom_device.h",
+        "custom_device_op_handler.h",
+    ],
     visibility = ["//tensorflow:internal"],
     deps = select({
-        "//tensorflow:android": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
-        ],
-        "//conditions:default": [
-            "//tensorflow/core:framework",
-            "//tensorflow/c/eager:immediate_execution_context",
-            "//tensorflow/c/eager:immediate_execution_tensor_handle",
-            "//tensorflow/c/eager:immediate_execution_operation",
-            "//tensorflow/core/lib/core:status",
-        ],
-    }),
-)
-
-tf_cuda_library(
-    name = "custom_device_op_handler",
-    srcs = ["custom_device_op_handler.cc"],
-    hdrs = ["custom_device_op_handler.h"],
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        ":custom_device",
-    ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
