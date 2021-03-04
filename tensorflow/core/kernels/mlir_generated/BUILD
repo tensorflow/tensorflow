@@ -102,6 +102,7 @@ filegroup(
 filegroup(
     name = "enabled_binary_gpu_kernel_srcs",
     srcs = [
+        "gpu_op_add.cc",
         "gpu_op_complex.cc",
     ],
     compatible_with = get_compatible_with_cloud(),
@@ -110,7 +111,6 @@ filegroup(
 filegroup(
     name = "experimental_binary_gpu_kernel_srcs",
     srcs = [
-        "gpu_op_add.cc",
         "gpu_op_atan2.cc",
         "gpu_op_bitwise_and.cc",
         "gpu_op_bitwise_or.cc",
