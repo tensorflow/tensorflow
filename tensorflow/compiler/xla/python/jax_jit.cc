@@ -359,36 +359,6 @@ const py::dtype* DtypeTo32BitDtype(const py::dtype& dtype) {
   return nullptr;
 }
 
-// The equivalent of the Python jax/lazy.py::is_trivial:
-// return (type(lexpr.input) is ArrayVar and
-//         lexpr.dims == tuple(range(len(lexpr.shape))))
-//
-// Expects *only* `None` or a LazyExpr` object.
-bool IsTrivialLazyExpr(py::handle lexpr) {
-  if (lexpr.is_none()) {
-    return true;
-  }
-
-  static const auto* lazy_module =
-      new py::module(py::module::import("jax.lazy"));
-  auto input = py::getattr(lexpr, "input");
-  if (!input.get_type().is(lazy_module->attr("ArrayVar"))) {
-    return false;
-  }
-  py::tuple dims = py::cast<py::tuple>(lexpr.attr("dims"));
-  py::tuple shape = py::cast<py::tuple>(lexpr.attr("shape"));
-
-  for (int i = 0; i < shape.size(); ++i) {
-    if (dims[i].is_none()) {
-      return false;
-    }
-    if (py::cast<int>(dims[i]) != i) {
-      return false;
-    }
-  }
-  return true;
-}
-
 bool IsFloat0(py::array arg) {
   static const auto* dtypes_module =
       new py::module(py::module::import("jax.dtypes"));
@@ -684,7 +654,7 @@ xla::StatusOr<DevicePutResult> HandleDeviceArray(py::handle obj,
                                                  xla::PjRtDevice* to_device,
                                                  bool jax_enable_x64,
                                                  xla::PyClient& pyclient) {
-  if (!IsTrivialLazyExpr(py::getattr(obj, "_lazy_expr"))) {
+  if (!py::getattr(obj, "_lazy_expr").is_none()) {
     return xla::InvalidArgument(
         "Non-trivial lazy expression not supported in C++. "
         "Falling back to Python.");
@@ -1119,7 +1089,6 @@ CacheEntry* CompiledFunction::AddCacheEntry(const py::args& args,
     py::object lazy_expr = py::reinterpret_borrow<py::object>(lazy_exprs[i]);
 
     cache_entry->out_avals.push_back(shaped_array);
-    CHECK(lazy_expr.is_none() || !IsTrivialLazyExpr(lazy_expr));
     cache_entry->out_lazy_exprs.push_back(lazy_expr);
   }
 
@@ -1319,7 +1288,6 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
     }
   });
   jitlib.def("_is_float0", &IsFloat0);
-  jitlib.def("_is_trivial", &IsTrivialLazyExpr);
 }
 
 }  // namespace jax
