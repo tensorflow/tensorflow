@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/reference/resize_bilinear.h"
+
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -49,7 +50,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
       reinterpret_cast<TfLiteResizeBilinearParams*>(node->builtin_data);
   if (params->half_pixel_centers && params->align_corners) {
-    context->ReportError(
+    TF_LITE_KERNEL_LOG(
         context, "If half_pixel_centers is True, align_corners must be False.");
     return kTfLiteError;
   }
@@ -89,9 +90,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_RESIZE_BILINEAR(ResizeBilinearInteger, int16_t);
 #undef TF_LITE_RESIZE_BILINEAR
   } else {
-    context->ReportError(context,
-                         "Output type is %d, requires float, int8 or uint8.",
-                         output->type);
+    TF_LITE_KERNEL_LOG(context,
+                       "Output type is %d, requires float, int8 or uint8.",
+                       output->type);
     return kTfLiteError;
   }
 
