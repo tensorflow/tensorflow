@@ -355,49 +355,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "map_and_batch_dataset_serialization_test",
-    size = "medium",
-    srcs = ["map_and_batch_dataset_serialization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python/data/experimental/ops:batching",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-    ],
-)
-
-tf_py_test(
-    name = "map_dataset_serialization_test",
-    size = "medium",
-    srcs = ["map_dataset_serialization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:function",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:random_ops",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
     name = "matching_files_dataset_serialization_test",
     size = "small",
     srcs = ["matching_files_dataset_serialization_test.py"],
