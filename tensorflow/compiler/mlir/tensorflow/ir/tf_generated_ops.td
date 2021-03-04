@@ -2227,7 +2227,7 @@ of `data_format`, see below for details.}]>:$input,
     StringRef GetOptimalLayout(const RuntimeDevices& devices);
     LogicalResult UpdateDataFormat(StringRef data_format);
     // InferTypeOpInterface:
-    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r) {
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       return ArraysAreCastCompatible(l, r);
     }
   }];
@@ -2348,7 +2348,7 @@ out_channels]`. `in_channels` must match between `input` and `filter`.}]>:$filte
 
   let extraClassDeclaration = [{
     // InferTypeOpInterface:
-    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r) {
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       return ArraysAreCastCompatible(l, r);
     }
   }];
@@ -3923,7 +3923,7 @@ tf.math.equal(x, y) ==> array([True,  True])
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$x, "Value":$y,
+    OpBuilder<(ins "Value":$x, "Value":$y,
       "BoolAttr":$incompatible_shape_error)>
   ];
 
@@ -4073,7 +4073,7 @@ dimension of size 1 added.}]>:$output
   TF_DerivedOperandTypeAttr Tdim = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$condition, "Value":$dim)>
+    OpBuilder<(ins "Value":$condition, "Value":$dim)>
   ];
 }
 
@@ -4460,7 +4460,7 @@ Equivalent to np.full
   let hasFolder = 1;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$dims, "Value":$value)>
+    OpBuilder<(ins "Value":$dims, "Value":$value)>
   ];
 }
 
@@ -8042,7 +8042,7 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$input, "Value":$reduction_indices,
+    OpBuilder<(ins "Value":$input, "Value":$reduction_indices,
       "BoolAttr":$keep_dims)>
   ];
 }
@@ -9060,7 +9060,7 @@ def TF_NotEqualOp : TF_Op<"NotEqual", [Commutative, NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$x, "Value":$y,
+    OpBuilder<(ins "Value":$x, "Value":$y,
       "BoolAttr":$incompatible_shape_error)>
   ];
 
@@ -9179,7 +9179,7 @@ output =
   TF_DerivedOperandTypeAttr TI = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$indices, "Value":$depth, "Value":$on_value,
+    OpBuilder<(ins "Value":$indices, "Value":$depth, "Value":$on_value,
       "Value":$off_value, "IntegerAttr":$axis)>
   ];
 
@@ -10394,7 +10394,7 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$start, "Value":$limit, "Value":$delta)>
+    OpBuilder<(ins "Value":$start, "Value":$limit, "Value":$delta)>
   ];
 }
 
@@ -10447,7 +10447,7 @@ of the tensor. Rank is also known as "order", "degree", or "ndims."
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$input)>
+    OpBuilder<(ins "Value":$input)>
   ];
 
   let hasFolder = 1;
@@ -10796,7 +10796,7 @@ reshape(t, []) ==> 7
   TF_DerivedOperandTypeAttr Tshape = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$tensor, "Value":$shape)>
+    OpBuilder<(ins "Value":$tensor, "Value":$shape)>
   ];
 
   let verifier = [{
@@ -13298,7 +13298,7 @@ def TF_SelectV2Op : TF_Op<"SelectV2", [NoSideEffect, ResultsBroadcastableShape]>
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$condition, "Value":$e, "Value":$t)>
+    OpBuilder<(ins "Value":$condition, "Value":$e, "Value":$t)>
   ];
 }
 
@@ -13461,7 +13461,7 @@ shape(t) ==> [2, 2, 3]
   }];
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$input, "BoolAttr":$use32Bit)>
+    OpBuilder<(ins "Value":$input, "BoolAttr":$use32Bit)>
   ];
 
   let hasFolder = 1;
@@ -14137,7 +14137,7 @@ regular convolution.}]>:$paddings
   let verifier = [{ return Verify(*this); }];
 
   let extraClassDeclaration = [{
-    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r) {
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       return ArraysAreCastCompatible(l, r);
     }
   }];
@@ -15608,7 +15608,7 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$input, "Value":$reduction_indices,
+    OpBuilder<(ins "Value":$input, "Value":$reduction_indices,
       "BoolAttr":$keep_dims)>
   ];
 
@@ -16801,7 +16801,7 @@ to the indices.}]>:$output
   let verifier = [{ return Verify(*this); }];
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$tensor, "Value":$indices, "Value":$updates),
+    OpBuilder<(ins "Value":$tensor, "Value":$indices, "Value":$updates),
     [{build($_builder, $_state, tensor.getType(), tensor, indices, updates);}]>
   ];
 }
@@ -16999,7 +16999,7 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
   TF_DerivedOperandTypeAttr Tperm = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$x, "Value":$perm)>
+    OpBuilder<(ins "Value":$x, "Value":$perm)>
   ];
 
   let verifier = [{
@@ -17670,7 +17670,7 @@ for binary operators.
 
   let extraClassDeclaration = [{
     // InferTypeOpInterface:
-    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r) {
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       return ArraysAreCastCompatible(l, r);
     }
   }];

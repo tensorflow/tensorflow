@@ -1045,7 +1045,7 @@ LogicalResult Conv2DOp::inferReturnTypes(
   return success();
 }
 
-bool Conv2DOp::isCompatibleReturnTypes(ArrayRef<Type> lhs, ArrayRef<Type> rhs) {
+bool Conv2DOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
   if (lhs.size() != rhs.size() || lhs.size() != 1) return false;
   if (failed(mlir::verifyCompatibleShape(lhs[0], rhs[0]))) return false;
   return true;
@@ -1917,7 +1917,7 @@ LogicalResult UnpackOp::inferReturnTypes(
   return success();
 }
 
-bool UnpackOp::isCompatibleReturnTypes(ArrayRef<Type> lhs, ArrayRef<Type> rhs) {
+bool UnpackOp::isCompatibleReturnTypes(TypeRange lhs, TypeRange rhs) {
   if (lhs.size() != rhs.size()) return false;
   for (auto pair : llvm::zip(lhs, rhs)) {
     if (failed(
@@ -2267,8 +2267,8 @@ LogicalResult UnidirectionalSequenceLSTMOp::inferReturnTypes(
   return success();
 }
 
-bool UnidirectionalSequenceLSTMOp::isCompatibleReturnTypes(ArrayRef<Type> lhs,
-                                                           ArrayRef<Type> rhs) {
+bool UnidirectionalSequenceLSTMOp::isCompatibleReturnTypes(TypeRange lhs,
+                                                           TypeRange rhs) {
   if (lhs.size() != rhs.size() || lhs.size() != 1) return false;
   if (failed(mlir::verifyCompatibleShape(lhs[0], rhs[0]))) return false;
   return true;

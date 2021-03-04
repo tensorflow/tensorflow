@@ -203,14 +203,14 @@ def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect,
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 
   let builders = [
-    OpBuilderDAG<(ins "Attribute":$value)>,
-    OpBuilderDAG<(ins "Type":$type, "Attribute":$value)>,
+    OpBuilder<(ins "Attribute":$value)>,
+    OpBuilder<(ins "Type":$type, "Attribute":$value)>,
   ];
 
   let hasFolder = 1;
 
   let extraClassDeclaration = [{
-    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r) {
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       return BroadcastCompatible(l, r);
     }
   }];
@@ -410,7 +410,7 @@ else_branch: A region that computes the outputs of the op if cond = false.
   }];
 
   let builders = [
-    OpBuilderDAG<(ins "TypeRange":$resultTypes, "ValueRange":$operands,
+    OpBuilder<(ins "TypeRange":$resultTypes, "ValueRange":$operands,
       "llvm::ArrayRef<::mlir::NamedAttribute>":$attributes,
       "unsigned":$numRegions),
     [{
@@ -1213,7 +1213,7 @@ as true/false for a branch condition.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$value),
+    OpBuilder<(ins "Value":$value),
     [{
       build($_builder, $_state, RankedTensorType::get({}, $_builder.getI1Type()),
             value);

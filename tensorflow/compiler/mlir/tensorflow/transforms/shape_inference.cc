@@ -890,7 +890,7 @@ bool ShapeInference::RefineTypeForPassThroughOperands(Operation* op,
                                                       OperandRange operands,
                                                       ResultRange results) {
   bool changed = false;
-  for (auto entry : zip(operands, results)) {
+  for (auto entry : llvm::zip(operands, results)) {
     Type operand_type = std::get<0>(entry).getType();
     Value result = std::get<1>(entry);
     TensorType result_type = result.getType().cast<TensorType>();
@@ -925,7 +925,7 @@ bool ShapeInference::RefineShapeForPassThroughOps(Operation* op) {
   };
 
   bool changed = false;
-  for (auto entry : zip(op->getOperands(), op->getResults())) {
+  for (auto entry : llvm::zip(op->getOperands(), op->getResults())) {
     TensorType operand_type = std::get<0>(entry).getType().cast<TensorType>();
     Value result = std::get<1>(entry);
     TensorType result_type = result.getType().cast<TensorType>();

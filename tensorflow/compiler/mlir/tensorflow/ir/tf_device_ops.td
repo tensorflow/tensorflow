@@ -76,7 +76,7 @@ This op captures all needed live-in values.
   }];
 
   let builders = [
-    OpBuilderDAG<(ins "StringAttr":$device, "ArrayRef<Type>":$result_types),
+    OpBuilder<(ins "StringAttr":$device, "TypeRange":$result_types),
     [{
         $_state.addAttribute("device", device);
         $_state.addTypes(result_types);
@@ -98,7 +98,7 @@ The `tf_device.return` operation terminates and returns values from a
   );
 
   let builders = [
-    OpBuilderDAG<(ins),
+    OpBuilder<(ins),
     [{
       build($_builder, $_state, {});
     }]>
@@ -169,7 +169,7 @@ def TfDevice_ParallelExecuteOp : TfDevice_Op<"parallel_execute",
   }];
 
   let builders = [
-    OpBuilderDAG<(ins "int":$num_regions, "llvm::ArrayRef<Type>":$output_types)>,
+    OpBuilder<(ins "int":$num_regions, "TypeRange":$output_types)>,
   ];
 
   let verifier = [{ return Verify(*this); }];
@@ -294,11 +294,11 @@ For example:
   }];
 
   let builders = [
-    OpBuilderDAG<(ins "int":$n,
+    OpBuilder<(ins "int":$n,
       "const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>&":$devices,
       "llvm::ArrayRef<std::pair<ValueRange, Type>>":$replicated_inputs,
       "ValueRange":$packed_inputs, "TypeRange":$replica_output_types)>,
-    OpBuilderDAG<(ins "int":$n, "llvm::Optional<DictionaryAttr>":$devices,
+    OpBuilder<(ins "int":$n, "llvm::Optional<DictionaryAttr>":$devices,
       "llvm::ArrayRef<std::pair<ValueRange, Type>>":$replicated_inputs,
       "ValueRange":$packed_inputs, "TypeRange":$replica_output_types)>,
   ];
@@ -330,7 +330,7 @@ used to form the cluster.
   let regions = (region SizedRegion<1>:$body);
 
   let builders = [
-    OpBuilderDAG<(ins "ArrayRef<Type>":$resultTypes),
+    OpBuilder<(ins "TypeRange":$resultTypes),
     [{
       build($_builder, $_state, resultTypes, mlir::StringAttr {});
     }]>
