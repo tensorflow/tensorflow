@@ -187,19 +187,6 @@ class CpuAllocator : public tensorflow::Allocator {
   }
 };
 
-static int DefaultThreadPoolSize() {
-  // Google's CI system exposes an environment variable NPROC that describes
-  // a CPU reservation for tests.
-  // TODO(phawkins): expose a better thought-out set of knobs to control
-  // parallelism.
-  const char* nproc_str = std::getenv("NPROC");
-  int nproc = 0;
-  if (nproc_str && absl::SimpleAtoi(nproc_str, &nproc)) {
-    return std::max(0, nproc);
-  }
-  return tensorflow::port::MaxParallelism();
-}
-
 PjRtStreamExecutorClient::PjRtStreamExecutorClient(
     std::string platform_name, LocalClient* client,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices, int task_id,
@@ -513,7 +500,8 @@ PjRtStreamExecutorBuffer::ScopedHold::ScopedHold(ScopedHold&& other)
     : parent_(other.parent_),
       type_(other.type_),
       state_(other.state_),
-      buffer_or_(std::move(other.buffer_or_)) {
+      status_(std::move(other.status_)),
+      buffer_(std::move(other.buffer_)) {
   // Preserve the invariant that status is invalid if buffer == nullptr.
   other.SetState(kMoved);
 }
@@ -521,16 +509,23 @@ PjRtStreamExecutorBuffer::ScopedHold::ScopedHold(ScopedHold&& other)
 void PjRtStreamExecutorBuffer::ScopedHold::Acquire(
     StatusOr<std::shared_ptr<TrackedDeviceBuffer>>&& buffer_or) {
   CHECK(!ok());
-  buffer_or_ = std::move(buffer_or);
-  SetState(buffer_or_.ok() ? kValid : kError);
+  if (buffer_or.ok()) {
+    buffer_ = buffer_or.ValueOrDie();
+    SetState(kValid);
+  } else {
+    status_ = buffer_or.status();
+    buffer_ = nullptr;
+    SetState(kError);
+  }
   // Check the invariant holds.
-  CHECK(!ok() || buffer_or_.ValueOrDie() != nullptr);
+  CHECK(!ok() || buffer_ != nullptr);
 }
 
 PjRtStreamExecutorBuffer::ScopedHold::ForClosure
 PjRtStreamExecutorBuffer::ScopedHold::ToClosure() {
   CHECK(ok());
-  ForClosure for_closure(parent_, type_, state_, std::move(buffer_or_));
+  ForClosure for_closure(parent_, type_, state_, std::move(status_),
+                         std::move(buffer_));
   SetState(kReleased);
   return for_closure;
 }
@@ -1274,7 +1269,7 @@ PjRtStreamExecutorBuffer::GetBufferWithHold(ScopedHold::Type type) {
   absl::MutexLock lock(&mu_);
   ScopedHold hold(this, type);
   AcquireHoldLocked(&hold);
-  if (type == ScopedHold::kDonation && !hold.status().ok()) {
+  if (type == ScopedHold::kDonation && !hold.ok()) {
     donation_semaphore_.Release(1);
   }
   return hold;
@@ -1332,7 +1327,7 @@ PjRtStreamExecutorBuffer::CopyToDeviceHelper(
       // have completed.
       tensorflow::down_cast<PjRtStreamExecutorDevice*>(device_)
           ->local_device_state()
-          ->ThenRelease(transfer_stream, src_device_buffer);
+          ->ThenRelease(transfer_stream, std::move(src_device_buffer));
     }
     return copy_event_or.status();
   }
@@ -2029,12 +2024,16 @@ PjRtStreamExecutorExecutable::Execute(
     const int partition = addressable_device_logical_ids_[i].partition;
     auto& statusor = results[i];
     if (!statusor.ok()) {
-      return AppendStatus(
-          statusor.status(),
-          absl::StrFormat("while running replica %d and partition %d of a "
-                          "replicated computation (other "
-                          "replicas may have failed as well).",
-                          replica, partition));
+      if (num_addressable_devices == 1) {
+        return statusor.status();
+      } else {
+        return AppendStatus(
+            statusor.status(),
+            absl::StrFormat("while running replica %d and partition %d of a "
+                            "replicated computation (other "
+                            "replicas may have failed as well).",
+                            replica, partition));
+      }
     }
     wrapped_results[i] = std::move(statusor.ValueOrDie());
   }

@@ -45,6 +45,9 @@ Status DispatcherState::Apply(const Update& update) {
     case Update::kReleaseJobClient:
       ReleaseJobClient(update.release_job_client());
       break;
+    case Update::kRemoveTask:
+      RemoveTask(update.remove_task());
+      break;
     case Update::kCreatePendingTask:
       CreatePendingTask(update.create_pending_task());
       break;
@@ -147,6 +150,23 @@ void DispatcherState::ReleaseJobClient(
   jobs_for_client_ids_.erase(job_client_id);
 }
 
+void DispatcherState::RemoveTask(const RemoveTaskUpdate& remove_task) {
+  std::shared_ptr<Task>& task = tasks_[remove_task.task_id()];
+  DCHECK(task);
+  task->removed = true;
+  auto& tasks_for_job = tasks_by_job_[task->job->job_id];
+  for (auto it = tasks_for_job.begin(); it != tasks_for_job.end(); ++it) {
+    if ((*it)->task_id == task->task_id) {
+      tasks_for_job.erase(it);
+      break;
+    }
+  }
+  tasks_by_worker_[task->worker_address].erase(task->task_id);
+  tasks_.erase(task->task_id);
+  VLOG(1) << "Removed task " << remove_task.task_id() << " from worker "
+          << task->worker_address;
+}
+
 void DispatcherState::CreatePendingTask(
     const CreatePendingTaskUpdate& create_pending_task) {
   int64 task_id = create_pending_task.task_id();
@@ -176,6 +196,8 @@ void DispatcherState::ClientHeartbeat(
   if (client_heartbeat.task_accepted()) {
     task.ready_consumers.insert(job_client_id);
     if (task.ready_consumers.size() == job->num_consumers.value()) {
+      VLOG(1) << "Promoting task " << task.task->task_id
+              << " from pending to active";
       task.task->starting_round = task.target_round;
       tasks_by_job_[job->job_id].push_back(task.task);
       job->pending_tasks.pop();

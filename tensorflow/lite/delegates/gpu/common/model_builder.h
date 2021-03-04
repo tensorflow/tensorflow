@@ -49,6 +49,15 @@ absl::Status BuildModel(
     GraphFloat32* graph,
     absl::flat_hash_map<int, int>* quant_conversion_map = nullptr);
 
+// Same as BuildModel, but enforces user-provided input/output indices instead
+// of using delegate_params->inputs and delegate_params->outputs for
+// inputs/outputs preallocating.
+absl::Status BuildModelEnforceIO(
+    TfLiteContext* context, const TfLiteDelegateParams* delegate_params,
+    const std::vector<int>& input_ids, const std::vector<int>& output_ids,
+    GraphFloat32* graph,
+    absl::flat_hash_map<int, int>* quant_conversion_map = nullptr);
+
 // Same as above but also apply all transformations on the final graph.
 // Prefer using this method instead of BuildModel.
 //

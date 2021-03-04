@@ -101,7 +101,7 @@ class SpaceToBatchTest(test.TestCase, PythonOpImpl):
   """
 
   def _testPad(self, inputs, paddings, block_size, outputs):
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       # outputs = space_to_batch(inputs)
       x_tf = self.space_to_batch(
           math_ops.cast(inputs, dtypes.float32),
@@ -327,7 +327,7 @@ class SpaceToBatchSpaceToDepth(test.TestCase, PythonOpImpl):
         array_ops.space_to_depth(
             array_ops.transpose(x, [3, 1, 2, 0]), block_size=block_size),
         [3, 1, 2, 0])
-    with self.session(use_gpu=True):
+    with self.session():
       self.assertAllEqual(y1, y2)
 
 
@@ -526,7 +526,7 @@ class SpaceToBatchGradientTest(test.TestCase, PythonOpImpl):
   # Check the gradients.
   def _checkGrad(self, x, paddings, block_size):
     assert 4 == x.ndim
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       tf_x = ops.convert_to_tensor(x)
       tf_y = self.space_to_batch(tf_x, paddings, block_size)
       epsilon = 1e-5

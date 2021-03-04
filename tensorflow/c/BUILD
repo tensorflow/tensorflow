@@ -650,6 +650,7 @@ tf_cuda_cc_test(
         "//conditions:default": [],
     }),
     tags = [
+        "no_cuda_asan",  # TODO(b/181771536)
         "no_windows",  # TODO(b/155444728)
         "noasan",
     ],

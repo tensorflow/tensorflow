@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -38,10 +37,6 @@ from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
 
-def get_layer_class():
-  return category_encoding.CategoryEncoding
-
-
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class CategoryEncodingInputTest(keras_parameterized.TestCase,
                                 preprocessing_test_utils.PreprocessingLayerTest
@@ -51,15 +46,14 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     input_array = constant_op.constant([[1, 2, 3], [3, 3, 0]])
 
     # The expected output should be (X for missing value):
-    # [[X, 1, 1, 1]
-    #  [1, X, X, X]
-    #  [X, X, X, 2]]
+    # [[X, 1, 1, 1, X, X]
+    #  [1, X, X, 2, X, X]]
     expected_indices = [[0, 1], [0, 2], [0, 3], [1, 0], [1, 3]]
     expected_values = [1, 1, 1, 1, 2]
     num_tokens = 6
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    layer = get_layer_class()(
+    layer = category_encoding.CategoryEncoding(
         num_tokens=num_tokens, output_mode=category_encoding.COUNT, sparse=True)
     int_data = layer(input_data)
 
@@ -69,7 +63,7 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     self.assertAllEqual(expected_indices, sp_output_dataset.indices)
 
     # Assert sparse output is same as dense output.
-    layer = get_layer_class()(
+    layer = category_encoding.CategoryEncoding(
         num_tokens=num_tokens,
         output_mode=category_encoding.COUNT,
         sparse=False)
@@ -93,7 +87,7 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int64, sparse=True)
 
-    layer = get_layer_class()(
+    layer = category_encoding.CategoryEncoding(
         num_tokens=num_tokens, output_mode=category_encoding.BINARY)
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
@@ -118,7 +112,7 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     input_data = keras.Input(shape=(None,), dtype=dtypes.int64, sparse=True)
     weight_data = keras.Input(shape=(None,), dtype=dtypes.float32, sparse=True)
 
-    layer = get_layer_class()(
+    layer = category_encoding.CategoryEncoding(
         num_tokens=num_tokens, output_mode=category_encoding.COUNT)
     int_data = layer(input_data, count_weights=weight_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
@@ -144,7 +138,7 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     expected_values = [1, 1, 2, 1]
     num_tokens = 6
 
-    layer = get_layer_class()(
+    layer = category_encoding.CategoryEncoding(
         num_tokens=num_tokens, output_mode=category_encoding.COUNT, sparse=True)
     int_data = layer(input_data)
 
@@ -154,7 +148,7 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     self.assertAllEqual(expected_indices, sp_output_dataset.indices)
 
     # Assert sparse output is same as dense output.
-    layer = get_layer_class()(
+    layer = category_encoding.CategoryEncoding(
         num_tokens=num_tokens,
         output_mode=category_encoding.COUNT,
         sparse=False)
@@ -183,7 +177,7 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     expected_values = [.1, .2, .7, .2]
     num_tokens = 6
 
-    layer = get_layer_class()(
+    layer = category_encoding.CategoryEncoding(
         num_tokens=num_tokens, output_mode=category_encoding.COUNT, sparse=True)
     int_data = layer(input_data, count_weights=weight_data)
 
@@ -204,7 +198,7 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32, ragged=True)
 
-    layer = get_layer_class()(
+    layer = category_encoding.CategoryEncoding(
         num_tokens=num_tokens, output_mode=category_encoding.BINARY)
     int_data = layer(input_data)
 
@@ -225,7 +219,7 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     num_tokens = 6
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32, ragged=True)
-    layer = get_layer_class()(
+    layer = category_encoding.CategoryEncoding(
         num_tokens=num_tokens, output_mode=category_encoding.COUNT, sparse=True)
     int_data = layer(input_data)
 
@@ -235,7 +229,7 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     self.assertAllEqual(expected_indices, sp_output_dataset.indices)
 
     # Assert sparse output is same as dense output.
-    layer = get_layer_class()(
+    layer = category_encoding.CategoryEncoding(
         num_tokens=num_tokens,
         output_mode=category_encoding.COUNT,
         sparse=False)
@@ -252,7 +246,7 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     num_tokens = 4
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    encoding_layer = get_layer_class()(
+    encoding_layer = category_encoding.CategoryEncoding(
         num_tokens=num_tokens, output_mode=category_encoding.COUNT, sparse=True)
     int_data = encoding_layer(input_data)
     dense_layer = keras.layers.Dense(units=1)
@@ -265,7 +259,7 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     input_array = constant_op.constant([[0, 1, 2], [2, 3, 1]])
     num_tokens = 3
     expected_output_shape = [None, num_tokens]
-    encoder_layer = get_layer_class()(num_tokens)
+    encoder_layer = category_encoding.CategoryEncoding(num_tokens)
     input_data = keras.Input(shape=(3,), dtype=dtypes.int32)
     int_data = encoder_layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
@@ -279,7 +273,7 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     input_array = constant_op.constant([[1, 2, 0], [2, 2, -1]])
     num_tokens = 3
     expected_output_shape = [None, num_tokens]
-    encoder_layer = get_layer_class()(num_tokens)
+    encoder_layer = category_encoding.CategoryEncoding(num_tokens)
     input_data = keras.Input(shape=(3,), dtype=dtypes.int32)
     int_data = encoder_layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
@@ -296,7 +290,7 @@ class CategoryEncodingInputTest(keras_parameterized.TestCase,
     expected_output_shape = [None, num_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    layer = get_layer_class()(
+    layer = category_encoding.CategoryEncoding(
         max_tokens=num_tokens, output_mode=category_encoding.BINARY)
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
@@ -323,7 +317,7 @@ class CategoryEncodingOutputTest(keras_parameterized.TestCase,
     expected_output_shape = [None, num_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    layer = get_layer_class()(
+    layer = category_encoding.CategoryEncoding(
         num_tokens=num_tokens, output_mode=category_encoding.BINARY)
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
@@ -343,7 +337,8 @@ class CategoryEncodingOutputTest(keras_parameterized.TestCase,
     expected_output_shape = [None, num_tokens]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    layer = get_layer_class()(num_tokens=6, output_mode=category_encoding.COUNT)
+    layer = category_encoding.CategoryEncoding(
+        num_tokens=6, output_mode=category_encoding.COUNT)
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
 
@@ -370,7 +365,8 @@ class CategoryEncodingModelBuildingTest(
     input_array = np.array([[1, 2, 3, 1], [0, 3, 1, 0]])
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    layer = get_layer_class()(num_tokens=num_tokens, output_mode=output_mode)
+    layer = category_encoding.CategoryEncoding(
+        num_tokens=num_tokens, output_mode=output_mode)
 
     weights = []
     if num_tokens is None:

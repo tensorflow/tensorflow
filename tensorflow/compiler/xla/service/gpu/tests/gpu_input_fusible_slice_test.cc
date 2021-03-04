@@ -40,45 +40,6 @@ class GpuSliceInputFusionTest : public GpuCodegenTest {
   }
 };
 
-TEST_F(GpuSliceInputFusionTest, InputFusionWithOnlyOneSlice) {
-  const char *const kHloString = R"(
-  HloModule input_fusion_with_only_one_slice
-
-  fused_computation {
-    arg.1 = f16[1024,512]{1,0} parameter(0)
-    arg.2 = f16[1024,512]{1,0} parameter(1)
-    arg1.conv = f32[1024,512]{1,0} convert(arg.1)
-    arg2.conv = f32[1024,512]{1,0} convert(arg.2)
-    add.1 = f32[1024,512]{1,0} add(arg1.conv, arg2.conv)
-    ROOT slice.1 = f32[512,511]{1,0} slice(add.1), slice={[512:1024], [1:512]}
-  }
-
-  ENTRY kernel_entry {
-    arg.1 = f16[1024,512]{1,0} parameter(0)
-    arg.2 = f16[1024,512]{1,0} parameter(1)
-    ROOT fusion = f32[512, 511]{1,0} fusion(arg.1, arg.2), kind=kInput,
-        calls=fused_computation
-  })";
-
-  auto hlo_module =
-      ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .ValueOrDie();
-  auto expected_ir = is_built_with_rocm_ ? R"(
-; CHECK-LABEL: define amdgpu_kernel void @fusion
-; CHECK: slice0
-; CHECK: }
-)"
-                                         : R"(
-; CHECK-LABEL: define void @fusion
-; CHECK: slice0
-; CHECK: }
-)";
-  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
-                     /*match_optimized_ir=*/false);
-  // Check that the kernel runs correctly.
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0, 0}));
-}
-
 TEST_F(GpuSliceInputFusionTest, InputFusionWithATupleOfSlices) {
   const char *const kHloString = R"(
   HloModule input_fusion_with_a_tuple_of_slices

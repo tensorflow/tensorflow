@@ -207,11 +207,10 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
   def cluster_resolver(self):
     """Returns the cluster resolver associated with this strategy.
 
-    As a multi-worker strategy,
-    `tf.distribute.experimental.MultiWorkerMirroredStrategy` provides the
-    associated `tf.distribute.cluster_resolver.ClusterResolver`. If the user
-    provides one in `__init__`, that instance is returned; if the user does
-    not, a default `TFConfigClusterResolver` is provided.
+    As a multi-worker strategy, `tf.distribute.MultiWorkerMirroredStrategy`
+    provides the associated `tf.distribute.cluster_resolver.ClusterResolver`. If
+    the user provides one in `__init__`, that instance is returned; if the user
+    does not, a default `TFConfigClusterResolver` is provided.
     """
     return self.extended._cluster_resolver  # pylint: disable=protected-access
 
@@ -522,7 +521,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
   def _input_workers_with_options(self, options=None):
     host_device = device_util.get_host_for_device(self._worker_device)
-    if not options or options.experimental_prefetch_to_device:
+    if not options or options.experimental_fetch_to_device:
       return input_lib.InputWorkers([(host_device, self.worker_devices)])
     else:
       return input_lib.InputWorkers([(
@@ -604,7 +603,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         self._input_workers_with_options(options),
         self._container_strategy(),
         num_replicas_in_sync=self._num_replicas_in_sync,
-        input_context=input_context)
+        input_context=input_context,
+        options=options)
 
   def _distribute_datasets_from_function(self, dataset_fn, options):
     if (options and options.experimental_replication_mode ==
@@ -619,7 +619,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         dataset_fn=dataset_fn,
         input_workers=self._input_workers_with_options(options),
         input_contexts=[input_context],
-        strategy=self._container_strategy())
+        strategy=self._container_strategy(),
+        options=options)
 
   def _experimental_distribute_values_from_function(self, value_fn):
     per_replica_values = []

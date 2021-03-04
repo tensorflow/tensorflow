@@ -26,13 +26,15 @@ Here, we document how Renode is used as part of the TFLM project. For more
 general use of Renode, please refer to the [Renode
 documentation](https://renode.readthedocs.io/en/latest/).
 
+You can also read more about Renode from a [publicly available slide deck](https://docs.google.com/presentation/d/1j0gjI4pVkgF9CWvxaxr5XuCKakEB25YX2n-iFxlYKnE/edit).
+
 # Installation
 
-Renode can be installed and used in a variety of ways, as documented
-[here](https://renode.readthedocs.io/en/latest/). For the purpose of Tensorflow
-Lite Micro, we make use of a portable version for Linux.
+Renode can be installed and used in a variety of ways, as documented in the
+[Renode README](https://github.com/renode/renode/blob/master/README.rst#installation/). For the purpose of Tensorflow
+Lite Micro, we make use of the portable version for Linux.
 
-Portable renode wil be automatically installed when using the TfLite Micro
+Portable renode will be automatically installed when using the TfLite Micro
 Makefile to `tensorflow/lite/micro/tools/make/downloads/renode`.
 
 The Makefile internally calls the `renode_download.sh` script:
@@ -81,10 +83,24 @@ and issue following commands:
 # Create platform
 include @tensorflow/lite/micro/testing/bluepill_nontest.resc
 # Load ELF file
-sysbus LoadELF @tensorflow/lite/micro/tools/make/gen/bluepill_cortex-m3/bin/kernel_add_test
+sysbus LoadELF @tensorflow/lite/micro/tools/make/gen/bluepill_cortex-m3_default/bin/keyword_benchmark
 # Start simulation
 start
+
+# To run again:
+Clear
+include @tensorflow/lite/micro/testing/bluepill_nontest.resc
+sysbus LoadELF @tensorflow/lite/micro/tools/make/gen/bluepill_cortex-m3_default/bin/keyword_benchmark
+start
+
 ```
+
+To make repeat runs a bit easier, you can put all the commands into a
+single line (up arrow will show the last command in the Renode terminal):
+```
+Clear; include @tensorflow/lite/micro/testing/bluepill_nontest.resc; sysbus LoadELF @tensorflow/lite/micro/tools/make/gen/bluepill_cortex-m3_default/bin/keyword_benchmark; start
+```
+
 You can also connect GDB to the simulation.
 To do that, start the GDB server in Renode before issuing the `start` command:
 ```

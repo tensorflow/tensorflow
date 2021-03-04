@@ -112,9 +112,9 @@ class DistributedIteratorTestBase(test.TestCase):
     if input_type == "dataset":
       if tf2.enabled():
         return input_lib.DistributedDataset(
-            dataset,
             input_workers,
             strategy,
+            dataset,
             num_replicas_in_sync=num_replicas_in_sync,
             input_context=input_context)
       else:
@@ -1467,12 +1467,12 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
           input_options=[
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
-                  experimental_prefetch_to_device=True,
+                  experimental_fetch_to_device=True,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_WORKER),
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
-                  experimental_prefetch_to_device=True,
+                  experimental_fetch_to_device=True,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_REPLICA),
           ],
@@ -1509,7 +1509,7 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
           input_options=[
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
-                  experimental_prefetch_to_device=False,
+                  experimental_fetch_to_device=False,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_WORKER)
           ],
@@ -1541,12 +1541,12 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
           input_options=[
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=True,
-                  experimental_prefetch_to_device=False,
+                  experimental_fetch_to_device=False,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_WORKER),
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=True,
-                  experimental_prefetch_to_device=True,
+                  experimental_fetch_to_device=True,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_REPLICA)
           ],
@@ -1572,12 +1572,45 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
           input_options=[
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
-                  experimental_prefetch_to_device=False,
+                  experimental_fetch_to_device=False,
+                  experimental_per_replica_buffer_size=2),
+              distribute_lib.InputOptions(
+                  experimental_place_dataset_on_device=False,
+                  experimental_fetch_to_device=True,
+                  experimental_per_replica_buffer_size=2),
+          ],
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_two_gpus,
+              strategy_combinations.mirrored_strategy_with_cpu_1_and_2,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ]))
+  def testPrefetchBufferSizeInputOptions(self, distribution, input_options):
+
+    def dataset_fn(input_context):
+      return dataset_ops.Dataset.from_tensor_slices(
+          np.arange(1, 11).reshape(
+              (2, 5)) * (input_context.input_pipeline_id + 1))
+
+    ds = distribution.experimental_distribute_datasets_from_function(
+        dataset_fn, input_options)
+
+    # validating the values
+    x = next(iter(ds))
+    assert np.array_equal(x.values[0].numpy(), np.array([1, 2, 3, 4, 5]))
+    assert np.array_equal(x.values[1].numpy(), np.array([6, 7, 8, 9, 10]))
+
+  @combinations.generate(
+      combinations.combine(
+          input_options=[
+              distribute_lib.InputOptions(
+                  experimental_place_dataset_on_device=False,
+                  experimental_fetch_to_device=False,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_WORKER),
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
-                  experimental_prefetch_to_device=True,
+                  experimental_fetch_to_device=True,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_WORKER),
           ],
@@ -1608,17 +1641,17 @@ class DistributedIteratorPerDeviceTest(DistributedIteratorTestBase,
           input_options=[
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=True,
-                  experimental_prefetch_to_device=False,
+                  experimental_fetch_to_device=False,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_REPLICA),
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
-                  experimental_prefetch_to_device=False,
+                  experimental_fetch_to_device=False,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_REPLICA),
               distribute_lib.InputOptions(
                   experimental_place_dataset_on_device=False,
-                  experimental_prefetch_to_device=True,
+                  experimental_fetch_to_device=True,
                   experimental_replication_mode=distribute_lib
                   .InputReplicationMode.PER_REPLICA),
           ],

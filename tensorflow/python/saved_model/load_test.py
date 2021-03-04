@@ -19,7 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import contextlib
 import functools
+import gc
+import io
 import os
 import sys
 import tempfile
@@ -1965,6 +1968,35 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(self.evaluate(imported.lookup("foo")), 15)
     self.assertEqual(self.evaluate(imported.lookup("idk")), -1)
 
+  def test_load_resource_with_dependency(self, cycles):
+    # Test with StaticHashTable, which has a _initializer attribute that tracks
+    # the Asset vocab table.
+
+    class MyLookupModel(tracking.AutoTrackable):
+
+      def __init__(self, vocab_file):
+
+        vocab_initializer = lookup_ops.TextFileInitializer(
+            vocab_file,
+            key_dtype=dtypes.string,
+            key_index=lookup_ops.TextFileIndex.WHOLE_LINE,
+            value_dtype=dtypes.int64,
+            value_index=lookup_ops.TextFileIndex.LINE_NUMBER)
+        self._vocab_table = lookup_ops.StaticHashTable(vocab_initializer,
+                                                       default_value=-1)
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec((None,), dtypes.string)])
+      def __call__(self, inputs):
+        return self._vocab_table.lookup(inputs)
+
+    vocab_file = self._make_asset("\n".join(["a", "b", "c", "d"]))
+    root = MyLookupModel(vocab_file)
+    imported = cycle(root, cycles)
+    file_io.delete_file(vocab_file)
+    self.assertAllEqual(imported(constant_op.constant(["d", "b"])),
+                        [3, 1])
+
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
 
@@ -2194,6 +2226,26 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
                          new_concrete_function.pretty_printed_signature())
 
       previous_concrete_function = new_concrete_function
+
+  def test_garbage_collection_capturable_resource_doesnt_raise_exception(self):
+    model = module.Module()
+    model.mapping = lookup_ops.StaticHashTable(
+        lookup_ops.KeyValueTensorInitializer(
+            keys=math_ops.range(1, dtype=dtypes.int32),
+            values=["foo"]),
+        "default_value")
+    loaded = cycle(model, 1)
+    del model
+    del loaded
+    # Exceptions raised during garbage collection are simply printed to stderr
+    # and ignored, and we have no way to access them. We'll capture stdout
+    # during the garbage collection process and inspect to see if any
+    # exceptions were raised.
+    stderr = io.StringIO()
+    with contextlib.redirect_stderr(stderr):
+      gc.collect()
+    if "Exception ignored in" in stderr.getvalue():
+      raise Exception(stderr.getvalue())
 
 
 if __name__ == "__main__":

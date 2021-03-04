@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/depthwise_conv.h"
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+#include "tensorflow/lite/kernels/internal/optimized/resize_bilinear.h"
 #include "tensorflow/lite/kernels/internal/reference/legacy_reference_ops.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 

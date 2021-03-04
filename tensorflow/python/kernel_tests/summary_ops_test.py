@@ -179,6 +179,14 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegex(ValueError, 'No step set'):
         summary_ops.write('tag', 42)
 
+  @test_util.also_run_as_tf_function
+  def testWrite_noStep_okayIfNotRecordingSummaries(self):
+    logdir = self.get_temp_dir()
+    with summary_ops.create_file_writer(logdir).as_default():
+      with summary_ops.record_if(False):
+        # Use assertAllEqual instead of assertFalse since it works in a defun.
+        self.assertAllEqual(False, summary_ops.write('tag', 42))
+
   def testWrite_usingDefaultStep(self):
     logdir = self.get_temp_dir()
     try:

@@ -107,6 +107,8 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/micro/kernels:conv",
+        "//tensorflow/lite/micro/kernels:depthwise_conv",
         "//tensorflow/lite/micro/kernels:ethosu",
         "//tensorflow/lite/micro/kernels:fully_connected",
         "//tensorflow/lite/micro/kernels:micro_ops",
@@ -214,6 +216,17 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels/internal:compatibility",
     ],
+)
+
+cc_library(
+    name = "system_setup",
+    srcs = [
+        "system_setup.cc",
+    ],
+    hdrs = [
+        "system_setup.h",
+    ],
+    copts = micro_copts(),
 )
 
 cc_test(

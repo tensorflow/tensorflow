@@ -417,6 +417,14 @@ class _EagerDefinedFunctionDeleter(object):
       # been unloaded. Will catch other module unloads as well.
 
 
+class FunctionAlreadyGarbageCollectedError(Exception):
+
+  def __init__(self, function_name):
+    super(FunctionAlreadyGarbageCollectedError, self).__init__(
+        "{} has already been garbage collected and cannot be called.".format(
+            function_name))
+
+
 # TODO(apassos) get rid of this by splitting framework.function._DefinedFunction
 # so it doesn't have the definition-generating logic and is just a container for
 # an already-defined function.
@@ -551,12 +559,22 @@ class _EagerDefinedFunction(object):
 
     Raises:
       ValueError: if the number of arguments is incorrect.
+      FunctionAlreadyGarbageCollectedError: if the function is no longer
+        available to be called because it has been garbage collected.
     """
     if len(args) != len(self.signature.input_arg):
       raise ValueError(
           "Arguments and signature arguments do not match. "
           "got: %s, expected: %s " %
           (len(args), len(list(self.signature.input_arg))))
+
+    # If the `ScopedTFFunction` (accessed via `_c_func`) has already been
+    # cleaned up as a part of garbage collection, this `_EagerDefinedFunction`
+    # should also be garbage and is likely being called as part of a `__del__`
+    # elsewhere. In that case, there's nothing we can do, so we raise an
+    # exception for the caller to handle.
+    if self._c_func.has_been_garbage_collected:
+      raise FunctionAlreadyGarbageCollectedError(self.name)
 
     function_call_options = ctx.function_call_options
     if function_call_options.config_proto_serialized is None:

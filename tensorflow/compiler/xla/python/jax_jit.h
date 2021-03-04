@@ -27,6 +27,10 @@ limitations under the License.
 
 namespace jax {
 
+// Returns the value for jax_enable_x64 (defined by a thread-local value if
+// defined, defaulting to the value of the flag otherwise).
+bool GetEnableX64();
+
 // Describes the abstract shape and dtype of an argument.
 struct ArgSignature {
   ArgSignature(xla::PrimitiveType dtype, absl::Span<const xla::int64> shape,
@@ -86,6 +90,7 @@ struct CallSignature {
   // arguments (sorted by keyword name).
   std::vector<ArgSignature> dynamic_args_signatures;
   xla::PjRtDevice* device;
+  bool jax_enable_x64;
 
   bool operator==(const CallSignature& other) const;
   bool operator!=(const CallSignature& other) const {

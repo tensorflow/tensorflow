@@ -333,9 +333,16 @@ TfLiteStatus TestFullyConnectedQuantized(
 
 TF_LITE_MICRO_TESTS_BEGIN
 
-#if !defined(XTENSA)  // TODO(b/170503075): xtensa kernels are less general than
-                      // reference kernels and we ifdef out test cases that are
-                      // currently known to fail.
+#if !defined(XTENSA) && !defined(CEVA_BX1) && !defined(CEVA_SP500)
+// TODO(b/170503075): xtensa kernels are less general
+// than reference kernels and we ifdef out test cases that are currently known
+// to fail.
+
+// CEVA's fully connected implementation assumes weights_zero_point=0 as
+// described in TFLite's quantization specification. tests which use a different
+// zero point will so ifdefed out.
+// See tflite quantization spec:
+// https://www.tensorflow.org/lite/performance/quantization_spec
 TF_LITE_MICRO_TEST(SimpleTest) {
   float output_data[tflite::testing::simple_output_size];
   TF_LITE_MICRO_EXPECT_EQ(

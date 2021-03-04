@@ -114,6 +114,7 @@ class XlaOp {
   int64 handle() const { return handle_; }
 
   friend class XlaBuilder;
+  friend class ValueInference;
   friend class MlirHloBuilder;
   friend struct internal::XlaBuilderFriend;
 
@@ -296,31 +297,6 @@ class XlaBuilder {
   StatusOr<XlaComputation> BuildConstantSubGraph(
       XlaOp root_op, bool dynamic_dimension_is_uint_max = false);
 
-  // Similar to BuildConstantSubGraph, but with root element type changed to
-  // boolean. A true value in the root indicates that the value is dynamic while
-  // false value indicates that the value is a constant. This will copy the
-  // needed ops/computations to the subgraph.
-  //
-  // E.g.,
-  // Compuptation {
-  //   a = 3
-  //   b = param(0)
-  //   ROOT Tuple(a + b, a + 1, b + 1)
-  // }
-  // Calling BuildDynamicInferenceGraph on root will produce the following
-  // graph:
-  //
-  // Compuptation {
-  //   a = False
-  //   b = True
-  //   ROOT Tuple(a | b, a, b)
-  // }
-  //
-  // The result, which is (True, False, True) after evaluation, can be
-  // interpreted as "First element is dynamic; Second element is static; Third
-  // element is dynamic".
-  StatusOr<XlaComputation> BuildDynamicInferenceGraph(XlaOp root_op);
-
   // Returns the first error that was encountered while building the
   // computation. When an error is encountered, by default we return a vacuous
   // XlaOp and inform the user of the error that occurred while
@@ -432,7 +408,12 @@ class XlaBuilder {
   StatusOr<std::vector<Shape>> GetOperandShapes(
       absl::Span<const XlaOp> operands) const;
 
+  // Converts the op to string for the ease of debugging.
+  std::string OpToString(XlaOp op) const;
+
  private:
+  void ToStringHelper(std::string* out, int ident, int64 op_handle) const;
+
   // Build helper which takes the id of the root operation..
   StatusOr<XlaComputation> Build(int64 root_id, bool remove_dynamic_dimensions);
 
@@ -655,7 +636,8 @@ class XlaBuilder {
       absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
       bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-          output_operand_aliasing);
+          output_operand_aliasing,
+      const Literal* literal);
 
   // Internal version of CustomCall without computation that doesn't do op
   // specific error handling and expects arguments to be legal. CustomCall
@@ -666,7 +648,8 @@ class XlaBuilder {
       absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
       bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-          output_operand_aliasing);
+          output_operand_aliasing,
+      const Literal* literal);
 
   XlaOp CustomCall(
       const string& call_target_name, absl::Span<const XlaOp> operands,
@@ -675,7 +658,8 @@ class XlaBuilder {
       absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
       bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-          output_operand_aliasing);
+          output_operand_aliasing,
+      const Literal* literal);
 
   XlaOp Reduce(XlaOp operand, XlaOp init_value,
                const XlaComputation& computation,
@@ -1214,20 +1198,23 @@ class XlaBuilder {
       absl::Span<const XlaOp> operands, const Shape& shape,
       const string& opaque, bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-          output_operand_aliasing);
+          output_operand_aliasing,
+      const Literal* literal);
   friend XlaOp CustomCallWithComputation(
       XlaBuilder* builder, const string& call_target_name,
       absl::Span<const XlaOp> operands, const XlaComputation& computation,
       const Shape& shape, const string& opaque, bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-          output_operand_aliasing);
+          output_operand_aliasing,
+      const Literal* literal);
   friend XlaOp CustomCallWithLayout(
       XlaBuilder* builder, const string& call_target_name,
       absl::Span<const XlaOp> operands, const Shape& shape_with_layout,
       absl::Span<const Shape> operand_shapes_with_layout, const string& opaque,
       bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-          output_operand_aliasing);
+          output_operand_aliasing,
+      const Literal* literal);
   friend XlaOp Complex(XlaOp real, XlaOp imag,
                        absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Conj(XlaOp operand);
@@ -1467,6 +1454,8 @@ class XlaBuilder {
   }
 
   friend struct internal::XlaBuilderFriend;
+
+  friend class ValueInference;
 };
 
 // RAII-style object: sets the current sharding assignment in builder on
@@ -2025,7 +2014,8 @@ XlaOp CustomCall(
     absl::Span<const XlaOp> operands, const Shape& shape,
     const string& opaque = "", bool has_side_effect = false,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing = {});
+        output_operand_aliasing = {},
+    const Literal* literal = nullptr);
 
 // Overload which constructs a custom call that applies an Xla computation.
 XlaOp CustomCallWithComputation(
@@ -2033,7 +2023,8 @@ XlaOp CustomCallWithComputation(
     absl::Span<const XlaOp> operands, const XlaComputation& computation,
     const Shape& shape, const string& opaque = "", bool has_side_effect = false,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing = {});
+        output_operand_aliasing = {},
+    const Literal* literal = nullptr);
 
 // Overload which constructs a custom call with fixed layouts. The operands will
 // have the layouts specified by |operand_shapes_with_layout| when provided to
@@ -2046,7 +2037,8 @@ XlaOp CustomCallWithLayout(
     absl::Span<const Shape> operand_shapes_with_layout,
     const string& opaque = "", bool has_side_effect = false,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
-        output_operand_aliasing = {});
+        output_operand_aliasing = {},
+    const Literal* literal = nullptr);
 
 // The following methods enqueue element-wise binary arithmetic operations
 // onto the computation. The shapes of the operands have to match unless one

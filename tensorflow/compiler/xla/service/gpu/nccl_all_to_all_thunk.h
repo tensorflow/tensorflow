@@ -36,21 +36,32 @@ struct NcclAllToAllConfig {
 class NcclAllToAllThunk : public NcclCollectiveThunk {
  public:
   NcclAllToAllThunk(ThunkInfo thunk_info, mlir::lmhlo::AllToAllOp op,
-                    int64 replica_count, std::vector<Buffer> buffers);
+                    std::vector<Buffer> buffers);
 
   // Returns whether the given instruction can be lowered to a nccl all-to-all
   // call.
   static bool CanImplement(mlir::lmhlo::AllToAllOp op);
 
   static const char* GetName() { return "AllToAll"; }
+  static bool IsDegenerate(mlir::lmhlo::AllToAllOp op, int64 replica_count,
+                           int64 partition_count) {
+    return GetNcclAllToAllConfig(op).config.IsDegenerate(replica_count,
+                                                         partition_count);
+  }
+
+  static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::AllToAllOp op) {
+    return GetNcclAllToAllConfig(op).config.group_mode;
+  }
 
  protected:
   Status RunNcclCollective(const ExecuteParams& params,
                            ncclComm_t comm) override;
 
-  const NcclCollectiveConfig& config() const override;
+  const NcclCollectiveConfig& config() const override { return config_.config; }
 
  private:
+  static NcclAllToAllConfig GetNcclAllToAllConfig(mlir::lmhlo::AllToAllOp op);
+
   const NcclAllToAllConfig config_;
   const std::vector<Buffer> buffers_;
 };

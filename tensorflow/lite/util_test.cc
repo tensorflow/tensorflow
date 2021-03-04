@@ -120,6 +120,16 @@ TEST(GetOpNameByRegistration, CustomName) {
   op_name = GetOpNameByRegistration(registration);
   EXPECT_EQ("DELEGATE TestDelegate", op_name);
 }
+
+TEST(ValidationSubgraph, NameIsDetected) {
+  EXPECT_FALSE(IsValidationSubgraph(nullptr));
+  EXPECT_FALSE(IsValidationSubgraph(""));
+  EXPECT_FALSE(IsValidationSubgraph("a name"));
+  EXPECT_FALSE(IsValidationSubgraph("VALIDATIONfoo"));
+  EXPECT_TRUE(IsValidationSubgraph("VALIDATION:"));
+  EXPECT_TRUE(IsValidationSubgraph("VALIDATION:main"));
+}
+
 }  // namespace
 }  // namespace tflite
 

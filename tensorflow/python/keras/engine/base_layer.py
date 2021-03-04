@@ -1660,8 +1660,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         self.mean = tf.keras.metrics.Mean(name='metric_1')
 
       def call(self, inputs):
-        self.add_metric(self.mean(x))
-        self.add_metric(tf.reduce_sum(x), name='metric_2')
+        self.add_metric(self.mean(inputs))
+        self.add_metric(tf.reduce_sum(inputs), name='metric_2')
         return inputs
     ```
 
@@ -2794,8 +2794,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # For any super.__delattr__() call, we will directly use the implementation
     # in Trackable and skip the behavior in AutoTrackable. The Layer was
     # originally use Trackable as base class, the change of using Module as base
-    # class forced us to have AutoTrackable in the class hierarchy. Skipping
-    # the __delattr__ and __setattr__ in AutoTrackable will keep the status quo.
+    # class forced us to have AutoTrackable in the class hierarchy.
+    #
+    # TODO(b/180760306) Keeping the status quo of skipping _delattr__ and
+    # __setattr__ in AutoTrackable may be unsustainable.
     existing_value = getattr(self, name, None)
 
     # If this value is replacing an existing object assigned to an attribute, we
@@ -2901,8 +2903,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
       backend.track_variable(val)
 
-    # Skip the auto trackable from tf.Module to keep status quo. See the comment
-    # at __delattr__.
+    # TODO(b/180760306) Skip the auto trackable from tf.Module to keep status
+    # quo. See the comment at __delattr__.
     super(tracking.AutoTrackable, self).__setattr__(name, value)
 
   def _gather_children_attribute(self, attribute):
@@ -2976,12 +2978,15 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     self.__class__._call_accepts_kwargs.fget.cache.pop(self, None)
 
     call_fn_args = self._call_fn_args
+    call_fn_args += self._call_full_argspec.kwonlyargs or []
     self._expects_training_arg = ('training' in call_fn_args or
                                   self._call_accepts_kwargs)
     # The default training arg will be any (non-None) default specified in the
     # method signature, or None if no value is specified.
-    self._default_training_arg = self._call_fn_arg_defaults.get(
-        'training')
+    call_fn_arg_defaults = self._call_fn_arg_defaults.copy()
+    call_fn_arg_defaults.update(self._call_full_argspec.kwonlydefaults or {})
+    self._default_training_arg = call_fn_arg_defaults.get('training')
+
     self._expects_mask_arg = ('mask' in call_fn_args or
                               self._call_accepts_kwargs)
 

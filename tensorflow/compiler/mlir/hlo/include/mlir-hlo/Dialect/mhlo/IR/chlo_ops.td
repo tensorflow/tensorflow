@@ -178,6 +178,15 @@ def HLOClient_BroadcastMulOp : HLOClient_BroadcastBinaryElementwiseOp<
   }];
 }
 
+def HLOClient_BroadcastPolygammaOp : HLOClient_BroadcastBinaryElementwiseOp<
+    "broadcast_polygamma", [NoSideEffect, SameOperandsAndResultElementType]> {
+  let summary = "Polygamma function (with optional broadcasting)";
+
+  let description = [{
+    Returns `Polygamma(operand, operand)` element-wise.
+  }];
+}
+
 def HLOClient_BroadcastPowOp : HLOClient_BroadcastBinaryElementwiseOp<
     "broadcast_power",
     [NoSideEffect, SameOperandsAndResultElementType]> {
@@ -339,10 +348,9 @@ def HLOClient_BroadcastXorOp : HLOClient_BroadcastBinaryLogicalElementwiseOp<
 // not part of the HLO compiler instructions as modelled by the MHLO dialect.
 //===----------------------------------------------------------------------===//
 
-def HLOClient_ZetaOp : HLOClient_Op<"zeta",
-    [NoSideEffect, SameOperandsAndResultType]> {
+def HLOClient_ZetaOp : HLOClient_Op<"zeta", [NoSideEffect,
+    SameOperandsAndResultType]> {
   let summary = "Hurwitz zeta function";
-
   let description = [{
     Returns `Zeta(operand, operand)` element-wise.
 
@@ -351,15 +359,26 @@ def HLOClient_ZetaOp : HLOClient_Op<"zeta",
     $$
   }];
 
-  let arguments = (ins
-    HLO_FpTensor:$x,
-    HLO_FpTensor:$q
-  );
-
-  let results = (outs HLO_FpTensor);
+  let arguments = (ins HLO_FpTensor:$x, HLO_FpTensor:$q);
+  let results = (outs HLO_FpTensor:$result);
 
   let assemblyFormat = [{
-    $x `,` $q attr-dict `:` `(` type($x) `,` type($q) `)` `->` type(results)
+    $x `,` $q attr-dict `:` type($x) `,` type($q) `->` type(results)
+  }];
+}
+
+def HLOClient_PolygammaOp : HLOClient_Op<"polygamma", [NoSideEffect,
+    SameOperandsAndResultType]> {
+  let summary = "Polygamma function";
+  let description = [{
+    Returns `Polygamma(operand, operand)` element-wise.
+  }];
+
+  let arguments = (ins HLO_FpTensor:$n, HLO_FpTensor:$x);
+  let results = (outs HLO_FpTensor:$result);
+
+  let assemblyFormat = [{
+    $n `,` $x attr-dict `:` type($n) `,` type($x) `->` type(results)
   }];
 }
 
@@ -657,6 +676,81 @@ def HLOClient_BroadcastCompareOp : HLOClient_BroadcastBinaryElementwiseOp<
     OpBuilderDAG<(ins "Value":$lhs, "Value":$rhs,
       "DenseIntElementsAttr":$broadcast_dimensions,
       "StringAttr":$comparison_direction, CArg<"StringAttr", "{}">:$compare_type)>];
+}
+
+//===----------------------------------------------------------------------===//
+// Broadcasting select op
+//===----------------------------------------------------------------------===//
+
+def HLOClient_BroadcastSelectOp : HLOClient_Op<
+    "broadcast_select",
+    [NoSideEffect, DeclareOpInterfaceMethods<InferShapedTypeOpInterface>]> {
+  string summary = "Select operator (with optional numpy-style broadcasting)";
+
+  string description = [{
+    Constructs an output array from elements of two input arrays, based on the
+    values of a predicate array.
+
+    See https://www.tensorflow.org/xla/operation_semantics#select
+  }];
+
+  let arguments = (ins
+    HLO_PredTensor:$pred,
+    HLO_Tensor:$on_true,
+    HLO_Tensor:$on_false
+  );
+
+  let results = (outs HLO_Tensor);
+
+  let assemblyFormat = [{
+    $pred `,` $on_true `,` $on_false attr-dict `:`
+    `(` type($pred) `,` type($on_true) `,` type($on_false) `)` `->` type(results)
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// Helper ops
+//===----------------------------------------------------------------------===//
+
+def HLOClient_MinimumBroadcastShapesOp :
+    HLOClient_Op<"minimum_broadcast_shapes", [NoSideEffect]> {
+  string summary = "Minimizes the rank of two or more shapes to be broadcasted";
+
+  string description = [{
+    Given two or more 1D tensors representing shapes, returns one 1D tensor for
+    each operand, where operand `i` corresponds to output `i`.
+
+    The returned tensors have the property that they specify a shape which is a
+    reshape of the corresponding input shape, and the broadcasted output shape
+    (using shape::BroadcastOp) of the returned shapes is a reshape of the
+    broadcasted output shape of the input shapes. Among all possibilities with
+    this property, the one is chosen which minimizes the rank of each returned
+    shape.
+
+    The general idea of this op is that it can be used for ops which have a
+    broadcasting semantic to operate on shapes with a possibly smaller rank
+    while preserving equivalence of the computed values. After computing the
+    result of the op using reshaped operands, the result can be reshaped to the
+    result that would have been originally computed.
+
+    Here is an example with two input shapes:
+
+    ```mlir
+    chlo.minimum_broadcast_shapes [1, 2, 3, 1, 2, 1],
+                                     [1, 1, 1, 2, 3] -> [6, 2, 1], [2, 3]
+    ```
+
+    The broadcasted output shape of the operands is [1, 2, 3, 1, 2, 3], the
+    broadcasted output shape of the outputs is [6, 2, 3]. These two shapes are
+    reshapes of each other, and also each output is a reshape of the
+    corresponding input.
+  }];
+
+  let arguments = (ins Variadic<1DTensorOf<[Index]>>:$shapes);
+  let results = (outs Variadic<1DTensorOf<[Index]>>:$results);
+
+  let assemblyFormat = "$shapes attr-dict `:` type($shapes) `->` type($results)";
+
 }
 
 #endif  // CHLO_OPS

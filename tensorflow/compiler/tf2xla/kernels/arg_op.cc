@@ -13,12 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -60,6 +62,17 @@ class XlaArgOp : public XlaOpKernel {
                 errors::InvalidArgument("Invalid/missing argument expression"));
     if (ctx->expected_output_dtype(0) == DT_VARIANT) {
       ctx->SetTensorListOutput(0, arg.handle());
+    } else if (arg.value_bound().has_value()) {
+      // The argument has a bound attached to it, call SetBound op on the
+      // argument.
+      xla::XlaBuilder* builder = ctx->builder();
+      auto input_op = arg.AsXlaOp(builder);
+      xla::Literal bound = HostTensorToLiteral(*arg.value_bound()).ValueOrDie();
+      ctx->SetOutput(
+          0, xla::CustomCall(builder, "SetBound", {input_op},
+                             builder->GetShape(input_op).ValueOrDie(), "",
+                             false, {}, &bound));
+      return;
     } else {
       ctx->SetOutputExpression(0, arg);
     }

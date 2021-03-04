@@ -582,7 +582,7 @@ LogicalResult FormClustersInBlock(
     cluster->setAttrs(
         cluster_metadata->second.getDictionary(cluster.getContext()));
     // Exclude `num_replicas` as cluster should be replicated if necessary.
-    cluster.removeAttr(kNumReplicasAttr);
+    cluster->removeAttr(kNumReplicasAttr);
   }
 
   return success();

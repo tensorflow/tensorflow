@@ -81,7 +81,7 @@ public final class NativeInterpreterWrapperTest {
       NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(INVALID_MODEL_PATH);
       fail();
     } catch (IllegalArgumentException e) {
-      assertThat(e).hasMessageThat().contains("The model is not a valid Flatbuffer file");
+      assertThat(e).hasMessageThat().contains("The model is not a valid Flatbuffer");
     }
   }
 
@@ -92,7 +92,6 @@ public final class NativeInterpreterWrapperTest {
       NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(NONEXISTING_MODEL_PATH);
       fail();
     } catch (IllegalArgumentException e) {
-      assertThat(e).hasMessageThat().contains("The model is not a valid Flatbuffer file");
       assertThat(e).hasMessageThat().contains("Could not open");
     }
   }

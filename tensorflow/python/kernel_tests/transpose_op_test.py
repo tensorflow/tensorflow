@@ -79,7 +79,7 @@ class TransposeTest(test.TestCase):
     np_ans = self._np_transpose(x, perm)
     if conjugate:
       np_ans = np.conj(np_ans)
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       inx = ops.convert_to_tensor(x)
       y = array_ops.transpose(inx, p, conjugate=conjugate)
       tf_ans = self.evaluate(y)
@@ -170,7 +170,7 @@ class TransposeTest(test.TestCase):
           inp = np.arange(
               1, total_size + 1, dtype=datatype).reshape(input_shape)
           np_ans = self._np_transpose(inp, perm)
-          with self.cached_session(use_gpu=True):
+          with self.cached_session():
             inx = ops.convert_to_tensor(inp)
             y = array_ops.transpose(inx, perm)
             tf_ans = self.evaluate(y)
@@ -193,7 +193,7 @@ class TransposeTest(test.TestCase):
         inp = np.arange(
             1, total_size + 1, dtype=np.float32).reshape(input_shape)
         np_ans = self._np_transpose(inp, perm)
-        with self.cached_session(use_gpu=True):
+        with self.cached_session():
           inx = ops.convert_to_tensor(inp)
           y = array_ops.transpose(inx, perm)
           tf_ans = self.evaluate(y)
@@ -230,7 +230,7 @@ class TransposeTest(test.TestCase):
         inp = np.arange(
             1, total_size + 1, dtype=np.float32).reshape(input_shape)
         np_ans = self._np_transpose(inp, perm)
-        with self.cached_session(use_gpu=True):
+        with self.cached_session():
           inx = ops.convert_to_tensor(inp)
           y = array_ops.transpose(inx, perm)
           tf_ans = self.evaluate(y)
@@ -255,7 +255,7 @@ class TransposeTest(test.TestCase):
           inp = np.arange(
               1, total_size + 1, dtype=datatype).reshape(input_shape)
           np_ans = self._np_transpose(inp, perm)
-          with self.cached_session(use_gpu=True):
+          with self.cached_session():
             inx = ops.convert_to_tensor(inp)
             y = array_ops.transpose(inx, perm)
             tf_ans = self.evaluate(y)
@@ -278,7 +278,7 @@ class TransposeTest(test.TestCase):
         inp = np.arange(
             1, total_size + 1, dtype=np.float32).reshape(input_shape)
         np_ans = self._np_transpose(inp, perm)
-        with self.cached_session(use_gpu=True):
+        with self.cached_session():
           inx = ops.convert_to_tensor(inp)
           y = array_ops.transpose(inx, perm)
           tf_ans = self.evaluate(y)
@@ -331,7 +331,7 @@ class TransposeTest(test.TestCase):
       with self.subTest(input_shape=input_shape, perm=perm):
         inp = np.random.randint(10, size=input_shape)
         np_ans = self._np_transpose(inp, perm)
-        with self.cached_session(use_gpu=True):
+        with self.cached_session():
           inx = ops.convert_to_tensor(inp)
           y = array_ops.transpose(inx, perm)
           tf_ans = self.evaluate(y)
@@ -355,7 +355,7 @@ class TransposeTest(test.TestCase):
         x = np.arange(0, 8).reshape([2, 4]).astype(np.float32)
         p = np.array([1, 0]).astype(perm_dtype)
         np_ans = np.copy(x).transpose(p)
-        with self.cached_session(use_gpu=True):
+        with self.cached_session():
           inx = ops.convert_to_tensor(x)
           inp = constant_op.constant(p)
           y = array_ops.transpose(inx, inp)

@@ -20,10 +20,6 @@ load(
     "if_tensorrt",
 )
 load(
-    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
-load(
     "@local_config_cuda//cuda:build_defs.bzl",
     "cuda_library",
     "if_cuda",
@@ -54,6 +50,7 @@ load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 # and tensorflow/tools/pip_package/setup.py
 VERSION = "2.5.0"
 VERSION_MAJOR = VERSION.split(".")[0]
+two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 
 def clean_dep(target):
     """Returns string to 'target' in @org_tensorflow repository.
@@ -99,21 +96,6 @@ def if_nvcc(a):
         "@local_config_cuda//cuda:using_nvcc": a,
         "//conditions:default": [],
     })
-
-# In Google builds, this corresponds to whether `--config=cuda` has been
-# specified. In OSS, this corresponds to whether the environment contains
-# TF_NEED_CUDA=1, which is in turn triggered by --config=using_cuda through
-# .bazelrc, which is again triggered by --config=cuda.
-#
-# In other words, --config=cuda is sufficient for this function to return
-# x both for Google and OSS builds. But for OSS builds it is not necessary.
-# We are working on a plan to clean up this complicated setup.
-def if_cuda_is_configured_compat(x):
-    # copybara:uncomment_begin(--config=cuda is necessary and sufficient)
-    # return if_cuda(x)
-    # copybara:uncomment_end_and_comment_begin
-    return if_cuda_is_configured(x)
-    # copybara:comment_end
 
 def if_xla_available(if_true, if_false = []):
     return select({
@@ -268,7 +250,7 @@ def if_windows(a, otherwise = []):
 
 def if_windows_cuda(a, otherwise = []):
     return select({
-        clean_dep("//tensorflow:with_cuda_support_windows_override"): a,
+        clean_dep("//tensorflow:is_cuda_enabled_and_windows"): a,
         "//conditions:default": otherwise,
     })
 
@@ -314,6 +296,9 @@ def if_registration_v2(if_true, if_false = []):
         "//tensorflow:registration_v2": if_true,
         "//conditions:default": if_false,
     })
+
+def if_portable(if_true, if_false = []):
+    return if_true
 
 # Linux systems may required -lrt linker flag for e.g. clock_gettime
 # see https://github.com/tensorflow/tensorflow/issues/15129
@@ -378,7 +363,7 @@ def tf_copts(
         if_libtpu(["-DLIBTPU_ON_GCE"], []) +
         if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) +
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
-        if_mkl(["-DINTEL_MKL=1", "-DENABLE_MKLDNN_V1", "-DENABLE_INTEL_MKL_BFLOAT16", "-DINTEL_MKL_DNN_ONLY"]) +
+        if_mkl(["-DINTEL_MKL=1"]) +
         if_mkldnn_threadpool(["-DENABLE_MKLDNN_THREADPOOL"]) +
         if_enable_mkl(["-DENABLE_MKL"]) +
         if_android_arm(["-mfpu=neon"]) +
@@ -1182,12 +1167,36 @@ def tf_gpu_cc_test(
         }),
         suffix = "_gpu",
         tags = tags + tf_gpu_tests_tags(),
-        deps = deps + if_cuda_is_configured([
-            clean_dep("//tensorflow/core:gpu_runtime"),
-        ]) + if_rocm_is_configured([
+        deps = deps + if_cuda_or_rocm([
             clean_dep("//tensorflow/core:gpu_runtime"),
         ]),
     )
+    if "multi_gpu" in tags or "multi_and_single_gpu" in tags:
+        cleaned_tags = tags + two_gpu_tags
+        if "requires-gpu-nvidia" in cleaned_tags:
+            cleaned_tags.remove("requires-gpu-nvidia")
+        tf_cc_test(
+            name = name,
+            size = size,
+            srcs = srcs,
+            args = args,
+            data = data,
+            extra_copts = extra_copts,
+            kernels = kernels,
+            linkopts = linkopts,
+            linkstatic = select({
+                # TODO(allenl): Remove Mac static linking when Bazel 0.6 is out.
+                clean_dep("//tensorflow:macos"): 1,
+                "@local_config_cuda//cuda:using_nvcc": 1,
+                "@local_config_cuda//cuda:using_clang": 1,
+                "//conditions:default": 0,
+            }),
+            suffix = "_2gpu",
+            tags = cleaned_tags,
+            deps = deps + if_cuda_or_rocm([
+                clean_dep("//tensorflow/core:gpu_runtime"),
+            ]),
+        )
 
 # terminology changes: saving tf_cuda_* definition for compatibility
 def tf_cuda_cc_test(*args, **kwargs):
@@ -1367,14 +1376,14 @@ def _cuda_copts(opts = []):
         """
     return select({
         "//conditions:default": [],
-        "@local_config_cuda//cuda:using_nvcc": ([
+        "@local_config_cuda//cuda:using_nvcc": [
             "-nvcc_options=relaxed-constexpr",
             "-nvcc_options=ftz=true",
-        ]),
-        "@local_config_cuda//cuda:using_clang": ([
+        ] + opts,
+        "@local_config_cuda//cuda:using_clang": [
             "-fcuda-flush-denormals-to-zero",
-        ]),
-    }) + if_cuda_is_configured_compat(opts)
+        ] + opts,
+    })
 
 # Build defs for TensorFlow kernels
 
@@ -1399,10 +1408,9 @@ def tf_gpu_kernel_library(
         srcs = srcs,
         hdrs = hdrs,
         copts = copts,
-        deps = deps + if_cuda_is_configured_compat([
+        deps = deps + if_cuda([
             clean_dep("//tensorflow/stream_executor/cuda:cudart_stub"),
-            clean_dep("//tensorflow/core:gpu_lib"),
-        ]) + if_rocm_is_configured([
+        ]) + if_cuda_or_rocm([
             clean_dep("//tensorflow/core:gpu_lib"),
         ]),
         alwayslink = 1,
@@ -1412,32 +1420,33 @@ def tf_gpu_kernel_library(
 def tf_gpu_library(deps = None, cuda_deps = None, copts = tf_copts(), **kwargs):
     """Generate a cc_library with a conditional set of CUDA dependencies.
 
-      When the library is built with --config=cuda:
+    When the library is built with --config=cuda:
 
-      - Both deps and cuda_deps are used as dependencies.
-      - The cuda runtime is added as a dependency (if necessary).
-      - The library additionally passes -DGOOGLE_CUDA=1 to the list of copts.
-      - In addition, when the library is also built with TensorRT enabled, it
-          additionally passes -DGOOGLE_TENSORRT=1 to the list of copts.
+    - Both deps and cuda_deps are used as dependencies.
+    - The cuda runtime is added as a dependency (if necessary).
+    - The library additionally passes -DGOOGLE_CUDA=1 to the list of copts.
+    - In addition, when the library is also built with TensorRT enabled, it
+        additionally passes -DGOOGLE_TENSORRT=1 to the list of copts.
 
-      Args:
-      - cuda_deps: BUILD dependencies which will be linked if and only if:
-          '--config=cuda' is passed to the bazel command line.
-      - deps: dependencies which will always be linked.
-      - copts: copts always passed to the cc_library.
-      - kwargs: Any other argument to cc_library.
-      """
+    Args:
+      cuda_deps: BUILD dependencies which will be linked if and only if:
+        '--config=cuda' is passed to the bazel command line.
+      deps: dependencies which will always be linked.
+      copts: copts always passed to the cc_library.
+      **kwargs: Any other argument to cc_library.
+    """
     if not deps:
         deps = []
     if not cuda_deps:
         cuda_deps = []
 
     kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
+    deps = deps + if_cuda_or_rocm(cuda_deps)
     cc_library(
-        deps = deps + if_cuda_is_configured_compat(cuda_deps + [
+        deps = deps + if_cuda([
             clean_dep("//tensorflow/stream_executor/cuda:cudart_stub"),
             "@local_config_cuda//cuda:cuda_headers",
-        ]) + if_rocm_is_configured(cuda_deps + [
+        ]) + if_rocm_is_configured([
             "@local_config_rocm//rocm:rocm_headers",
         ]),
         copts = (copts + if_cuda(["-DGOOGLE_CUDA=1"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) + if_mkl(["-DINTEL_MKL=1"]) + if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
@@ -1833,15 +1842,12 @@ check_deps = rule(
 def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [], copts = [], **kwargs):
     """Helper to build a dynamic library (.so) from the sources containing implementations of custom ops and kernels.
       """
-    cuda_deps = [
+    deps = deps + if_cuda_or_rocm([
         clean_dep("//tensorflow/core:stream_executor_headers_lib"),
+    ]) + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cudart_static",
-    ]
-    rocm_deps = [
-        clean_dep("//tensorflow/core:stream_executor_headers_lib"),
-    ]
-    deps = deps + tf_custom_op_library_additional_deps()
+    ]) + tf_custom_op_library_additional_deps()
 
     # Override EIGEN_STRONG_INLINE to inline when
     # --define=override_eigen_strong_inline=true to avoid long compiling time.
@@ -1855,11 +1861,10 @@ def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [
             srcs = gpu_srcs,
             copts = copts + tf_copts() + _cuda_copts() + rocm_copts() +
                     if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
-            deps = deps + if_cuda_is_configured_compat(cuda_deps) + if_rocm_is_configured(rocm_deps),
+            deps = deps,
             **kwargs
         )
-        cuda_deps.extend([":" + basename + "_gpu"])
-        rocm_deps.extend([":" + basename + "_gpu"])
+        deps = deps + [":" + basename + "_gpu"]
 
     check_deps(
         name = name + "_check_deps",
@@ -1867,12 +1872,12 @@ def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [
             clean_dep("//tensorflow/core:framework"),
             clean_dep("//tensorflow/core:lib"),
         ],
-        deps = deps + if_cuda_is_configured_compat(cuda_deps) + if_rocm_is_configured(rocm_deps),
+        deps = deps,
     )
     tf_cc_shared_object(
         name = name,
         srcs = srcs,
-        deps = deps + if_cuda_is_configured_compat(cuda_deps) + if_rocm_is_configured(rocm_deps),
+        deps = deps,
         data = if_static([name + "_check_deps"]),
         copts = copts + tf_copts(is_external = True),
         features = ["windows_export_all_symbols"],
@@ -2283,11 +2288,18 @@ def gpu_py_test(
         main = name + ".py"
     if "additional_deps" in kwargs:
         fail("Use `deps` to specify dependencies. `additional_deps` has been replaced with the standard pattern of `deps`.")
-    for config in ["cpu", "gpu"]:
+    configs = ["cpu", "gpu"]
+    if "multi_gpu" in tags or "multi_and_single_gpu" in tags:
+        configs = configs + ["2gpu"]
+    for config in configs:
         test_name = name
         test_tags = tags
         if config == "gpu":
             test_tags = test_tags + tf_gpu_tests_tags()
+        if config == "2gpu":
+            test_tags = test_tags + two_gpu_tags
+            if "requires-gpu-nvidia" in test_tags:
+                test_tags.remove("requires-gpu-nvidia")
         if xla_enable_strict_auto_jit:
             tf_py_test(
                 name = test_name + "_xla_" + config,
@@ -2307,6 +2319,8 @@ def gpu_py_test(
             )
         if config == "gpu":
             test_name += "_gpu"
+        if config == "2gpu":
+            test_name += "_2gpu"
         tf_py_test(
             name = test_name,
             size = size,
@@ -2379,12 +2393,33 @@ def gpu_py_tests(
         **kwargs):
     # TODO(b/122522101): Don't ignore xla_enable_strict_auto_jit and enable additional
     # XLA tests once enough compute resources are available.
-    test_tags = tags + tf_gpu_tests_tags()
-    if "additional_deps" in kwargs:
-        fail("Use `deps` to specify dependencies. `additional_deps` has been replaced with the standard pattern of `deps`.")
-    if xla_enable_strict_auto_jit:
+    test_tags = [tags + tf_gpu_tests_tags()]
+    if "multi_gpu" in tags or "multi_and_single_gpu" in tags:
+        two_gpus = tags + two_gpu_tags
+        if "requires-gpu-nvidia" in two_gpus:
+            two_gpus.remove("requires-gpu-nvidia")
+        test_tags.append(two_gpus)
+
+    for test_tag in test_tags:
+        if "additional_deps" in kwargs:
+            fail("Use `deps` to specify dependencies. `additional_deps` has been replaced with the standard pattern of `deps`.")
+        if xla_enable_strict_auto_jit:
+            py_tests(
+                name = name + "_xla",
+                size = size,
+                srcs = srcs,
+                data = data,
+                grpc_enabled = grpc_enabled,
+                kernels = kernels,
+                prefix = prefix,
+                shard_count = shard_count,
+                tags = test_tag + ["xla", "manual"],
+                xla_enabled = xla_enabled,
+                xla_enable_strict_auto_jit = True,
+                **kwargs
+            )
         py_tests(
-            name = name + "_xla",
+            name = name,
             size = size,
             srcs = srcs,
             data = data,
@@ -2392,25 +2427,11 @@ def gpu_py_tests(
             kernels = kernels,
             prefix = prefix,
             shard_count = shard_count,
-            tags = test_tags + ["xla", "manual"],
+            tags = test_tag,
             xla_enabled = xla_enabled,
-            xla_enable_strict_auto_jit = True,
+            xla_enable_strict_auto_jit = False,
             **kwargs
         )
-    py_tests(
-        name = name,
-        size = size,
-        srcs = srcs,
-        data = data,
-        grpc_enabled = grpc_enabled,
-        kernels = kernels,
-        prefix = prefix,
-        shard_count = shard_count,
-        tags = test_tags,
-        xla_enabled = xla_enabled,
-        xla_enable_strict_auto_jit = False,
-        **kwargs
-    )
 
 # terminology changes: saving cuda_* definition for compatibility
 def cuda_py_tests(*args, **kwargs):

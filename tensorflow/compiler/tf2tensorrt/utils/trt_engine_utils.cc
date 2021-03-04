@@ -247,7 +247,9 @@ Status SetTrtEngineOutputs(nvinfer1::ICudaEngine* cuda_engine,
       bool status = output_tensor->CopyFrom(*output_tensor, output_shape);
       if (!status) {
         return errors::Internal(
-            "Buffer size do not match while reshaping output tensors");
+            "Buffer size (", output_tensor->NumElements(),
+            ") do not match while reshaping output tensors to shape ",
+            output_shape.DebugString());
       }
     }
 

@@ -1258,7 +1258,7 @@ beta function.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_BiasAddOp : TF_Op<"BiasAdd", [NoSideEffect, TF_ContractionFusableInterface, TF_LayoutSensitiveInterface]> {
+def TF_BiasAddOp : TF_Op<"BiasAdd", [NoSideEffect, TF_LayoutSensitiveInterface]> {
   let summary = "Adds `bias` to `value`.";
 
   let description = [{
@@ -1280,8 +1280,6 @@ Broadcasting is supported, so `value` may have any number of dimensions.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let extraClassDeclaration = [{
-    // TF_ContractionFusableInterface:
-    Optional<ContractionFusion> GetContractionFusion();
     // TF_LayoutSensitiveInterface:
     SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0}; }
     SmallVector<unsigned, 4> GetLayoutDependentResults() { return {0}; }
@@ -3889,6 +3887,8 @@ Returns the input tensor otherwise.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasFolder = 1;
 }
 
 def TF_EqualOp : TF_Op<"Equal", [Commutative, NoSideEffect]> {
@@ -6014,7 +6014,7 @@ def TF_LRNGradOp : TF_Op<"LRNGrad", [NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_LeakyReluOp : TF_Op<"LeakyRelu", [NoSideEffect, TF_ContractionFusableInterface, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_LeakyReluOp : TF_Op<"LeakyRelu", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes rectified linear: `max(features, features * alpha)`.";
 
   let arguments = (ins
@@ -6030,11 +6030,6 @@ def TF_LeakyReluOp : TF_Op<"LeakyRelu", [NoSideEffect, TF_ContractionFusableInte
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasFolder = 1;
-
-  let extraClassDeclaration = [{
-    // TF_ContractionFusableInterface:
-    Optional<ContractionFusion> GetContractionFusion();
-  }];
 }
 
 def TF_LeakyReluGradOp : TF_Op<"LeakyReluGrad", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
@@ -8570,6 +8565,28 @@ the result here is consistent with a truncating divide. E.g.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_ModelDatasetOp : TF_Op<"ModelDataset", [NoSideEffect]> {
+  let summary = "Identity transformation that models performance.";
+
+  let description = [{
+Identity transformation that models performance.
+  }];
+
+  let arguments = (ins
+    Arg<TF_VariantTensor, [{A variant tensor representing the input dataset.}]>:$input_dataset,
+
+    DefaultValuedAttr<I64Attr, "0">:$algorithm,
+    DefaultValuedAttr<I64Attr, "0">:$cpu_budget,
+    DefaultValuedAttr<I64Attr, "0">:$ram_budget,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+}
+
 def TF_MulOp : TF_Op<"Mul", [Commutative, NoSideEffect, ResultsBroadcastableShape, TF_CwiseBinary, TF_SameOperandsAndResultElementTypeResolveRef]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Returns x * y element-wise.";
@@ -9224,6 +9241,31 @@ def TF_OnesLikeOp : TF_Op<"OnesLike", [Idempotent, NoSideEffect, SameOperandsAnd
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_OptimizeDatasetV2Op : TF_Op<"OptimizeDatasetV2", [NoSideEffect]> {
+  let summary = [{
+Creates a dataset by applying related optimizations to `input_dataset`.
+  }];
+
+  let description = [{
+Creates a dataset by applying related optimizations to `input_dataset`.
+  }];
+
+  let arguments = (ins
+    Arg<TF_VariantTensor, [{A variant tensor representing the input dataset.}]>:$input_dataset,
+    Arg<TF_StrTensor, [{A `tf.string` vector `tf.Tensor` identifying user enabled optimizations.}]>:$optimizations_enabled,
+    Arg<TF_StrTensor, [{A `tf.string` vector `tf.Tensor` identifying user disabled optimizations.}]>:$optimizations_disabled,
+    Arg<TF_StrTensor, [{A `tf.string` vector `tf.Tensor` identifying optimizations by default.}]>:$optimizations_default,
+
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<StrArrayAttr, "{}">:$optimization_configs
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+}
+
 def TF_OptionalGetValueOp : TF_Op<"OptionalGetValue", [NoSideEffect]> {
   let summary = [{
 Returns the value stored in an Optional variant or raises an error if none exists.
@@ -9311,6 +9353,8 @@ This is the opposite of `unpack`.
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasCanonicalizer = 1;
 
   let hasFolder = 1;
 }
@@ -10588,7 +10632,7 @@ set to `1` depending on `keep_dims`.}]>:$output
   );
 }
 
-def TF_ReluOp : TF_Op<"Relu", [Idempotent, NoSideEffect, SameOperandsAndResultType, TF_ContractionFusableInterface, TF_LayoutAgnostic]> {
+def TF_ReluOp : TF_Op<"Relu", [Idempotent, NoSideEffect, SameOperandsAndResultType, TF_LayoutAgnostic]> {
   let summary = "Computes rectified linear: `max(features, 0)`.";
 
   let description = [{
@@ -10607,11 +10651,6 @@ array([ 0.,  0., -0.,  3.], dtype=float32)
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-
-  let extraClassDeclaration = [{
-    // TF_ContractionFusableInterface:
-    Optional<ContractionFusion> GetContractionFusion();
-  }];
 }
 
 def TF_Relu6Op : TF_Op<"Relu6", [Idempotent, NoSideEffect, SameOperandsAndResultType]> {
@@ -11823,6 +11862,44 @@ shape must be exactly the shape produced by the slice of `ref`.
   TF_DerivedOperandTypeAttr Index = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_RestoreOp : TF_Op<"Restore", []> {
+  let summary = "Restores a tensor from checkpoint files.";
+
+  let description = [{
+Reads a tensor stored in one or several files. If there are several files (for
+instance because a tensor was saved as slices), `file_pattern` may contain
+wildcard symbols (`*` and `?`) in the filename portion only, not in the
+directory portion.
+
+If a `file_pattern` matches several files, `preferred_shard` can be used to hint
+in which file the requested tensor is likely to be found. This op will first
+open the file at index `preferred_shard` in the list of matching files and try
+to restore tensors from that file.  Only if some tensors or tensor slices are
+not found in that first file, then the Op opens all the files. Setting
+`preferred_shard` to match the value passed as the `shard` input
+of a matching `Save` Op may speed up Restore.  This attribute only affects
+performance, not correctness.  The default value -1 means files are processed in
+order.
+
+See also `RestoreSlice`.
+  }];
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{Must have a single element. The pattern of the files from
+which we read the tensor.}]>:$file_pattern,
+    Arg<TF_StrTensor, [{Must have a single element. The name of the tensor to be
+restored.}]>:$tensor_name,
+
+    DefaultValuedAttr<I64Attr, "-1">:$preferred_shard
+  );
+
+  let results = (outs
+    Res<TF_Tensor, [{The restored tensor.}]>:$tensor
+  );
+
+  TF_DerivedResultTypeAttr dt = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_RestoreV2Op : TF_Op<"RestoreV2", []> {
   let summary = "Restores tensors from a V2 checkpoint.";
 
@@ -12608,6 +12685,27 @@ def TF_RiscDotOp : TF_Op<"RiscDot", [NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_RngReadAndSkipOp : TF_Op<"RngReadAndSkip", []> {
+  let summary = "Advance the counter of a counter-based RNG.";
+
+  let description = [{
+The state of the RNG after
+`rng_read_and_skip(n)` will be the same as that after `uniform([n])`
+(or any other distribution). The actual increment added to the
+counter is an unspecified implementation choice.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$resource,
+    TF_Int32Tensor:$alg,
+    TF_Uint64Tensor:$delta
+  );
+
+  let results = (outs
+    TF_Int64Tensor:$value
+  );
+}
+
 def TF_RollOp : TF_Op<"Roll", [NoSideEffect]> {
   let summary = "Rolls the elements of a tensor along an axis.";
 
@@ -12714,6 +12812,28 @@ is the corresponding input gradient.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_SaveOp : TF_Op<"Save", []> {
+  let summary = "Saves the input tensors to disk.";
+
+  let description = [{
+The size of `tensor_names` must match the number of tensors in `data`. `data[i]`
+is written to `filename` with name `tensor_names[i]`.
+
+See also `SaveSlices`.
+  }];
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{Must have a single element. The name of the file to which we write
+the tensor.}]>:$filename,
+    Arg<TF_StrTensor, [{Shape `[N]`. The names of the tensors to be saved.}]>:$tensor_names,
+    Arg<Variadic<TF_Tensor>, [{`N` tensors to save.}]>:$data
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<2>;
 }
 
 def TF_SaveSlicesOp : TF_Op<"SaveSlices", []> {
@@ -14948,6 +15068,32 @@ The outputs are a deterministic function of `shape` and `seed`.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tseed = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_StatelessRandomUniformFullIntV2Op : TF_Op<"StatelessRandomUniformFullIntV2", [NoSideEffect]> {
+  let summary = [{
+Outputs deterministic pseudorandom random integers from a uniform distribution.
+  }];
+
+  let description = [{
+The generated values are uniform integers covering the whole range of `dtype`.
+
+The outputs are a deterministic function of `shape`, `key`, `counter` and `alg`.
+  }];
+
+  let arguments = (ins
+    Arg<TF_I32OrI64Tensor, [{The shape of the output tensor.}]>:$shape,
+    Arg<TF_Uint64Tensor, [{Key for the counter-based RNG algorithm (shape uint64[1]).}]>:$key,
+    Arg<TF_Uint64Tensor, [{Initial counter for the counter-based RNG algorithm (shape uint64[2] or uint64[1] depending on the algorithm). If a larger vector is given, only the needed portion on the left (i.e. [:N]) will be used.}]>:$counter,
+    Arg<TF_Int32Tensor, [{The RNG algorithm (shape int32[]).}]>:$alg
+  );
+
+  let results = (outs
+    Res<TensorOf<[TF_Int32, TF_Int64, TF_Uint32, TF_Uint64]>, [{Random values with specified shape.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tshape = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
@@ -17575,6 +17721,37 @@ https://www.tensorflow.org/performance/xla/operation_semantics#conv_convolution
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_XlaConvV2Op : TF_Op<"XlaConvV2", [NoSideEffect]> {
+  let summary = "Wraps the XLA ConvGeneralDilated operator, documented at";
+
+  let description = [{
+https://www.tensorflow.org/performance/xla/operation_semantics#conv_convolution
+.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{the input tensor}]>:$lhs,
+    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{the kernel tensor}]>:$rhs,
+    Arg<TF_I32OrI64Tensor, [{the inter-window strides}]>:$window_strides,
+    Arg<TF_I32OrI64Tensor, [{the padding to apply at the start and end of each input dimensions}]>:$padding,
+    Arg<TF_I32OrI64Tensor, [{dilation to apply between input elements}]>:$lhs_dilation,
+    Arg<TF_I32OrI64Tensor, [{dilation to apply between kernel elements}]>:$rhs_dilation,
+    Arg<TF_I32OrI64Tensor, [{number of feature groups for grouped convolution.}]>:$feature_group_count,
+
+    StrAttr:$dimension_numbers,
+    StrAttr:$precision_config
+  );
+
+  let results = (outs
+    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedOperandTypeAttr LhsT = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr RhsT = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr preferred_element_type = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_XlaDotOp : TF_Op<"XlaDot", [NoSideEffect]> {
   let summary = "Wraps the XLA DotGeneral operator, documented at";
 
@@ -17596,6 +17773,31 @@ https://www.tensorflow.org/performance/xla/operation_semantics#dotgeneral
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_XlaDotV2Op : TF_Op<"XlaDotV2", [NoSideEffect]> {
+  let summary = "Wraps the XLA DotGeneral operator, documented at";
+
+  let description = [{
+https://www.tensorflow.org/performance/xla/operation_semantics#dotgeneral
+.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{the LHS tensor}]>:$lhs,
+    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{the RHS tensor}]>:$rhs,
+
+    StrAttr:$dimension_numbers,
+    StrAttr:$precision_config
+  );
+
+  let results = (outs
+    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr LhsT = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr RhsT = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr preferred_element_type = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_XlaDynamicSliceOp : TF_Op<"XlaDynamicSlice", [NoSideEffect]> {

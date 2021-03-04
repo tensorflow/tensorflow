@@ -309,6 +309,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseLogistic(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_LOG_SOFTMAX: {
+      return ParseLogSoftmax(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_MAXIMUM: {
       return ParseMaximum(op, error_reporter, allocator, builtin_data);
     }
@@ -776,6 +780,21 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
+    case BuiltinOperator_HASHTABLE: {
+      auto params = safe_allocator.Allocate<TfLiteHashtableParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* hashtable_params =
+              op->builtin_options_as_HashtableOptions()) {
+        params->table_id = hashtable_params->table_id();
+        TF_LITE_ENSURE_STATUS(ConvertTensorType(
+            hashtable_params->key_dtype(), &params->key_dtype, error_reporter));
+        TF_LITE_ENSURE_STATUS(ConvertTensorType(hashtable_params->value_dtype(),
+                                                &params->value_dtype,
+                                                error_reporter));
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
     // Below are the ops with no builtin_data structure.
     // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are
     // ok for now, since there is no call implementation either.
@@ -785,7 +804,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_CUSTOM:
     case BuiltinOperator_EMBEDDING_LOOKUP:
     case BuiltinOperator_EQUAL:
-    case BuiltinOperator_LOG_SOFTMAX:
     case BuiltinOperator_MATRIX_DIAG:
     case BuiltinOperator_MATRIX_SET_DIAG:
     case BuiltinOperator_RELU_N1_TO_1:
@@ -810,6 +828,9 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_IMAG:
     case BuiltinOperator_REAL:
     case BuiltinOperator_COMPLEX_ABS:
+    case BuiltinOperator_HASHTABLE_FIND:
+    case BuiltinOperator_HASHTABLE_IMPORT:
+    case BuiltinOperator_HASHTABLE_SIZE:
       return kTfLiteOk;
     case BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES:
       return kTfLiteError;
@@ -836,6 +857,9 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
       return kTfLiteOk;
     case TensorType_INT32:
       *type = kTfLiteInt32;
+      return kTfLiteOk;
+    case TensorType_UINT32:
+      *type = kTfLiteUInt32;
       return kTfLiteOk;
     case TensorType_UINT8:
       *type = kTfLiteUInt8;
@@ -1436,6 +1460,14 @@ TfLiteStatus ParseLogistic(const Operator*, ErrorReporter*,
 // We have this parse function instead of directly returning kTfLiteOk from the
 // switch-case in ParseOpData because this function is used as part of the
 // selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseLogSoftmax(const Operator*, ErrorReporter*,
+                             BuiltinDataAllocator*, void**) {
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseMaximum(const Operator*, ErrorReporter*,
                           BuiltinDataAllocator*, void**) {
   return kTfLiteOk;
@@ -2007,6 +2039,14 @@ TfLiteStatus ParseSvdf(const Operator* op, ErrorReporter* error_reporter,
 // selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseTanh(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
                        void**) {
+  return kTfLiteOk;
+}
+//
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseTranspose(const Operator*, ErrorReporter*,
+                            BuiltinDataAllocator*, void**) {
   return kTfLiteOk;
 }
 

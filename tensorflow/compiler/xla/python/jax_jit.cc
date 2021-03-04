@@ -110,11 +110,54 @@ void CallSignature::DecRef() const {
 
 namespace {
 
-thread_local bool disable_jit;
-void SetDisableJit(bool disable_jit_) { disable_jit = disable_jit_; }
-bool GetDisableJit() { return disable_jit; }
+// These 2 constants are protected by the GIL.
+ABSL_CONST_INIT bool disable_jit_flag = false;
+ABSL_CONST_INIT bool enable_x64_flag = false;
+
+ABSL_CONST_INIT thread_local absl::optional<bool> disable_jit_thread_local =
+    absl::nullopt;
+ABSL_CONST_INIT thread_local absl::optional<bool> jax_enable_x64_thread_local =
+    absl::nullopt;
+
+// The x64 mode is controlled by:
+// - a global flag value, associated to --jax_enable_x64
+// - possibly a thread-local value, which initially is absl::nullopt and which
+//   will default to the flag value as long as it's not set.
+void SetEnableX64Flag(bool jax_enable_x64) { enable_x64_flag = jax_enable_x64; }
+bool GetEnableX64Flag() { return enable_x64_flag; }
+void SetEnableX64ThreadLocal(absl::optional<bool> jax_enable_x64) {
+  jax_enable_x64_thread_local = jax_enable_x64;
+}
+absl::optional<bool> GetEnableX64ThreadLocal() {
+  return jax_enable_x64_thread_local;
+}
+
+void SetDisableJitFlag(bool disable_jit) { disable_jit_flag = disable_jit; }
+bool GetDisableJitFlag() { return disable_jit_flag; }
+void SetDisableJitThreadLocal(absl::optional<bool> disable_jit) {
+  disable_jit_thread_local = disable_jit;
+}
+absl::optional<bool> GetDisableJitThreadLocal() {
+  return disable_jit_thread_local;
+}
+
+bool JitIsDisabled() {
+  if (disable_jit_thread_local != absl::nullopt) {
+    return disable_jit_thread_local.value();
+  } else {
+    return disable_jit_flag;
+  }
+}
 
 }  // namespace
+
+bool GetEnableX64() {
+  if (jax_enable_x64_thread_local != absl::nullopt) {
+    return jax_enable_x64_thread_local.value();
+  } else {
+    return enable_x64_flag;
+  }
+}
 
 std::string CallSignature::DebugString() const {
   std::vector<std::string> static_args_str;
@@ -841,9 +884,7 @@ struct CacheEntry {
 class CompiledFunction {
  public:
   CompiledFunction(py::function fun, py::function cache_miss,
-                   py::function get_device, py::function get_jax_enable_x64,
-                   py::function get_jax_disable_jit,
-                   std::vector<int> static_argnums);
+                   py::function get_device, std::vector<int> static_argnums);
   ~CompiledFunction();
 
   // This function will:
@@ -869,8 +910,6 @@ class CompiledFunction {
   CacheEntry* AddCacheEntry(const py::args& args, const py::kwargs& kwargs,
                             const CallSignature& signature,
                             py::object out_and_fastpath_data);
-  bool JitIsDisabled() { return GetDisableJit() || jax_disable_jit_.value(); }
-
   bool always_fallback_to_python_ = false;
 
   const py::function fun_;  // The Python function to jit.
@@ -883,22 +922,12 @@ class CompiledFunction {
   // We need a `unique_ptr` here to ensure value pointer stability.
   absl::flat_hash_map<CallSignature, std::unique_ptr<CacheEntry>> executables_;
 
-  // As top-level functions are decorated with `jax.jit`, when
-  // `CompiledFunction` is being instantiated from Python, the clients are not
-  // yet available (done after GoogleInit). They will be during the first call
-  // to `Call`.
   // A function taking no arguments and returning the default device and whether
   // jax.jit has been committed to it.
-  const py::function get_jax_enable_x64_;
-  const py::function get_jax_disable_jit_;
   const py::function get_device_;
 
   // The writing of the following is protected by the mutex.
   absl::Mutex mu_;
-  // The value of the Python flag. The value will be computed only during the
-  // first object call, because GoogleInit must have been executed.
-  absl::optional<bool> jax_enable_x64_ = absl::nullopt;
-  absl::optional<bool> jax_disable_jit_ = absl::nullopt;
 
   // The logic if the following:
   // - if `device` or `backend` are not specified to `jax.jit`, we will use
@@ -915,14 +944,10 @@ class CompiledFunction {
 
 CompiledFunction::CompiledFunction(py::function fun, py::function cache_miss,
                                    py::function get_device,
-                                   py::function get_jax_enable_x64,
-                                   py::function get_jax_disable_jit,
                                    std::vector<int> static_argnums)
     : fun_(std::move(fun)),
       cache_miss_(std::move(cache_miss)),
       static_argnums_(std::move(static_argnums)),
-      get_jax_enable_x64_(get_jax_enable_x64),
-      get_jax_disable_jit_(get_jax_disable_jit),
       get_device_(std::move(get_device)) {
   std::sort(static_argnums_.begin(), static_argnums_.end());
 }
@@ -1115,8 +1140,6 @@ py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
       absl::MutexLock lock1(&mu_);
       py::gil_scoped_acquire gil_aquire;
 
-      jax_enable_x64_ = py::cast<bool>(get_jax_enable_x64_());
-      jax_disable_jit_ = py::cast<bool>(get_jax_disable_jit_());
       if (!default_device_) {
         py::object device_and_is_committed = get_device_();
         try {
@@ -1147,10 +1170,12 @@ py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
     return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
   }
 
+  bool jax_enable_x64 = GetEnableX64();
+  arguments.signature.jax_enable_x64 = jax_enable_x64;
   // The C++ jit do not support Tracers arguments inputs yet. The Python-based
   // jit function will be called if any of the dynamic arguments is unsupported.
-  if (!ConvertArgsToBuffers(jax_enable_x64_.value(), *default_pyclient_,
-                            default_device_, is_committed_, arguments)
+  if (!ConvertArgsToBuffers(jax_enable_x64, *default_pyclient_, default_device_,
+                            is_committed_, arguments)
            .ok()) {
     return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
   }
@@ -1215,16 +1240,27 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
   cfun.def_property_readonly("__signature__",
                              &CompiledFunction::PythonSignature);
 
-  jitlib.def("set_disable_jit", &SetDisableJit);
-  jitlib.def("get_disable_jit", &GetDisableJit);
+  jitlib.def("set_disable_jit_cpp_flag", &SetDisableJitFlag);
+  jitlib.def("get_disable_jit_cpp_flag", &GetDisableJitFlag);
+  jitlib.def("set_disable_jit_thread_local", &SetDisableJitThreadLocal);
+  jitlib.def("get_disable_jit_thread_local", &GetDisableJitThreadLocal);
+  jitlib.def("jit_is_disabled", &JitIsDisabled);
+  // TODO(jblespiau): Remove from the Python code and remove this
+  jitlib.def("set_disable_jit", &SetDisableJitThreadLocal);
+  jitlib.def("get_disable_jit", &GetDisableJitThreadLocal);
+
+  jitlib.def("set_enable_x64_cpp_flag", &SetEnableX64Flag);
+  jitlib.def("get_enable_x64_cpp_flag", &GetEnableX64Flag);
+  jitlib.def("set_enable_x64_thread_local", &SetEnableX64ThreadLocal);
+  jitlib.def("get_enable_x64_thread_local", &GetEnableX64ThreadLocal);
+  jitlib.def("get_enable_x64", &GetEnableX64);
+
   jitlib.def(
       "jit",
       [](py::function fun, py::function cache_miss, py::function get_device,
-         py::function get_jax_enable_x64, py::function get_jax_disable_jit,
          std::vector<int> static_argnums) -> std::unique_ptr<CompiledFunction> {
         return std::make_unique<CompiledFunction>(
             std::move(fun), std::move(cache_miss), std::move(get_device),
-            std::move(get_jax_enable_x64), std::move(get_jax_disable_jit),
             std::move(static_argnums));
       });
 

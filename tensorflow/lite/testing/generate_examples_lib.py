@@ -333,5 +333,6 @@ def generate_multi_set_examples(options, test_sets):
 
       generate_examples(new_options)
 
-    archive.writestr("manifest.txt", "".join(multi_gen_state.zip_manifest),
+    zipinfo = zipfile.ZipInfo("manifest.txt")
+    archive.writestr(zipinfo, "".join(multi_gen_state.zip_manifest),
                      zipfile.ZIP_DEFLATED)

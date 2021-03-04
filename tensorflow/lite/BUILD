@@ -623,6 +623,7 @@ cc_test(
     data = [
         "testdata/0_subgraphs.bin",
         "testdata/2_subgraphs.bin",
+        "testdata/2_subgraphs_dont_delegate_name.bin",
         "testdata/add_shared_tensors.bin",
         "testdata/empty_model.bin",
         "testdata/multi_add_flex.bin",
@@ -700,6 +701,23 @@ cc_test(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "allocation_test",
+    size = "small",
+    srcs = ["allocation_test.cc"],
+    data = [
+        "testdata/empty_model.bin",
+    ],
+    tags = [
+        "tflite_smoke_test",
+    ],
+    deps = [
+        ":allocation",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
     ],
 )
 

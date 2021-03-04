@@ -136,6 +136,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:softmax",
         "//tensorflow/lite/delegates/gpu/common/tasks:softmax1x1",
         "//tensorflow/lite/delegates/gpu/common/tasks:space_to_depth",
+        "//tensorflow/lite/delegates/gpu/common/tasks:split",
         "//tensorflow/lite/delegates/gpu/common/tasks:strided_slice",
         "//tensorflow/lite/delegates/gpu/common/tasks:transpose",
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd",

@@ -82,6 +82,7 @@ cc_binary(
         "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:system_setup",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )

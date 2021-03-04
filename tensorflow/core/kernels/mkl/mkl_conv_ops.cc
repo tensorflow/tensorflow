@@ -724,7 +724,8 @@ class MklConvOp : public OpKernel {
 
       // Execute convolution
       std::shared_ptr<stream> fwd_cpu_stream;
-      fwd_cpu_stream.reset(CreateStream(context, conv_fwd->GetEngine()));
+      MklDnnThreadPool eigen_tp(context);
+      fwd_cpu_stream.reset(CreateStream(&eigen_tp, conv_fwd->GetEngine()));
       if (fuse_biasadd_) {
         const Tensor& bias_tensor = MklGetInput(context, kInputIndex_Bias);
         Tbias* bias_data =

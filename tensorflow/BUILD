@@ -197,7 +197,19 @@ config_setting(
 
 config_setting(
     name = "windows",
-    values = {"cpu": "x64_windows"},
+    # Internal builds query the target OS.
+    # copybara:uncomment flag_values = {"//tools/cpp:cc_target_os": "windows"},
+    # OSS builds query the CPU type.
+    values = {"cpu": "x64_windows"},  # copybara:comment
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "msvc_cl_debug",
+    values = {
+        "compiler": "msvc-cl",
+        "compilation_mode": "dbg",
+    },
     visibility = ["//visibility:public"],
 )
 
@@ -361,12 +373,6 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-config_setting(
-    name = "with_default_optimizations",
-    define_values = {"with_default_optimizations": "true"},
-    visibility = ["//visibility:public"],
-)
-
 # Features that are default ON are handled differently below.
 #
 config_setting(
@@ -397,15 +403,6 @@ config_setting(
 config_setting(
     name = "stackdriver_support",
     define_values = {"stackdriver_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-# Crosses between platforms and file system libraries not supported on those
-# platforms due to limitations in nested select() statements.
-config_setting(
-    name = "with_cuda_support_windows_override",
-    define_values = {"using_cuda_nvcc": "true"},
-    values = {"cpu": "x64_windows"},
     visibility = ["//visibility:public"],
 )
 
@@ -470,9 +467,52 @@ selects.config_setting_group(
     ],
 )
 
-config_setting(
-    name = "using_cuda_clang",
-    define_values = {"using_cuda_clang": "true"},
+# Config setting that is satisfied when TensorFlow is being built with CUDA
+# support through e.g. `--config=cuda` (or `--config=cuda_clang` in OSS).
+alias(
+    name = "is_cuda_enabled",
+    actual = if_oss(
+        "@local_config_cuda//:is_cuda_enabled",
+        "@local_config_cuda//cuda:using_clang",
+    ),
+)
+
+# Config setting that is satisfied when CUDA device code should be compiled
+# with clang. It does not imply that CUDA support has been enabled.
+alias(
+    name = "is_cuda_compiler_clang",
+    actual = if_oss(
+        "@local_config_cuda//:is_cuda_compiler_clang",
+        "@local_config_cuda//cuda:TRUE",
+    ),
+)
+
+# Config setting that is satisfied when CUDA device code should be compiled
+# with nvcc. It does not imply that CUDA support has been enabled.
+alias(
+    name = "is_cuda_compiler_nvcc",
+    actual = if_oss(
+        "@local_config_cuda//:is_cuda_compiler_nvcc",
+        "@local_config_cuda//cuda:FALSE",
+    ),
+)
+
+# Config setting that is satisfied when building with --config=cuda in OSS.
+selects.config_setting_group(
+    name = "is_cuda_enabled_and_oss",
+    match_all = [
+        ":is_cuda_enabled",
+        ":oss",
+    ],
+)
+
+# Config setting that is satisfied when building with --config=cuda for Windows
+selects.config_setting_group(
+    name = "is_cuda_enabled_and_windows",
+    match_all = [
+        ":is_cuda_enabled",
+        ":windows",
+    ],
 )
 
 # Config setting to use in select()s to distinguish open source build from
@@ -493,22 +533,6 @@ bool_setting(
     visibility = ["//visibility:private"],
 )
 
-config_setting(
-    name = "using_cuda_clang_with_dynamic_build",
-    define_values = {
-        "using_cuda_clang": "true",
-        "framework_shared_object": "true",
-    },
-)
-
-selects.config_setting_group(
-    name = "build_oss_using_cuda_clang",
-    match_all = [
-        ":using_cuda_clang",
-        ":oss",
-    ],
-)
-
 # Setting to use when loading kernels dynamically
 config_setting(
     name = "dynamic_loaded_kernels",
@@ -517,27 +541,6 @@ config_setting(
         "framework_shared_object": "true",
     },
     visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "using_cuda_nvcc",
-    define_values = {"using_cuda_nvcc": "true"},
-)
-
-config_setting(
-    name = "using_cuda_nvcc_with_dynamic_build",
-    define_values = {
-        "using_cuda_nvcc": "true",
-        "framework_shared_object": "true",
-    },
-)
-
-selects.config_setting_group(
-    name = "build_oss_using_cuda_nvcc",
-    match_all = [
-        ":using_cuda_nvcc",
-        ":oss",
-    ],
 )
 
 config_setting(
@@ -557,15 +560,6 @@ config_setting(
     name = "api_version_2",
     define_values = {"tf_api_version": "2"},
     visibility = ["//visibility:public"],
-)
-
-# This flag is defined for select statements that match both
-# on 'windows' and 'api_version_2'. In this case, bazel requires
-# having a flag which is a superset of these two.
-config_setting(
-    name = "windows_and_api_version_2",
-    define_values = {"tf_api_version": "2"},
-    values = {"cpu": "x64_windows"},
 )
 
 # This flag enables experimental MLIR support.
@@ -706,6 +700,8 @@ package_group(
         "//learning/brain/mlir/...",
         "//learning/lib/ami/simple_ml/...",
         "//tensorflow/...",
+        "//tensorflow_decision_forests/...",
+        "//third_party/cloud_tpu/inference_converter/...",
     ],
 )
 
@@ -932,6 +928,11 @@ tf_cc_shared_object(
             "-z defs",
             "-Wl,--version-script,$(location //tensorflow:tf_version_script.lds)",
         ],
+    }) + select({
+        "//tensorflow:msvc_cl_debug": [
+            "/DEBUG:FASTLINK",
+        ],
+        "//conditions:default": [],
     }),
     per_os_targets = True,
     soversion = VERSION,
@@ -950,7 +951,6 @@ tf_cc_shared_object(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:scope",
-        "//tensorflow/cc/profiler",
         "//tensorflow/core:tensorflow",
     ],
 )

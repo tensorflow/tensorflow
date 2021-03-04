@@ -49,7 +49,6 @@ filegroup(
         "gpu_op_atan.cc",
         "gpu_op_atanh.cc",
         "gpu_op_ceil.cc",
-        "gpu_op_complex.cc",
         "gpu_op_complex_abs.cc",
         "gpu_op_conj.cc",
         "gpu_op_cos.cc",
@@ -57,6 +56,8 @@ filegroup(
         "gpu_op_digamma.cc",
         "gpu_op_erf.cc",
         "gpu_op_erfc.cc",
+        "gpu_op_exp.cc",
+        "gpu_op_expm1.cc",
         "gpu_op_floor.cc",
         "gpu_op_imag.cc",
         "gpu_op_invert.cc",
@@ -70,6 +71,7 @@ filegroup(
         "gpu_op_neg.cc",
         "gpu_op_real.cc",
         "gpu_op_rsqrt.cc",
+        "gpu_op_sign.cc",
         "gpu_op_sin.cc",
         "gpu_op_sinh.cc",
         "gpu_op_sqrt.cc",
@@ -83,9 +85,6 @@ filegroup(
 filegroup(
     name = "experimental_unary_gpu_kernel_srcs",
     srcs = [
-        "gpu_op_exp.cc",
-        "gpu_op_expm1.cc",
-        "gpu_op_sign.cc",
     ],
     compatible_with = get_compatible_with_cloud(),
 )
@@ -96,6 +95,55 @@ filegroup(
         ":enabled_unary_gpu_kernel_srcs",
     ] + if_mlir_experimental_kernels_enabled(
         if_true = [":experimental_unary_gpu_kernel_srcs"],
+    ),
+    compatible_with = get_compatible_with_cloud(),
+)
+
+filegroup(
+    name = "enabled_binary_gpu_kernel_srcs",
+    srcs = [
+        "gpu_op_complex.cc",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+)
+
+filegroup(
+    name = "experimental_binary_gpu_kernel_srcs",
+    srcs = [
+        "gpu_op_add.cc",
+        "gpu_op_atan2.cc",
+        "gpu_op_bitwise_and.cc",
+        "gpu_op_bitwise_or.cc",
+        "gpu_op_bitwise_xor.cc",
+        "gpu_op_div.cc",
+        "gpu_op_equal.cc",
+        "gpu_op_floor_div.cc",
+        "gpu_op_greater.cc",
+        "gpu_op_greater_equal.cc",
+        "gpu_op_left_shift.cc",
+        "gpu_op_less.cc",
+        "gpu_op_less_equal.cc",
+        "gpu_op_logical_and.cc",
+        "gpu_op_logical_or.cc",
+        "gpu_op_maximum.cc",
+        "gpu_op_minimum.cc",
+        "gpu_op_mul.cc",
+        "gpu_op_not_equal.cc",
+        "gpu_op_pow.cc",
+        "gpu_op_right_shift.cc",
+        "gpu_op_squared_difference.cc",
+        "gpu_op_sub.cc",
+        "gpu_op_zeta.cc",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+)
+
+filegroup(
+    name = "binary_gpu_kernel_srcs",
+    srcs = [
+        ":enabled_binary_gpu_kernel_srcs",
+    ] + if_mlir_experimental_kernels_enabled(
+        if_true = [":experimental_binary_gpu_kernel_srcs"],
     ),
     compatible_with = get_compatible_with_cloud(),
 )
@@ -150,7 +198,6 @@ tf_kernel_library(
         ":gpu_atanh_kernels",
         ":gpu_ceil_kernels",
         ":gpu_complex_abs_kernels",
-        ":gpu_complex_kernels",
         ":gpu_conj_kernels",
         ":gpu_cos_kernels",
         ":gpu_cosh_kernels",
@@ -185,7 +232,11 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "cpu_cwise_unary_op",
-    srcs = [":cpu_op_abs.cc"],
+    srcs = [
+        "cpu_op_abs.cc",
+        "cpu_op_rsqrt.cc",
+        "cpu_op_sqrt.cc",
+    ],
     tags = ["manual"],
     # Technically we only need to depend on the kernel libraries for the
     # kernels which are enabled by default. But this would make our BUILD
@@ -195,41 +246,23 @@ tf_kernel_library(
     deps = [
         ":base_cpu_op",
         ":cpu_abs_kernels",
+        ":cpu_rsqrt_kernels",
+        ":cpu_sqrt_kernels",
         "//third_party/eigen3",
     ],
 )
 
 tf_kernel_library(
     name = "gpu_cwise_binary_op",
-    srcs = [
-        "gpu_op_add.cc",
-        "gpu_op_atan2.cc",
-        "gpu_op_bitwise_and.cc",
-        "gpu_op_bitwise_or.cc",
-        "gpu_op_bitwise_xor.cc",
-        "gpu_op_div.cc",
-        "gpu_op_equal.cc",
-        "gpu_op_floor_div.cc",
-        "gpu_op_greater.cc",
-        "gpu_op_greater_equal.cc",
-        "gpu_op_left_shift.cc",
-        "gpu_op_less.cc",
-        "gpu_op_less_equal.cc",
-        "gpu_op_logical_and.cc",
-        "gpu_op_logical_or.cc",
-        "gpu_op_maximum.cc",
-        "gpu_op_minimum.cc",
-        "gpu_op_mul.cc",
-        "gpu_op_not_equal.cc",
-        "gpu_op_pow.cc",
-        "gpu_op_right_shift.cc",
-        "gpu_op_squared_difference.cc",
-        "gpu_op_sub.cc",
-        "gpu_op_zeta.cc",
-    ],
+    srcs = [":binary_gpu_kernel_srcs"],
     tags = [
         "manual",
     ],
+    # Technically we only need to depend on the kernel libraries for the
+    # kernels which are enabled by default. But this would make our BUILD
+    # target structure uglier. We already need to make sure that those
+    # targets can be built, so it should not hurt to link them in even if
+    # they are currently not needed yet.
     deps = [
         ":base_gpu_op",
         ":gpu_add_v2_kernels",
@@ -237,6 +270,7 @@ tf_kernel_library(
         ":gpu_bitwise_and_kernels",
         ":gpu_bitwise_or_kernels",
         ":gpu_bitwise_xor_kernels",
+        ":gpu_complex_kernels",
         ":gpu_div_kernels",
         ":gpu_equal_kernels",
         ":gpu_floor_div_kernels",
@@ -281,6 +315,7 @@ tf_kernel_library(
     # but we want to avoid building them if they are not needed.
     deps = if_cuda_or_rocm([
         ":gpu_cwise_unary_op",
+        ":gpu_cwise_binary_op",
     ]) + if_mlir_experimental_kernels_enabled([":experimental_cwise_op"]),
 )
 
@@ -288,9 +323,22 @@ tf_kernel_library(
     name = "experimental_cwise_op",
     srcs = [],
     deps = [
-        ":cpu_cwise_unary_op",
         ":cpu_cwise_binary_op",
-    ] + if_cuda_or_rocm([":gpu_cwise_binary_op"]),
+        ":cpu_cwise_unary_op",
+    ],
+)
+
+tf_kernel_library(
+    name = "cast_op",
+    srcs = ["gpu_op_cast.cc"],
+    tags = [
+        "manual",
+    ],
+    deps = [
+        ":base_gpu_op",
+        ":gpu_cast_kernels",
+        "//third_party/eigen3",
+    ],
 )
 
 cc_library(
@@ -453,7 +501,7 @@ gpu_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
+    # Cannot vectorize.
 )
 
 gpu_kernel_library(
@@ -464,7 +512,8 @@ gpu_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
+    # May be compute-bound.
+    # unroll_factors = "4",
 )
 
 gpu_kernel_library(
@@ -490,7 +539,7 @@ gpu_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
+    # Cannot vectorize.
 )
 
 gpu_kernel_library(
@@ -501,7 +550,7 @@ gpu_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
+    # Cannot vectorize.
 )
 
 gpu_kernel_library(
@@ -545,7 +594,8 @@ gpu_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
+    # May be compute-bound.
+    # unroll_factors = "4",
 )
 
 gpu_kernel_library(
@@ -643,7 +693,8 @@ gpu_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
+    # May be compute-bound.
+    # unroll_factors = "4",
 )
 
 [
@@ -707,7 +758,6 @@ gpu_kernel_library(
         "i16",
         "i64",
     ],
-    unroll_factors = "4",
 )
 
 gpu_kernel_library(
@@ -988,7 +1038,6 @@ gpu_kernel_library(
         "f64",
         "i64",
     ],
-    unroll_factors = "4",
 )
 
 gpu_kernel_library(
@@ -1016,6 +1065,30 @@ cpu_kernel_library(
         "i16",
         "i32",
         "i64",
+    ],
+    unroll_factors = "4",
+)
+
+cpu_kernel_library(
+    name = "cpu_rsqrt_lib",
+    op = "rsqrt",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+cpu_kernel_library(
+    name = "cpu_sqrt_lib",
+    op = "sqrt",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
     ],
     unroll_factors = "4",
 )

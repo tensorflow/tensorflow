@@ -1368,8 +1368,7 @@ array with the same shape. It is allowed for `operand` to be a scalar (rank 0).
 
 The XLA FFT operation implements the forward and inverse Fourier Transforms for
 real and complex inputs/outputs. Multidimensional FFTs on up to 3 axes are
-supported, except on TPU, where only a single axis is supported (please file a
-GitHub issue if you require higher order).
+supported.
 
 See also
 [`XlaBuilder::Fft`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
@@ -2089,28 +2088,33 @@ portion of the conversion is then simply a no-op.
 See also
 [`XlaBuilder::ReduceWindow`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
-Applies a reduction function to all elements in each window of the input
-multi-dimensional array, producing an output multi-dimensional array with the
-same number of elements as the number of valid positions of the window. A
-pooling layer can be expressed as a `ReduceWindow`. Similar to
-[`Reduce`](#reduce), the applied `computation` is always passed the `init_value`
-on the left-hand side.
+Applies a reduction function to all elements in each window of a sequence of N
+multi-dimensional arrays, producing a single or a tuple of N multi-dimensional
+arrays as output. Each output array has the same number of elements as the
+number of valid positions of the window. A pooling layer can be expressed as a
+`ReduceWindow`. Similar to [`Reduce`](#reduce), the applied `computation` is
+always passed the `init_values` on the left-hand side.
 
-<b> `ReduceWindow(operand, init_value, computation, window_dimensions,
+<b> `ReduceWindow(operands..., init_values..., computation, window_dimensions,
 window_strides, padding)` </b>
 
 | Arguments           | Type                | Semantics                        |
 | ------------------- | ------------------- | -------------------------------- |
-| `operand`           | `XlaOp`             | N dimensional array containing   |
-:                     :                     : elements of type T. This is the  :
-:                     :                     : base area on which the window is :
-:                     :                     : placed.                          :
-| `init_value`        | `XlaOp`             | Starting value for the           |
-:                     :                     : reduction. See [Reduce](#reduce) :
+| `operands`          | `N XlaOps`          | A sequence of N                  |
+:                     :                     : multi-dimensional arrays of      :
+:                     :                     : types `T_0,..., T_{N-1}`, each   :
+:                     :                     : representing the base area on    :
+:                     :                     : which the window is placed.      :
+| `init_values`       | `N XlaOps`          | The N starting values for the    |
+:                     :                     : reduction, one for each of the N :
+:                     :                     : operands. See [Reduce](#reduce)  :
 :                     :                     : for details.                     :
-| `computation`       | `XlaComputation`    | Reduction function of type `T, T |
-:                     :                     : -> T`, to apply to all elements  :
-:                     :                     : in each window                   :
+| `computation`       | `XlaComputation`    | Reduction function of type `T_0, |
+:                     :                     : ..., T_{N-1}, T_0, ..., T_{N-1}  :
+:                     :                     : -> Collate(T_0, ..., T_{N-1})`,  :
+:                     :                     : to apply to elements in each     :
+:                     :                     : window of all the input          :
+:                     :                     : operands.                        :
 | `window_dimensions` | `ArraySlice<int64>` | array of integers for window     |
 :                     :                     : dimension values                 :
 | `window_strides`    | `ArraySlice<int64>` | array of integers for window     |
@@ -2126,6 +2130,14 @@ window_strides, padding)` </b>
 :                     :                     : Padding\:\:kValid, which uses no :
 :                     :                     : padding and "stops" the window   :
 :                     :                     : once it no longer fits)          :
+
+Where:
+
+*   N is required to be greater or equal to 1.
+*   All input arrays must have the same dimensions.
+*   If `N = 1`, `Collate(T)` is `T`.
+*   If `N > 1`, `Collate(T_0, ..., T_{N-1})` is a tuple of `N` elements of type
+    `(T0,...T{N-1})`.
 
 Below code and figure shows an example of using `ReduceWindow`. Input is a
 matrix of size [4x6] and both window_dimensions and window_stride_dimensions are

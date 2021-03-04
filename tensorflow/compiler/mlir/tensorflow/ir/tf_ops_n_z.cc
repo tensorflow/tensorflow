@@ -68,6 +68,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -299,6 +300,49 @@ OpFoldResult PackOp::fold(ArrayRef<Attribute> operands) {
 
   // Replace %pack with %shape.
   return slice_op.input();
+}
+
+// Convert Pack to Reshape when there is only one operand to be packed.
+// For example,
+//
+//   %0 = tf.Pack(%input) {axis = 0} // %input : tensor<2x3xf32>
+//
+// can be canonicalized to
+//
+//   %shape = "tf.Const"() {value = dense<[1, 2, 3]> : tensor<3xi64>}
+//   %0 = tf.Reshape(%input, %shape)
+struct ConvertPackToReshape : public OpRewritePattern<PackOp> {
+  using OpRewritePattern<PackOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(PackOp pack_op,
+                                PatternRewriter &rewriter) const override {
+    // Check if there is only one operand to be packed.
+    if (pack_op.N() != 1) {
+      return failure();
+    }
+
+    // Check if input and output are static.
+    auto input_ty = pack_op.getOperand(0).getType().cast<ShapedType>();
+    auto output_ty = pack_op.output().getType().cast<ShapedType>();
+    if (!input_ty.hasStaticShape() || !output_ty.hasStaticShape()) {
+      return failure();
+    }
+
+    // Create constant shape for reshape.
+    auto type =
+        RankedTensorType::get(output_ty.getRank(), rewriter.getIntegerType(64));
+    auto shape_attr = DenseIntElementsAttr::get(type, output_ty.getShape());
+    auto shape = rewriter.create<ConstOp>(pack_op.getLoc(), shape_attr);
+
+    rewriter.replaceOpWithNewOp<ReshapeOp>(pack_op, output_ty,
+                                           pack_op.getOperand(0), shape);
+    return success();
+  }
+};
+
+void PackOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                         MLIRContext *context) {
+  results.insert<ConvertPackToReshape>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -552,17 +596,6 @@ void RealDivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 OpFoldResult RealDivOp::fold(ArrayRef<Attribute> operands) {
   return IdentityArithmeticOpFolder<RealDivOp>(*this, operands);
-}
-
-//===----------------------------------------------------------------------===//
-// ReluOp
-//===----------------------------------------------------------------------===//
-
-Optional<ContractionFusion> ReluOp::GetContractionFusion() {
-  // Only f32 is supported for fusion.
-  if (!T().isF32()) return None;
-
-  return ContractionFusion("Relu", /*additional_arguments=*/{});
 }
 
 //===----------------------------------------------------------------------===//
@@ -1332,10 +1365,10 @@ LogicalResult SpaceToBatchNDOp::inferReturnTypes(
 
   // The rest of the dimension sizes can be calculated when block_shape and
   // paddings arguments are constant.
-  ElementsAttr block_shape_attr;
-  ElementsAttr paddings_attr;
-  if (matchPattern(block_shape_val, m_Constant(&block_shape_attr)) &&
-      matchPattern(paddings_val, m_Constant(&paddings_attr))) {
+  DenseIntElementsAttr block_shape_attr;
+  DenseIntElementsAttr paddings_attr;
+  if (GetValueAsConstant(block_shape_val, block_shape_attr) &&
+      GetValueAsConstant(paddings_val, paddings_attr)) {
     int64_t return_batch = input_shape[0];
     for (uint64_t i = 0; i < block_rank; ++i) {
       // Propagate dynamic dimension.
@@ -1347,10 +1380,10 @@ LogicalResult SpaceToBatchNDOp::inferReturnTypes(
         continue;
       }
       int64_t paddings_sum =
-          paddings_attr.getValue({i, 0}).cast<IntegerAttr>().getInt() +
-          paddings_attr.getValue({i, 1}).cast<IntegerAttr>().getInt();
+          paddings_attr.getValue<APInt>({i, 0}).getSExtValue() +
+          paddings_attr.getValue<APInt>({i, 1}).getSExtValue();
       int64_t block_shape_i =
-          block_shape_attr.getValue({i}).cast<IntegerAttr>().getInt();
+          block_shape_attr.getValue<APInt>({i}).getSExtValue();
       return_batch *= block_shape_i;
       return_shape[1 + i] = (paddings_sum + input_shape[i + 1]) / block_shape_i;
     }
@@ -2597,7 +2630,7 @@ class ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
                              TF::FusedBatchNormV3Op::getOperationName(),
                              tf_fused_batch_norm_op.getOperands(),
                              new_result_types,
-                             tf_fused_batch_norm_op.getAttrs());
+                             tf_fused_batch_norm_op->getAttrs());
     Operation *tf_fused_batch_norm_op_v3 = rewriter.createOperation(new_state);
 
     rewriter.replaceOp(tf_fused_batch_norm_op,
@@ -2890,16 +2923,17 @@ static LogicalResult VerifyWhileTypes(Operation *op, TypeRange cond_input,
   return success();
 }
 
-static LogicalResult Verify(WhileOp op) {
-  auto cond_fn = op.cond_function();
-  auto body_fn = op.body_function();
+LogicalResult WhileOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
+  // TODO(jpienaar): Remove.
+  if (failed(WhileOpAdaptor(*this).verify(getLoc()))) return failure();
+
+  auto cond_fn = symbol_table.lookupNearestSymbolFrom<FuncOp>(*this, cond());
+  auto body_fn = symbol_table.lookupNearestSymbolFrom<FuncOp>(*this, body());
   if (!cond_fn) {
-    return op.emitOpError("cond refers to an undefined function : ")
-           << op.cond();
+    return emitOpError("cond refers to an undefined function : ") << cond();
   }
   if (!body_fn) {
-    return op.emitOpError("body refers to an undefined function : ")
-           << op.body();
+    return emitOpError("body refers to an undefined function : ") << body();
   }
 
   auto cond_fn_type = cond_fn.getType();
@@ -2907,14 +2941,12 @@ static LogicalResult Verify(WhileOp op) {
 
   // Verify that the cond function has exactly one result.
   if (cond_fn_type.getNumResults() != 1)
-    return op.emitOpError("requires cond function to have exactly one result");
+    return emitOpError("requires cond function to have exactly one result");
 
-  if (failed(VerifyWhileTypes(op, /*cond_input=*/cond_fn_type.getInputs(),
-                              /*body_input=*/body_fn_type.getInputs(),
-                              /*body_result=*/body_fn_type.getResults(),
-                              op.shape_invariant())))
-    return failure();
-  return success();
+  return VerifyWhileTypes(*this, /*cond_input=*/cond_fn_type.getInputs(),
+                          /*body_input=*/body_fn_type.getInputs(),
+                          /*body_result=*/body_fn_type.getResults(),
+                          shape_invariant());
 }
 
 //===----------------------------------------------------------------------===//
@@ -2977,7 +3009,8 @@ struct WhileRegionEliminatePassThrough
 
   LogicalResult matchAndRewrite(WhileRegionOp while_op,
                                 PatternRewriter &rewriter) const override {
-    // Replace values that simply passthrough the body with extern values. The
+    // Remove any extern values that are explicitly captured and returned. Also
+    // replace values that simply passthrough the body with extern values. The
     // block arguments of body and while match and so the corresponding cond
     // argument can be easily found.
     int old_num_operands = while_op.getNumOperands();
@@ -2991,22 +3024,23 @@ struct WhileRegionEliminatePassThrough
 
     for (int op_idx : llvm::seq<int>(0, old_num_operands)) {
       auto body_arg = body_block.getArgument(op_idx);
-      if (body_arg == yield.getOperand(op_idx)) {
+      auto yield_operand = yield.getOperand(op_idx);
+      auto while_operand = while_op.getOperand(op_idx);
+      if (body_arg == yield_operand || while_operand == yield_operand) {
         // Replace the use of the passthrough value with the while operand
         // in the body and condition regions, as well as the while output (if
         // type match)
         // TODO(jurahul): Use PatternRewriter API for IR modification.
-        auto value = while_op.getOperand(op_idx);
-        if (body_arg.getType() == value.getType())
-          body_arg.replaceAllUsesWith(value);
+        if (body_arg.getType() == while_operand.getType())
+          body_arg.replaceAllUsesWith(while_operand);
 
         auto cond_arg = cond_block.getArgument(op_idx);
-        if (cond_arg.getType() == value.getType())
-          cond_arg.replaceAllUsesWith(value);
+        if (cond_arg.getType() == while_operand.getType())
+          cond_arg.replaceAllUsesWith(while_operand);
 
         auto result = while_op.getResult(op_idx);
-        if (result.getType() == value.getType())
-          result.replaceAllUsesWith(value);
+        if (result.getType() == while_operand.getType())
+          result.replaceAllUsesWith(while_operand);
       }
 
       // Now check if the operand is unused in both regions as well as the
@@ -3037,9 +3071,9 @@ struct WhileRegionEliminatePassThrough
     }
 
     // Create the new while operation.
-    auto new_while_op =
-        rewriter.create<WhileRegionOp>(while_op.getLoc(), new_result_types,
-                                       new_while_operands, while_op.getAttrs());
+    auto new_while_op = rewriter.create<WhileRegionOp>(
+        while_op.getLoc(), new_result_types, new_while_operands,
+        while_op->getAttrs());
 
     // Move region bodies to the new while.
     rewriter.inlineRegionBefore(while_op.cond(), new_while_op.cond(),

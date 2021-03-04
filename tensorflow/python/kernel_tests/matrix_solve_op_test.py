@@ -63,7 +63,7 @@ class MatrixSolveOpTest(test.TestCase):
             a_ph = array_ops.placeholder(dtypes.as_dtype(np_type))
             b_ph = array_ops.placeholder(dtypes.as_dtype(np_type))
             tf_ans = linalg_ops.matrix_solve(a_ph, b_ph, adjoint=adjoint)
-            with self.cached_session(use_gpu=True) as sess:
+            with self.cached_session() as sess:
               out = sess.run(tf_ans, {a_ph: a, b_ph: b})
           else:
             tf_ans = linalg_ops.matrix_solve(a, b, adjoint=adjoint)

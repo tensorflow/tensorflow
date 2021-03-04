@@ -357,7 +357,7 @@ def DecomposeResourceApplyCenteredRMSProp :
   Pattern<
     (TF_ResourceApplyCenteredRMSPropOp:$src_op
        $var_resource, $mg_resource, $ms_resource, $mom_resource, $lr, $rho, $momentum, $epsilon,
-       $grad, ConstBoolAttrFalse:$use_locking
+       $grad, $use_locking
     ),
     [(TF_ConstOp:$one (GetScalarOfType<1> $grad)),
      (CreateTFReadVariableOp $src_op, $grad, $ms_resource),
@@ -419,7 +419,7 @@ def DecomposeResourceApplyRMSProp :
   Pattern<
     (TF_ResourceApplyRMSPropOp:$src_op
        $var_resource, $ms_resource, $mom_resource, $lr, $rho, $momentum, $epsilon,
-       $grad, ConstBoolAttrFalse:$use_locking
+       $grad, $use_locking
     ),
     [(TF_ConstOp:$one (GetScalarOfType<1> $grad)),
      (CreateTFReadVariableOp $src_op, $grad, $ms_resource),
@@ -456,7 +456,7 @@ def DecomposeResourceApplyProximalAdagrad :
   Pattern<
     (TF_ResourceApplyProximalAdagradOp:$src_op
        $var_resource, $accum_resource, $lr, $l1, $l2, $grad,
-       ConstBoolAttrFalse:$use_locking
+       $use_locking
     ),
     [(TF_ConstOp:$one (GetScalarOfType<1> $grad)),
      (TF_ConstOp:$zero (GetScalarOfType<0> $grad)),

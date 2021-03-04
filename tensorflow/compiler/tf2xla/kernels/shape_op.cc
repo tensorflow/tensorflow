@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
@@ -97,10 +98,11 @@ class XlaSetBoundOp : public XlaOpKernel {
                                 bound_shape.DebugString()));
     int64 bound;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar("bound", &bound));
-
-    xla::XlaOp result = xla::CustomCall(
-        ctx->builder(), "SetBound", {ctx->Input("input")},
-        ctx->InputXlaShape("input").ValueOrDie(), absl::StrFormat("%d", bound));
+    xla::Literal bound_literal = xla::LiteralUtil::CreateR0<int32>(bound);
+    xla::XlaOp result =
+        xla::CustomCall(ctx->builder(), "SetBound", {ctx->Input("input")},
+                        ctx->InputXlaShape("input").ValueOrDie(), "", false, {},
+                        &bound_literal);
     ctx->SetOutput(0, result);
   }
 };

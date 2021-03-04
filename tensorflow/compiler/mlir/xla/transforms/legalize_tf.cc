@@ -1350,6 +1350,87 @@ class ConvertBroadcastToOp : public OpRewritePattern<TF::BroadcastToOp> {
   }
 };
 
+/// Converts a TF::LeakyReluOp to HLO.
+/// LeakyRelu(x) = alpha * x if x < 0 else x.
+class ConvertLeakyReluOp : public OpRewritePattern<TF::LeakyReluOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(TF::LeakyReluOp op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    float alpha = op.alpha().convertToFloat();
+    Value features = op.features();
+    auto featureType = features.getType().cast<RankedTensorType>();
+    ArrayRef<int64_t> featureShape = featureType.getShape();
+    Type eltType = featureType.getElementType();
+
+    auto alphaVal = rewriter.create<mhlo::ConstOp>(
+        loc, rewriter.getFloatAttr(eltType, alpha));
+
+    // Broadcast `alpha` to match the shape of feature.
+    auto featureShapeAttr = DenseIntElementsAttr::get(
+        RankedTensorType::get(featureShape.size(), rewriter.getIntegerType(64)),
+        featureShape);
+    auto broadcastAlphaVal = rewriter.create<mhlo::BroadcastOp>(
+        loc, featureType, alphaVal, featureShapeAttr);
+
+    Attribute zeroAttr = rewriter.getZeroAttr(featureType);
+    Value zeroVal = rewriter.create<ConstantOp>(loc, featureType, zeroAttr);
+
+    Value leakyActivationVal = rewriter.create<mhlo::MulOp>(
+        loc, features.getType(), features, broadcastAlphaVal);
+
+    StringAttr compare_direction = StringAttr::get(rewriter.getContext(), "GT");
+    Value compareGtZero = rewriter.create<mhlo::CompareOp>(
+        loc, features, zeroVal, compare_direction);
+
+    rewriter.replaceOpWithNewOp<SelectOp>(op, featureType, compareGtZero,
+                                          features, leakyActivationVal);
+    return success();
+  }
+};
+
+/// Converts a TF::LeakyReluGradOp to HLO.
+/// LeakyReluGrad(gradient, inputs) = gradient if input > 0
+/// else alpha * gradient.
+class ConvertLeakyReluGradOp : public OpRewritePattern<TF::LeakyReluGradOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(TF::LeakyReluGradOp op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    float alpha = op.alpha().convertToFloat();
+    Value gradients = op.gradients();
+    Value features = op.features();
+    auto featureType = features.getType().cast<RankedTensorType>();
+    ArrayRef<int64_t> featureShape = featureType.getShape();
+    Type eltType = featureType.getElementType();
+
+    auto alphaVal = rewriter.create<mhlo::ConstOp>(
+        loc, rewriter.getFloatAttr(eltType, alpha));
+    auto featureShapeAttr = DenseIntElementsAttr::get(
+        RankedTensorType::get(featureShape.size(), rewriter.getIntegerType(64)),
+        featureShape);
+    auto broadcastAlphaVal = rewriter.create<mhlo::BroadcastOp>(
+        loc, featureType, alphaVal, featureShapeAttr);
+
+    Attribute zeroAttr = rewriter.getZeroAttr(featureType);
+    Value zeroVal = rewriter.create<ConstantOp>(loc, featureType, zeroAttr);
+
+    Value leakyGradientVal = rewriter.create<mhlo::MulOp>(
+        loc, features.getType(), gradients, broadcastAlphaVal);
+
+    StringAttr compare_direction = StringAttr::get(rewriter.getContext(), "GT");
+
+    Value compareGtZero = rewriter.create<mhlo::CompareOp>(
+        loc, features, zeroVal, compare_direction);
+
+    rewriter.replaceOpWithNewOp<SelectOp>(op, featureType, compareGtZero,
+                                          gradients, leakyGradientVal);
+    return success();
+  }
+};
+
 // Converts TensorFlow DiagPartOp to HLO ops using reduction on masked matrix.
 // For a Rank-2 input, it creates the following ops:
 //   %1 = "mhlo.iota"() {iota_dimension = 0 : i64}
@@ -2544,83 +2625,6 @@ class ConvertMaxPoolOp : public OpRewritePattern<OpTy> {
 using ConvertMaxPool2DOp = ConvertMaxPoolOp<TF::MaxPoolOp, /*num_dims=*/4>;
 using ConvertMaxPool3DOp = ConvertMaxPoolOp<TF::MaxPool3DOp, /*num_dims=*/5>;
 
-// Converts SelectV2 to HLO Select op and necessary BroadcastInDim ops on
-// operands.
-//
-// For example, the following source IR:
-//
-//   %select = "tf.SelectV2"(%condition, %t, %e) :
-//               (tensor<1xi1>, tensor<2xi32>, tensor<1xi32>) -> tensor<2xi32>
-//
-// will be converted into:
-//
-//   %pred = "mhlo.broadcast_in_dim"(%cond)
-//             {broadcast_dimensions = dense<[0]> : tensor<1xi64>} :
-//               (tensor<1xi1>) -> tensor<2xi1>
-//   %on_false = "mhlo.broadcast_in_dim"(%e)
-//                 {broadcast_dimensions = dense<[0]> : tensor<1xi64>} :
-//                   (tensor<1xi32>) -> tensor<2xi32>
-//   %select = "mhlo.select"(%pred, %t, %on_false) :
-//               (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
-class ConvertSelectV2Op : public OpRewritePattern<TF::SelectV2Op> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(TF::SelectV2Op op,
-                                PatternRewriter &rewriter) const override {
-    llvm::SmallVector<int64_t, 4> broadcast_then_else_shape;
-    auto ranked_then_type = op.t().getType().dyn_cast<RankedTensorType>();
-    auto ranked_else_type = op.e().getType().dyn_cast<RankedTensorType>();
-    auto ranked_cond_type =
-        op.condition().getType().dyn_cast<RankedTensorType>();
-    if (!ranked_then_type || !ranked_then_type.hasStaticShape() ||
-        !ranked_else_type || !ranked_else_type.hasStaticShape() ||
-        !ranked_cond_type || !ranked_cond_type.hasStaticShape())
-      return failure();
-
-    if (!OpTrait::util::getBroadcastedShape(ranked_then_type.getShape(),
-                                            ranked_else_type.getShape(),
-                                            broadcast_then_else_shape))
-      return failure();
-
-    llvm::SmallVector<int64_t, 4> broadcast_shape;
-    if (!OpTrait::util::getBroadcastedShape(broadcast_then_else_shape,
-                                            ranked_cond_type.getShape(),
-                                            broadcast_shape))
-      return failure();
-
-    auto broadcast_or_self = [&](Value value) {
-      RankedTensorType type = value.getType().cast<RankedTensorType>();
-      auto output_type =
-          RankedTensorType::get(broadcast_shape, type.getElementType());
-      if (output_type == type) return value;
-
-      int64_t rank = type.getRank();
-      SmallVector<int64_t, 4> broadcast_dimensions(rank);
-      std::iota(broadcast_dimensions.begin(), broadcast_dimensions.end(),
-                broadcast_shape.size() - rank);
-
-      return rewriter
-          .create<BroadcastInDimOp>(
-              op.getLoc(), output_type, value,
-              GetI64ElementsAttr(broadcast_dimensions, &rewriter))
-          .getResult();
-    };
-
-    // HLO SelectOp supports broadcasting for predicate/condition if
-    // predicate/condition is a scalar.
-    Value pred = ranked_cond_type.getRank() == 0
-                     ? op.condition()
-                     : broadcast_or_self(op.condition());
-    Value on_true = broadcast_or_self(op.t());
-    Value on_false = broadcast_or_self(op.e());
-
-    rewriter.replaceOpWithNewOp<SelectOp>(op, on_true.getType(), pred, on_true,
-                                          on_false);
-
-    return success();
-  };
-};
 
 // Converts Sigmoid op to HLO ops computing sigmoid with the following formula:
 //
@@ -4621,7 +4625,7 @@ class ConvertInfeedDequeueTupleOp
                                   /*layout=*/layout);
 
     // TODO(b/171212005): Reenable layout.
-    data_and_token.removeAttr("layout");
+    data_and_token->removeAttr("layout");
 
     if (op._XlaSharding().hasValue()) {
       // _XlaSharding attribute in TF is a serialized string of the OpSharding
@@ -6228,16 +6232,16 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
       ConvertMaxPool3DOp, ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp,
       ConvertMeanOp, ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp,
       ConvertProdOp, ConvertQrOp, ConvertDynamicRangeOp,
-      ConvertMatrixDiagPartV3Op, ConvertRangeOp, ConvertSelectV2Op,
-      ConvertSigmoidOp, ConvertShapeOp,
-      ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
+      ConvertMatrixDiagPartV3Op, ConvertRangeOp, ConvertSigmoidOp,
+      ConvertShapeOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
       ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,
       ConvertUnpackOp, ConvertUnsortedSegmentMaxOp, ConvertUnsortedSegmentMinOp,
       ConvertUnsortedSegmentProdOp, ConvertUnsortedSegmentSumOp,
       ConvertRandomShuffleOp, ConvertXlaShardingOp,
-      ConvertXlaDynamicUpdateSliceOp, ConvertXlaAllReduceOp>(context);
+      ConvertXlaDynamicUpdateSliceOp, ConvertXlaAllReduceOp, ConvertLeakyReluOp,
+      ConvertLeakyReluGradOp>(context);
 }
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(

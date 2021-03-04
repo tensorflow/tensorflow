@@ -885,7 +885,7 @@ TEST(SnapshotTest, Model) {
   }
 }
 
-TEST(SerializeModelTest, Model) {
+TEST(SaveModelTest, Model) {
   model::Model model;
   std::shared_ptr<Node> root = model::MakeUnknownNode({0, "unknown0", nullptr});
   model.AddNode([&root](model::Node::Args args) { return root; }, root->name(),
@@ -941,13 +941,29 @@ TEST(SerializeModelTest, Model) {
     current = input;
   }
 
-  // Make ToProto->FromProto roundtrip.
-  ModelProto model_proto;
-  Status status = model.ToProto(&model_proto);
-  TF_ASSERT_OK(status);
+  // Make Save->Load roundtrip.
+  ModelProto::OptimizationParams optimization_params;
+  optimization_params.set_algorithm(AutotuneAlgorithm::GRADIENT_DESCENT);
+  optimization_params.set_cpu_budget(64);
+  optimization_params.set_ram_budget(1024);
+  optimization_params.set_model_input_time(43653.34534);
+  TF_ASSERT_OK(model.Save("/tmp/autotune_model_test",
+                          model.output()->Snapshot(), optimization_params));
+
   std::unique_ptr<model::Model> restored_model;
-  status = model::Model::FromProto(model_proto, &restored_model);
-  TF_ASSERT_OK(status);
+  ModelProto::OptimizationParams restored_optimization_params;
+  TF_ASSERT_OK(model.Load("/tmp/autotune_model_test", &restored_model,
+                          &restored_optimization_params));
+
+  // Check optimization parameters.
+  EXPECT_EQ(optimization_params.algorithm(),
+            restored_optimization_params.algorithm());
+  EXPECT_EQ(optimization_params.cpu_budget(),
+            restored_optimization_params.cpu_budget());
+  EXPECT_EQ(optimization_params.ram_budget(),
+            restored_optimization_params.ram_budget());
+  EXPECT_EQ(optimization_params.model_input_time(),
+            restored_optimization_params.model_input_time());
 
   // Check that original and restored models hold the same data.
   EXPECT_EQ(model.collect_resource_usage(),

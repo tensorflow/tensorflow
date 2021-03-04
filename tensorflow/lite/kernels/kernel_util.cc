@@ -21,7 +21,9 @@ limitations under the License.
 #include <complex>
 #include <limits>
 #include <memory>
+#ifndef TF_LITE_STATIC_MEMORY
 #include <string>
+#endif  // TF_LITE_STATIC_MEMORY
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
@@ -485,6 +487,9 @@ int TfLiteTypeGetSize(TfLiteType type) {
       return 4;
     case kTfLiteInt32:
       TF_LITE_ASSERT_EQ(sizeof(int32_t), 4);
+      return 4;
+    case kTfLiteUInt32:
+      TF_LITE_ASSERT_EQ(sizeof(uint32_t), 4);
       return 4;
     case kTfLiteInt64:
       TF_LITE_ASSERT_EQ(sizeof(int64_t), 8);

@@ -21,7 +21,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python import keras
-from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.eager import backprop
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util as tf_test_util
@@ -29,7 +28,6 @@ from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.mixed_precision import policy
-from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import adagrad
@@ -132,20 +130,6 @@ class EmbeddingTest(keras_parameterized.TestCase):
         ragged_factory_ops.constant(
             [[[1., 1.], [2., 2.], [2., 2.]], [[0., 0.]], [[1., 1.], [2., 2.]]],
             ragged_rank=1))
-
-  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
-  def test_embedding_with_sharded_variable(self):
-    layer = keras.layers.Embedding(input_dim=5, output_dim=2)
-    v = [
-        variables.Variable([[1., 2.], [3., 4.]]),
-        variables.Variable([[5., 6.], [7., 8.]]),
-        variables.Variable([[9., 10.]])
-    ]
-    model = keras.models.Sequential([layer])
-    layer.embeddings = sharded_variable.ShardedVariable(v)
-    model.run_eagerly = testing_utils.should_run_eagerly()
-    outputs = model.predict(np.array([[0, 2, 4]], dtype='int32'))
-    self.assertAllClose(outputs, [[[1., 2.], [5., 6.], [9., 10.]]])
 
   @testing_utils.enable_v2_dtype_behavior
   def test_mixed_precision_embedding(self):

@@ -180,6 +180,30 @@ func @broadcast_in_dim_bad_shape_mismatch(%arg0: tensor<3xi32>) -> tensor<1x2x3x
 
 // -----
 
+// Regression test for b/180052624, where this was improperly marked as an
+// invalid mhlo.broadcast_in_dim op.
+// CHECK-LABEL: func @broadcast_in_dim_dynamic_shaped_operand
+func @broadcast_in_dim_dynamic_shaped_operand(%arg0 : tensor<?xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {
+    broadcast_dimensions = dense<0> : tensor<1xi64>
+  } : (tensor<?xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+// Regression test for b/180052624, where this crashed verification given the
+// unranked operand.
+// CHECK-LABEL: func @broadcast_in_dim_unranked_operand
+func @broadcast_in_dim_unranked_operand(%arg0 : tensor<*xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {
+    broadcast_dimensions = dense<0> : tensor<1xi64>
+  } : (tensor<*xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
 func @case_mismatch_num_args(%index: tensor<i32>, %operand_1: tensor<f32>, %operand_2: tensor<f32>, %operand_3: tensor<f32>) -> tensor<f32> {
   // expected-error@+1 {{expects branch regions to have single argument, but found 2 for branch 1}}
   %0 = "mhlo.case"(%index, %operand_1, %operand_2, %operand_3) ( {
@@ -344,6 +368,16 @@ func @concat_1D(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tensor<3xi32> {
 
 // -----
 
+// CHECK-LABEL: @concat_1D
+// Verifies that an error is not thrown if the inferred type is compatible with
+// the result type.
+func @concat_1D(%arg0: tensor<1xi32>, %arg1: tensor<*xi32>)  -> tensor<3xi32> {
+  %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<*xi32>) -> tensor<3xi32>
+  return %0 : tensor<3xi32>
+}
+
+// -----
+
 func @concat_1D_type_error(%arg0: tensor<1xi32>, %arg1: tensor<2xf32>)  -> tensor<3xi32> {
   // expected-error@+1 {{'mhlo.concatenate' op requires the same element type for all operands and results}}
   %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<2xf32>) -> tensor<3xi32>
@@ -356,14 +390,6 @@ func @concat_1D_type_error(%arg0: tensor<1xi32>, %arg1: tensor<2xf32>)  -> tenso
 func @concat_1D_unranked(%arg0: tensor<1xi32>, %arg1: tensor<*xi32>)  -> tensor<*xi32> {
   %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<*xi32>) -> tensor<*xi32>
   return %0 : tensor<*xi32>
-}
-
-// -----
-
-func @concat_1D_unranked_error(%arg0: tensor<1xi32>, %arg1: tensor<*xi32>)  -> tensor<3xi32> {
-  // expected-error@+1 {{op inferred type(s) 'tensor<*xi32>' are incompatible with return type(s) of operation 'tensor<3xi32>'}}
-  %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<*xi32>) -> tensor<3xi32>
-  return %0 : tensor<3xi32>
 }
 
 // -----

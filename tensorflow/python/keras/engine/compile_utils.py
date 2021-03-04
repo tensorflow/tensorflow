@@ -149,6 +149,10 @@ class LossesContainer(Container):
     self._create_metrics()
     self._built = True
 
+  @property
+  def built(self):
+    return self._built
+
   def _create_metrics(self):
     """Creates per-output loss metrics, but only for multi-output Models."""
     if len(self._output_names) == 1:
@@ -250,6 +254,15 @@ class LossesContainer(Container):
       # Ok for a model to have no compiled loss.
       return array_ops.zeros(shape=())
 
+  def reset_states(self):
+    """Resets the state of loss metrics."""
+    if not self._built:
+      return
+    metrics = [self._loss_metric] + nest.flatten(self._per_output_metrics)
+    for metric_obj in metrics:
+      if metric_obj is not None:
+        metric_obj.reset_states()
+
   def _get_loss_object(self, loss):
     """Returns a `Loss` object.
 
@@ -284,7 +297,19 @@ class LossesContainer(Container):
 class MetricsContainer(Container):
   """A container class for metrics passed to `Model.compile`."""
 
-  def __init__(self, metrics=None, weighted_metrics=None, output_names=None):
+  def __init__(self, metrics=None, weighted_metrics=None, output_names=None,
+               from_serialized=False):
+    """Initializes a container for metrics.
+
+    Arguments:
+      metrics: see the `metrics` argument from `tf.keras.Model.compile`.
+      weighted_metrics: see the `weighted_metrics` argument from
+        `tf.keras.Model.compile`.
+      output_names: A list of strings of names of outputs for the model.
+      from_serialized: Whether the model being compiled is from a serialized
+        model.  Used to avoid redundantly applying pre-processing renaming
+        steps.
+    """
     super(MetricsContainer, self).__init__(output_names=output_names)
 
     # Keep user-supplied values untouched for recompiling and serialization.
@@ -294,6 +319,8 @@ class MetricsContainer(Container):
     self._metrics = metrics
     self._weighted_metrics = weighted_metrics
     self._built = False
+
+    self._from_serialized = from_serialized
 
   @property
   def metrics(self):
@@ -348,9 +375,17 @@ class MetricsContainer(Container):
         y_pred, self._weighted_metrics, check_types=False)
 
     # Assumes metrics, weighted_metrics have been flattened up to outputs.
-    self._set_metric_names()
+    #
+    # If we are loading a model that has been already serialized, we do not
+    # want to re-apply any pre-processing metric renaming steps.
+    if not self._from_serialized:
+      self._set_metric_names()
     self._create_ordered_metrics()
     self._built = True
+
+  @property
+  def built(self):
+    return self._built
 
   def _set_metric_names(self):
     """Sets unique metric names."""
@@ -433,6 +468,21 @@ class MetricsContainer(Container):
         if weighted_metric_obj is None:
           continue
         weighted_metric_obj.update_state(y_t, y_p, sample_weight=sw)
+
+  def reset_states(self):
+    """Resets the state of all `Metric`s in this container."""
+    if self._built:
+      metrics = self._metrics_in_order
+    else:
+      # If the user supplied `Metric` objects directly, we should
+      # reset those. This could also contain `str`s or `function`s
+      # though.
+      metrics = nest.flatten(self._user_metrics) + nest.flatten(
+          self._user_weighted_metrics)
+
+    for metric_obj in metrics:
+      if isinstance(metric_obj, metrics_mod.Metric):
+        metric_obj.reset_states()
 
   def _get_metric_objects(self, metrics, y_t, y_p):
     """Convert user-supplied metrics to `Metric` objects."""

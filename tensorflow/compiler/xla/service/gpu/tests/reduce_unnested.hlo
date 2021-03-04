@@ -239,11 +239,11 @@
 // CHECK:         %[[VAL_141:.*]] = udiv i32 %[[VAL_95]], 32
 // CHECK:         %[[VAL_142:.*]] = icmp eq i32 %[[VAL_97]], 0
 // CHECK:         br i1 %[[VAL_142]], label %[[VAL_143:.*]], label %[[VAL_144:.*]]
-// CHECK:       intra_warp_reduce_write-after66:                  ; preds = %[[VAL_143]], %[[VAL_123]]
+// CHECK:       intra_warp_reduce_write-after129:                  ; preds = %[[VAL_143]], %[[VAL_123]]
 // CHECK:         call void @llvm.nvvm.barrier0()
 // CHECK:         %[[VAL_145:.*]] = icmp eq i32 %[[VAL_141]], 0
 // CHECK:         br i1 %[[VAL_145]], label %[[VAL_146:.*]], label %[[VAL_51]]
-// CHECK:       inter_warp_reduce-after68:                        ; preds = %[[VAL_147:.*]], %[[VAL_144]]
+// CHECK:       inter_warp_reduce-after131:                        ; preds = %[[VAL_147:.*]], %[[VAL_144]]
 // CHECK:         br label %[[VAL_50]]
 // CHECK:       output_is_full_tile-true:                         ; preds = %[[VAL_85]]
 // CHECK:         %[[VAL_148:.*]] = add i32 %[[VAL_72]], %[[VAL_89]]
@@ -459,37 +459,37 @@
 // CHECK:         %[[VAL_324:.*]] = add i32 %[[VAL_75]], 1
 // CHECK:         %[[VAL_325:.*]] = icmp ult i32 %[[VAL_323]], %[[VAL_71]]
 // CHECK:         br i1 %[[VAL_325]], label %[[VAL_326:.*]], label %[[VAL_327:.*]]
-// CHECK:       output_x_in_tile-after13:                         ; preds = %[[VAL_326]], %[[VAL_322]]
+// CHECK:       output_x_in_tile-after48:                         ; preds = %[[VAL_326]], %[[VAL_322]]
 // CHECK:         %[[VAL_328:.*]] = add i32 64, %[[VAL_74]]
 // CHECK:         %[[VAL_329:.*]] = add i32 %[[VAL_75]], 64
 // CHECK:         %[[VAL_330:.*]] = icmp ult i32 %[[VAL_328]], %[[VAL_71]]
 // CHECK:         br i1 %[[VAL_330]], label %[[VAL_331:.*]], label %[[VAL_332:.*]]
-// CHECK:       output_x_in_tile-after16:                         ; preds = %[[VAL_331]], %[[VAL_327]]
+// CHECK:       output_x_in_tile-after55:                         ; preds = %[[VAL_331]], %[[VAL_327]]
 // CHECK:         %[[VAL_333:.*]] = add i32 65, %[[VAL_74]]
 // CHECK:         %[[VAL_334:.*]] = add i32 %[[VAL_75]], 65
 // CHECK:         %[[VAL_335:.*]] = icmp ult i32 %[[VAL_333]], %[[VAL_71]]
 // CHECK:         br i1 %[[VAL_335]], label %[[VAL_336:.*]], label %[[VAL_337:.*]]
-// CHECK:       output_x_in_tile-after19:                         ; preds = %[[VAL_336]], %[[VAL_332]]
+// CHECK:       output_x_in_tile-after62:                         ; preds = %[[VAL_336]], %[[VAL_332]]
 // CHECK:         %[[VAL_338:.*]] = add i32 128, %[[VAL_74]]
 // CHECK:         %[[VAL_339:.*]] = add i32 %[[VAL_75]], 128
 // CHECK:         %[[VAL_340:.*]] = icmp ult i32 %[[VAL_338]], %[[VAL_71]]
 // CHECK:         br i1 %[[VAL_340]], label %[[VAL_341:.*]], label %[[VAL_342:.*]]
-// CHECK:       output_x_in_tile-after22:                         ; preds = %[[VAL_341]], %[[VAL_337]]
+// CHECK:       output_x_in_tile-after69:                         ; preds = %[[VAL_341]], %[[VAL_337]]
 // CHECK:         %[[VAL_343:.*]] = add i32 129, %[[VAL_74]]
 // CHECK:         %[[VAL_344:.*]] = add i32 %[[VAL_75]], 129
 // CHECK:         %[[VAL_345:.*]] = icmp ult i32 %[[VAL_343]], %[[VAL_71]]
 // CHECK:         br i1 %[[VAL_345]], label %[[VAL_346:.*]], label %[[VAL_347:.*]]
-// CHECK:       output_x_in_tile-after25:                         ; preds = %[[VAL_346]], %[[VAL_342]]
+// CHECK:       output_x_in_tile-after76:                         ; preds = %[[VAL_346]], %[[VAL_342]]
 // CHECK:         %[[VAL_348:.*]] = add i32 192, %[[VAL_74]]
 // CHECK:         %[[VAL_349:.*]] = add i32 %[[VAL_75]], 192
 // CHECK:         %[[VAL_350:.*]] = icmp ult i32 %[[VAL_348]], %[[VAL_71]]
 // CHECK:         br i1 %[[VAL_350]], label %[[VAL_351:.*]], label %[[VAL_352:.*]]
-// CHECK:       output_x_in_tile-after28:                         ; preds = %[[VAL_351]], %[[VAL_347]]
+// CHECK:       output_x_in_tile-after83:                         ; preds = %[[VAL_351]], %[[VAL_347]]
 // CHECK:         %[[VAL_353:.*]] = add i32 193, %[[VAL_74]]
 // CHECK:         %[[VAL_354:.*]] = add i32 %[[VAL_75]], 193
 // CHECK:         %[[VAL_355:.*]] = icmp ult i32 %[[VAL_353]], %[[VAL_71]]
 // CHECK:         br i1 %[[VAL_355]], label %[[VAL_356:.*]], label %[[VAL_93]]
-// CHECK:       output_x_in_tile-after31:                         ; preds = %[[VAL_356]], %[[VAL_352]]
+// CHECK:       output_x_in_tile-after90:                         ; preds = %[[VAL_356]], %[[VAL_352]]
 // CHECK:         br label %[[VAL_81]]
 // CHECK:       output_x_in_tile-true:                            ; preds = %[[VAL_92]]
 // CHECK:         %[[VAL_357:.*]] = mul nuw nsw i32 %[[VAL_319]], 1
@@ -516,7 +516,7 @@
 // CHECK:         %[[VAL_375:.*]] = getelementptr inbounds float, float* %[[VAL_33]], i32 0
 // CHECK:         call void @region_2_9(float* %[[VAL_375]], float* %[[VAL_34]], float* %[[VAL_375]])
 // CHECK:         br label %[[VAL_322]]
-// CHECK:       output_x_in_tile-true12:                          ; preds = %[[VAL_322]]
+// CHECK:       output_x_in_tile-true47:                          ; preds = %[[VAL_322]]
 // CHECK:         %[[VAL_376:.*]] = mul nuw nsw i32 %[[VAL_324]], 1
 // CHECK:         %[[VAL_377:.*]] = add nuw nsw i32 0, %[[VAL_376]]
 // CHECK:         %[[VAL_378:.*]] = mul nuw nsw i32 %[[VAL_317]], 32
@@ -541,7 +541,7 @@
 // CHECK:         %[[VAL_394:.*]] = getelementptr inbounds float, float* %[[VAL_33]], i32 0
 // CHECK:         call void @region_2_9(float* %[[VAL_394]], float* %[[VAL_34]], float* %[[VAL_394]])
 // CHECK:         br label %[[VAL_327]]
-// CHECK:       output_x_in_tile-true15:                          ; preds = %[[VAL_327]]
+// CHECK:       output_x_in_tile-true54:                          ; preds = %[[VAL_327]]
 // CHECK:         %[[VAL_395:.*]] = mul nuw nsw i32 %[[VAL_329]], 1
 // CHECK:         %[[VAL_396:.*]] = add nuw nsw i32 0, %[[VAL_395]]
 // CHECK:         %[[VAL_397:.*]] = mul nuw nsw i32 %[[VAL_317]], 32
@@ -566,7 +566,7 @@
 // CHECK:         %[[VAL_413:.*]] = getelementptr inbounds float, float* %[[VAL_33]], i32 0
 // CHECK:         call void @region_2_9(float* %[[VAL_413]], float* %[[VAL_34]], float* %[[VAL_413]])
 // CHECK:         br label %[[VAL_332]]
-// CHECK:       output_x_in_tile-true18:                          ; preds = %[[VAL_332]]
+// CHECK:       output_x_in_tile-true61:                          ; preds = %[[VAL_332]]
 // CHECK:         %[[VAL_414:.*]] = mul nuw nsw i32 %[[VAL_334]], 1
 // CHECK:         %[[VAL_415:.*]] = add nuw nsw i32 0, %[[VAL_414]]
 // CHECK:         %[[VAL_416:.*]] = mul nuw nsw i32 %[[VAL_317]], 32
@@ -591,7 +591,7 @@
 // CHECK:         %[[VAL_432:.*]] = getelementptr inbounds float, float* %[[VAL_33]], i32 0
 // CHECK:         call void @region_2_9(float* %[[VAL_432]], float* %[[VAL_34]], float* %[[VAL_432]])
 // CHECK:         br label %[[VAL_337]]
-// CHECK:       output_x_in_tile-true21:                          ; preds = %[[VAL_337]]
+// CHECK:       output_x_in_tile-true68:                          ; preds = %[[VAL_337]]
 // CHECK:         %[[VAL_433:.*]] = mul nuw nsw i32 %[[VAL_339]], 1
 // CHECK:         %[[VAL_434:.*]] = add nuw nsw i32 0, %[[VAL_433]]
 // CHECK:         %[[VAL_435:.*]] = mul nuw nsw i32 %[[VAL_317]], 32
@@ -616,7 +616,7 @@
 // CHECK:         %[[VAL_451:.*]] = getelementptr inbounds float, float* %[[VAL_33]], i32 0
 // CHECK:         call void @region_2_9(float* %[[VAL_451]], float* %[[VAL_34]], float* %[[VAL_451]])
 // CHECK:         br label %[[VAL_342]]
-// CHECK:       output_x_in_tile-true24:                          ; preds = %[[VAL_342]]
+// CHECK:       output_x_in_tile-true75:                          ; preds = %[[VAL_342]]
 // CHECK:         %[[VAL_452:.*]] = mul nuw nsw i32 %[[VAL_344]], 1
 // CHECK:         %[[VAL_453:.*]] = add nuw nsw i32 0, %[[VAL_452]]
 // CHECK:         %[[VAL_454:.*]] = mul nuw nsw i32 %[[VAL_317]], 32
@@ -641,7 +641,7 @@
 // CHECK:         %[[VAL_470:.*]] = getelementptr inbounds float, float* %[[VAL_33]], i32 0
 // CHECK:         call void @region_2_9(float* %[[VAL_470]], float* %[[VAL_34]], float* %[[VAL_470]])
 // CHECK:         br label %[[VAL_347]]
-// CHECK:       output_x_in_tile-true27:                          ; preds = %[[VAL_347]]
+// CHECK:       output_x_in_tile-true82:                          ; preds = %[[VAL_347]]
 // CHECK:         %[[VAL_471:.*]] = mul nuw nsw i32 %[[VAL_349]], 1
 // CHECK:         %[[VAL_472:.*]] = add nuw nsw i32 0, %[[VAL_471]]
 // CHECK:         %[[VAL_473:.*]] = mul nuw nsw i32 %[[VAL_317]], 32
@@ -666,7 +666,7 @@
 // CHECK:         %[[VAL_489:.*]] = getelementptr inbounds float, float* %[[VAL_33]], i32 0
 // CHECK:         call void @region_2_9(float* %[[VAL_489]], float* %[[VAL_34]], float* %[[VAL_489]])
 // CHECK:         br label %[[VAL_352]]
-// CHECK:       output_x_in_tile-true30:                          ; preds = %[[VAL_352]]
+// CHECK:       output_x_in_tile-true89:                          ; preds = %[[VAL_352]]
 // CHECK:         %[[VAL_490:.*]] = mul nuw nsw i32 %[[VAL_354]], 1
 // CHECK:         %[[VAL_491:.*]] = add nuw nsw i32 0, %[[VAL_490]]
 // CHECK:         %[[VAL_492:.*]] = mul nuw nsw i32 %[[VAL_317]], 32
@@ -731,13 +731,13 @@
 // CHECK:         %[[VAL_528:.*]] = load float, float* %[[VAL_513]], align 4
 // CHECK:         %[[VAL_529:.*]] = atomicrmw fadd float* %[[VAL_105]], float %[[VAL_528]] seq_cst
 // CHECK:         br label %[[VAL_124]]
-// CHECK:       intra_warp_reduce_write-true65:                   ; preds = %[[VAL_123]]
+// CHECK:       intra_warp_reduce_write-true128:                   ; preds = %[[VAL_123]]
 // CHECK:         %[[VAL_530:.*]] = getelementptr inbounds [1 x [32 x float]], [1 x [32 x float]] addrspace(3)* @shared_cache_1, i32 0, i32 0, i32 %[[VAL_141]]
 // CHECK:         %[[VAL_531:.*]] = addrspacecast float addrspace(3)* %[[VAL_530]] to float*
 // CHECK:         %[[VAL_532:.*]] = load float, float* %[[VAL_130]], align 4
 // CHECK:         store float %[[VAL_532]], float* %[[VAL_531]], align 4
 // CHECK:         br label %[[VAL_144]]
-// CHECK:       inter_warp_reduce-true67:                         ; preds = %[[VAL_144]]
+// CHECK:       inter_warp_reduce-true130:                         ; preds = %[[VAL_144]]
 // CHECK:         %[[VAL_533:.*]] = getelementptr inbounds [1 x [32 x float]], [1 x [32 x float]] addrspace(3)* @shared_cache_1, i32 0, i32 0, i32 %[[VAL_97]]
 // CHECK:         %[[VAL_534:.*]] = addrspacecast float addrspace(3)* %[[VAL_533]] to float*
 // CHECK:         store float %[[VAL_55]], float* %[[VAL_15]], align 4
@@ -765,9 +765,9 @@
 // CHECK:         call void @region_2_9(float* %[[VAL_536]], float* %[[VAL_10]], float* %[[VAL_536]])
 // CHECK:         %[[VAL_547:.*]] = icmp eq i32 %[[VAL_95]], 0
 // CHECK:         br i1 %[[VAL_547]], label %[[VAL_548:.*]], label %[[VAL_147]]
-// CHECK:       reduction_atomic_update-after81:                  ; preds = %[[VAL_549:.*]], %[[VAL_146]]
+// CHECK:       reduction_atomic_update-after144:                  ; preds = %[[VAL_549:.*]], %[[VAL_146]]
 // CHECK:         br label %[[VAL_51]]
-// CHECK:       reduction_atomic_update-true80:                   ; preds = %[[VAL_146]]
+// CHECK:       reduction_atomic_update-true143:                   ; preds = %[[VAL_146]]
 // CHECK:         %[[VAL_550:.*]] = load float, float* %[[VAL_534]], align 4
 // CHECK:         %[[VAL_551:.*]] = bitcast float* %[[VAL_129]] to i32*
 // CHECK:         %[[VAL_552:.*]] = bitcast i32* %[[VAL_8]] to float*

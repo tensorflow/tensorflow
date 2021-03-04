@@ -14,6 +14,12 @@ enum NodeClass {
   UNKNOWN_RATIO = 5;
 }
 
+// Algorithm used for model autotuning optimization.
+enum AutotuneAlgorithm {
+  HILL_CLIMB = 0;
+  GRADIENT_DESCENT = 1;
+}
+
 // Protocol buffer representing the data used by the autotuning modeling
 // framework.
 message ModelProto {
@@ -103,4 +109,22 @@ message ModelProto {
   // Indicates whether the modeling framework should collect resource usage,
   // e.g. CPU, memory.
   bool collect_resource_usage = 3;
+
+  // Contains parameters of the model autotuning optimization.
+  message OptimizationParams {
+    // Algorithm used for autotuning optimization.
+    AutotuneAlgorithm algorithm = 1;
+
+    // Number of available logical threads.
+    int64 cpu_budget = 2;
+
+    // Amount of available memory in bytes.
+    int64 ram_budget = 3;
+
+    // Time between two consecutive `GetNext` calls to the iterator represented
+    // by the output node.
+    double model_input_time = 4;
+  }
+
+  OptimizationParams optimization_params = 4;
 }

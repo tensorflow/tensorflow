@@ -67,5 +67,21 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Abs, DT_INT64, DT_INT64, test::NearZeroAndExtremeInput<int64>(), std::abs,
     test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
 
+/// Test `tf.Rsqrt`.
+GENERATE_DEFAULT_TEST(Rsqrt, DT_HALF, DT_HALF, Eigen::numext::rsqrt,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Rsqrt, DT_FLOAT, DT_FLOAT, Eigen::numext::rsqrt,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Rsqrt, DT_DOUBLE, DT_DOUBLE, Eigen::numext::rsqrt,
+                      test::OpsTestConfig().NoBufferReuse())
+
+/// Test `tf.Sqrt`.
+GENERATE_DEFAULT_TEST(Sqrt, DT_HALF, DT_HALF, Eigen::numext::sqrt,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Sqrt, DT_FLOAT, DT_FLOAT, Eigen::numext::sqrt,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Sqrt, DT_DOUBLE, DT_DOUBLE, Eigen::numext::sqrt,
+                      test::OpsTestConfig().NoBufferReuse())
+
 }  // namespace
 }  // namespace tensorflow

@@ -568,3 +568,17 @@ func @decompose_resource_apply_proximal_adagrad_op(%lr: tensor<f32>, %l1: tensor
 
   return
 }
+
+// -----
+
+// Test that tf.RngReadAndSkip op is decomposed.
+// CHECK-LABEL: func @decompose_rng_read_and_skip_op
+func @decompose_rng_read_and_skip_op(%resource: tensor<!tf.resource<tensor<3xi64>>>) -> tensor<3xi64> {
+  // We rely on the TensorFlow StatefulRandomOpsTest to check it is lowered
+  // correctly.
+  // CHECK-NOT: tf.RngReadAndSkip
+  %alg = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %delta = "tf.Const"() {value = dense<10> : tensor<ui64>} : () -> tensor<ui64>
+  %0 = "tf.RngReadAndSkip"(%resource, %alg, %delta) : (tensor<!tf.resource<tensor<3xi64>>>, tensor<i32>, tensor<ui64>) -> tensor<3xi64>
+  return %0 : tensor<3xi64>
+}
