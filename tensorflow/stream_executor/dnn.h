@@ -1332,17 +1332,6 @@ class DnnSupport {
       AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
       ProfileResult* output_profile_result) = 0;
 
-  virtual port::Status DoConvolve(
-      ConvolutionKind kind, DataType element_type, DataType output_type,
-      Stream* stream, const BatchDescriptor& input_descriptor,
-      DeviceMemoryBase input_data, const FilterDescriptor& filter_descriptor,
-      DeviceMemoryBase filter_data, const BatchDescriptor& output_descriptor,
-      DeviceMemoryBase output_data,
-      const ConvolutionDescriptor& convolution_descriptor,
-      const AlgorithmConfig& plan_config,
-      ScratchAllocator* scratch_allocator, 
-      ProfileResult* output_profile_result) = 0;
-
   template <typename ElementType, typename OutputType>
   bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& input_descriptor,
                   const DeviceMemory<ElementType>& input_data,

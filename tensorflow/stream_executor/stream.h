@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/blas.h"
+#include "tensorflow/stream_executor/cuda/cuda_dnn.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/dnn.h"
 #include "tensorflow/stream_executor/event.h"
@@ -362,8 +363,10 @@ class Stream {
       DeviceMemory<OutputType> *output, ScratchAllocator *scratch_allocator,
       const dnn::AlgorithmConfig &plan_config,
       dnn::ProfileResult *output_profile_result) {
-    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      return dnn->DoConvolve(
+    dnn::DnnSupport *dnn = parent_->AsDnn();
+    if (dnn) {
+      gpu::CudnnSupport *cudnn_dnn = dynamic_cast<gpu::CudnnSupport*>(dnn);
+      return cudnn_dnn->DoConvolveWithExecutionPlan(
           dnn::ConvolutionKind::FORWARD, dnn::ToDataType<InputType>::value,
           dnn::ToDataType<OutputType>::value, this, input_descriptor,
           input_data, filter_descriptor, filter_data,
@@ -456,18 +459,20 @@ class Stream {
 
   template <typename ElementType>
   port::Status ConvolveBackwardDataWithExecutionPlan(
-    const dnn::FilterDescriptor &filter_descriptor,
-    const DeviceMemory<ElementType> &filter_data,
-    const dnn::BatchDescriptor &output_descriptor,
-    DeviceMemory<ElementType> backward_output_data,
-    const dnn::ConvolutionDescriptor &convolution_descriptor,
-    const dnn::BatchDescriptor &input_descriptor,
-    DeviceMemory<ElementType> *backward_input_data,
-    ScratchAllocator *scratch_allocator,
-    const dnn::AlgorithmConfig &plan_config,
-    dnn::ProfileResult *output_profile_result) {
-    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      return dnn->DoConvolve(
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<ElementType> &filter_data,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<ElementType> backward_output_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &input_descriptor,
+      DeviceMemory<ElementType> *backward_input_data,
+      ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &plan_config,
+      dnn::ProfileResult *output_profile_result) {
+    dnn::DnnSupport *dnn = parent_->AsDnn();
+    if (dnn) {
+      gpu::CudnnSupport *cudnn_dnn = dynamic_cast<gpu::CudnnSupport*>(dnn);
+      return cudnn_dnn->DoConvolveWithExecutionPlan(
           dnn::ConvolutionKind::BACKWARD_DATA,
           dnn::ToDataType<ElementType>::value,
           dnn::ToDataType<ElementType>::value, this, input_descriptor,
@@ -554,8 +559,10 @@ class Stream {
       ScratchAllocator *scratch_allocator,
       const dnn::AlgorithmConfig &plan_config,
       dnn::ProfileResult *output_profile_result) {
-    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      return dnn->DoConvolve(
+    dnn::DnnSupport *dnn = parent_->AsDnn();
+    if (dnn) {
+      gpu::CudnnSupport *cudnn_dnn = dynamic_cast<gpu::CudnnSupport*>(dnn);
+      return cudnn_dnn->DoConvolveWithExecutionPlan(
           dnn::ConvolutionKind::BACKWARD_FILTER,
           dnn::ToDataType<ElementType>::value,
           dnn::ToDataType<ElementType>::value, this, input_descriptor,

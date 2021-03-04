@@ -3482,7 +3482,7 @@ port::Status CudnnSupport::DoPrepareForConvolution(
   return port::Status::OK();
 }
 
-port::Status CudnnSupport::DoConvolve(
+port::Status CudnnSupport::DoConvolveWithExecutionPlan(
     dnn::ConvolutionKind kind, dnn::DataType element_type,
     dnn::DataType output_type, Stream* stream,
     const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,

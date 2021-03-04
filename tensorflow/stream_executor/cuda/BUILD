@@ -381,6 +381,14 @@ alias(
 )
 
 cc_library(
+    name = "cuda_dnn_headers",
+    textual_hdrs = ["cuda_dnn.h"],
+    deps = if_cuda_is_configured([
+        ":cuda_activation_header",
+    ]),
+)
+
+cc_library(
     name = "cudnn_plugin",
     srcs = if_cuda_is_configured(["cuda_dnn.cc"]),
     hdrs = if_cuda_is_configured(["cuda_dnn.h"]),
