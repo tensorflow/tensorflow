@@ -22,11 +22,13 @@ limitations under the License.
 
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -82,35 +84,77 @@ template <typename Conv2dOpTy>
 LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     Conv2dOpTy op, PatternRewriter& rewriter) const {
   if (!op.getResult().hasOneUse()) {
-    return failure();
+    return rewriter.notifyMatchFailure(
+        op, "result for current op has more than 1 use");
   }
   // Make sure Conv2D has 'VALID' padding.
   if (op->template getAttrOfType<StringAttr>("padding").getValue() != "VALID") {
-    return failure();
+    return rewriter.notifyMatchFailure(op,
+                                       "Conv2D op doesn't have valid padding");
   }
   // Make sure dilations are all ones if set.
   const ArrayAttr& dilations =
       op->template getAttrOfType<ArrayAttr>("dilations");
   if (dilations && !TFIntListIsAllOnes(dilations)) {
-    return failure();
+    return rewriter.notifyMatchFailure(op, "dilations should be all 1");
   }
 
-  if (!TFTypeIsFloat32Tensor(op.input()) || !TFDataFormatIsNHWC(op))
-    return failure();
+  if (!TFTypeIsFloat32Tensor(op.input()) || !TFDataFormatIsNHWC(op)) {
+    return rewriter.notifyMatchFailure(
+        op, "op's input is not float or the data format isn't NHWC");
+  }
 
   // Allow dynamic width and height dimensions only.
   auto result_ty = op.getResult().getType().template cast<TensorType>();
   if (!result_ty.hasRank() || result_ty.getRank() != 4 ||
-      result_ty.isDynamicDim(0) || result_ty.isDynamicDim(3))
-    return failure();
+      result_ty.isDynamicDim(0) || result_ty.isDynamicDim(3)) {
+    return rewriter.notifyMatchFailure(
+        op, "only dynamic width and height dimensions are allowed");
+  }
 
   // Check if the ConvOp is preceded by a `Expand` op and succeeded by a
   // `Squeeze` op.
   Operation* prev_op = op.getOperation()->getPrevNode();
-  if (!prev_op) return failure();
+  if (!prev_op || prev_op->getNumResults() != 1) {
+    return rewriter.notifyMatchFailure(
+        op, "op doesn't have a preceding node that has a single result");
+  }
+  if (!prev_op->hasOneUse() || *(prev_op->getResult(0).user_begin()) != op) {
+    return rewriter.notifyMatchFailure(
+        op, "op's input isn't produced by previous operation");
+  }
 
-  Operation* next_op = op.getOperation()->getNextNode();
-  if (!next_op) return failure();
+  auto tryGetNextNode =
+      [&rewriter](Operation* current) -> std::pair<LogicalResult, Operation*> {
+    // Check the current operation has a single result.
+    if (current->getNumResults() != 1) {
+      return {
+          rewriter.notifyMatchFailure(current, "op doesn't have single result"),
+          nullptr};
+    }
+    // Check the current operation has a next node.
+    Operation* next_op = current->getNextNode();
+    if (!next_op) {
+      return {rewriter.notifyMatchFailure(current, "op doesn't have next node"),
+              nullptr};
+    }
+    // Check the current operation's result is used by its successor node.
+    if (!current->hasOneUse() ||
+        *(current->getResult(0).user_begin()) != next_op) {
+      return {
+          rewriter.notifyMatchFailure(
+              current, "op's result isn't directly consumed by the next op"),
+          nullptr};
+    }
+    return {LogicalResult::success(), next_op};
+  };
+
+  std::pair<LogicalResult, Operation*> maybeNextNode =
+      tryGetNextNode(op.getOperation());
+  if (failed(maybeNextNode.first)) {
+    return maybeNextNode.first;
+  }
+  Operation* next_op = maybeNextNode.second;
 
   TF::ExpandDimsOp expand_op;
   TF::SqueezeOp squeeze_op;
@@ -119,15 +163,19 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
   if (llvm::isa<TF::ExpandDimsOp>(prev_op)) {
     if (!llvm::isa<TF::SqueezeOp>(next_op)) {
       // Expand/Squeeze op must come in pair.
-      return failure();
+      return rewriter.notifyMatchFailure(
+          op, "ExpandDimsOp and SqueezeOp should come in pair");
     }
     expand_op = llvm::cast<TF::ExpandDimsOp>(prev_op);
     squeeze_op = llvm::cast<TF::SqueezeOp>(next_op);
-    if (!expand_op.getResult().hasOneUse() ||
-        !squeeze_op.getResult().hasOneUse()) {
-      return failure();
+    if (!expand_op.getResult().hasOneUse()) {
+      return rewriter.notifyMatchFailure(
+          expand_op, "result for current op has more than 1 use");
     }
-
+    if (!squeeze_op.getResult().hasOneUse()) {
+      return rewriter.notifyMatchFailure(
+          squeeze_op, "result for current op has more than 1 use");
+    }
     // Make sure that the axis in `expand_op` is constant.
     if (auto const_op =
             llvm::dyn_cast<TF::ConstOp>(expand_op.dim().getDefiningOp())) {
@@ -141,12 +189,14 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
         expand_axis += 4;
       }
     } else {
-      return failure();
+      return rewriter.notifyMatchFailure(
+          expand_op, "ExpandDimsOp doesn't have a constant axis");
     }
     // Make sure that the `squeeze_dims` is equal to `expand_axis`.
     auto squeeze_dims = squeeze_op.squeeze_dims();
     if (squeeze_dims.size() != 1) {
-      return failure();
+      return rewriter.notifyMatchFailure(
+          squeeze_op, "squeeze dims should have exactly 1 dimension specified");
     }
     int64_t squeeze_axis = squeeze_dims[0].cast<IntegerAttr>().getInt();
     if (squeeze_axis < 0) {
@@ -154,36 +204,62 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
       squeeze_axis += 4;
     }
     if (squeeze_axis != expand_axis) {
-      return failure();
+      return rewriter.notifyMatchFailure(
+          op, "squeeze axis and expand axis doesn't match");
     }
 
     // Update previous/next op pointer.
-    prev_op = prev_op->getPrevNode();
-    if (!prev_op) return failure();
-    next_op = next_op->getNextNode();
-    if (!next_op) return failure();
+    Operation* tmp = prev_op->getPrevNode();
+    if (!tmp || tmp->getNumResults() != 1) {
+      return rewriter.notifyMatchFailure(
+          prev_op, "op doesn't have a preceding node that has a single result");
+    }
+    if (!tmp->hasOneUse() || *(tmp->getResult(0).user_begin()) != prev_op) {
+      return rewriter.notifyMatchFailure(
+          prev_op, "op's input isn't defined by its previous node");
+    }
+    prev_op = tmp;
+    std::pair<LogicalResult, Operation*> maybeNextNode =
+        tryGetNextNode(next_op);
+    if (failed(maybeNextNode.first)) {
+      return maybeNextNode.first;
+    }
+    next_op = maybeNextNode.second;
   }
 
   // SpaceToBatchND op.
-  if (!llvm::isa<TF::SpaceToBatchNDOp>(prev_op)) return failure();
+  if (!llvm::isa<TF::SpaceToBatchNDOp>(prev_op)) {
+    return rewriter.notifyMatchFailure(prev_op,
+                                       "op should be a SpaceToBatchND op");
+  }
   // TODO(b/149936532): Check `padding` input, currently ignored.
   TF::SpaceToBatchNDOp stb_op = llvm::cast<TF::SpaceToBatchNDOp>(prev_op);
   if (!stb_op.getResult().hasOneUse()) {
-    return failure();
+    return rewriter.notifyMatchFailure(
+        stb_op, "result for current op has more than 1 use");
   }
 
   // Pad op.
   TF::PadOp pad_op;
-  // TODO(b/149936532): Currently we just ignore the PadOp. However note that
-  // in real scenarios this may not always be correct: user can put a PadOp here
-  // with non-trivial consequences.
+  ElementsAttr pad_attr;
   if (llvm::isa<TF::PadOp>(next_op)) {
     pad_op = llvm::cast<TF::PadOp>(next_op);
     if (!pad_op.getResult().hasOneUse()) {
-      return failure();
+      return rewriter.notifyMatchFailure(
+          pad_op, "result for current op has more than 1 use");
     }
-    next_op = next_op->getNextNode();
-    if (!next_op) return failure();
+    std::pair<LogicalResult, Operation*> maybeNextNode =
+        tryGetNextNode(next_op);
+    if (failed(maybeNextNode.first)) {
+      return maybeNextNode.first;
+    }
+    next_op = maybeNextNode.second;
+    if (!matchPattern(pad_op.paddings(), m_Constant(&pad_attr))) {
+      // If the padding value isn't constant, we can't determine the padding
+      // scheme for Conv2D below, in this case just reject the pattern.
+      return rewriter.notifyMatchFailure(
+          pad_op, "PadOp's padding value isn't constant");
+    }
   }
 
   // BatchToSpaceND + BiasAdd.
@@ -194,33 +270,53 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     // Must be BiasAdd + BatchToSpaceND.
     biasadd_op = llvm::cast<TF::BiasAddOp>(next_op);
     if (!biasadd_op.getResult().hasOneUse()) {
-      return failure();
+      return rewriter.notifyMatchFailure(
+          biasadd_op, "result for current op has more than 1 use");
     }
-    next_op = next_op->getNextNode();
-    if (!next_op || !llvm::isa<TF::BatchToSpaceNDOp>(next_op)) return failure();
+    std::pair<LogicalResult, Operation*> maybeNextNode =
+        tryGetNextNode(next_op);
+    if (failed(maybeNextNode.first)) {
+      return maybeNextNode.first;
+    }
+    if (!llvm::isa<TF::BatchToSpaceNDOp>(maybeNextNode.second)) {
+      return rewriter.notifyMatchFailure(
+          next_op, "op's next node isn't BatchToSpaceND op");
+    }
+    next_op = maybeNextNode.second;
     bts_op = llvm::cast<TF::BatchToSpaceNDOp>(next_op);
   } else if (llvm::isa<TF::BatchToSpaceNDOp>(next_op)) {
     // BatchToSpaceND + (optional) BiasAdd.
     bts_op = llvm::cast<TF::BatchToSpaceNDOp>(next_op);
-    next_op = next_op->getNextNode();
-    if (next_op && llvm::isa<TF::BiasAddOp>(next_op)) {
+    Operation* tmp = next_op->getNextNode();
+    if (tmp && llvm::isa<TF::BiasAddOp>(tmp)) {
       if (!bts_op.getResult().hasOneUse()) {
-        return failure();
+        return rewriter.notifyMatchFailure(
+            bts_op, "result for current op has more than 1 use");
       }
+      if (!next_op->hasOneUse() ||
+          *(next_op->getResult(0).user_begin()) != tmp) {
+        return rewriter.notifyMatchFailure(
+            next_op, "op's result isn't directly consumed by the next op");
+      }
+      next_op = tmp;
       biasadd_op = llvm::cast<TF::BiasAddOp>(next_op);
       final_op_is_bts = false;
     }
   } else {
-    return failure();
+    return rewriter.notifyMatchFailure(
+        next_op, "next op is neither BiasAdd nor BatchToSpaceND");
   }
 
   llvm::Optional<ArrayAttr> dilations_attr = ExtractDilationsAttrFromBlockShape(
       stb_op.block_shape(), bts_op.block_shape(), expand_axis, rewriter);
-  if (!dilations_attr.hasValue()) return failure();
+  if (!dilations_attr.hasValue()) {
+    return rewriter.notifyMatchFailure(op, "failed to extract dilation rate");
+  }
 
   if (expand_op) {
     if (stb_op.input().getType().dyn_cast<RankedTensorType>() == nullptr) {
-      return failure();
+      return rewriter.notifyMatchFailure(
+          stb_op, "SpaceToBatchND op's input should have RankedTensorType");
     }
   }
 
@@ -255,16 +351,33 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
   auto stb_paddings = stb_op.paddings();
   auto bts_crops = bts_op.crops();
   ElementsAttr stb_paddings_attr, bts_crops_attr;
-  if (matchPattern(stb_paddings, m_Constant(&stb_paddings_attr)) &&
-      matchPattern(bts_crops, m_Constant(&bts_crops_attr))) {
-    if (stb_paddings_attr.getNumElements() != bts_crops_attr.getNumElements())
-      return failure();
-    // padding - crop.
-    auto paddings = stb_paddings_attr.getValues<IntegerAttr>();
-    auto crops = bts_crops_attr.getValues<IntegerAttr>();
-    for (auto it1 = paddings.begin(), it2 = crops.begin();
-         it1 != paddings.end() && it2 != crops.end(); it1++, it2++) {
-      if ((*it1).getInt() != (*it2).getInt()) {
+  if (!matchPattern(stb_paddings, m_Constant(&stb_paddings_attr)) ||
+      !matchPattern(bts_crops, m_Constant(&bts_crops_attr))) {
+    return rewriter.notifyMatchFailure(
+        op,
+        "either SpaceToBatchND or BatchToSpaceND "
+        "doesn't have constant padding/crops value");
+  }
+  if (stb_paddings_attr.getType() != bts_crops_attr.getType()) {
+    return rewriter.notifyMatchFailure(
+        stb_op,
+        "SpaceToBatchND op's padding doesn't have same shape/type with "
+        "BatchToSpaceND op's crops");
+  }
+  int64_t m = stb_paddings_attr.getType().getDimSize(0);
+  // padding - crop.
+  for (uint64_t i = 0; i < m; ++i) {
+    for (uint64_t j = 0; j < 2; ++j) {
+      // `crops` tensor has shape [M, 2], crops[i] = [crop_start, crop_end]
+      // specifies the amount to crop from input dimension i + 1. If the input
+      // of `BatchToSpaceND` has been padded explicitly, then we need to
+      // take into account the additional padding when determining the padding
+      // scheme for `Conv2D`.
+      int64_t addtional_pad =
+          pad_attr ? pad_attr.getValue<IntegerAttr>({i + 1, j}).getInt() : 0;
+      if (stb_paddings_attr.getValue<IntegerAttr>({i, j}).getInt() +
+              addtional_pad !=
+          bts_crops_attr.getValue<IntegerAttr>({i, j}).getInt()) {
         op->setAttr("padding", rewriter.getStringAttr("SAME"));
         break;
       }
@@ -316,7 +429,11 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
   }
 
   if (final_op_is_bts) {
-    bts_op.getResult().replaceAllUsesWith(bts_op.input());
+    if (bts_op.input().getDefiningOp<TF::PadOp>()) {
+      bts_op.getResult().replaceAllUsesWith(pad_op.input());
+    } else {
+      bts_op.getResult().replaceAllUsesWith(bts_op.input());
+    }
   }
 
   stb_op.getResult().dropAllUses();

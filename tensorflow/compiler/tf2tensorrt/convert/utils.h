@@ -200,6 +200,17 @@ absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
 absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
     const DeviceNameUtils::ParsedName& a, absl::string_view b);
 
+// Optimization profile generation strategies.
+enum class ProfileStrategy {
+  kRange,
+  kOptimal,
+  kRangeOptimal,
+  kImplicitBatchModeCompatible,
+};
+
+string ProfileStrategyToName(const ProfileStrategy strategy);
+Status ProfileStrategyFromName(const string& name, ProfileStrategy* strategy);
+
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
 }  // namespace tensorrt

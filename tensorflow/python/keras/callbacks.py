@@ -1999,6 +1999,11 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
   * Activation histograms
   * Sampled profiling
 
+  When used in `Model.evaluate`, in addition to epoch summaries, there will be
+  a summary that records evaluation metrics vs `Model.optimizer.iterations`
+  written. The metric names will be prepended with `evaluation`, with
+  `Model.optimizer.iterations` being the step in the visualized TensorBoard.
+
   If you have installed TensorFlow with pip, you should be able
   to launch TensorBoard from the command line:
 
@@ -2372,6 +2377,13 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     self._push_writer(self._val_writer, self._val_step)
 
   def on_test_end(self, logs=None):
+    if self.model.optimizer and hasattr(self.model.optimizer, 'iterations'):
+      with summary_ops_v2.record_if(True), self._val_writer.as_default():
+        for name, value in logs.items():
+          summary_ops_v2.scalar(
+              'evaluation_' + name + '_vs_iterations',
+              value,
+              step=self.model.optimizer.iterations.read_value())
     self._pop_writer()
 
   def _implements_train_batch_hooks(self):

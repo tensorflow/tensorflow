@@ -691,7 +691,7 @@ def FusionOp : LHLO_Op<"fusion", [SingleBlockImplicitTerminator<"TerminatorOp">]
 
   let skipDefaultBuilders = 1;
   let builders = [
-     OpBuilderDAG<(ins CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes)>
+     OpBuilder<(ins CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes)>
   ];
 
   let extraClassDeclaration = [{
@@ -740,7 +740,7 @@ def TerminatorOp :
     Terminator operation for the LHLO dialect.
   }];
   let builders = [
-    OpBuilderDAG<(ins "ValueRange":$operands),
+    OpBuilder<(ins "ValueRange":$operands),
     [{ build($_builder, $_state, llvm::None, operands, llvm::None); }]>];
 }
 

@@ -820,13 +820,15 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
     self.assertAllClose(layer.states, loaded_layer.states)
     self.assertAllClose(model(input_arr), loaded(input_arr))
 
-  def testSaveStatelessConvLSTM2D(self):
+  @parameterized.named_parameters([('stateful', True), ('stateless', False)])
+  def testSaveConvLSTM2D(self, stateful):
     data_format = 'channels_first'
     batch, timesteps, channels, rows, cols = 12, 10, 8, 4, 4
     input_arr = np.ones(
         (batch, timesteps, channels, rows, cols)).astype('float32')
     layer = keras.layers.ConvLSTM2D(
-        filters=16, kernel_size=(1, 1), data_format=data_format)
+        filters=16, kernel_size=(1, 1), data_format=data_format,
+        stateful=stateful)
     x = keras.Input(batch_shape=(batch, timesteps, channels, rows, cols))
     y = layer(x)
     model = keras.Model(x, y)
@@ -837,6 +839,8 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
     del model
 
     loaded = keras_load.load(saved_model_dir)
+    if stateful:
+      loaded.reset_states()
     predict_2 = loaded(input_arr)
     self.assertAllClose(predict_1, predict_2)
 

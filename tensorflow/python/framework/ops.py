@@ -23,6 +23,7 @@ import re
 import sys
 import threading
 import types
+from absl import app
 
 import numpy as np
 import six
@@ -61,7 +62,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import traceable_stack
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import control_flow_util
-from tensorflow.python.platform import app
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
 from tensorflow.python.types import core as core_tf_types

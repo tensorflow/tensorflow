@@ -188,6 +188,10 @@ class MicroMutableOpResolver : public MicroOpResolver {
                      tflite::Register_DETECTION_POSTPROCESS());
   }
 
+  TfLiteStatus AddElu() {
+    return AddBuiltin(BuiltinOperator_ELU, tflite::Register_ELU(), ParseElu);
+  }
+
   TfLiteStatus AddEqual() {
     return AddBuiltin(BuiltinOperator_EQUAL,
                       tflite::ops::micro::Register_EQUAL(), ParseEqual);

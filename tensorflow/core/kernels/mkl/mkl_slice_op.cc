@@ -453,7 +453,8 @@ class MklSliceOp : public OpKernel {
           MklSlicePrimitiveFactory<T>::Get(sliceParams);
       // Execute slice reorder.
       std::shared_ptr<stream> slice_stream;
-      slice_stream.reset(CreateStream(context, reorder_prim->GetEngine()));
+      MklDnnThreadPool eigen_tp(context);
+      slice_stream.reset(CreateStream(&eigen_tp, reorder_prim->GetEngine()));
       reorder_prim->Execute(sliceParams, slice_stream);
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +

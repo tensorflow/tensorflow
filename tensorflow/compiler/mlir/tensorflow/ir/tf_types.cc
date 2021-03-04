@@ -198,7 +198,7 @@ ArrayRef<TensorType> TensorFlowTypeWithSubtype::GetSubtypes() {
 
 // TODO(jpienaar): BroadcastCompatible and HasCompatibleElementTypes have
 // similar structure that could be extracted into helper method.
-bool BroadcastCompatible(ArrayRef<Type> lhs, ArrayRef<Type> rhs) {
+bool BroadcastCompatible(TypeRange lhs, TypeRange rhs) {
   if (lhs.size() != rhs.size()) return false;
   for (auto types : llvm::zip(lhs, rhs)) {
     // Drop ref types because they don't affect broadcast compatibility. E.g.,
@@ -349,7 +349,7 @@ bool HasCompatibleElementTypes(Type lhs, Type rhs,
   return GetCastCompatibleType(lhs, rhs, may_ignore_ref_type_lhs) != nullptr;
 }
 
-bool AreCastCompatible(ArrayRef<Type> types) {
+bool AreCastCompatible(TypeRange types) {
   Type common = types.front();
   for (auto type : types.drop_front()) {
     Type refined_type =
@@ -360,7 +360,7 @@ bool AreCastCompatible(ArrayRef<Type> types) {
   return true;
 }
 
-bool ArraysAreCastCompatible(ArrayRef<Type> lhs, ArrayRef<Type> rhs) {
+bool ArraysAreCastCompatible(TypeRange lhs, TypeRange rhs) {
   if (lhs.size() != rhs.size()) return false;
   for (auto pair : llvm::zip(lhs, rhs)) {
     auto lhs_i = std::get<0>(pair);

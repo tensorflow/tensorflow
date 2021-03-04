@@ -289,7 +289,8 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       }
 
       std::shared_ptr<stream> cpu_stream;
-      cpu_stream.reset(CreateStream(context, matmul_fwd->GetEngine()));
+      MklDnnThreadPool eigen_tp(context);
+      cpu_stream.reset(CreateStream(&eigen_tp, matmul_fwd->GetEngine()));
       // Execute inner-product
       Tbias* bias_data = this->GetBiasHandle(
           context, matmul_fwd_pd, bias_tensor, weight_tensor, cpu_stream);

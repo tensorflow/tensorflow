@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import json
 import os
-import sys
 
 from absl.testing import parameterized
 
@@ -34,11 +33,6 @@ from tensorflow.python.keras.distribute import distributed_file_utils
 from tensorflow.python.keras.distribute import multi_worker_testing_utils
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import test
-
-
-def _is_oss():
-  """Returns whether the test is run under OSS."""
-  return len(sys.argv) >= 1 and 'bazel' in sys.argv[0]
 
 
 def checkpoint_exists(filepath):
@@ -189,8 +183,6 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
 
     def proc_model_checkpoint_works_with_same_file_path(test_obj,
                                                         saving_filepath):
-      if _is_oss():
-        test_obj.skipTest('TODO(b/170838633): Failing in OSS')
       model, _, train_ds, steps = _model_setup(test_obj, file_format='')
       num_epoch = 4
 

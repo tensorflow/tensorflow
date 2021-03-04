@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -47,9 +48,12 @@ SelfAdjointEigResult SelfAdjointEig(XlaOp a, bool lower, int64 max_iter,
           a_shape.ToString());
     }
     PrimitiveType type = a_shape.element_type();
-    if (!primitive_util::IsFloatingPointType(type)) {
-      return InvalidArgument("Type of the input matrix must be float: got %s.",
-                             a_shape.ToString());
+    if (!primitive_util::IsFloatingPointType(type) &&
+        !primitive_util::IsComplexType(type)) {
+      return InvalidArgument(
+          "Type of the input matrix must be floating point "
+          "or complex: got %s.",
+          a_shape.ToString());
     }
 
     const int64 m = ShapeUtil::GetDimension(a_shape, -2);
@@ -67,10 +71,14 @@ SelfAdjointEigResult SelfAdjointEig(XlaOp a, bool lower, int64 max_iter,
         a_shape.dimensions().begin(),
         a_shape.dimensions().begin() + num_batch_dims);
 
+    PrimitiveType eigvals_type =
+        primitive_util::IsComplexType(type)
+            ? primitive_util::ComplexComponentType(type)
+            : type;
     std::vector<int64> eigvals_dims = batch_dims;
     eigvals_dims.push_back(m);
     Shape eigh_shape = ShapeUtil::MakeTupleShape(
-        {a_shape, ShapeUtil::MakeShape(type, eigvals_dims)});
+        {a_shape, ShapeUtil::MakeShape(eigvals_type, eigvals_dims)});
     // TODO(phawkins): upgrade Eigh decomposition to a first-class HLO operator.
     std::string opaque =
         absl::StrFormat("%d,%d,%f", lower ? 1 : 0, max_iter, tol);

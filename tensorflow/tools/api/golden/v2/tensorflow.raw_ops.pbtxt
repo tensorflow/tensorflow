@@ -2542,7 +2542,7 @@ tf_module {
   }
   member_method {
     name: "ModelDataset"
-    argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\', \'algorithm\', \'cpu_budget\', \'ram_budget\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'0\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\', \'algorithm\', \'cpu_budget\', \'ram_budget\', \'warm_start\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'0\', \'False\', \'None\'], "
   }
   member_method {
     name: "Mul"

@@ -650,6 +650,7 @@ tf_cuda_cc_test(
         "//conditions:default": [],
     }),
     tags = [
+        "no_cuda_asan",  # TODO(b/181771536)
         "no_windows",  # TODO(b/155444728)
         "noasan",
     ],
@@ -658,6 +659,7 @@ tf_cuda_cc_test(
     # linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":c_api",
+        ":c_api_internal",
         ":c_test_util",
         ":test_op_kernel",
         "//tensorflow/cc:cc_ops",

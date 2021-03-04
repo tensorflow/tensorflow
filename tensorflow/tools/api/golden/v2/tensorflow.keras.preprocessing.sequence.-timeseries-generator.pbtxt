@@ -2,6 +2,8 @@ path: "tensorflow.keras.preprocessing.sequence.TimeseriesGenerator"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras.preprocessing.sequence.TimeseriesGenerator\'>"
   is_instance: "<class \'keras_preprocessing.sequence.TimeseriesGenerator\'>"
+  is_instance: "<class \'tensorflow.python.keras.utils.data_utils.Sequence\'>"
+  is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'data\', \'targets\', \'length\', \'sampling_rate\', \'stride\', \'start_index\', \'end_index\', \'shuffle\', \'reverse\', \'batch_size\'], varargs=None, keywords=None, defaults=[\'1\', \'1\', \'0\', \'None\', \'False\', \'False\', \'128\'], "

@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-# Warning: as of Jan 20, 2020, MacOS(_EXTERNAL) images do not support Python3.9.
 set -e
 set -x
 
@@ -32,7 +30,7 @@ PYENV_ROOT="$(pwd)/pyenv"
 export PYENV_ROOT
 export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init -)"
-PY_VERSION=3.9.1
+PY_VERSION=3.9.0
 pyenv install -s "${PY_VERSION}"
 pyenv local "${PY_VERSION}"
 python --version
@@ -44,7 +42,7 @@ install_macos_pip_deps
 export TF_NEED_CUDA=0
 export CC_OPT_FLAGS='-mavx'
 export TF2_BEHAVIOR=1
-export PYTHON_BIN_PATH=$(which python3.9)
+export PYTHON_BIN_PATH=$(which python)
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
 tag_filters="-no_oss,-oss_serial,-nomac,-no_mac$(maybe_skip_v1),-gpu,-tpu,-benchmark-test"

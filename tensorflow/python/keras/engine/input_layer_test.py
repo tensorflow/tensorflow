@@ -25,6 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
+from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -369,6 +370,12 @@ class InputLayerTest(keras_parameterized.TestCase):
       self.assertAllEqual(model(two_tensors), lambda_fn(two_tensors))
       model = model_config.model_from_json(model.to_json())
       self.assertAllEqual(model(two_tensors), lambda_fn(two_tensors))
+
+  def test_serialize_with_unknown_rank(self):
+    inp = K.placeholder(shape=None, dtype=dtypes.string)
+    x = input_layer_lib.InputLayer(input_tensor=inp, dtype=dtypes.string)
+    loaded = input_layer_lib.InputLayer.from_config(x.get_config())
+    self.assertIsNone(loaded._batch_input_shape)
 
 
 if __name__ == '__main__':

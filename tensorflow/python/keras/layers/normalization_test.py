@@ -31,7 +31,6 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers import normalization
 from tensorflow.python.keras.layers import normalization_v2
-from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
@@ -166,7 +165,7 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
         axis=-1,
         input_shape=(4, 4, 3),
         momentum=0.8,
-        dtype=policy.Policy('mixed_float16'))
+        dtype='mixed_float16')
     x = np.random.normal(size=(10, 4, 4, 3))
     y = norm(x)
     self.assertEqual(y.dtype, 'float16')
@@ -181,7 +180,7 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
         axis=-1,
         input_shape=(1, 1, 1),
         fused=fused,
-        dtype=policy.Policy('mixed_float16'))
+        dtype='mixed_float16')
     x = np.array([-1000., 1000.]).reshape((2, 1, 1, 1))
     y = norm(x, training=True)
     expected_y = np.array([-1.0, 1.0]).reshape((2, 1, 1, 1))

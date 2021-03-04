@@ -163,6 +163,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     self._trt_test_params = None
     self._disable_non_trt_optimizers = False
     self._use_implicit_batch = True
+    self._profile_strategy = "Unknown"
 
   def setUp(self):
     """Setup method."""
@@ -264,8 +265,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   def DisableNonTrtOptimizers(self):
     self._disable_non_trt_optimizers = True
 
-  def DisableImplicitBatchMode(self):
+  def SetDynamicShapeModeAndProfileStrategy(self, profile_strategy="Range"):
     self._use_implicit_batch = False
+    self._profile_strategy = profile_strategy
 
   def GetParams(self):
     """Returns a TfTrtIntegrationTestParams for the test."""
@@ -453,11 +455,11 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     if run_params.is_v2:
       converter_v2 = trt_convert.TrtGraphConverterV2(
           input_saved_model_dir=saved_model_dir,
-          conversion_params=conversion_params)
+          conversion_params=conversion_params,
+          use_dynamic_shape=not self._use_implicit_batch,
+          dynamic_shape_profile_strategy=self._profile_strategy)
       if self._disable_non_trt_optimizers:
         converter_v2._test_only_disable_non_trt_optimizers = True  # pylint: disable=protected-access
-      if not self._use_implicit_batch:
-        converter_v2._test_only_use_implicit_batch = False  # pylint: disable=protected-access
       return converter_v2
 
     converter_v1 = trt_convert.TrtGraphConverter(
@@ -873,6 +875,10 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
           all_op_names.append(node.name)
           if node.op == "TRTEngineOp":
             trt_op_names.append(node.name)
+            if not self._use_implicit_batch:
+              self.assertEqual(
+                  self._ToString(node.attr["profile_strategy"].s).lower(),
+                  self._profile_strategy.lower())
 
     all_op_names = self._Canonicalize(all_op_names)
     trt_op_names = self._RemoveGraphSequenceNumber(
