@@ -62,10 +62,6 @@ std::string ToVlogString(const dnn::AlgorithmConfig &algo_config) {
   return algo_config.ToString();
 }
 
-std::string ToVlogString(const dnn::ExecutionPlanConfig &plan_config) {
-  return plan_config.ToString();
-}
-
 std::string ToVlogString(dnn::ElementwiseOperation op) {
   return dnn::ElementwiseOperationString(op);
 }

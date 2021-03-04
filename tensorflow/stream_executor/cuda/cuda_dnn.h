@@ -301,7 +301,7 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemoryBase output_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::ExecutionPlanConfig& plan_config,
+      const dnn::AlgorithmConfig& plan_config,
       ScratchAllocator* scratch_allocator, 
       dnn::ProfileExecutionPlanResult* output_profile_result) override;
 

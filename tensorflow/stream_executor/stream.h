@@ -361,7 +361,7 @@ class Stream {
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<OutputType> *output, ScratchAllocator *scratch_allocator,
-      const dnn::ExecutionPlanConfig &plan_config,
+      const dnn::AlgorithmConfig &plan_config,
       dnn::ProfileExecutionPlanResult *output_profile_result) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       return dnn->DoConvolve(
@@ -465,7 +465,7 @@ class Stream {
     const dnn::BatchDescriptor &input_descriptor,
     DeviceMemory<ElementType> *backward_input_data,
     ScratchAllocator *scratch_allocator,
-    const dnn::ExecutionPlanConfig &plan_config,
+    const dnn::AlgorithmConfig &plan_config,
     dnn::ProfileExecutionPlanResult *output_profile_result) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       return dnn->DoConvolve(
@@ -553,7 +553,7 @@ class Stream {
       const dnn::FilterDescriptor &filter_descriptor,
       DeviceMemory<ElementType> *backward_filter_data,
       ScratchAllocator *scratch_allocator,
-      const dnn::ExecutionPlanConfig &plan_config,
+      const dnn::AlgorithmConfig &plan_config,
       dnn::ProfileExecutionPlanResult *output_profile_result) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       return dnn->DoConvolve(

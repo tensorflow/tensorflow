@@ -755,17 +755,28 @@ class PoolingDescriptor {
 class AlgorithmDesc {
  public:
   typedef int64 Index;
+  typedef std::string Tag;
   AlgorithmDesc() : AlgorithmDesc(0, false) {}
   AlgorithmDesc(Index a, bool use_tensor_ops) {
     proto_.set_algo_id(a);
     proto_.set_math_type(use_tensor_ops ? AlgorithmProto::TENSOR_OP_MATH
                                         : AlgorithmProto::DEFAULT_MATH);
   }
+  AlgorithmDesc(Tag a, void* b) {
+    proto_.set_exec_plan_id(a);
+    exec_plan_desc_ = b;
+  }
+  bool IsExecutionPlan() const { return exec_plan_id() == ""; }
   bool tensor_ops_enabled() const {
     return proto_.math_type() == AlgorithmProto::TENSOR_OP_MATH;
   }
   Index algo_id() const { return proto_.algo_id(); }
+  Tag exec_plan_id() const { return proto_.exec_plan_id(); }
+  void* exec_plan_desc() const { return exec_plan_desc_; }
   bool operator==(const AlgorithmDesc& other) const {
+    if (IsExecutionPlan()) {
+      return exec_plan_id() == other.exec_plan_id();
+    }
     return algo_id() == other.algo_id() &&
            tensor_ops_enabled() == other.tensor_ops_enabled();
   }
@@ -777,34 +788,8 @@ class AlgorithmDesc {
 
  private:
   AlgorithmProto proto_;
-};
-
-// Collects parameters for DNN execution plans.
-class ExecutionPlanDesc {
- public:
-  typedef std::string Index;
-  ExecutionPlanDesc() : ExecutionPlanDesc("unknown", nullptr) {}
-  ExecutionPlanDesc(Index a, void* b) {
-    proto_.set_exec_plan_id(a);
-    exec_plan_desc_ = b;
-  }
-  Index exec_plan_id() const { return proto_.exec_plan_id(); }
-  void* exec_plan_desc() const { return exec_plan_desc_; }
-  bool operator==(const ExecutionPlanDesc& other) const {
-    return exec_plan_id() == other.exec_plan_id();
-  }
-  // TODO(kaixih): Currently, hash() and ToString() only recognize the
-  // exec_plan_id. We might include more information in this class, such as the
-  // CUDNN numerical notes, which can tell whether the underlying engine uses
-  // deterministic algorithm, tensor cores, etc.
-  uint64 hash() const;
-
-  ExecutionPlanProto ToProto() const { return proto_; }
-
-  std::string ToString() const;
-
- private:
-  ExecutionPlanProto proto_;
+  // We keep a pointer for the execution plan if cuDNN v8 is used. Note,
+  // AlgorithmDesc doesn't own it.
   void* exec_plan_desc_;
 };
 
@@ -844,8 +829,8 @@ class ProfileExecutionPlanResult {
            elapsed_time_in_ms() != std::numeric_limits<float>::max();
   }
 
-  ExecutionPlanDesc plan() const { return *plan_; }
-  void set_plan(ExecutionPlanDesc val) { plan_ = val; }
+  AlgorithmDesc plan() const { return *plan_; }
+  void set_plan(AlgorithmDesc val) { plan_ = val; }
 
   float elapsed_time_in_ms() const { return elapsed_time_in_ms_; }
   void set_elapsed_time_in_ms(float val) { elapsed_time_in_ms_ = val; }
@@ -854,7 +839,7 @@ class ProfileExecutionPlanResult {
   void set_scratch_size(size_t val) { scratch_size_ = val; }
 
  private:
-  absl::optional<ExecutionPlanDesc> plan_;
+  absl::optional<AlgorithmDesc> plan_;
   float elapsed_time_in_ms_ = std::numeric_limits<float>::max();
   size_t scratch_size_ = 0;
 };
@@ -884,6 +869,10 @@ class AlgorithmConfig {
       : algorithm_(algorithm), scratch_size_(scratch_size) {}
   AlgorithmConfig(AlgorithmDesc algorithm, AlgorithmDesc algorithm_no_scratch)
       : algorithm_(algorithm), algorithm_no_scratch_(algorithm_no_scratch) {}
+  AlgorithmConfig(AlgorithmDesc algorithm, size_t scratch_size,
+                  AlgorithmDesc algorithm_no_scratch)
+      : algorithm_(algorithm), scratch_size_(scratch_size),
+        algorithm_no_scratch_(algorithm_no_scratch) {}
   absl::optional<AlgorithmDesc> algorithm() const { return algorithm_; }
   void set_algorithm(AlgorithmDesc val) { algorithm_ = val; }
   absl::optional<AlgorithmDesc> algorithm_no_scratch() const {
@@ -909,53 +898,6 @@ class AlgorithmConfig {
   absl::optional<AlgorithmDesc> algorithm_no_scratch_;
   absl::optional<size_t> scratch_size_;
 };
-
-// Describes the configuration for the execution plans that will used.
-//
-// Arguments:
-//  plan: the primary execution plan that should be used.
-//  plan_no_scratch: a secondary execution plan that should be used, if the
-//    the allocation for the scratch memory fails.
-//  scrach_size: specify the size of scratch memory in bytes needed for the
-//    primary execution plan used.
-//
-// This class is only for CUDA platform with CUDNN v8 library. Given the
-// execution plan, users can query the scratch size. However, for convenience,
-// we also store this size in the class.
-
-class ExecutionPlanConfig {
- public:
-  ExecutionPlanConfig() {}
-  ExecutionPlanConfig(ExecutionPlanDesc plan, size_t scratch_size)
-      : plan_(plan), scratch_size_(scratch_size) {}
-  ExecutionPlanConfig(ExecutionPlanDesc plan, size_t scratch_size,
-                      ExecutionPlanDesc plan_no_scratch)
-      : plan_(plan), scratch_size_(scratch_size),
-        plan_no_scratch_(plan_no_scratch) {}
-  absl::optional<ExecutionPlanDesc> plan() const { return plan_; }
-  void set_plan(ExecutionPlanDesc val) { plan_ = val; }
-  absl::optional<ExecutionPlanDesc> plan_no_scratch() const {
-    return plan_no_scratch_;
-  }
-  void set_plan_no_scratch(ExecutionPlanDesc val) { plan_no_scratch_ = val; }
-  absl::optional<size_t> scratch_size() const { return scratch_size_; }
-  void set_scratch_size(size_t val) { scratch_size_ = val; }
-  bool operator==(const ExecutionPlanConfig& other) const {
-    return this->plan_ == other.plan_ &&
-           this->scratch_size_ == other.scratch_size_ &&
-           this->plan_no_scratch_ == other.plan_no_scratch_;
-  }
-  bool operator!=(const ExecutionPlanConfig& other) const {
-    return !(*this == other);
-  }
-  std::string ToString() const;
-
- private:
-  absl::optional<ExecutionPlanDesc> plan_;
-  absl::optional<size_t> scratch_size_;
-  absl::optional<ExecutionPlanDesc> plan_no_scratch_;
-};
-
 
 // Describes a local response normalization (LRN). LRN is used e.g. in
 // dist_belief.
@@ -1420,7 +1362,7 @@ class DnnSupport {
       DeviceMemoryBase filter_data, const BatchDescriptor& output_descriptor,
       DeviceMemoryBase output_data,
       const ConvolutionDescriptor& convolution_descriptor,
-      const ExecutionPlanConfig& plan_config,
+      const AlgorithmConfig& plan_config,
       ScratchAllocator* scratch_allocator, 
       ProfileExecutionPlanResult* output_profile_result) = 0;
 

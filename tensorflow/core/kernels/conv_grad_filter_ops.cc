@@ -660,13 +660,11 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     int col_dilation, int row_stride, int col_stride, const Padding& padding,
     const std::vector<int64>& explicit_paddings, Tensor* filter_backprop,
     TensorFormat data_format) {
-#if GOOGLE_CUDA && CUDNN_VERSION >= 8100
-  using se::dnn::ExecutionPlanConfig;
-  using se::dnn::ExecutionPlanDesc;
-  using se::dnn::ProfileExecutionPlanResult;
-#else
   using se::dnn::AlgorithmConfig;
   using se::dnn::AlgorithmDesc;
+#if GOOGLE_CUDA && CUDNN_VERSION >= 8100
+  using se::dnn::ProfileExecutionPlanResult;
+#else
   using se::dnn::ProfileResult;
 #endif // GOOGLE_CUDA && CUDNN_VERSION >= 8100
   std::vector<int32> dilations(4, 1);
@@ -993,7 +991,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
   cudnn_use_autotune = true;
 #endif
 #if GOOGLE_CUDA && CUDNN_VERSION >= 8100
-  ExecutionPlanConfig exec_plan_config;
+  AlgorithmConfig exec_plan_config;
   std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>>
       selected_exec_plans;
   if (cudnn_use_autotune && !AutoTuneConvBwdFilter::GetInstance()->Find(
@@ -1032,9 +1030,8 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
 
       ProfileExecutionPlanResult profile_result;
 
-      ExecutionPlanConfig profile_plan_config(
-          ExecutionPlanDesc{profile_plan->getTag(),
-                            profile_plan->get_raw_desc()}, 
+      AlgorithmConfig profile_plan_config(
+          AlgorithmDesc{profile_plan->getTag(), profile_plan->get_raw_desc()}, 
           profile_plan->getWorkspaceSize());
       auto cudnn_launch_status =
           stream->ConvolveBackwardFilterWithExecutionPlan(
@@ -1076,14 +1073,14 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     int idx, idx_no_scratch;
     OP_REQUIRES_OK(ctx,
         BestCudnnConvExecutionPlan(results, &idx, &idx_no_scratch));
-    exec_plan_config.set_plan(
-        ExecutionPlanDesc(exec_plans[idx]->getTag(),
-                          exec_plans[idx]->get_raw_desc()));
+    exec_plan_config.set_algorithm(
+        AlgorithmDesc(exec_plans[idx]->getTag(),
+                      exec_plans[idx]->get_raw_desc()));
     exec_plan_config.set_scratch_size(exec_plans[idx]->getWorkspaceSize());
     if (idx_no_scratch != -1) {
-      exec_plan_config.set_plan_no_scratch(
-          ExecutionPlanDesc(exec_plans[idx_no_scratch]->getTag(),
-                            exec_plans[idx_no_scratch]->get_raw_desc()));
+      exec_plan_config.set_algorithm_no_scratch(
+          AlgorithmDesc(exec_plans[idx_no_scratch]->getTag(),
+                        exec_plans[idx_no_scratch]->get_raw_desc()));
     }
     selected_exec_plans.push_back(std::move(exec_plans[idx]));
     if (idx_no_scratch != idx and idx_no_scratch != -1) {
@@ -1213,9 +1210,9 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
 
   DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize, ctx);
 #if GOOGLE_CUDA && CUDNN_VERSION >= 8100
-  if (exec_plan_config.plan().has_value()) {
+  if (exec_plan_config.algorithm().has_value()) {
     VLOG(4) << "Convolution Backward Filter Execution Plan: "
-            << exec_plan_config.plan()->exec_plan_id();
+            << exec_plan_config.algorithm()->exec_plan_id();
   } else {
     VLOG(4) << "Convolution Backward Filter AutoTune is turned off";
   }

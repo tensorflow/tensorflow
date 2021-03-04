@@ -79,13 +79,11 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     int col_dilation, int row_stride, int col_stride, const Padding& padding,
     const std::vector<int64>& explicit_paddings, Tensor* in_backprop,
     TensorFormat data_format) {
-#if GOOGLE_CUDA && CUDNN_VERSION >= 8100
-  using se::dnn::ExecutionPlanConfig;
-  using se::dnn::ExecutionPlanDesc;
-  using se::dnn::ProfileExecutionPlanResult;
-#else
   using se::dnn::AlgorithmConfig;
   using se::dnn::AlgorithmDesc;
+#if GOOGLE_CUDA && CUDNN_VERSION >= 8100
+  using se::dnn::ProfileExecutionPlanResult;
+#else
   using se::dnn::ProfileResult;
 #endif // GOOGLE_CUDA && CUDNN_VERSION >= 8100
   std::vector<int32> strides(4, 1);
@@ -405,7 +403,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
   cudnn_use_autotune = true;
 #endif
 #if GOOGLE_CUDA && CUDNN_VERSION >= 8100
-  ExecutionPlanConfig exec_plan_config;
+  AlgorithmConfig exec_plan_config;
   std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>>
       selected_exec_plans;
   if (cudnn_use_autotune && !AutoTuneConvBwdData::GetInstance()->Find(
@@ -444,9 +442,8 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
               : static_cast<se::ScratchAllocator*>(&scratch_allocator);
       ProfileExecutionPlanResult profile_result;
 
-      ExecutionPlanConfig profile_plan_config(
-          ExecutionPlanDesc{profile_plan->getTag(),
-                            profile_plan->get_raw_desc()}, 
+      AlgorithmConfig profile_plan_config(
+          AlgorithmDesc{profile_plan->getTag(), profile_plan->get_raw_desc()}, 
           profile_plan->getWorkspaceSize());
       auto cudnn_launch_status =
           stream->ConvolveBackwardDataWithExecutionPlan(
@@ -486,14 +483,14 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     int idx, idx_no_scratch;
     OP_REQUIRES_OK(ctx,
         BestCudnnConvExecutionPlan(results, &idx, &idx_no_scratch));
-    exec_plan_config.set_plan(
-        ExecutionPlanDesc(exec_plans[idx]->getTag(),
-                          exec_plans[idx]->get_raw_desc()));
+    exec_plan_config.set_algorithm(
+        AlgorithmDesc(exec_plans[idx]->getTag(),
+                      exec_plans[idx]->get_raw_desc()));
     exec_plan_config.set_scratch_size(exec_plans[idx]->getWorkspaceSize());
     if (idx_no_scratch != -1) {
-      exec_plan_config.set_plan_no_scratch(
-          ExecutionPlanDesc(exec_plans[idx_no_scratch]->getTag(),
-                            exec_plans[idx_no_scratch]->get_raw_desc()));
+      exec_plan_config.set_algorithm_no_scratch(
+          AlgorithmDesc(exec_plans[idx_no_scratch]->getTag(),
+                        exec_plans[idx_no_scratch]->get_raw_desc()));
     }
     selected_exec_plans.push_back(std::move(exec_plans[idx]));
     if (idx_no_scratch != idx and idx_no_scratch != -1) {

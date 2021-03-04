@@ -3627,15 +3627,15 @@ port::Status CudnnSupport::DoConvolve(
     DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
     DeviceMemoryBase output_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::ExecutionPlanConfig& plan_config,
+    const dnn::AlgorithmConfig& plan_config,
     ScratchAllocator* scratch_allocator, 
     dnn::ProfileExecutionPlanResult* output_profile_result) {
 #if CUDNN_VERSION >= 8100
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
-  absl::optional<dnn::ExecutionPlanDesc> plan_or = plan_config.plan();
-  absl::optional<dnn::ExecutionPlanDesc> plan_no_scratch_or =
-      plan_config.plan_no_scratch();
+  absl::optional<dnn::AlgorithmDesc> plan_or = plan_config.algorithm();
+  absl::optional<dnn::AlgorithmDesc> plan_no_scratch_or =
+      plan_config.algorithm_no_scratch();
 
   std::unique_ptr<cudnn_frontend::ExecutionPlan> current_plan;
   if (!plan_or.has_value()) {
@@ -3715,7 +3715,7 @@ port::Status CudnnSupport::DoConvolve(
     }
     plan_desc = plan_or->exec_plan_desc();
   }
-  dnn::ExecutionPlanDesc selected_plan_(exec_plan_id, plan_desc);
+  dnn::AlgorithmDesc selected_plan_(exec_plan_id, plan_desc);
 
   DeviceMemory<uint8> scratch_memory;
   if (workspace_size > 0) {

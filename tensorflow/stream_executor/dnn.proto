@@ -98,12 +98,8 @@ message AlgorithmProto {
   }
   int64 algo_id = 1;
   MathType math_type = 2;
-}
-
-// CUDNN execution plan representation.
-message ExecutionPlanProto {
-  // A unique ID to represent which engine and knobs are used in the plan.
-  string exec_plan_id = 1;
+  // cuDNN v8 uses a string to uniquely represent the backend plan.
+  string exec_plan_id = 3;
 }
 
 // Convolution-specific parameters.

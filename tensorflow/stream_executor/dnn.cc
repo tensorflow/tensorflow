@@ -29,25 +29,23 @@ constexpr DataType ToDataType<int8>::value;
 constexpr DataType ToDataType<int32>::value;
 
 uint64 AlgorithmDesc::hash() const {
+  if (IsExecutionPlan()) {
+    auto p = exec_plan_id();
+    return absl::Hash<decltype(p)>()(p);
+  }
   auto p = std::make_pair(algo_id(), tensor_ops_enabled());
   return absl::Hash<decltype(p)>()(p);
 }
 
 std::string AlgorithmDesc::ToString() const {
+  if (IsExecutionPlan()) {
+    return absl::StrCat(exec_plan_id());
+  }
   if (tensor_ops_enabled()) {
     return absl::StrCat(algo_id(), "#TC");
   } else {
     return absl::StrCat(algo_id());
   }
-}
-
-uint64 ExecutionPlanDesc::hash() const {
-  auto p = exec_plan_id();
-  return absl::Hash<decltype(p)>()(p);
-}
-
-std::string ExecutionPlanDesc::ToString() const {
-  return absl::StrCat(exec_plan_id());
 }
 
 bool DnnSupport::GetConvolveAlgorithms(
@@ -282,20 +280,6 @@ std::string AlgorithmConfig::ToString() const {
     algo_no_scratch = algorithm_no_scratch()->ToString();
   }
   return absl::StrCat(algo, ", ", algo_no_scratch);
-}
-
-// -- ExecutionPlanConfig
-
-std::string ExecutionPlanConfig::ToString() const {
-  std::string plan_str = "none";
-  if (plan().has_value()) {
-    plan_str = plan()->ToString();
-  }
-  std::string plan_no_scratch_str = "none";
-  if (plan_no_scratch().has_value()) {
-    plan_no_scratch_str = plan_no_scratch()->ToString();
-  }
-  return absl::StrCat(plan_str, ", ", plan_no_scratch_str);
 }
 
 // -- BatchDescriptor

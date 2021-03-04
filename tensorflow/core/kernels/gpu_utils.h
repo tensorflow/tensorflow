@@ -204,12 +204,12 @@ class AutoTuneMap {
 };
 
 #if CUDNN_VERSION >= 8100
-using se::dnn::ExecutionPlanDesc;
-using se::dnn::ExecutionPlanConfig;
+using se::dnn::AlgorithmDesc;
+using se::dnn::AlgorithmConfig;
 template <typename Parameters>
 class AutoTuneExecutionPlanMap {
  public:
-  bool Find(const Parameters& params, ExecutionPlanConfig* plan_config) {
+  bool Find(const Parameters& params, AlgorithmConfig* plan_config) {
     mutex_lock lock(mu_);
     auto iter = params_config_map_.find(params);
     if (iter == params_config_map_.end() ||
@@ -218,14 +218,14 @@ class AutoTuneExecutionPlanMap {
       return false;
     }
     auto& plan = iter->second.plan;
-    plan_config->set_plan(ExecutionPlanDesc(plan->getTag(),
-                                            plan->get_raw_desc()));
+    plan_config->set_algorithm(AlgorithmDesc(plan->getTag(),
+                               plan->get_raw_desc()));
     plan_config->set_scratch_size(plan->getWorkspaceSize());
     if (iter->second.plan_no_scratch.has_value()) {
       auto& plan_no_scratch = iter->second.plan_no_scratch.value();
-      plan_config->set_plan_no_scratch(
-          ExecutionPlanDesc(plan_no_scratch->getTag(),
-                            plan_no_scratch->get_raw_desc()));
+      plan_config->set_algorithm_no_scratch(
+          AlgorithmDesc(plan_no_scratch->getTag(),
+          plan_no_scratch->get_raw_desc()));
     }
     return true;
   }
@@ -248,24 +248,23 @@ class AutoTuneExecutionPlanMap {
       DCHECK_GT(iter->second.score, 0);
 
       bool is_diff;
-      ExecutionPlanDesc old_plan(iter->second.plan->getTag(),
-                                 iter->second.plan->get_raw_desc());
-      ExecutionPlanDesc new_plan(plans[0]->getTag(), plans[0]->get_raw_desc());
+      AlgorithmDesc old_plan(iter->second.plan->getTag(),
+                             iter->second.plan->get_raw_desc());
+      AlgorithmDesc new_plan(plans[0]->getTag(), plans[0]->get_raw_desc());
       if (plans.size() == 1) {
-        ExecutionPlanConfig old_plan_config(
+        AlgorithmConfig old_plan_config(
             old_plan, iter->second.plan->getWorkspaceSize());
-        ExecutionPlanConfig new_plan_config(
-            new_plan, plans[0]->getWorkspaceSize());
+        AlgorithmConfig new_plan_config(new_plan, plans[0]->getWorkspaceSize());
         is_diff = new_plan_config != old_plan_config;
       } else if (iter->second.plan_no_scratch.has_value()) {
-        ExecutionPlanDesc old_plan_no_scratch(
+        AlgorithmDesc old_plan_no_scratch(
             iter->second.plan_no_scratch.value()->getTag(),
             iter->second.plan_no_scratch.value()->get_raw_desc());
-        ExecutionPlanDesc new_plan_no_scratch(
+        AlgorithmDesc new_plan_no_scratch(
             plans[1]->getTag(), plans[1]->get_raw_desc());
-        ExecutionPlanConfig old_plan_config(old_plan,
+        AlgorithmConfig old_plan_config(old_plan,
             iter->second.plan->getWorkspaceSize(), old_plan_no_scratch);
-        ExecutionPlanConfig new_plan_config(
+        AlgorithmConfig new_plan_config(
             new_plan, plans[1]->getWorkspaceSize(), new_plan_no_scratch);
         is_diff = new_plan_config != old_plan_config;
       } else {
