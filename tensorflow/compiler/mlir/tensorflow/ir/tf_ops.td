@@ -35,6 +35,7 @@ include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/OpBase.td"
+include "mlir/IR/SymbolInterfaces.td"
 
 class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
   let results = (outs
@@ -70,7 +71,7 @@ class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
   }];
 }
 
-def TF_CaseOp : TF_Op<"Case", []> {
+def TF_CaseOp : TF_Op<"Case", [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = [{
 An n-way switch statement which calls a single branch function.
   }];
@@ -295,7 +296,7 @@ Returns a tensor with the same shape and contents as input.
   TF_DerivedResultTypeAttr T = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_IfOp : TF_Op<"If", []> {
+def TF_IfOp : TF_Op<"If", [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "output = cond ? then_branch(input) : else_branch(input)";
 
   let description = [{
@@ -333,10 +334,6 @@ else_branch: A function that takes 'inputs' and returns a list of
   TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<1>;
   TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
   TF_DerivedResultShapeListAttr output_shapes = TF_DerivedResultShapeListAttr<0>;
-
-  let verifier = [{
-    return Verify(*this);
-  }];
 
   let hasCanonicalizer = 1;
 
@@ -665,7 +662,7 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
   let verifier = [{ return VerifyPartitionedCall(*this); }];
 }
 
-def TF_WhileOp : TF_Op<"While", []> {
+def TF_WhileOp : TF_Op<"While", [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = [{
 output = input; While (Cond(output)) { output = Body(output) }
   }];
@@ -717,10 +714,6 @@ body: A function that takes a list of tensors and returns another
 
   TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
   TF_DerivedResultShapeListAttr output_shapes = TF_DerivedResultShapeListAttr<0>;
-
-  let verifier = [{
-    return Verify(*this);
-  }];
 
   let extraClassDeclaration = [{
     // Get the condition function.
