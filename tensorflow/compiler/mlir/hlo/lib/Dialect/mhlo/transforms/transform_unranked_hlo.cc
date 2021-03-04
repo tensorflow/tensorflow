@@ -289,8 +289,7 @@ struct ConvertUnrankedDynamicBroadcastOpHelper {
   // Iterates over the desired ranks to be specialized and generates the code
   // snippet for each case.
   static Value HandleBroadcastAndOp(OpBuilder &rewriter, ChloOpTy op,
-                                    ValueRange operands,
-                                    int min_rank_specialization) {
+                                    ValueRange operands) {
     auto loc = op.getLoc();
 
     // Get the minimum broadcast shapes of the operands.
@@ -337,20 +336,18 @@ struct ConvertUnrankedDynamicBroadcastOpHelper {
     }
 
     // Generate a list of nested if/else statements to handle rank
-    // specializations from `min_rank_specialization` to
-    // `kMaxRankSpecialization`.
-    constexpr int kMaxRankSpecialization = 5;
+    // specializations from 1 to `kMaxRankSpecialization`.
     scf::IfOp if_op = createIfOpForRankSpecializedBroadcastAndOp(
-        rewriter, op, greater_rank, min_rank_specialization);
+        rewriter, op, greater_rank, 1);
     OpBuilder if_builder = if_op.getThenBodyBuilder(rewriter.getListener());
     createRankSpecializedBroadcastAndOp(if_builder, op, reshaped_operands,
-                                        reduced_shapes,
-                                        min_rank_specialization);
+                                        reduced_shapes, 1);
 
     // Put each subsequent rank specialization inside the else statement of the
     // previous one.
     OpBuilder else_builder = if_op.getElseBodyBuilder(rewriter.getListener());
-    for (int i = min_rank_specialization + 1; i < kMaxRankSpecialization; i++) {
+    constexpr int kMaxRankSpecialization = 5;
+    for (int i = 2; i < kMaxRankSpecialization; i++) {
       auto inner_if = createIfOpForRankSpecializedBroadcastAndOp(
           else_builder, op, greater_rank, i);
       if_builder = inner_if.getThenBodyBuilder(rewriter.getListener());
@@ -471,15 +468,13 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
 
     // If shapes do not have exactly one element, nor are equal
     //
-    // See if values are of a rank that we support. We already handle cases
-    // where one of the operands is a scalar, or both are equal. So there should
-    // be no case left where both have rank 1.
+    // See if values are of a rank that we support.
     OpBuilder if_neq_shapes_builder =
         if_eq_shapes_op.getElseBodyBuilder(rewriter.getListener());
     if_neq_shapes_builder.create<scf::YieldOp>(
-        loc, ConvertUnrankedDynamicBroadcastOpHelper<ChloOpTy, HloOpTy>::
-                 HandleBroadcastAndOp(if_neq_shapes_builder, op, {lhs, rhs},
-                                      /*min_rank_specialization=*/2));
+        loc, ConvertUnrankedDynamicBroadcastOpHelper<
+                 ChloOpTy, HloOpTy>::HandleBroadcastAndOp(if_neq_shapes_builder,
+                                                          op, {lhs, rhs}));
 
     rewriter.replaceOp(op, {if_op.getResult(0)});
     return success();
@@ -523,10 +518,9 @@ struct ConvertUnrankedDynamicBroadcastSelectOp
     // more potential for optimization here. This also is missing the
     // specialization for rank 0.
     rewriter.replaceOp(
-        op, {ConvertUnrankedDynamicBroadcastOpHelper<chlo::BroadcastSelectOp,
-                                                     mhlo::SelectOp>::
-                 HandleBroadcastAndOp(rewriter, op, operands,
-                                      /*min_rank_specialization=*/1)});
+        op, {ConvertUnrankedDynamicBroadcastOpHelper<
+                chlo::BroadcastSelectOp,
+                mhlo::SelectOp>::HandleBroadcastAndOp(rewriter, op, operands)});
     return success();
   }
 };
