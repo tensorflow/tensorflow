@@ -1919,7 +1919,7 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 5,
     tags = [
-        "no_windows",  # TODO(171349346)
+        "no_oss",  # TODO(b/171349346, b/181878817)
     ],
     deps = [
         ":multi_worker_test_base",
