@@ -201,6 +201,13 @@ def bucket_by_sequence_length(element_length_func,
   You can drop the batches that do not maintain the bucket batch size by using the option `drop_remainder`.
   Using the same input data as in the above example you get the following result.
   
+  >>> elements = [
+  ...   [0], [1, 2, 3, 4], [5, 6, 7],
+  ...   [7, 8, 9, 10, 11], [13, 14, 15, 16, 19, 20], [21, 22]]
+  
+  >>> dataset = tf.data.Dataset.from_generator(
+  ...   lambda: elements, tf.int32, output_shapes=[None])
+  
   >>> dataset = dataset.apply(
   ...     tf.data.experimental.bucket_by_sequence_length(
   ...         element_length_func=lambda elem: tf.shape(elem)[0],
