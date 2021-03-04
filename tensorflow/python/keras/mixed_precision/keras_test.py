@@ -164,7 +164,7 @@ class KerasLayerTest(keras_parameterized.TestCase):
         return math_ops.cast(inputs, 'int32') + self.v
 
     x = constant_op.constant([1.])
-    layer = LayerWithIntVar(dtype=policy.Policy('mixed_float16'))
+    layer = LayerWithIntVar(dtype='mixed_float16')
     self.assertEqual(layer(x).dtype, 'int32')
 
   @parameterized.named_parameters(*TESTCASES)
@@ -238,14 +238,6 @@ class KerasLayerTest(keras_parameterized.TestCase):
         self.assertEqual(layer.variable_dtype, dtypes.float64)
         self.assertEqual(layer(x).dtype, dtypes.float64)
         self.assertEqual(layer.v.dtype, dtypes.float64)
-
-  def test_error_passing_policy_string_to_layer(self):
-    with self.assertRaisesRegex(
-        TypeError, "Cannot convert value 'mixed_float16' to a "
-        'TensorFlow DType'):
-      # This is not allowed, as otherwise a "mixed_float16" policy could be
-      # created without an API call that has the name "experimental" in it.
-      mp_test_util.MultiplyLayer(dtype='mixed_float16')
 
   @parameterized.named_parameters(*TESTCASES)
   def test_gradient(self, strategy_fn):
@@ -344,7 +336,7 @@ class KerasLayerTest(keras_parameterized.TestCase):
         self.assertEqual(layer(x).dtype, dtype)
         self.assertEqual(layer.v.dtype, dtype)
 
-      layer = mp_test_util.MultiplyLayer(dtype=policy.Policy('mixed_float16'))
+      layer = mp_test_util.MultiplyLayer(dtype='mixed_float16')
       config = layer.get_config()
       self.assertEqual(config['dtype'],
                        {'class_name': 'Policy',
@@ -430,7 +422,7 @@ class KerasLayerTest(keras_parameterized.TestCase):
       self.assertEqual(config['dtype'], 'float16')
 
   def test_delete_variable(self):
-    layer = base_layer.Layer(dtype=policy.Policy('mixed_float16'))
+    layer = base_layer.Layer(dtype='mixed_float16')
     layer.x = layer.add_weight('x')
     self.assertEqual(layer.trainable_weights, [layer.x])
     del layer.x
@@ -455,7 +447,7 @@ class KerasLayerTest(keras_parameterized.TestCase):
         'stop using mixed precision by removing the use of the '
         '"mixed_float16" policy or use a different Strategy, e.g. '
         'a MirroredStrategy.'):
-      mp_test_util.MultiplyLayer(dtype=policy.Policy('mixed_float16'))
+      mp_test_util.MultiplyLayer(dtype='mixed_float16')
     # Non-mixed policies are fine
     mp_test_util.MultiplyLayer(dtype=policy.Policy('float64'))
 
