@@ -1097,6 +1097,9 @@ CacheEntry* CompiledFunction::AddCacheEntry(const py::args& args,
 }
 
 py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
+  if (JitIsDisabled()) {
+    return fun_(*args, **kwargs);
+  }
   if (always_fallback_to_python_) {
     return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
   }
@@ -1131,9 +1134,7 @@ py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
     }
   }
   CHECK(default_device_);
-  if (JitIsDisabled()) {
-    return fun_(*args, **kwargs);
-  }
+
   ParsedArgumentsAsBuffers arguments;
   if (!ParseArguments(args, kwargs, static_argnums_, arguments).ok()) {
     return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
