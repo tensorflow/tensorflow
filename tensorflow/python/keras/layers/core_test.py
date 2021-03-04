@@ -33,7 +33,6 @@ from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
@@ -503,26 +502,6 @@ class CoreLayersTest(keras_parameterized.TestCase):
 
     testing_utils.layer_test(
         keras.layers.Dense, kwargs={'units': 3}, input_shape=(3, 4, 5, 2))
-
-  def test_dense_output(self):
-    inputs = ops.convert_to_tensor_v2_with_dispatch(
-        np.random.uniform(size=(8, 4)).astype('f'))
-    sparse_inputs = sparse_ops.from_dense(inputs)
-
-    layer = keras.layers.Dense(
-        5,
-        kernel_initializer=keras.initializers.RandomUniform(),
-        bias_initializer=keras.initializers.RandomUniform(),
-        dtype='float32')
-    outputs = layer(inputs)
-    sparse_outpus = layer(sparse_inputs)
-
-    expected = math_ops.add(
-        math_ops.matmul(inputs, keras.backend.get_value(layer.kernel)),
-        keras.backend.get_value(layer.bias))
-
-    self.assertAllClose(outputs, expected)
-    self.assertAllClose(sparse_outpus, expected)
 
   def test_dense_dtype(self):
     inputs = ops.convert_to_tensor_v2_with_dispatch(
