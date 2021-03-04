@@ -47,8 +47,9 @@ class MlirBridgeV1CompatPass : public MlirV1CompatOptimizationPass {
  public:
   llvm::StringRef name() const override { return "bridge"; }
 
-  bool IsEnabled(const DeviceSet* device_set, const ConfigProto& config_proto,
-                 const Graph& graph) const override;
+  MlirOptimizationPassState GetPassState(const DeviceSet* device_set,
+                                         const ConfigProto& config_proto,
+                                         const Graph& graph) const override;
 
   // This should be used as a thin mapper around mlir::ModulePass::runOnModule
   // API integrated with the Tensorflow runtime.

@@ -40,6 +40,19 @@ class MockMlirOptimizationPass : public MlirOptimizationPass {
                            mlir::ModuleOp module, const Graph& graph));
 };
 
+class MockMlirV1CompatOptimizationPass : public MlirV1CompatOptimizationPass {
+ public:
+  // MOCK_METHOD does not work on Windows build, using MOCK_CONST_METHODX
+  // instead.
+  MOCK_CONST_METHOD0(name, llvm::StringRef());
+  MOCK_CONST_METHOD3(GetPassState,
+                     MlirOptimizationPassState(const DeviceSet* device_set,
+                                               const ConfigProto& config_proto,
+                                               const Graph& graph));
+  MOCK_METHOD2(Run, Status(const GraphOptimizationPassOptions& options,
+                           mlir::ModuleOp module));
+};
+
 class ModifyMlirModulePass : public MlirOptimizationPass {
  public:
   explicit ModifyMlirModulePass(Status run_status) : run_status_(run_status) {}
@@ -236,6 +249,15 @@ TEST(MlirOptimizationPassRegistry, RegisterPassesWithTheSamePriorityFails) {
   EXPECT_DEATH(MlirOptimizationPassRegistry::Global().Add(
                    0, std::make_unique<NiceMock<MockMlirOptimizationPass>>()),
                "Pass priority must be unique.");
+}
+
+TEST(MlirV1CompatOptimizationPassRegistry, RegisterMultiplePassesFails) {
+  MlirV1CompatOptimizationPassRegistry::Global().Add(
+      std::make_unique<NiceMock<MockMlirV1CompatOptimizationPass>>());
+  EXPECT_DEATH(
+      MlirV1CompatOptimizationPassRegistry::Global().Add(
+          std::make_unique<NiceMock<MockMlirV1CompatOptimizationPass>>()),
+      "Only a single pass can be registered");
 }
 
 }  // namespace tensorflow
