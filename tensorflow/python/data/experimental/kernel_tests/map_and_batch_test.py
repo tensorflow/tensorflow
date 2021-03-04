@@ -406,13 +406,13 @@ class MapAndBatchDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
   @combinations.generate(test_base.default_test_combinations())
   def testNumParallelBatches(self):
     range_size = 11
+    num_shards = 3
     num_repeats = 2
     batch_size = 5
-    total_outputs = range_size * num_repeats
+    total_outputs = (range_size // num_shards) * num_repeats
     num_outputs_drop_remainder = total_outputs // batch_size
     num_outputs_keep_remainder = int(math.ceil(total_outputs / batch_size))
     num_parallel_batches = 2
-    num_shards = 3
 
     def build_ds(range_start, drop_remainder=False):
 
@@ -434,13 +434,13 @@ class MapAndBatchDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
   @combinations.generate(test_base.default_test_combinations())
   def testNumParallelCalls(self):
     range_size = 11
+    num_shards = 3
     num_repeats = 2
     batch_size = 5
-    total_outputs = range_size * num_repeats
+    total_outputs = (range_size // num_shards) * num_repeats
     num_outputs_drop_remainder = total_outputs // batch_size
     num_outputs_keep_remainder = int(math.ceil(total_outputs / batch_size))
     num_parallel_calls = 7
-    num_shards = 3
 
     def build_ds(range_start, drop_remainder=False):
 
