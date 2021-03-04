@@ -243,41 +243,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "enable_warm_start",
-    srcs = ["enable_warm_start.cc"],
-    hdrs = ["enable_warm_start.h"],
-    deps = [
-        ":graph_utils",
-        ":optimizer_base",
-        "//tensorflow/core/grappler:mutable_graph_view",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler:op_types",
-        "//tensorflow/core/grappler:utils",
-        "//tensorflow/core/grappler/clusters:cluster",
-        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
-        "//tensorflow/core:lib_internal",
-    ] + tf_protos_all(),
-    alwayslink = 1,
-)
-
-tf_cc_test(
-    name = "enable_warm_start_test",
-    srcs = ["enable_warm_start_test.cc"],
-    deps = [
-        ":enable_warm_start",
-        ":graph_test_utils",
-        ":graph_utils",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/grappler:grappler_item",
-    ],
-)
-
-cc_library(
     name = "filter_fusion",
     srcs = ["filter_fusion.cc"],
     hdrs = [

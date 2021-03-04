@@ -345,16 +345,14 @@ class IteratorContext {
           env(ctx->env()),
           flr(ctx->flr()),
           function_handle_cache(ctx->function_handle_cache()),
-          is_restoring(ctx->is_restoring()),
-          model(ctx->model()),
           resource_mgr(ctx->resource_mgr()),
+          model(ctx->model()),
           runner(*(ctx->runner())),
           runner_threadpool_size(ctx->runner_threadpool_size()),
           split_provider(ctx->split_provider()),
           stats_aggregator(ctx->stats_aggregator()),
           thread_factory(ctx->thread_factory()),
-          thread_pool(ctx->thread_pool()),
-          warm_start(ctx->warm_start()) {}
+          thread_pool(ctx->thread_pool()) {}
 
     explicit Params(OpKernelContext* ctx)
         : env(ctx->env()), flr(ctx->function_library()) {
@@ -406,15 +404,12 @@ class IteratorContext {
     // A FunctionHandleCache that owns all the function handles. Not owned.
     FunctionHandleCache* function_handle_cache = nullptr;
 
-    // Indicates whether the iterator is being restored from a checkpoint.
-    bool is_restoring = false;
-
-    // If non-null, identifies the object used for performance modeling.
-    std::shared_ptr<model::Model> model = nullptr;
-
     // A resource manager for storing dataset-related state, e.g. random
     // seeds or cached tensors. Not owned.
     ResourceMgr* resource_mgr = nullptr;
+
+    // If non-null, identifies the object used for performance modeling.
+    std::shared_ptr<model::Model> model = nullptr;
 
     // Function call support.
     std::function<void(std::function<void()>)> runner = nullptr;
@@ -433,11 +428,6 @@ class IteratorContext {
 
     // A shared thread pool to schedule computation into.
     thread::ThreadPoolInterface* thread_pool = nullptr;
-
-    // If true, background threads of asynchronous iterators are started upon
-    // iterator creation. If false, background threads are started as a side
-    // effect of the first call to `GetNext`.
-    bool warm_start = false;
   };
 
   explicit IteratorContext(IteratorContext* ctx) : params_(Params{ctx}) {}
@@ -466,11 +456,9 @@ class IteratorContext {
     return params_.function_handle_cache;
   }
 
-  bool is_restoring() { return params_.is_restoring; }
+  ResourceMgr* resource_mgr() { return params_.resource_mgr; }
 
   const std::shared_ptr<model::Model>& model() { return params_.model; }
-
-  ResourceMgr* resource_mgr() { return params_.resource_mgr; }
 
   std::function<void(std::function<void()>)>* runner() {
     return &params_.runner;
@@ -491,8 +479,6 @@ class IteratorContext {
   }
 
   thread::ThreadPoolInterface* thread_pool() { return params_.thread_pool; }
-
-  bool warm_start() { return params_.warm_start; }
 
   Params params() { return params_; }
 
@@ -861,10 +847,8 @@ class DatasetBase : public core::RefCounted {
       IteratorStateReader* reader,
       std::unique_ptr<IteratorBase>* iterator) const {
     std::unique_ptr<IteratorBase> it;
-    IteratorContext::Params params(ctx);
-    params.is_restoring = true;
-    TF_RETURN_IF_ERROR(MakeIterator(IteratorContext(std::move(params)),
-                                    /*parent=*/nullptr, output_prefix, &it));
+    TF_RETURN_IF_ERROR(
+        MakeIterator(ctx, /*parent=*/nullptr, output_prefix, &it));
     TF_RETURN_IF_ERROR(it->Restore(ctx, reader));
     *iterator = std::move(it);
     return Status::OK();
