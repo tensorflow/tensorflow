@@ -4,7 +4,10 @@
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
-    default_visibility = ["//tensorflow:__subpackages__"],
+    default_visibility = [
+        "//tensorflow:__subpackages__",
+        "//third_party/py/keras/api:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 

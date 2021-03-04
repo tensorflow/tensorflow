@@ -201,10 +201,11 @@ def _IsProtoClass(obj):
 class PythonObjectToProtoVisitor(object):
   """A visitor that summarizes given python objects as protobufs."""
 
-  def __init__(self):
+  def __init__(self, default_path='tensorflow'):
     # A dict to store all protocol buffers.
     # Keyed by "path" to the object.
     self._protos = {}
+    self._default_path = default_path
 
   def GetProtos(self):
     """Return the list of protos stored."""
@@ -212,7 +213,7 @@ class PythonObjectToProtoVisitor(object):
 
   def __call__(self, path, parent, children):
     # The path to the object.
-    lib_path = 'tensorflow.%s' % path if path else 'tensorflow'
+    lib_path = self._default_path + '.' + path if path else self._default_path
     _, parent = tf_decorator.unwrap(parent)
 
     # A small helper method to construct members(children) protos.
