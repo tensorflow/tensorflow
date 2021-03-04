@@ -1420,11 +1420,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
 
     using se::dnn::AlgorithmConfig;
     using se::dnn::AlgorithmDesc;
-#if GOOGLE_CUDA && CUDNN_VERSION >= 8100
-    using se::dnn::ProfileExecutionPlanResult;
-#else
     using se::dnn::ProfileResult;
-#endif // GOOGLE_CUDA && CUDNN_VERSION >= 8100
 
 #if TENSORFLOW_USE_ROCM
     // cudnn_use_autotune is applicable only the CUDA flow
@@ -1467,7 +1463,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
             !RedzoneCheckDisabled()
                 ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
                 : static_cast<se::ScratchAllocator*>(&scratch_allocator);
-        ProfileExecutionPlanResult profile_result;
+        ProfileResult profile_result;
 
         AlgorithmConfig profile_plan_config(
             AlgorithmDesc{profile_plan->getTag(), profile_plan->get_raw_desc()}, 
@@ -2033,11 +2029,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
 
     using se::dnn::AlgorithmConfig;
     using se::dnn::AlgorithmDesc;
-#if GOOGLE_CUDA && CUDNN_VERSION >= 8100
-    using se::dnn::ProfileExecutionPlanResult;
-#else
     using se::dnn::ProfileResult;
-#endif // GOOGLE_CUDA && CUDNN_VERSION >= 8100
 
 #if TENSORFLOW_USE_ROCM
     // cudnn_use_autotune is applicable only the CUDA flow
@@ -2070,7 +2062,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         AlgorithmConfig profile_plan_config(
             AlgorithmDesc{profile_plan->getTag(), profile_plan->get_raw_desc()}, 
             profile_plan->getWorkspaceSize());
-        ProfileExecutionPlanResult profile_result;
+        ProfileResult profile_result;
         auto cudnn_launch_status =
             stream->ConvolveBackwardFilterWithExecutionPlan(
                 input_desc, input_ptr, output_desc, out_backprop_ptr,

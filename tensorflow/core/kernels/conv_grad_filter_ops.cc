@@ -662,11 +662,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     TensorFormat data_format) {
   using se::dnn::AlgorithmConfig;
   using se::dnn::AlgorithmDesc;
-#if GOOGLE_CUDA && CUDNN_VERSION >= 8100
-  using se::dnn::ProfileExecutionPlanResult;
-#else
   using se::dnn::ProfileResult;
-#endif // GOOGLE_CUDA && CUDNN_VERSION >= 8100
   std::vector<int32> dilations(4, 1);
   dilations[GetTensorDimIndex(data_format, 'H')] = row_dilation;
   dilations[GetTensorDimIndex(data_format, 'W')] = col_dilation;
@@ -1028,7 +1024,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
               ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
               : static_cast<se::ScratchAllocator*>(&scratch_allocator);
 
-      ProfileExecutionPlanResult profile_result;
+      ProfileResult profile_result;
 
       AlgorithmConfig profile_plan_config(
           AlgorithmDesc{profile_plan->getTag(), profile_plan->get_raw_desc()}, 

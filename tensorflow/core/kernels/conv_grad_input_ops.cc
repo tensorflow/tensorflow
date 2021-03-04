@@ -81,11 +81,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     TensorFormat data_format) {
   using se::dnn::AlgorithmConfig;
   using se::dnn::AlgorithmDesc;
-#if GOOGLE_CUDA && CUDNN_VERSION >= 8100
-  using se::dnn::ProfileExecutionPlanResult;
-#else
   using se::dnn::ProfileResult;
-#endif // GOOGLE_CUDA && CUDNN_VERSION >= 8100
   std::vector<int32> strides(4, 1);
   std::vector<int32> dilations(4, 1);
   auto input_h = GetTensorDimIndex(data_format, 'H');
@@ -440,7 +436,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
           !RedzoneCheckDisabled()
               ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
               : static_cast<se::ScratchAllocator*>(&scratch_allocator);
-      ProfileExecutionPlanResult profile_result;
+      ProfileResult profile_result;
 
       AlgorithmConfig profile_plan_config(
           AlgorithmDesc{profile_plan->getTag(), profile_plan->get_raw_desc()}, 

@@ -657,11 +657,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     TensorFormat data_format) {
   using se::dnn::AlgorithmConfig;
   using se::dnn::AlgorithmDesc;
-#if GOOGLE_CUDA && CUDNN_VERSION >= 8100
-  using se::dnn::ProfileExecutionPlanResult;
-#else
   using se::dnn::ProfileResult;
-#endif // GOOGLE_CUDA && CUDNN_VERSION >= 8100
   auto* stream = ctx->op_device_context()->stream();
   OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
 
@@ -1034,7 +1030,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
               ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
               : static_cast<se::ScratchAllocator*>(&scratch_allocator);
 
-      ProfileExecutionPlanResult profile_result;
+      ProfileResult profile_result;
 
       AlgorithmConfig profile_plan_config(
           AlgorithmDesc{profile_plan->getTag(), profile_plan->get_raw_desc()}, 

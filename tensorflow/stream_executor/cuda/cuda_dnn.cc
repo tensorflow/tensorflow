@@ -3629,7 +3629,7 @@ port::Status CudnnSupport::DoConvolve(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     const dnn::AlgorithmConfig& plan_config,
     ScratchAllocator* scratch_allocator, 
-    dnn::ProfileExecutionPlanResult* output_profile_result) {
+    dnn::ProfileResult* output_profile_result) {
 #if CUDNN_VERSION >= 8100
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
@@ -3769,7 +3769,7 @@ port::Status CudnnSupport::DoConvolve(
     if (!timer->Stop(AsGpuStream(stream))) {
       return port::Status(port::error::INTERNAL, "Failed to stop timer");
     }
-    output_profile_result->set_plan(selected_plan_);
+    output_profile_result->set_algorithm(selected_plan_);
     output_profile_result->set_elapsed_time_in_ms(
         timer->GetElapsedMilliseconds());
     output_profile_result->set_scratch_size(scratch_memory.size());

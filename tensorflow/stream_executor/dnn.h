@@ -822,29 +822,6 @@ class ProfileResult {
   size_t scratch_size_ = 0;
 };
 
-class ProfileExecutionPlanResult {
- public:
-  bool is_valid() const {
-    return plan_.has_value() &&
-           elapsed_time_in_ms() != std::numeric_limits<float>::max();
-  }
-
-  AlgorithmDesc plan() const { return *plan_; }
-  void set_plan(AlgorithmDesc val) { plan_ = val; }
-
-  float elapsed_time_in_ms() const { return elapsed_time_in_ms_; }
-  void set_elapsed_time_in_ms(float val) { elapsed_time_in_ms_ = val; }
-
-  size_t scratch_size() const { return scratch_size_; }
-  void set_scratch_size(size_t val) { scratch_size_ = val; }
-
- private:
-  absl::optional<AlgorithmDesc> plan_;
-  float elapsed_time_in_ms_ = std::numeric_limits<float>::max();
-  size_t scratch_size_ = 0;
-};
-
-
 // Describes the configuration for the algorithms that will used.
 //
 // Arguments:
@@ -1364,7 +1341,7 @@ class DnnSupport {
       const ConvolutionDescriptor& convolution_descriptor,
       const AlgorithmConfig& plan_config,
       ScratchAllocator* scratch_allocator, 
-      ProfileExecutionPlanResult* output_profile_result) = 0;
+      ProfileResult* output_profile_result) = 0;
 
   template <typename ElementType, typename OutputType>
   bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& input_descriptor,

@@ -500,11 +500,7 @@ struct LaunchConvOp<GPUDevice, T> {
 
     using se::dnn::AlgorithmConfig;
     using se::dnn::AlgorithmDesc;
-#if GOOGLE_CUDA && CUDNN_VERSION >= 8100
-    using se::dnn::ProfileExecutionPlanResult;
-#else
     using se::dnn::ProfileResult;
-#endif // GOOGLE_CUDA && CUDNN_VERSION >= 8100
 
 #if TENSORFLOW_USE_ROCM
     // cudnn_use_autotune is applicable only the CUDA flow
@@ -547,7 +543,7 @@ struct LaunchConvOp<GPUDevice, T> {
             !RedzoneCheckDisabled()
                 ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
                 : static_cast<se::ScratchAllocator*>(&scratch_allocator);
-        ProfileExecutionPlanResult profile_result;
+        ProfileResult profile_result;
 
         AlgorithmConfig profile_plan_config(
             AlgorithmDesc{profile_plan->getTag(),
