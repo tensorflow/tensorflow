@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -556,16 +557,18 @@ tf_device::LaunchOp AssignDevicesToReplicatedExecute(
 // Creates a `tf.TPUCompileSucceededAssert` operation that parses compilation
 // status of `compile_op` to check whether compilation is successful.
 void BuildTPUCompileSucceededAssertOp(Operation* compile_op,
+                                      Operation* result_id,
                                       llvm::StringRef compilation_device,
                                       OpBuilder* builder) {
   auto assert_op = builder->create<TF::TPUCompileSucceededAssertOp>(
-      compile_op->getLoc(), compile_op->getResult(0));
+      compile_op->getLoc(), result_id->getResult(0));
   WrapOpInLaunch(builder, compile_op->getLoc(), assert_op, compilation_device);
 }
 
 LogicalResult Rewrite(
     tf_device::ClusterFuncOp cluster_func,
     llvm::ArrayRef<tensorflow::DeviceNameUtils::ParsedName> devices,
+    ArrayRef<TF::TPUCompilationResultOp> compilation_result,
     OpBuilder* builder) {
   // Collect `num_replicas` and `num_cores_per_replica` attributes.
   int num_replicas = 1;
@@ -645,16 +648,22 @@ LogicalResult Rewrite(
     });
   }
 
-  // After rewrite, find if there is a TPUCompilationResultOp in the block with
-  // the same _tpu_replicate attribute and replace it with the result of the
-  // compile op. This op is used as a placeholder to hook during graph creation
-  // the other ops that are intended to consume the compile result.
-  Block* block = cluster_func.getOperation()->getBlock();
-  for (auto compile_result_op : block->getOps<TF::TPUCompilationResultOp>())
-    compile_result_op.output().replaceAllUsesWith(compile_op->getResult(0));
+  // After rewrite, if there is a TPUCompilationResultOp from the same cluster,
+  // replace it with the result of the compile op. The TPUCompilationResultOp is
+  // used as a placeholder to hook during graph creation the other ops that are
+  // intended to consume the compile result.
+  Operation* result_id = compile_op;
+  for (auto res : compilation_result) {
+    // Build identity op with the same location/name as the original compilation
+    // result op.
+    result_id = builder->create<TF::IdentityOp>(
+        res.getLoc(), compile_op->getResult(0).getType(),
+        result_id->getResult(0));
+    res.output().replaceAllUsesWith(compile_op->getResult(0));
+  }
 
   BuildTPUCompileSucceededAssertOp(
-      compile_op, tpu_device_assignment.compilation_device, builder);
+      compile_op, result_id, tpu_device_assignment.compilation_device, builder);
 
   AssignDevicesToReplicate(replicate, tpu_device_assignment.tpu_devices,
                            builder);
@@ -733,26 +742,50 @@ void TPURewritePass::runOnOperation() {
   if (failed(tensorflow::GetDevicesFromOp(getOperation(), &devices)))
     return signalPassFailure();
 
+  // Collect compilation results.
+  llvm::DenseMap<Attribute, SmallVector<TF::TPUCompilationResultOp, 1>>
+      compilation_results;
+  auto result_init = getOperation().walk([&](TF::TPUCompilationResultOp op) {
+    auto cluster_id = op->getAttrOfType<StringAttr>("_tpu_compilation_status");
+    if (!cluster_id) {
+      op->emitOpError("missing '_tpu_compilation_status'");
+      return WalkResult::interrupt();
+    }
+    compilation_results[cluster_id].push_back(op);
+    return WalkResult::advance();
+  });
+  if (result_init.wasInterrupted()) return signalPassFailure();
+
   llvm::SmallVector<tf_device::ClusterFuncOp> to_be_erased;
   OpBuilder builder(&getContext());
   auto result = getOperation().walk([&](tf_device::ClusterFuncOp op) {
     // Skip non-tpu device cluster_func.
-    auto replicate_attr = op->getAttrOfType<StringAttr>("_tpu_replicate");
-    if (!replicate_attr) return WalkResult::advance();
+    auto cluster_id = op->getAttrOfType<StringAttr>("_tpu_replicate");
+    if (!cluster_id) return WalkResult::advance();
 
-    if (failed(Rewrite(op, devices.device_names(), &builder)))
+    if (failed(Rewrite(op, devices.device_names(),
+                       compilation_results[cluster_id], &builder)))
       return WalkResult::interrupt();
 
     to_be_erased.push_back(op);
     return WalkResult::advance();
   });
-
   if (result.wasInterrupted()) return signalPassFailure();
 
   EraseClusterFuncs(to_be_erased);
 
   // Eliminate TPUCompilationResultOp now that the rewrite is complete.
-  getOperation().walk([&](TF::TPUCompilationResultOp op) { op.erase(); });
+  for (auto& it : compilation_results) {
+    for (auto op : it.second) {
+      if (!op.use_empty()) {
+        mlir::InFlightDiagnostic err = op.emitError("uses remain post rewrite");
+        for (auto user : op->getUsers())
+          err.attachNote(user->getLoc()) << "remaining user";
+        return signalPassFailure();
+      }
+      op.erase();
+    }
+  }
 
   // TODO(b/139377366): Remove functions that are no longer needed.
 }
