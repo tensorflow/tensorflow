@@ -31,6 +31,7 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
   static constexpr const char* const kAlgorithm = "algorithm";
   static constexpr const char* const kCpuBudget = "cpu_budget";
   static constexpr const char* const kRamBudget = "ram_budget";
+  static constexpr const char* const kWarmStart = "warm_start";
 
   explicit ModelDatasetOp(OpKernelConstruction* ctx);
 
@@ -44,6 +45,7 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
   model::AutotuneAlgorithm algorithm_;
   int64 cpu_budget_;
   int64 ram_budget_;
+  bool warm_start_;
 };
 
 }  // namespace data
