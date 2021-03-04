@@ -1407,7 +1407,7 @@ class MapDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
   def setUp(self):
     self._tensor_slice_len = 7
-    self._num_epochs = 14
+    self._num_epochs = 7
     self._num_outputs = self._tensor_slice_len * self._num_epochs
 
   def _build_ds(self, multiplier=37.0):
@@ -1452,17 +1452,18 @@ class MapDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testCaptureConstantInMapFn(self):
+    num_outputs = 10
 
     def _build_ds():
       constant_var = constant_op.constant(5)
       return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
           lambda x: x + constant_var))
 
-    self.run_core_tests(_build_ds, 10)
+    self.run_core_tests(_build_ds, num_outputs)
 
   @combinations.generate(test_base.default_test_combinations())
   def testCaptureDefunInMapFn(self):
-    num_outputs = 100
+    num_outputs = 10
 
     def _build_ds():
 
@@ -1476,7 +1477,7 @@ class MapDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testBuildDefunInMapFn(self):
-    num_outputs = 100
+    num_outputs = 10
 
     def _build_ds():
 
