@@ -41,6 +41,7 @@ AllOpsResolver::AllOpsResolver() {
   AddGreaterEqual();
   AddHardSwish();
   AddL2Normalization();
+  AddLeakyRelu();
   AddLess();
   AddLessEqual();
   AddLog();
