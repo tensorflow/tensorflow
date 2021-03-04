@@ -122,17 +122,19 @@ TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
                                tflite::micro::GetTensorShape(output),
                                tflite::micro::GetTensorData<float>(output));
       return kTfLiteOk;
-    }
+    } break;
     case kTfLiteInt8: {
       QuantizeLeakyRelu<int8_t>(data, input, output);
       return kTfLiteOk;
-    }
+    } break;
     default:
       TF_LITE_KERNEL_LOG(
           context, "Only float32, int8 are supported by LEAKY_RELU, got %s.",
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
+
+  return kTfLiteError;
 }
 
 }  // namespace
