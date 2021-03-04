@@ -25475,6 +25475,13 @@ op {
     }
   }
   attr {
+    name: "warm_start"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
     name: "output_types"
     type: "list(type)"
     has_minimum: true
