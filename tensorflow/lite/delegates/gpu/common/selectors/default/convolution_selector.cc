@@ -191,6 +191,7 @@ std::unique_ptr<GPUOperation> SelectConvolutionWithDynamicWeights(
                                    weights_shape.w, weights_shape.c);
     ConvolutionMetal conv =
         CreateConvolutionMetal(op_def, dst_shape, attr_copy, gpu_info);
+    *weights_desc = conv.GetWeightsDescription();
     return absl::make_unique<ConvolutionMetal>(std::move(conv));
   } else if (gpu_info.IsAdreno()) {
     return SelectConvolutionDynamicWeightsAdreno(attr, weights_shape, dst_shape,

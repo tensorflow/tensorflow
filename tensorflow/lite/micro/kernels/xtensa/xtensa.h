@@ -21,6 +21,9 @@ limitations under the License.
 #elif defined(FUSION_F1)
 #include "include/nnlib/xa_nnlib_api.h"
 #include "include/nnlib/xa_nnlib_standards.h"
+
+#define ALIGNED_SIZE(x, bytes) (((x) + (bytes - 1)) & (~(bytes - 1)))
+#define ALIGN_PTR(x, bytes) ((((unsigned)(x)) + (bytes - 1)) & (~(bytes - 1)))
 #endif
 
 #endif  // TENSORFLOW_LITE_MICRO_KERNELS_XTENSA_XTENSA_H_

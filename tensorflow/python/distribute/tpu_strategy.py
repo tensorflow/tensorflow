@@ -909,7 +909,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         session)
 
   def _get_input_workers(self, options):
-    if not options or options.experimental_prefetch_to_device:
+    if not options or options.experimental_fetch_to_device:
       return input_lib.InputWorkers(
           tuple(self._device_input_worker_devices.items()))
     else:
@@ -928,7 +928,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
             "distributed datasets with device prefetch when using sparse or "
             "ragged tensors. If you intend to use sparse or ragged tensors, "
             "please pass a tf.distribute.InputOptions object with "
-            "experimental_prefetch_to_device set to False to your dataset "
+            "experimental_fetch_to_device set to False to your dataset "
             "distribution function.".format(path, type(spec)))
 
   def _experimental_distribute_dataset(self, dataset, options):
@@ -939,14 +939,15 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           "is only supported in "
           "`experimental_distribute_datasets_from_function`."
       )
-    if options is None or options.experimental_prefetch_to_device:
+    if options is None or options.experimental_fetch_to_device:
       self._check_spec(dataset.element_spec)
 
     return input_lib.get_distributed_dataset(
         dataset,
         self._get_input_workers(options),
         self._container_strategy(),
-        num_replicas_in_sync=self._num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync,
+        options=options)
 
   def _distribute_datasets_from_function(self, dataset_fn, options):
     if (options and options.experimental_replication_mode ==
@@ -969,10 +970,11 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         dataset_fn,
         input_workers,
         input_contexts,
-        self._container_strategy())
+        self._container_strategy(),
+        options=options)
 
     # We can only check after the dataset_fn is called.
-    if options is None or options.experimental_prefetch_to_device:
+    if options is None or options.experimental_fetch_to_device:
       self._check_spec(distributed_dataset.element_spec)
     return distributed_dataset
 
@@ -1302,11 +1304,6 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         var, resource_variable_ops.BaseResourceVariable)
     return var.read_value()
 
-  def _local_results(self, val):
-    if isinstance(val, values.DistributedValues):
-      return val.values
-    return (val,)
-
   def value_container(self, value):
     return value
 
@@ -1490,19 +1487,17 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
                                        ._use_spmd_for_xla_partitioning))
 
       # Remove all no ops that may have been added during 'tpu.replicate()'
+      filter_ops = lambda x: [o for o in x if not isinstance(o, ops.Operation)]
       if isinstance(result[0], list):
-        result[0] = [
-            output for output in result[0] if not isinstance(
-                output, ops.Operation)
-        ]
+        result[0] = filter_ops(result[0])
 
       # Workaround for `tpu.replicate` behaviour when single `Tensor` returned.
       if result[0] is None or isinstance(result[0], ops.Operation):
         replicate_outputs = [None] * len(replicate_outputs)
       else:
         replicate_outputs = [
-            nest.pack_sequence_as(result[0], nest.flatten(replica_output))
-            for replica_output in replicate_outputs
+            nest.pack_sequence_as(result[0], filter_ops(nest.flatten(output)))
+            for output in replicate_outputs
         ]
       return distribute_utils.regroup(replicate_outputs)
 

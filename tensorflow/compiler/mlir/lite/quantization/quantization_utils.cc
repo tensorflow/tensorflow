@@ -432,9 +432,9 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
       quant::QuantizedType::getDefaultMaximumForInteger(/*isSigned=*/true, 32);
   if (axis_size == 1) {
     return quant::UniformQuantizedType::getChecked(
+        builder.getUnknownLoc(),
         /*flags=*/true, storage_type, expressed_type, scales[0],
-        /*zeroPoint=*/0, storage_type_min, storage_type_max,
-        builder.getUnknownLoc());
+        /*zeroPoint=*/0, storage_type_min, storage_type_max);
   } else {
     llvm::SmallVector<int64_t, 4> zero_points(axis_size, 0);
     // TODO(b/141508873): Assume the bias is a 1-D tensor, and set the
@@ -442,9 +442,9 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
     // larger than 1, this returned quantized type couldn't be used to
     // quantize the bias.
     return quant::UniformQuantizedPerAxisType::getChecked(
+        builder.getUnknownLoc(),
         /*flags=*/true, storage_type, expressed_type, scales, zero_points,
-        /*quantizedDimension=*/0, storage_type_min, storage_type_max,
-        builder.getUnknownLoc());
+        /*quantizedDimension=*/0, storage_type_min, storage_type_max);
   }
 }
 
@@ -556,6 +556,13 @@ QuantizedType DownCastScale(QuantizedType type,
                             const SmallVectorImpl<double>& mins,
                             const SmallVectorImpl<double>& maxs, Location loc) {
   SmallVector<double, 4> scales(mins.size());
+  SmallVector<int64_t, 4> zero_points(mins.size());
+  if (auto q_type = type.dyn_cast<UniformQuantizedType>()) {
+    zero_points.push_back(q_type.getZeroPoint());
+  } else if (auto q_type = type.dyn_cast<UniformQuantizedPerAxisType>()) {
+    zero_points = {q_type.getZeroPoints().begin(),
+                   q_type.getZeroPoints().end()};
+  }
   for (int i = 0; i < mins.size(); ++i) {
     scales[i] = (static_cast<float>(maxs[i]) - static_cast<float>(mins[i])) /
                 (type.getStorageTypeMax() - type.getStorageTypeMin());
@@ -565,17 +572,28 @@ QuantizedType DownCastScale(QuantizedType type,
                        << "might cause overflow for bias. Forcing to use scale "
                        << kNearZeroTolerance;
       scales[i] = kNearZeroTolerance;
+    } else if (type.getStorageTypeMax() != -type.getStorageTypeMin()) {
+      // Only applies for asymmetric quantized range with original scale.
+      float zero_point_from_min =
+          type.getStorageTypeMin() - mins[i] / scales[i];
+      if (zero_point_from_min < type.getStorageTypeMin()) {
+        zero_points[i] = static_cast<int64_t>(type.getStorageTypeMin());
+      } else if (zero_point_from_min > type.getStorageTypeMax()) {
+        zero_points[i] = static_cast<int64_t>(type.getStorageTypeMax());
+      } else {
+        zero_points[i] = static_cast<int64_t>(std::round(zero_point_from_min));
+      }
     }
   }
   if (auto q_type = type.dyn_cast<UniformQuantizedType>()) {
-    return UniformQuantizedType::get(
-        q_type.getFlags(), q_type.getStorageType(), q_type.getExpressedType(),
-        scales[0], q_type.getZeroPoint(), q_type.getStorageTypeMin(),
-        q_type.getStorageTypeMax());
+    return UniformQuantizedType::get(q_type.getFlags(), q_type.getStorageType(),
+                                     q_type.getExpressedType(), scales[0],
+                                     zero_points[0], q_type.getStorageTypeMin(),
+                                     q_type.getStorageTypeMax());
   } else if (auto q_type = type.dyn_cast<UniformQuantizedPerAxisType>()) {
     return UniformQuantizedPerAxisType::get(
         q_type.getFlags(), q_type.getStorageType(), q_type.getExpressedType(),
-        scales, q_type.getZeroPoints(), q_type.getQuantizedDimension(),
+        scales, zero_points, q_type.getQuantizedDimension(),
         q_type.getStorageTypeMin(), q_type.getStorageTypeMax());
   }
   return type;
@@ -764,8 +782,9 @@ quant::UniformQuantizedType GetFixedOutputRange(bool is_signed, int bit_width,
     storage_max += 128;
   }
   return quant::UniformQuantizedType::getChecked(
-      is_signed, storage_type, result_type.getElementType(), scale, zero_point,
-      storage_min, storage_max, builder.getUnknownLoc());
+      builder.getUnknownLoc(), is_signed, storage_type,
+      result_type.getElementType(), scale, zero_point, storage_min,
+      storage_max);
 }
 }  // namespace quant
 }  // namespace mlir

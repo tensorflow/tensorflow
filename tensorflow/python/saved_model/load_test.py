@@ -19,7 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import contextlib
 import functools
+import gc
+import io
 import os
 import sys
 import tempfile
@@ -2194,6 +2197,26 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
                          new_concrete_function.pretty_printed_signature())
 
       previous_concrete_function = new_concrete_function
+
+  def test_garbage_collection_capturable_resource_doesnt_raise_exception(self):
+    model = module.Module()
+    model.mapping = lookup_ops.StaticHashTable(
+        lookup_ops.KeyValueTensorInitializer(
+            keys=math_ops.range(1, dtype=dtypes.int32),
+            values=["foo"]),
+        "default_value")
+    loaded = cycle(model, 1)
+    del model
+    del loaded
+    # Exceptions raised during garbage collection are simply printed to stderr
+    # and ignored, and we have no way to access them. We'll capture stdout
+    # during the garbage collection process and inspect to see if any
+    # exceptions were raised.
+    stderr = io.StringIO()
+    with contextlib.redirect_stderr(stderr):
+      gc.collect()
+    if "Exception ignored in" in stderr.getvalue():
+      raise Exception(stderr.getvalue())
 
 
 if __name__ == "__main__":

@@ -37,6 +37,7 @@ from tensorflow.python.keras.saving.saved_model import load as keras_load
 from tensorflow.python.keras.saving.saved_model import serialized_attributes
 from tensorflow.python.keras.saving.saved_model import utils
 from tensorflow.python.keras.utils import tf_inspect
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.platform import tf_logging as logging
@@ -112,19 +113,19 @@ def wrap_layer_objects(layer, serialization_cache):
   wrapped_layer_losses = [keras_loss_cache[fn]
                           for fn in layer._callable_losses[:]]  # pylint: disable=protected-access
 
-  layer_metrics = data_structures._DictWrapper(  # pylint: disable=protected-access
+  layer_metrics = data_structures.wrap_or_unwrap(
       {m.name: m for m in layer._metrics})  # pylint: disable=protected-access
   return dict(
-      variables=data_structures.ListWrapper(layer.variables),
-      trainable_variables=data_structures.ListWrapper(
+      variables=data_structures.wrap_or_unwrap(layer.variables),
+      trainable_variables=data_structures.wrap_or_unwrap(
           layer.trainable_variables),
-      non_trainable_variables=data_structures.ListWrapper(
+      non_trainable_variables=data_structures.wrap_or_unwrap(
           layer.non_trainable_variables),
-      layers=data_structures.ListWrapper(utils.list_all_layers(layer)),
-      metrics=data_structures.ListWrapper(layer.metrics),
-      regularization_losses=data_structures.ListWrapper(
+      layers=data_structures.wrap_or_unwrap(utils.list_all_layers(layer)),
+      metrics=data_structures.wrap_or_unwrap(layer.metrics),
+      regularization_losses=data_structures.wrap_or_unwrap(
           wrapped_loss_functions),
-      layer_regularization_losses=data_structures.ListWrapper(
+      layer_regularization_losses=data_structures.wrap_or_unwrap(
           wrapped_layer_losses),
       layer_metrics=layer_metrics)
   # pylint: disable=protected-access
@@ -505,13 +506,17 @@ class LayerCallCollection(object):
     return fn
 
 
+def _filtered_inputs(inputs):
+  return list(filter(tf_utils.is_tensor_or_variable, nest.flatten(inputs)))
+
+
 def layer_call_wrapper(call_collection, method):
   """Ensures layer losses are kept the same, and runs method in call context."""
   def wrapper(*args, **kwargs):
     """Calls method within call context."""
     layer = call_collection.layer
     training = None
-    inputs = call_collection.get_input_arg_value(args, kwargs)
+    inputs = _filtered_inputs([args, kwargs])
     # pylint: disable=protected-access
     if (args or kwargs) and call_collection.training_arg_was_passed(
         args, kwargs):
@@ -564,11 +569,12 @@ def _wrap_call_and_conditional_losses(layer):
   """
   # Create function that generates both outputs and losses
   layer_call = _get_layer_call_method(layer)
-  def call_and_return_conditional_losses(inputs, *args, **kwargs):
+  def call_and_return_conditional_losses(*args, **kwargs):
     """Returns layer (call_output, conditional losses) tuple."""
-    call_output = layer_call(inputs, *args, **kwargs)
+    call_output = layer_call(*args, **kwargs)
     if version_utils.is_v1_layer_or_model(layer):
-      conditional_losses = layer.get_losses_for(inputs)
+      conditional_losses = layer.get_losses_for(
+          _filtered_inputs([args, kwargs]))
     else:
       conditional_losses = [
           l for l in layer.losses if not hasattr(l, '_unconditional_loss')

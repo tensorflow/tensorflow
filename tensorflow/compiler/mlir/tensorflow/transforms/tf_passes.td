@@ -761,3 +761,12 @@ func @cluster_oplist(%arg0: tensor<f32>, %arg1: tensor<i32>) -> tensor<i32> {
   ];
 }
 
+def VerifySuitableForExportPass : Pass<"tf-verify-for-export", "ModuleOp"> {
+  let summary = "Verify module is suitable for export back to TF Graph";
+  let description = [{
+    Verifies whether all functions in module are of single tf_executor.graph and
+    each tf_executor.island in tf_executor.graph only has a single op.
+  }];
+
+  let constructor = "TF::CreateVerifySuitableForExportPass()";
+}

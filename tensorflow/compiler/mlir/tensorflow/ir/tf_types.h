@@ -115,13 +115,13 @@ class TensorFlowRefType : public TensorFlowType {
   static TensorFlowType get(Type type);
   static TensorFlowType getChecked(Type type, MLIRContext* context,
                                    Location loc) {
-    if (failed(verifyConstructionInvariants(loc, type))) {
+    if (failed(verify(loc, type))) {
       return TensorFlowRefType();
     }
     return get(type);
   }
 
-  static LogicalResult verifyConstructionInvariants(Location loc, Type type) {
+  static LogicalResult verify(Location loc, Type type) {
     // type should be a valid TensorFlow type.
     if (!IsValidTFTensorType(type)) {
       return emitError(loc) << "invalid TensorFlow type: " << type;
@@ -210,16 +210,21 @@ class TypeWithSubtypeImpl
                             Location loc) {
     return Base::getChecked(loc, subtypes);
   }
+  static Derived getChecked(function_ref<InFlightDiagnostic()> emitError,
+                            MLIRContext* context,
+                            ArrayRef<TensorType> subtypes) {
+    return Base::getChecked(emitError, context, subtypes);
+  }
 
   static Derived get(MLIRContext* context) { return get({}, context); }
 
-  static LogicalResult verifyConstructionInvariants(
-      Location loc, ArrayRef<TensorType> subtypes) {
+  static LogicalResult verify(function_ref<InFlightDiagnostic()> emitError,
+                              ArrayRef<TensorType> subtypes) {
     // Each of the subtypes should be a valid TensorFlow type.
     for (TensorType subtype : subtypes) {
       if (!IsValidTFTensorType(subtype)) {
-        return emitError(loc) << "invalid " << Derived::getTypeName()
-                              << " subtype: " << subtype;
+        return emitError() << "invalid " << Derived::getTypeName()
+                           << " subtype: " << subtype;
       }
     }
     return success();

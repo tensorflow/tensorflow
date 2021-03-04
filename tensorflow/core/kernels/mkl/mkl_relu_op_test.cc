@@ -100,14 +100,17 @@ static Graph* Activation(const string& op_name, const string& kind,
   return graph;
 }
 
-#define BM_Activation(op, kind, A, B, C, D, type)                            \
-  static void BM_##op##_##kind##_##type##_##A##_##B##_##C##_##D(int iters) { \
-    int64 num_computed_elements = (A) * (B) * (C) * (D);                     \
-    int64 flops_per_iter = num_computed_elements;                            \
-    testing::ItemsProcessed(static_cast<int64>(iters) * flops_per_iter);     \
-                                                                             \
-    test::Benchmark(#type, Activation(#op, #kind, {A, B, C, D})).Run(iters); \
-  }                                                                          \
+#define BM_Activation(op, kind, A, B, C, D, type)                 \
+  static void BM_##op##_##kind##_##type##_##A##_##B##_##C##_##D(  \
+      ::testing::benchmark::State& state) {                       \
+    int64 num_computed_elements = (A) * (B) * (C) * (D);          \
+    int64 flops_per_iter = num_computed_elements;                 \
+                                                                  \
+    test::Benchmark(#type, Activation(#op, #kind, {A, B, C, D}),  \
+                    /*old_benchmark_api*/ false)                  \
+        .Run(state);                                              \
+    state.SetItemsProcessed(state.iterations() * flops_per_iter); \
+  }                                                               \
   BENCHMARK(BM_##op##_##kind##_##type##_##A##_##B##_##C##_##D)
 
 #define BM(op, A, B, C, D, type)                \

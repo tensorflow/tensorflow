@@ -20,59 +20,27 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/tpu_api_dlsym_set_fn.h"
-
-#if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_initializer_helper.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
-#endif
 
 namespace tensorflow {
 namespace tpu {
-
-
-#if defined(PLATFORM_GOOGLE)
-Status InitializeTpuModelServer(void* library_handle) {
-  return errors::Unimplemented("You must statically link in a TPU library.");
-}
-#else  // PLATFORM_GOOGLE
-#include "tensorflow/core/tpu/tpu_library_init_fns.inc"
-
-Status InitializeTpuModelServer(void* library_handle) {
-  Status s = InitializeTpuStructFns(library_handle);
-
-  // Retrieve arguments from environment if applicable
-  std::pair<std::vector<std::string>, std::vector<const char*> > args =
-      GetLibTpuInitArguments();
-
-  // TPU platform registration must only be performed after the library is
-  // loaded. We do not want to register a TPU platform in XLA without the
-  // supporting library providing the necessary APIs.
-  if (s.ok()) {
-    void (*initialize_fn)(bool init_library, int num_args, const char** args);
-    initialize_fn = reinterpret_cast<decltype(initialize_fn)>(
-        dlsym(library_handle, "TfTpu_Initialize"));
-    (*initialize_fn)(/*init_library=*/true, args.second.size(),
-                     args.second.data());
-
-    RegisterTpuPlatform();
-  }
-
-  OpsApiFn()->TfTpu_InitializeTpuModelServerFn();
-  return s;
-}
-
+namespace {
+#if !defined(PLATFORM_GOOGLE)
 bool FindAndLoadTpuModelServer() {
-  if (!TryAcquireTpuLock()) return false;
   void* library = dlopen("libtpu.so", RTLD_NOW);
   if (library) {
-    InitializeTpuModelServer(library);
+    if (TryAcquireTpuLock()) {
+      InitializeTpuLibrary(library);
+    }
   }
+  OpsApiFn()->TfTpu_InitializeTpuModelServerFn();
   return true;
 }
 
 static bool tpu_library_finder = FindAndLoadTpuModelServer();
 #endif  // PLATFORM_GOOGLE
-
+}  // namespace
 }  // namespace tpu
 }  // namespace tensorflow

@@ -61,4 +61,14 @@ limitations under the License.
 #define PLATFORM_IS_X86
 #endif
 
+// Check if we are compmiling for an arm device.
+#if defined(__arm__) || defined(__aarch64__)
+#define PLATFORM_IS_ARM
+#if defined(__aarch64__)
+#define PLATFORM_IS_ARM64
+#else
+#define PLATFORM_IS_ARM32
+#endif
+#endif
+
 #endif  // TENSORFLOW_PLATFORM_PLATFORM_DEFINE_H_

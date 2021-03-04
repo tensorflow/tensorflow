@@ -64,6 +64,7 @@ tensorflow::Status SetTpuOpsStructFns(void* library_handle) {
   TFTPU_SET_FN(ops_api_fn, TpuNodeContext_Initialize);
   TFTPU_SET_FN(ops_api_fn, TpuNodeContext_StopChipHeartbeats);
   TFTPU_SET_FN(ops_api_fn, TpuNodeContext_CloseTpuHost);
+  TFTPU_SET_FN(ops_api_fn, TpuNodeContext_CompactionSupported);
 
   TFTPU_SET_FN(ops_api_fn, TpuTopology_AvailableCoreCount);
   TFTPU_SET_FN(ops_api_fn, TpuNetUtil_RecycleUnusedPort);

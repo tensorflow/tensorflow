@@ -1178,7 +1178,7 @@ def _SigmoidGradGrad(op, grad):
 def _SignGrad(op, _):
   """Returns 0."""
   x = op.inputs[0]
-  return array_ops.zeros(array_ops.shape(x), dtype=x.dtype)
+  return array_ops.zeros_like(x)
 
 
 @ops.RegisterGradient("Sin")
@@ -1560,11 +1560,9 @@ def _MaximumMinimumGrad(op, grad, selector_op):
     # No gradient skipping, so do the full gradient computation
     pass
   x = op.inputs[0]
-  gdtype = grad.dtype
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
-  gradshape = array_ops.shape(grad)
-  zeros = array_ops.zeros(gradshape, gdtype)
+  zeros = array_ops.zeros_like(grad)
   xmask = selector_op(x, y)
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   if skip_input_indices is not None and 0 in skip_input_indices:

@@ -126,7 +126,7 @@ struct ElementwiseOpConversion : public OpRewritePattern<OpTy> {
     Type flatResultTy =
         RankedTensorType::get({ShapedType::kDynamicSize}, resultElementTy);
     Value flatResult =
-        rewriter.create<OpTy>(loc, flatResultTy, flatOperands, op.getAttrs());
+        rewriter.create<OpTy>(loc, flatResultTy, flatOperands, op->getAttrs());
 
     // Restore original shape.
     rewriter.replaceOpWithNewOp<mhlo::DynamicReshapeOp>(op, op.getType(),
@@ -192,13 +192,156 @@ struct ConvertUnrankedScalarDynamicBroadcastBinaryOp
                                        rhs_is_scalar ? rhs : reshaped};
     Value computed = rewriter.create<ChloOpTy>(
         loc, TypeRange{RankedTensorType::get({-1}, result_element_type)},
-        new_operands, op.getAttrs());
+        new_operands, op->getAttrs());
 
     // Reshape the result back into an unranked tensor.
     rewriter.replaceOpWithNewOp<mhlo::DynamicReshapeOp>(op, result_type,
                                                         computed, shape);
 
     return success();
+  }
+};
+
+template <typename ChloOpTy, typename HloOpTy>
+struct ConvertUnrankedDynamicBroadcastOpHelper {
+  // Returns the dynamic result of checking the given value is effectively a
+  // scalar shape (i.e. the number of elements is 1).
+  static Value GreaterRankIsN(OpBuilder &builder, Location loc,
+                              Value actual_rank, int targeted_rank) {
+    return builder.create<CmpIOp>(
+        loc, CmpIPredicate::eq, actual_rank,
+        builder.create<ConstantIndexOp>(loc, targeted_rank));
+  }
+
+  static scf::IfOp createIfOpForRankSpecializedBroadcastAndOp(
+      OpBuilder &builder, ChloOpTy op, Value actual_rank, int targeted_rank) {
+    // Create the if block to place the current specialized logic in.
+    Value greater_rank_is_n =
+        GreaterRankIsN(builder, op.getLoc(), actual_rank, targeted_rank);
+    return builder.create<scf::IfOp>(op.getLoc(), op.getResult().getType(),
+                                     greater_rank_is_n, true);
+  }
+
+  static Value createBroadcastToKnownRank(OpBuilder &builder, ChloOpTy op,
+                                          Value value, int targeted_rank) {
+    auto loc = op.getLoc();
+    Value shape = builder.create<shape::ShapeOfOp>(loc, value);
+    SmallVector<int64_t, 6> ranked_shape(targeted_rank, 1);
+    auto unknown_rank_extent_tensor_type = RankedTensorType::get(
+        {RankedTensorType::kDynamicSize}, builder.getIndexType());
+    auto known_rank_extent_tensor_type =
+        RankedTensorType::get({targeted_rank}, builder.getIndexType());
+    Value ranked_shape_val = builder.create<shape::ConstShapeOp>(
+        loc, known_rank_extent_tensor_type,
+        mlir::DenseIntElementsAttr::get(known_rank_extent_tensor_type,
+                                        ranked_shape));
+    Value extended_value = builder.create<shape::BroadcastOp>(
+        loc, unknown_rank_extent_tensor_type, shape, ranked_shape_val, nullptr);
+    return builder.create<tensor::CastOp>(loc, known_rank_extent_tensor_type,
+                                          extended_value);
+  }
+
+  // Create the if statement and code for a broadcasting op with a result of a
+  // given rank.
+  static void createRankSpecializedBroadcastAndOp(OpBuilder &if_builder,
+                                                  ChloOpTy op,
+                                                  ValueRange operands,
+                                                  int targeted_rank) {
+    auto loc = op.getLoc();
+    SmallVector<Value, 2> reshaped_operands;
+
+    auto dynamic_dimensions = llvm::SmallVector<int64_t, 6>(
+        targeted_rank, RankedTensorType::kDynamicSize);
+
+    for (Value operand : operands) {
+      // Handle shape broadcasting and inference.
+      Value extended_operand_casted =
+          createBroadcastToKnownRank(if_builder, op, operand, targeted_rank);
+
+      // 1. Reshape operands to the given rank (with the same number of
+      // elements)
+      // 2. Compute the ranked-broadcasted ChloOp (which will assert that the
+      // ops
+      //    can be broadcasted and do the actual broadcasting)
+      // 3. Type erase the output back to unranked
+      auto reshaped_type = RankedTensorType::get(
+          dynamic_dimensions,
+          operand.getType().template dyn_cast<TensorType>().getElementType());
+      Value reshaped_operand = if_builder.create<mhlo::DynamicReshapeOp>(
+          loc, reshaped_type, operand, extended_operand_casted);
+      reshaped_operands.push_back(reshaped_operand);
+    }
+    auto result_element_type = op.getResult()
+                                   .getType()
+                                   .template dyn_cast<TensorType>()
+                                   .getElementType();
+    auto result_type =
+        RankedTensorType::get(dynamic_dimensions, result_element_type);
+    Value result = if_builder.create<ChloOpTy>(
+        loc, ArrayRef<Type>{result_type}, reshaped_operands, op->getAttrs());
+    Value reshaped_result = if_builder.create<tensor::CastOp>(
+        loc, UnrankedTensorType::get(result_element_type), result);
+    if_builder.create<scf::YieldOp>(loc, reshaped_result);
+  }
+
+  // Iterates over the desired ranks to be specialized and generates the code
+  // snippet for each case.
+  static Value HandleBroadcastAndOp(OpBuilder &rewriter, ChloOpTy op,
+                                    ValueRange operands) {
+    auto loc = op.getLoc();
+
+    // Find the larger rank of the operands.
+    auto extent_tensor_type = RankedTensorType::get({ShapedType::kDynamicSize},
+                                                    rewriter.getIndexType());
+    Value greater_rank;
+    for (Value operand : operands) {
+      Value shape =
+          rewriter.create<shape::ShapeOfOp>(loc, extent_tensor_type, operand);
+      Value rank =
+          rewriter.create<shape::RankOp>(loc, rewriter.getIndexType(), shape);
+      if (!greater_rank) {
+        greater_rank = rank;
+      } else {
+        Value greater_rank_compare = rewriter.create<CmpIOp>(
+            loc, CmpIPredicate::sgt, greater_rank, rank);
+        greater_rank = rewriter.create<SelectOp>(loc, greater_rank_compare,
+                                                 greater_rank, rank);
+      }
+    }
+
+    // Generate a list of nested if/else statements to handle rank
+    // specializations from 1 to `kMaxRankSpecialization`.
+    scf::IfOp if_op = createIfOpForRankSpecializedBroadcastAndOp(
+        rewriter, op, greater_rank, 1);
+    OpBuilder if_builder = if_op.getThenBodyBuilder(rewriter.getListener());
+    createRankSpecializedBroadcastAndOp(if_builder, op, operands, 1);
+
+    // Put each subsequent rank specialization inside the else statement of the
+    // previous one.
+    OpBuilder else_builder = if_op.getElseBodyBuilder(rewriter.getListener());
+    constexpr int kMaxRankSpecialization = 6;
+    for (int i = 2; i < kMaxRankSpecialization; i++) {
+      auto inner_if = createIfOpForRankSpecializedBroadcastAndOp(
+          else_builder, op, greater_rank, i);
+      if_builder = inner_if.getThenBodyBuilder(rewriter.getListener());
+      createRankSpecializedBroadcastAndOp(if_builder, op, operands, i);
+      else_builder.create<scf::YieldOp>(loc, inner_if.getResult(0));
+      else_builder = inner_if.getElseBodyBuilder(rewriter.getListener());
+    }
+    // Fire an assertion if none of the rank specializations applied (one of
+    // the ranks was greater than `kMaxRankSpecialization`).
+    else_builder.create<AssertOp>(
+        loc,
+        GreaterRankIsN(else_builder, op.getLoc(), greater_rank,
+                       kMaxRankSpecialization),
+        "Input for dynamic binary op lowering was of a rank greater than " +
+            std::to_string(kMaxRankSpecialization));
+    // Add the rank 6 specialization to the innermost else block.
+    createRankSpecializedBroadcastAndOp(else_builder, op, operands,
+                                        kMaxRankSpecialization);
+
+    // Return the result of the outermost if statement.
+    return if_op.getResult(0);
   }
 };
 
@@ -243,7 +386,7 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
         loc, RankedTensorType::get({}, lhs_type.getElementType()), lhs);
     Value if_lhs_scalar_result = if_lhs_scalar_builder.create<ChloOpTy>(
         loc, ArrayRef<Type>{result_type}, ArrayRef<Value>{reshaped_lhs, rhs},
-        op.getAttrs());
+        op->getAttrs());
     Value extended_if_lhs_scalar_result =
         extendToBroadcastShape(if_lhs_scalar_builder, loc, if_lhs_scalar_result,
                                shape_of_lhs, shape_of_rhs);
@@ -266,7 +409,7 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
         loc, RankedTensorType::get({}, rhs_type.getElementType()), rhs);
     Value if_rhs_scalar_result = if_rhs_scalar_builder.create<ChloOpTy>(
         loc, ArrayRef<Type>{result_type}, ArrayRef<Value>{lhs, reshaped_rhs},
-        op.getAttrs());
+        op->getAttrs());
     Value extended_if_rhs_scalar_result =
         extendToBroadcastShape(if_rhs_scalar_builder, loc, if_rhs_scalar_result,
                                shape_of_lhs, shape_of_rhs);
@@ -298,7 +441,9 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
     OpBuilder if_neq_shapes_builder =
         if_eq_shapes_op.getElseBodyBuilder(rewriter.getListener());
     if_neq_shapes_builder.create<scf::YieldOp>(
-        loc, HandleBroadcastAndOp(if_neq_shapes_builder, op, lhs, rhs));
+        loc, ConvertUnrankedDynamicBroadcastOpHelper<
+                 ChloOpTy, HloOpTy>::HandleBroadcastAndOp(if_neq_shapes_builder,
+                                                          op, {lhs, rhs}));
 
     rewriter.replaceOp(op, {if_op.getResult(0)});
     return success();
@@ -318,23 +463,6 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
                                    rewriter.create<ConstantIndexOp>(loc, 1));
   }
 
-  Value GreaterRankIsN(OpBuilder &builder, Location loc, Value actual_rank,
-                       int targeted_rank) const {
-    return builder.create<CmpIOp>(
-        loc, CmpIPredicate::eq, actual_rank,
-        builder.create<ConstantIndexOp>(loc, targeted_rank));
-  }
-
-  scf::IfOp createIfOpForRankSpecializedBroadcastAndOp(
-      OpBuilder &builder, ChloOpTy op, Value actual_rank,
-      int targeted_rank) const {
-    // Create the if block to place the current specialized logic in.
-    Value greater_rank_is_n =
-        GreaterRankIsN(builder, op.getLoc(), actual_rank, targeted_rank);
-    return builder.create<scf::IfOp>(op.getLoc(), op.getResult().getType(),
-                                     greater_rank_is_n, true);
-  }
-
   Value extendToBroadcastShape(OpBuilder &builder, Location loc, Value value,
                                Value shape_of_lhs, Value shape_of_rhs) const {
     auto unknown_rank_extent_tensor_type = RankedTensorType::get(
@@ -345,121 +473,24 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
     return builder.create<mhlo::DynamicReshapeOp>(loc, value.getType(), value,
                                                   broadcast_shape);
   }
+};
 
-  Value createBroadcastToKnownRank(OpBuilder &builder, ChloOpTy op, Value value,
-                                   int targeted_rank) const {
-    auto loc = op.getLoc();
-    Value shape = builder.create<shape::ShapeOfOp>(loc, value);
-    SmallVector<int64_t, 6> ranked_shape(targeted_rank, 1);
-    auto unknown_rank_extent_tensor_type = RankedTensorType::get(
-        {RankedTensorType::kDynamicSize}, builder.getIndexType());
-    auto known_rank_extent_tensor_type =
-        RankedTensorType::get({targeted_rank}, builder.getIndexType());
-    Value ranked_shape_val = builder.create<shape::ConstShapeOp>(
-        loc, known_rank_extent_tensor_type,
-        mlir::DenseIntElementsAttr::get(known_rank_extent_tensor_type,
-                                        ranked_shape));
-    Value extended_value = builder.create<shape::BroadcastOp>(
-        loc, unknown_rank_extent_tensor_type, shape, ranked_shape_val, nullptr);
-    return builder.create<tensor::CastOp>(loc, known_rank_extent_tensor_type,
-                                          extended_value);
-  }
+// Rank-specialize chlo.broadcast_select ops.
+struct ConvertUnrankedDynamicBroadcastSelectOp
+    : public OpConversionPattern<chlo::BroadcastSelectOp> {
+  using OpConversionPattern<chlo::BroadcastSelectOp>::OpConversionPattern;
 
-  // Create the if statement and code for a broadcasting op with a result of a
-  // given rank.
-  void createRankSpecializedBroadcastAndOp(OpBuilder &if_builder, ChloOpTy op,
-                                           Value lhs, Value rhs,
-                                           int targeted_rank) const {
-    auto loc = op.getLoc();
-
-    // Handle shape broadcasting and inference.
-    Value extended_lhs_casted =
-        createBroadcastToKnownRank(if_builder, op, lhs, targeted_rank);
-    Value extended_rhs_casted =
-        createBroadcastToKnownRank(if_builder, op, rhs, targeted_rank);
-    auto dynamic_dimensions = llvm::SmallVector<int64_t, 6>(
-        targeted_rank, RankedTensorType::kDynamicSize);
-    auto reshaped_type = RankedTensorType::get(
-        dynamic_dimensions,
-        lhs.getType().template dyn_cast<TensorType>().getElementType());
-
-    // 1. Reshape operands to the given rank (with the same number of elements)
-    // 2. Compute the ranked-broadcasted ChloOp (which will assert that the ops
-    //    can be broadcasted and do the actual broadcasting)
-    // 3. Type erase the output back to unranked
-    Value reshaped_lhs = if_builder.create<mhlo::DynamicReshapeOp>(
-        loc, reshaped_type, lhs, extended_lhs_casted);
-    Value reshaped_rhs = if_builder.create<mhlo::DynamicReshapeOp>(
-        loc, reshaped_type, rhs, extended_rhs_casted);
-    auto result_element_type = op.getResult()
-                                   .getType()
-                                   .template dyn_cast<TensorType>()
-                                   .getElementType();
-    auto result_type =
-        RankedTensorType::get(dynamic_dimensions, result_element_type);
-    Value result = if_builder.create<ChloOpTy>(
-        loc, ArrayRef<Type>{result_type},
-        ArrayRef<Value>{reshaped_lhs, reshaped_rhs}, op.getAttrs());
-    Value reshaped_result = if_builder.create<tensor::CastOp>(
-        loc, UnrankedTensorType::get(result_element_type), result);
-    if_builder.create<scf::YieldOp>(loc, reshaped_result);
-  }
-
-  // Iterates over the desired ranks to be specialized and generates the code
-  // snippet for each case.
-  Value HandleBroadcastAndOp(OpBuilder &rewriter, ChloOpTy op, Value lhs,
-                             Value rhs) const {
-    auto loc = op.getLoc();
-
-    // Find the larger rank of the 2 operands.
-    auto extent_tensor_type = RankedTensorType::get({ShapedType::kDynamicSize},
-                                                    rewriter.getIndexType());
-    Value lhs_shape =
-        rewriter.create<shape::ShapeOfOp>(loc, extent_tensor_type, lhs);
-    Value rhs_shape =
-        rewriter.create<shape::ShapeOfOp>(loc, extent_tensor_type, rhs);
-    Value lhs_rank =
-        rewriter.create<shape::RankOp>(loc, rewriter.getIndexType(), lhs_shape);
-    Value rhs_rank =
-        rewriter.create<shape::RankOp>(loc, rewriter.getIndexType(), rhs_shape);
-    Value greater_rank_lhs =
-        rewriter.create<CmpIOp>(loc, CmpIPredicate::sgt, lhs_rank, rhs_rank);
-    Value greater_rank =
-        rewriter.create<SelectOp>(loc, greater_rank_lhs, lhs_rank, rhs_rank);
-
-    // Generate a list of nested if/else statements to handle rank
-    // specializations from 1 to `kMaxRankSpecialization`.
-    scf::IfOp if_op = createIfOpForRankSpecializedBroadcastAndOp(
-        rewriter, op, greater_rank, 1);
-    OpBuilder if_builder = if_op.getThenBodyBuilder(rewriter.getListener());
-    createRankSpecializedBroadcastAndOp(if_builder, op, lhs, rhs, 1);
-
-    // Put each subsequent rank specialization inside the else statement of the
-    // previous one.
-    OpBuilder else_builder = if_op.getElseBodyBuilder(rewriter.getListener());
-    constexpr int kMaxRankSpecialization = 6;
-    for (int i = 2; i < kMaxRankSpecialization; i++) {
-      auto inner_if = createIfOpForRankSpecializedBroadcastAndOp(
-          else_builder, op, greater_rank, i);
-      if_builder = inner_if.getThenBodyBuilder(rewriter.getListener());
-      createRankSpecializedBroadcastAndOp(if_builder, op, lhs, rhs, i);
-      else_builder.create<scf::YieldOp>(loc, inner_if.getResult(0));
-      else_builder = inner_if.getElseBodyBuilder(rewriter.getListener());
-    }
-    // Fire an assertion if none of the rank specializations applied (one of
-    // the ranks was greater than `kMaxRankSpecialization`).
-    else_builder.create<AssertOp>(
-        loc,
-        GreaterRankIsN(else_builder, op.getLoc(), greater_rank,
-                       kMaxRankSpecialization),
-        "Input for dynamic binary op lowering was of a rank greater than " +
-            std::to_string(kMaxRankSpecialization));
-    // Add the rank 6 specialization to the innermost else block.
-    createRankSpecializedBroadcastAndOp(else_builder, op, lhs, rhs,
-                                        kMaxRankSpecialization);
-
-    // Return the result of the outermost if statement.
-    return if_op.getResult(0);
+  LogicalResult matchAndRewrite(
+      chlo::BroadcastSelectOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    // For now only do the bare minimum and specialize for every rank. There is
+    // more potential for optimization here. This also is missing the
+    // specialization for rank 0.
+    rewriter.replaceOp(
+        op, {ConvertUnrankedDynamicBroadcastOpHelper<
+                chlo::BroadcastSelectOp,
+                mhlo::SelectOp>::HandleBroadcastAndOp(rewriter, op, operands)});
+    return success();
   }
 };
 
@@ -495,7 +526,7 @@ struct TransformUnrankedHloPass
 
     // Populate rewrite patterns.
     OwningRewritePatternList patterns;
-    PopulateTransformUnrankedHloPatterns(&ctx, &patterns);
+    mhlo::PopulateTransformUnrankedHloPatterns(&ctx, &patterns);
 
     // Apply transformation.
     if (failed(
@@ -505,6 +536,8 @@ struct TransformUnrankedHloPass
 };
 
 }  // namespace
+
+namespace mhlo {
 
 void PopulateTransformUnrankedHloPatterns(MLIRContext *context,
                                           OwningRewritePatternList *patterns) {
@@ -527,10 +560,12 @@ void PopulateTransformUnrankedHloPatterns(MLIRContext *context,
       ConvertUnrankedDynamicBroadcastBinaryOp>(context, patterns);
   chlo::PopulateForBroadcastingBinaryOp<
       ConvertUnrankedScalarDynamicBroadcastBinaryOp>(context, patterns);
+  patterns->insert<ConvertUnrankedDynamicBroadcastSelectOp>(context);
 }
 
 std::unique_ptr<FunctionPass> createTransformUnrankedHloPass() {
   return std::make_unique<TransformUnrankedHloPass>();
 }
 
+}  // namespace mhlo
 }  // namespace mlir

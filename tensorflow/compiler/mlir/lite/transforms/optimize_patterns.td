@@ -415,7 +415,7 @@ foreach BinaryOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp] in {
   // transformation, the shape of the binary op result is [40x1600], which
   // couldn't be reshaped to [1,40,40]. `IsTailOfShape` constraint is added to
   // make sure $rhs is the tail shape of $lhs.
-  def MoveBinaryOpBeforeReshape#BinaryOp : Pat<
+  def MoveBinaryOpConstBeforeReshape#BinaryOp : Pat<
     (BinaryOp (TFL_ReshapeOp:$lhs $input, (ConstantOp:$shape $s)),
       (ConstantOp:$rhs $a), $act_fn),
     (TFL_ReshapeOp (BinaryOp $input, $rhs, $act_fn), $shape),
@@ -432,6 +432,20 @@ foreach BinaryOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp] in {
      (HasRankAtMost<4> $input),
      (HasRankAtMost<4> $lhs),
      (HasRankAtMost<4> $rhs)]>;
+
+    // Move binary op before reshape:
+    // binary(reshape(lhs), reshape(rhs)) => reshape(binary(lhs, rhs))
+    // This is valid only when both side of the binary operand is reshaped, and
+    // the sizes are the same both before and after the reshape.
+    def MoveBinaryOpBeforeReshape#BinaryOp : Pat<
+      (BinaryOp (TFL_ReshapeOp:$lhs $input1, (ConstantOp:$shape1 $s1)),
+                (TFL_ReshapeOp:$rhs $input2, (ConstantOp:$shape2 $s2)),
+                $act_fn),
+      (TFL_ReshapeOp (BinaryOp $input1, $input2, $act_fn), $shape1),
+      [(IsTailOfShape $rhs, $lhs),
+       (IsTailOfShape $lhs, $rhs),
+       (IsTailOfShape $input1, $input2),
+       (IsTailOfShape $input2, $input1)]>;
 }
 
 foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
@@ -447,7 +461,7 @@ foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
   // transformation, the shape of the binary op result is [40x1600], which
   // couldn't be reshaped to [1,40,40]. `IsTailOfShape` constraint is added to
   // make sure $rhs is the tail shape of $lhs.
-  def MoveBinaryOpBeforeReshape#BinaryOp : Pat<
+  def MoveBinaryOpConstBeforeReshape#BinaryOp : Pat<
     (BinaryOp (TFL_ReshapeOp:$lhs $input, (ConstantOp:$shape $s)),
       (ConstantOp:$rhs $a)),
     (TFL_ReshapeOp (BinaryOp $input, $rhs), $shape),
@@ -464,13 +478,26 @@ foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
      (HasRankAtMost<4> $input),
      (HasRankAtMost<4> $lhs),
      (HasRankAtMost<4> $rhs)]>;
+
+    // Move binary op before reshape:
+    // binary(reshape(lhs), reshape(rhs)) => reshape(binary(lhs, rhs))
+    // This is valid only when both side of the binary operand is reshaped, and
+    // the sizes are the same both before and after the reshape.
+    def MoveBinaryOpBeforeReshape#BinaryOp : Pat<
+      (BinaryOp (TFL_ReshapeOp:$lhs $input1, (ConstantOp:$shape1 $s1)),
+                (TFL_ReshapeOp:$rhs $input2, (ConstantOp:$shape2 $s2))),
+      (TFL_ReshapeOp (BinaryOp $input1, $input2), $shape1),
+      [(IsTailOfShape $rhs, $lhs),
+       (IsTailOfShape $lhs, $rhs),
+       (IsTailOfShape $input1, $input2),
+       (IsTailOfShape $input2, $input1)]>;
 }
 
 // Reorder the element-wise value operations and the element move operations,
 // such that the value operation happens before move operation.
 foreach ValueOp = [TFL_CeilOp, TFL_ExpOp, TFL_FloorOp, TFL_NegOp,
                    TFL_ReluOp, TFL_Relu1Op, TFL_Relu6Op, TFL_RoundOp,
-                   TFL_TanhOp, TFL_SqrtOp, TFL_SquareOp] in {
+                   TFL_TanhOp, TFL_SqrtOp, TFL_SquareOp, TFL_LogisticOp] in {
   foreach MoveOp = [TFL_DepthToSpaceOp, TFL_ExpandDimsOp, TFL_SqueezeOp,
                    TFL_ReshapeOp, TFL_TransposeOp] in {
     def ReorderElementwiseAndMoveOperations#ValueOp#MoveOp : Pat<
@@ -732,3 +759,12 @@ foreach ArgMinMaxOp = [TFL_ArgMinOp, TFL_ArgMaxOp] in {
     [(HasOneUse $log_softmax),
      (AxesIsLastDimension $axes, $logits)]>;
 }
+
+def CanOptimizeIdentitySliceOp : Constraint<CPred<
+  "TFL::CanOptimizeIdentitySliceOp($0, $1, $2)">>;
+
+// Remove Slice ops slicing the whole input tensor, effectively no-op.
+def OptimizeSliceOp : Pat<
+  (TFL_SliceOp:$output $input, (ConstantOp $begin), (ConstantOp $size)),
+  (replaceWithValue $input),
+  [(CanOptimizeIdentitySliceOp $input, $begin, $size)]>;

@@ -697,9 +697,6 @@ def write(tag, tensor, step=None, metadata=None, name=None):
       return constant_op.constant(False)
     if step is None:
       step = get_step()
-      if step is None:
-        raise ValueError("No step set via 'step' argument or "
-                         "tf.summary.experimental.set_step()")
     if metadata is None:
       serialized_metadata = b""
     elif hasattr(metadata, "SerializeToString"):
@@ -709,6 +706,10 @@ def write(tag, tensor, step=None, metadata=None, name=None):
 
     def record():
       """Record the actual summary and return True."""
+      if step is None:
+        raise ValueError("No step set via 'step' argument or "
+                         "tf.summary.experimental.set_step()")
+
       # Note the identity to move the tensor to the CPU.
       with ops.device("cpu:0"):
         summary_tensor = tensor() if callable(tensor) else array_ops.identity(

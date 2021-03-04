@@ -30,7 +30,7 @@ sh_binary(
     ],
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "//tensorflow_lite_support:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
 )
 
@@ -50,7 +50,7 @@ pytype_strict_binary(
     srcs_version = "PY3",
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "//tensorflow_lite_support:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
     deps = [
         ":extract_object_files",

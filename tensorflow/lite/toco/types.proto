@@ -45,7 +45,7 @@ enum IODataType {
   COMPLEX64 = 8;
 
   // Int8, quantized based on QuantizationParameters in schema.
-  INT8 = 9;
+  QUANTIZED_INT8 = 9;
 
   // Half precision float, not quantized.
   FLOAT16 = 10;
@@ -67,4 +67,13 @@ enum IODataType {
 
   // Uint32
   UINT32 = 16;
+
+  // Uint8, not quantized
+  UINT8 = 17;
+
+  // Int8, not quantized
+  INT8 = 18;
+
+  // Int16, not quantized
+  INT16 = 19;
 }

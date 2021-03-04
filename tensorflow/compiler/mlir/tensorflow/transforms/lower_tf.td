@@ -163,14 +163,6 @@ def LowerDivNoNanOp : BinaryNoNanPat<TF_DivNoNanOp, TF_DivOp>;
 def LowerMulNoNanOp : BinaryNoNanPat<TF_MulNoNanOp, TF_MulOp>;
 
 //===----------------------------------------------------------------------===//
-// Expm1 op patterns.
-//===----------------------------------------------------------------------===//
-
-def LowerExpm1Op : Pat<(TF_Expm1Op $x),
-                       (TF_SubOp (TF_ExpOp $x),
-                        (TF_ConstOp (GetScalarOfType<1> $x)))>;
-
-//===----------------------------------------------------------------------===//
 // Fill op patterns.
 //===----------------------------------------------------------------------===//
 

@@ -86,12 +86,11 @@ mlir::Location GenerateInstructionLocation(HloInstruction* instruction,
                                            mlir::OpBuilder* func_builder) {
   const std::string& op_name = instruction->metadata().op_name();
   if (op_name.empty()) {
-    return mlir::NameLoc::get(func_builder->getIdentifier(instruction->name()),
-                              func_builder->getContext());
+    return mlir::NameLoc::get(func_builder->getIdentifier(instruction->name()));
   }
 
-  mlir::Location op_name_loc = mlir::NameLoc::get(
-      func_builder->getIdentifier(op_name), func_builder->getContext());
+  mlir::Location op_name_loc =
+      mlir::NameLoc::get(func_builder->getIdentifier(op_name));
   const std::string& source_file = instruction->metadata().source_file();
   if (source_file.empty()) {
     return op_name_loc;

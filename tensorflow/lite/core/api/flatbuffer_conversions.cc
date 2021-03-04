@@ -790,6 +790,21 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
+    case BuiltinOperator_HASHTABLE: {
+      auto params = safe_allocator.Allocate<TfLiteHashtableParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* hashtable_params =
+              op->builtin_options_as_HashtableOptions()) {
+        params->table_id = hashtable_params->table_id();
+        TF_LITE_ENSURE_STATUS(ConvertTensorType(
+            hashtable_params->key_dtype(), &params->key_dtype, error_reporter));
+        TF_LITE_ENSURE_STATUS(ConvertTensorType(hashtable_params->value_dtype(),
+                                                &params->value_dtype,
+                                                error_reporter));
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
     // Below are the ops with no builtin_data structure.
     // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are
     // ok for now, since there is no call implementation either.
@@ -824,6 +839,9 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_IMAG:
     case BuiltinOperator_REAL:
     case BuiltinOperator_COMPLEX_ABS:
+    case BuiltinOperator_HASHTABLE_FIND:
+    case BuiltinOperator_HASHTABLE_IMPORT:
+    case BuiltinOperator_HASHTABLE_SIZE:
       return kTfLiteOk;
     case BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES:
       return kTfLiteError;
