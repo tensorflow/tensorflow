@@ -412,6 +412,7 @@ class MapAndBatchDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     num_outputs_drop_remainder = total_outputs // batch_size
     num_outputs_keep_remainder = int(math.ceil(total_outputs / batch_size))
     num_parallel_batches = 2
+    num_shards = 3
 
     def build_ds(range_start, drop_remainder=False):
 
@@ -419,12 +420,13 @@ class MapAndBatchDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
         return math_ops.square(x)
 
       return dataset_ops.Dataset.range(
-          range_start, range_start + range_size).repeat(num_repeats).apply(
-              batching.map_and_batch(
-                  map_func=_map_fn,
-                  batch_size=batch_size,
-                  num_parallel_batches=num_parallel_batches,
-                  drop_remainder=drop_remainder))
+          range_start, range_start + range_size).shard(
+              num_shards=num_shards, index=0).repeat(num_repeats).apply(
+                  batching.map_and_batch(
+                      map_func=_map_fn,
+                      batch_size=batch_size,
+                      num_parallel_batches=num_parallel_batches,
+                      drop_remainder=drop_remainder))
 
     self.run_core_tests(lambda: build_ds(10), num_outputs_keep_remainder)
     self.run_core_tests(lambda: build_ds(10, True), num_outputs_drop_remainder)
@@ -438,6 +440,7 @@ class MapAndBatchDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
     num_outputs_drop_remainder = total_outputs // batch_size
     num_outputs_keep_remainder = int(math.ceil(total_outputs / batch_size))
     num_parallel_calls = 7
+    num_shards = 3
 
     def build_ds(range_start, drop_remainder=False):
 
@@ -445,12 +448,13 @@ class MapAndBatchDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
         return math_ops.square(x)
 
       return dataset_ops.Dataset.range(
-          range_start, range_start + range_size).repeat(num_repeats).apply(
-              batching.map_and_batch(
-                  map_func=_map_fn,
-                  batch_size=batch_size,
-                  num_parallel_calls=num_parallel_calls,
-                  drop_remainder=drop_remainder))
+          range_start, range_start + range_size).shard(
+              num_shards=num_shards, index=0).repeat(num_repeats).apply(
+                  batching.map_and_batch(
+                      map_func=_map_fn,
+                      batch_size=batch_size,
+                      num_parallel_calls=num_parallel_calls,
+                      drop_remainder=drop_remainder))
 
     self.run_core_tests(lambda: build_ds(10), num_outputs_keep_remainder)
     self.run_core_tests(lambda: build_ds(10, True), num_outputs_drop_remainder)
