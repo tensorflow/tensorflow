@@ -146,6 +146,15 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     self._num_special_tokens = self.num_oov_indices
     if self.mask_token is not None:
       self._num_special_tokens += 1
+    self._vocab_size = 0
+    # We need to keep track our current vocab size outside of our layer weights
+    # to support a static output shape when `output_mode != INT`. The bincount
+    # ops do not set shape on their outputs, which means we have to set it
+    # ourselves. We persist the current vocab size as a hidden part of the
+    # config when serializing our model.
+    if "vocab_size" in kwargs:
+      self._vocab_size = kwargs["vocab_size"]
+      del kwargs["vocab_size"]
 
     # If there is only one OOV bucket, we can determine the OOV value (either 0
     # or 1 depending on whether 0 is reserved) and set that as the default
@@ -243,10 +252,13 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     tracked_table.shape = tensor_shape.TensorShape((0,))
 
   def compute_output_shape(self, input_shape):
-    if self.output_mode != INT:
-      return tensor_shape.TensorShape([input_shape[0], self.max_tokens])
-
-    return input_shape
+    if self.output_mode == INT:
+      return input_shape
+    if self._vocab_size and not self.pad_to_max_tokens:
+      out_depth = self._vocab_size
+    else:
+      out_depth = self.max_tokens
+    return tensor_shape.TensorShape([input_shape[0], out_depth])
 
   def compute_output_signature(self, input_spec):
     output_shape = self.compute_output_shape(input_spec.shape.as_list())
@@ -290,7 +302,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     return tokens
 
   def vocab_size(self):
-    return int(self._table_handler.table_size()) + self.num_oov_indices
+    return self._vocab_size
 
   def get_config(self):
     config = {
@@ -301,6 +313,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
         "mask_token": self.mask_token,
         "output_mode": self.output_mode,
         "pad_to_max_tokens": self.pad_to_max_tokens,
+        "vocab_size": self._vocab_size
     }
     base_config = super(IndexLookup, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -416,12 +429,12 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
                        "OOV token for this layer.".format(
                            self.oov_token, tokens.index(self.oov_token)))
 
-    total_vocab_size = len(tokens) + self._num_special_tokens
-    if self.max_tokens is not None and total_vocab_size > self.max_tokens:
+    self._vocab_size = len(tokens) + self._num_special_tokens
+    if self.max_tokens is not None and self._vocab_size > self.max_tokens:
       raise ValueError(
           "Attempted to set a vocabulary larger than the maximum vocab size. "
           "Passed vocab size is {}, max vocab size is {}.".format(
-              total_vocab_size, self.max_tokens))
+              self._vocab_size, self.max_tokens))
 
     if self.output_mode == TFIDF:
       if idf_weights is None:
@@ -475,13 +488,6 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
           constant_values=(front_padding_value, back_padding_value))
       K.set_value(self.tf_idf_weights, idf_weights)
 
-    # TODO(mattdangerw): we should not overwrite max_tokens. We currently
-    # need to persist our vocab size in the config, and not our weights, to
-    # force a static shape for our output. This could be avoided if the
-    # underlying bincount ops set the shape of their output tensors.
-    if not self.pad_to_max_tokens or self.max_tokens is None:
-      self.max_tokens = total_vocab_size
-
   def _set_state_variables(self, updates):
     if not self.built:
       raise RuntimeError("_set_state_variables() must be called after build().")
@@ -489,7 +495,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
         updates[_VOCAB_NAME], idf_weights=updates[_IDF_WEIGHTS_NAME])
 
   def call(self, inputs):
-    if not self.max_tokens:
+    if not self.max_tokens and not self._vocab_size:
       raise ValueError("You must set the layer's vocabulary before calling it. "
                        "Either pass a `vocabulary` argument to the layer, or "
                        "call `layer.adapt(dataset)` with some sample data.")
@@ -502,7 +508,10 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       return lookup_result
 
     binary_output = (self.output_mode == BINARY)
-    out_depth = self.max_tokens
+    if self._vocab_size and not self.pad_to_max_tokens:
+      out_depth = self._vocab_size
+    else:
+      out_depth = self.max_tokens
     if self.sparse:
       bincounts = category_encoding.sparse_bincount(lookup_result, out_depth,
                                                     binary_output)

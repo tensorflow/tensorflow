@@ -807,6 +807,44 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 
+  def test_binary_output_hard_maximum_multiple_adapts(self):
+    input_array = np.array([["earth", "wind", "and", "earth"],
+                            ["ohio", "and", "earth", "michigan"]])
+    adapt_data = ["earth", "earth", "earth", "earth", "wind", "wind", "wind"]
+    first_expected_output = [
+        [0, 1, 1, 1, 0],
+        [0, 1, 1, 0, 0],
+    ]
+    second_adapt_data = [
+        "earth", "earth", "earth", "earth", "wind", "wind", "wind", "and",
+        "and", "fire"
+    ]
+    second_expected_output = [
+        [0, 0, 1, 1, 1],
+        [0, 1, 1, 0, 1],
+    ]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=5,
+        num_oov_indices=1,
+        mask_token="",
+        oov_token="[OOV]",
+        output_mode=index_lookup.BINARY,
+        pad_to_max_tokens=True,
+        dtype=dtypes.string)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+
+    # Test the first adapt
+    layer.adapt(adapt_data)
+    first_output = model.predict(input_array)
+    # Test the second adapt
+    layer.adapt(second_adapt_data)
+    second_output = model.predict(input_array)
+    self.assertAllEqual(first_expected_output, first_output)
+    self.assertAllEqual(second_expected_output, second_output)
+
   def test_binary_output_soft_maximum(self):
     """Check binary output when pad_to_max_tokens=False."""
     vocab_data = ["earth", "wind", "and", "fire"]
