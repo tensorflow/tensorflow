@@ -7,6 +7,7 @@ load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 load(
     "//tensorflow:tensorflow.bzl",
     "VERSION",
+    "if_google",
     "if_oss",
     "tf_cc_shared_object",
     "tf_custom_op_library_additional_deps_impl",
@@ -90,34 +91,59 @@ config_setting(
 # Config setting for determining if we are building for Android.
 config_setting(
     name = "android",
-    values = {"crosstool_top": "//external:android/crosstool"},
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "android"},
+        {},
+    ),
+    values = if_oss(
+        {"crosstool_top": "//external:android/crosstool"},
+        {},
+    ),
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "android_x86",
-    values = {
-        "crosstool_top": "//external:android/crosstool",
-        "cpu": "x86",
-    },
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "android"},
+        {},
+    ),
+    values = dict(
+        if_oss(
+            {"crosstool_top": "//external:android/crosstool"},
+        ),
+        cpu = "x86",
+    ),
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "android_x86_64",
-    values = {
-        "crosstool_top": "//external:android/crosstool",
-        "cpu": "x86_64",
-    },
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "android"},
+        {},
+    ),
+    values = dict(
+        if_oss(
+            {"crosstool_top": "//external:android/crosstool"},
+        ),
+        cpu = "x86_64",
+    ),
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "android_armeabi",
-    values = {
-        "crosstool_top": "//external:android/crosstool",
-        "cpu": "armeabi",
-    },
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "android"},
+        {},
+    ),
+    values = dict(
+        if_oss(
+            {"crosstool_top": "//external:android/crosstool"},
+        ),
+        cpu = "armeabi",
+    ),
     visibility = ["//visibility:public"],
 )
 
@@ -146,7 +172,14 @@ config_setting(
 
 config_setting(
     name = "emscripten",
-    values = {"crosstool_top": "//external:android/emscripten"},
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "emscripten"},
+        {},
+    ),
+    values = if_oss(
+        {"crosstool_top": "//external:android/emscripten"},
+        {},
+    ),
     visibility = ["//visibility:public"],
 )
 
@@ -161,19 +194,31 @@ config_setting(
 
 config_setting(
     name = "android_arm",
-    values = {
-        "crosstool_top": "//external:android/crosstool",
-        "cpu": "armeabi-v7a",
-    },
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "android"},
+        {},
+    ),
+    values = dict(
+        if_oss(
+            {"crosstool_top": "//external:android/crosstool"},
+        ),
+        cpu = "armeabi-v7a",
+    ),
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "android_arm64",
-    values = {
-        "crosstool_top": "//external:android/crosstool",
-        "cpu": "arm64-v8a",
-    },
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "android"},
+        {},
+    ),
+    values = dict(
+        if_oss(
+            {"crosstool_top": "//external:android/crosstool"},
+        ),
+        cpu = "arm64-v8a",
+    ),
     visibility = ["//visibility:public"],
 )
 
@@ -198,9 +243,15 @@ config_setting(
 config_setting(
     name = "windows",
     # Internal builds query the target OS.
-    # copybara:uncomment flag_values = {"//tools/cpp:cc_target_os": "windows"},
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "windows"},
+        {},
+    ),
     # OSS builds query the CPU type.
-    values = {"cpu": "x64_windows"},  # copybara:comment
+    values = if_oss(
+        {"cpu": "x64_windows"},
+        {},
+    ),
     visibility = ["//visibility:public"],
 )
 
@@ -221,15 +272,23 @@ config_setting(
 
 config_setting(
     name = "macos_x86_64",
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "apple"},
+        {},
+    ),
     values = {
         "apple_platform_type": "macos",
-        "cpu": "darwin",
+        "cpu": if_google("darwin_x86_64", "darwin"),
     },
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "macos_arm64",
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "apple"},
+        {},
+    ),
     values = {
         "apple_platform_type": "macos",
         "cpu": "darwin_arm64",
@@ -248,28 +307,56 @@ selects.config_setting_group(
 
 config_setting(
     name = "ios",
-    values = {"apple_platform_type": "ios"},
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "apple"},
+        {},
+    ),
+    values = if_oss(
+        {"apple_platform_type": "ios"},
+        {},
+    ),
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "fuchsia",
-    values = {"cpu": "fuchsia"},
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "fuchsia"},
+        {},
+    ),
+    values = if_oss(
+        # TODO(b/149248802) When we have a Fuchsia Bazel SDK update to use the values it sets.
+        {"cpu": "fuchsia"},
+        {},
+    ),
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "ios_x86_64",
-    values = {
-        "crosstool_top": "//tools/osx/crosstool:crosstool",
-        "cpu": "ios_x86_64",
-    },
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "apple"},
+        {},
+    ),
+    values = dict(
+        if_oss(
+            {"crosstool_top": "//tools/osx/crosstool:crosstool"},
+        ),
+        cpu = "ios_x86_64",
+    ),
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "chromiumos",
-    values = {"crosstool_top": "//external:android/chromiumos"},
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "chromiumos"},
+        {},
+    ),
+    values = if_oss(
+        {"crosstool_top": "//external:android/chromiumos"},
+        {},
+    ),
     visibility = ["//visibility:public"],
 )
 
