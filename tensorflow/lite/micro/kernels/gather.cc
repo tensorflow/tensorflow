@@ -12,8 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <iostream>
-#include "tensorflow/lite/kernels/internal/reference/gather.h"
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -28,66 +26,49 @@ constexpr int kInputTensor = 0;
 constexpr int kInputPositions = 1;
 constexpr int kOutputTensor = 0;
 
-template <typename T, typename CoordsT = int32>
-inline void Gather(const tflite::GatherParams& op_params,
-                   const RuntimeShape& input_shape, const T* input_data,
-                   const RuntimeShape& coords_shape, const CoordsT* coords_data,
-                   const RuntimeShape& output_shape, T* output_data) {
-  ruy::profiler::ScopeLabel label("Gather");
-  int axis = op_params.axis;
+template <typename InputT, typename CoordT = int32_t>
+TfLiteStatus Gather(const TfLiteGatherParams* params,
+                    const TfLiteEvalTensor* input,
+                    const TfLiteEvalTensor* positions,
+                    TfLiteEvalTensor* output) {
+  const InputT* input_data = tflite::micro::GetTensorData<InputT>(input);
+  const CoordT* coord_data = tflite::micro::GetTensorData<CoordT>(positions);
+  InputT* output_data = tflite::micro::GetTensorData<InputT>(output);
+  const TfLiteIntArray* input_dims = input->dims;
+  const int input_dims_size = input_dims->size;
+  int axis = params->axis;
+  TFLITE_DCHECK_LT(axis, input_dims_size);
   if (axis < 0) {
-    axis += input_shape.DimensionsCount();
+    axis += input_dims_size;
   }
   TFLITE_DCHECK_GE(axis, 0);
-  TFLITE_DCHECK_LT(axis, input_shape.DimensionsCount());
-  const int axis_size = input_shape.Dims(axis);
-  const int coords_count = coords_shape.FlatSize();
+  const int axis_size = input_dims->data[axis];
 
+  const TfLiteIntArray* coord_dims = positions->dims;
+  const int coord_count = ElementCount(*coord_dims);
   int outer_size = 1;
   for (int i = 0; i < axis; ++i) {
-    outer_size *= input_shape.Dims(i);
+    outer_size *= input_dims->data[i];
   }
-
   int inner_size = 1;
-  for (int i = axis + 1; i < input_shape.DimensionsCount(); ++i) {
-    inner_size *= input_shape.Dims(i);
+  for (int i = axis + 1; i < input_dims_size; ++i) {
+    inner_size *= input_dims->data[i];
   }
 
-  for (int outer = 0; outer < outer_size; ++outer) {
-    for (int i = 0; i < coords_count; ++i) {
-      TFLITE_DCHECK_GE(coords_data[i], 0);
-      TFLITE_DCHECK_LT(coords_data[i], axis_size);
-      // TODO(rsun): replace memcpy with a for loop
+  for (int outer_j = 0; outer_j < outer_size; ++outer_j) {
+    for (int inner_i = 0; inner_i < coord_count; ++inner_i) {
+      TFLITE_DCHECK_GE(coord_data[inner_i], 0);
+      TFLITE_DCHECK_LT(coord_data[inner_i], axis_size);
       std::memcpy(
-          output_data + (outer * coords_count + i) * inner_size,
-          input_data + (outer * axis_size + coords_data[i]) * inner_size,
-          sizeof(T) * inner_size);
+        output_data + (outer_j * coord_count + inner_i) * inner_size,
+        input_data + (outer_j * axis_size + coord_data[inner_i]) * inner_size,
+        sizeof(InputT) * inner_size);
     }
   }
-}
-
-template <typename InputT, typename CoordsT>
-TfLiteStatus Gather(const TfLiteGatherParams* params, const TfLiteEvalTensor* input,
-                    const TfLiteEvalTensor* positions, TfLiteEvalTensor* output) {
-  std::cout << "in gather Gather()" << std::endl;
-  tflite::GatherParams op_params;
-  op_params.axis = params->axis;
-  const RuntimeShape input_shape = tflite::micro::GetTensorShape(input);
-  const InputT* input_data = tflite::micro::GetTensorData<InputT>(input);
-  const RuntimeShape coord_shape = tflite::micro::GetTensorShape(positions);
-  const CoordsT* coord_data = tflite::micro::GetTensorData<CoordsT>(positions);
-  const RuntimeShape output_shape = tflite::micro::GetTensorShape(output);
-  InputT* output_data = tflite::micro::GetTensorData<InputT>(output);
-
-  std::cout << "launching reference op Gather()" << std::endl;
-  reference_ops::Gather(op_params, input_shape, input_data, coord_shape,
-                        coord_data, output_shape, output_data);
-  std::cout << "end of gather Gather() OK" << std::endl;
   return kTfLiteOk;
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  std::cout << "in gather Prepare()" << std::endl;
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
@@ -145,12 +126,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   for (int i = axis + 1; i < input->dims->size; ++i) {
     output_shape->data[output_index++] = input->dims->data[i];
   }
-  std::cout << "end of gather Prepare() OK" << std::endl;
   return kTfLiteOk;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  std::cout << "in gather Eval()" << std::endl;
   const auto* params =
       reinterpret_cast<const TfLiteGatherParams*>(node->builtin_data);
   const TfLiteEvalTensor* input =
@@ -184,7 +163,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         return kTfLiteError;
     }
   }
-  std::cout << "end of gather Eval() OK" << std::endl;
   return kTfLiteOk;
 }
 }  // namespace

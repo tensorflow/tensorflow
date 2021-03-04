@@ -64,6 +64,7 @@ inline void Gather(const tflite::GatherParams& op_params,
     inner_size *= input_shape.Dims(i);
   }
 
+<<<<<<< HEAD
   int coord_size = 1;
   for (int i = batch_dims; i < coords_shape.DimensionsCount(); ++i) {
     coord_size *= coords_shape.Dims(i);
@@ -83,6 +84,16 @@ inline void Gather(const tflite::GatherParams& op_params,
                              inner_size,
             sizeof(T) * inner_size);
       }
+=======
+  for (int outer = 0; outer < outer_size; ++outer) {
+    for (int i = 0; i < coords_count; ++i) {
+      TFLITE_DCHECK_GE(coords_data[i], 0);
+      TFLITE_DCHECK_LT(coords_data[i], axis_size);
+      std::memcpy(
+          output_data + (outer * coords_count + i) * inner_size,
+          input_data + (outer * axis_size + coords_data[i]) * inner_size,
+          sizeof(T) * inner_size);
+>>>>>>> Not use reference gather.h for micro op gather
     }
   }
 }
