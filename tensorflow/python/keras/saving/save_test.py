@@ -23,6 +23,7 @@ import os
 import shutil
 import sys
 import tempfile
+import warnings
 
 from absl.testing import parameterized
 import numpy as np
@@ -312,16 +313,17 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
       shape_from_key = reader.get_variable_to_shape_map()
       return sorted(shape_from_key.keys())
 
-    model = keras.models.Sequential()
-    model.add(keras.layers.Dense(1))
-    model.compile('adam', loss='mse')
-    x, y = np.ones((10, 10)), np.ones((10, 1))
-    model.train_on_batch(x, y)
-
     path = os.path.join(self.get_temp_dir(), 'no_optimizer')
-    model.save(path, save_format='tf', include_optimizer=False)
-    variables = get_variables(path)
+    x, y = np.ones((10, 10)), np.ones((10, 1))
 
+    with self.cached_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(1))
+      model.compile('adam', loss='mse')
+      model.train_on_batch(x, y)
+      model.save(path, save_format='tf', include_optimizer=False)
+
+    variables = get_variables(path)
     for v in variables:
       self.assertNotIn('optimizer', v)
 
@@ -1003,38 +1005,99 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
     loaded = keras.models.load_model(saved_model_dir)
     self.assertIs(loaded.layers[1], loaded.layers[2].layer)
 
-  @combinations.generate(combinations.combine(mode=['eager']))
-  def test_multi_output_metrics_name_stay_same(self):
+  @combinations.generate(
+      combinations.combine(mode=['graph', 'eager'], fit=[True, False]))
+  def test_multi_output_metrics_name_stay_same(self, fit):
     """Tests that metric names don't change with each save/load cycle.
 
     e.g. "head_0_accuracy" should not become "head_0_head_0_accuracy" after
     saving and loading a model.
+
+    Arguments:
+      fit: Whether the model should be fit before saving.
     """
-    input_ = keras.Input((4,))
-    model = keras.Model(
-        input_,
-        [keras.layers.Softmax(name='head_0')(keras.layers.Dense(3)(input_)),
-         keras.layers.Softmax(name='head_1')(keras.layers.Dense(5)(input_))])
-    metric = keras.metrics.BinaryAccuracy()
-    model.compile(optimizer='rmsprop',
-                  loss='mse',
-                  metrics={'head_0': [metric, 'accuracy']})
+    # This doesn't work at all, so we can't check whether metric names are
+    # correct.
+    if not context.executing_eagerly() and not fit:
+      self.skipTest('b/181767784')
 
-    # Run one iteration.
-    x = np.random.rand(2, 4)
-    y = {'head_0': np.random.randint(2, size=(2, 3)),
-         'head_1': np.random.randint(2, size=(2, 5))}
-    model.fit(x, y, verbose=0)
+    with self.cached_session():
+      input_ = keras.Input((4,))
+      model = keras.Model(
+          input_,
+          [keras.layers.Softmax(name='head_0')(keras.layers.Dense(3)(input_)),
+           keras.layers.Softmax(name='head_1')(keras.layers.Dense(5)(input_))])
+      metric = keras.metrics.BinaryAccuracy()
+      model.compile(optimizer='rmsprop',
+                    loss='mse',
+                    metrics={'head_0': [metric, 'accuracy']})
 
-    # Save and reload.
-    save_format = testing_utils.get_save_format()
-    saved_model_dir = self._save_model_dir()
-    keras.models.save_model(model, saved_model_dir, save_format=save_format)
-    loaded = keras.models.load_model(saved_model_dir)
+      x = np.random.rand(2, 4)
+      y = {'head_0': np.random.randint(2, size=(2, 3)),
+           'head_1': np.random.randint(2, size=(2, 5))}
+
+      # Make sure metrix prefixing works the same regardless of whether the user
+      # has fit the model before saving.
+      if fit:
+        model.fit(x, y, verbose=0)
+
+      # Save and reload.
+      save_format = testing_utils.get_save_format()
+      saved_model_dir = self._save_model_dir()
+      keras.models.save_model(model, saved_model_dir, save_format=save_format)
+      loaded = keras.models.load_model(saved_model_dir)
 
     # Make sure the metrics names from the model before saving match the loaded
     # model.
     self.assertSequenceEqual(model.metrics_names, loaded.metrics_names)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_warning_when_saving_invalid_custom_mask_layer(self):
+
+    class MyMasking(keras.layers.Layer):
+
+      def call(self, inputs):
+        return inputs
+
+      def compute_mask(self, inputs, mask=None):
+        mask = math_ops.not_equal(inputs, 0)
+        return mask
+
+    class MyLayer(keras.layers.Layer):
+
+      def call(self, inputs, mask=None):
+        return array_ops.identity(inputs)
+
+    samples = np.random.random((2, 2))
+    model = keras.Sequential([MyMasking(), MyLayer()])
+    model.predict(samples)
+    with warnings.catch_warnings(record=True) as w:
+      model.save(self._save_model_dir(), testing_utils.get_save_format())
+    self.assertIn(generic_utils.CustomMaskWarning,
+                  {warning.category for warning in w})
+
+    # Test that setting up a custom mask correctly does not issue a warning.
+    class MyCorrectMasking(keras.layers.Layer):
+
+      def call(self, inputs):
+        return inputs
+
+      def compute_mask(self, inputs, mask=None):
+        mask = math_ops.not_equal(inputs, 0)
+        return mask
+
+      # This get_config doesn't actually do anything because our mask is
+      # static and doesn't need any external information to work. We do need a
+      # dummy get_config method to prevent the warning from appearing, however.
+      def get_config(self, *args, **kwargs):
+        return {}
+
+    model = keras.Sequential([MyCorrectMasking(), MyLayer()])
+    model.predict(samples)
+    with warnings.catch_warnings(record=True) as w:
+      model.save(self._save_model_dir(), testing_utils.get_save_format())
+    self.assertNotIn(generic_utils.CustomMaskWarning,
+                     {warning.category for warning in w})
 
 
 # Factory functions to create models that will be serialized inside a Network.

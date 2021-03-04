@@ -587,8 +587,8 @@ LogicalResult ConvertTFHashTableV2Op::matchAndRewrite(
   // TODO(b/180645662): Issue a zero-based integer hash table ID.
   auto table_id = static_cast<int32_t>(
       ::llvm::hash_value(tf_hash_table_v2_op.shared_name()));
-  auto key_dtype = mlir::TypeAttr::get(tf_hash_table_v2_op.key_dtype());
-  auto value_dtype = mlir::TypeAttr::get(tf_hash_table_v2_op.value_dtype());
+  auto key_dtype = tf_hash_table_v2_op.key_dtype();
+  auto value_dtype = tf_hash_table_v2_op.value_dtype();
 
   rewriter.replaceOpWithNewOp<TFL::HashtableOp>(op, output_type, table_id,
                                                 key_dtype, value_dtype);

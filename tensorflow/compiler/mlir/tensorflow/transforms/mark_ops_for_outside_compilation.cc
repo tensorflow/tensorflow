@@ -78,7 +78,11 @@ void AddSupportedOpsUsingFolding(MLIRContext* context,
       OperationName(TF::ConcatOffsetOp::getOperationName(), context),
       OperationName(TF::EmptyOp::getOperationName(), context),
       OperationName(TF::ListDiffOp::getOperationName(), context),
+      OperationName(TF::RankOp::getOperationName(), context),
       OperationName(TF::RangeOp::getOperationName(), context),
+      OperationName(TF::ShapeOp::getOperationName(), context),
+      OperationName(TF::ShapeNOp::getOperationName(), context),
+      OperationName(TF::SizeOp::getOperationName(), context),
   };
 
   supported_ops->insert(allowlist_ops.begin(), allowlist_ops.end());

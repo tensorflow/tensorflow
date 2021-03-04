@@ -24,72 +24,9 @@ namespace tflite {
 namespace testing {
 namespace {
 
-void TestZerosLikeFloat(const int* input_dims_data, const float* input_data,
-                        const float* expected_output_data, float* output_data) {
-  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
-  TfLiteIntArray* output_dims = IntArrayFromInts(input_dims_data);
-  const int output_dims_count = ElementCount(*output_dims);
-  constexpr int inputs_size = 1;
-  constexpr int outputs_size = 1;
-  constexpr int tensors_size = inputs_size + outputs_size;
-  TfLiteTensor tensors[tensors_size] = {
-      CreateTensor(input_data, input_dims),
-      CreateTensor(output_data, output_dims),
-  };
-
-  int inputs_array_data[] = {1, 0};
-  TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
-  int outputs_array_data[] = {1, 1};
-  TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-
-  const TfLiteRegistration registration = Register_ZEROS_LIKE();
-  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
-                             outputs_array,
-                             /*builtin_data=*/nullptr);
-
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
-
-  for (int i = 0; i < output_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_EQ(expected_output_data[i], output_data[i]);
-  }
-}
-
-void TestZerosLikeInt32(const int* input_dims_data, const int32_t* input_data,
-                        const int32_t* expected_output_data,
-                        int32_t* output_data) {
-  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
-  TfLiteIntArray* output_dims = IntArrayFromInts(input_dims_data);
-  const int output_dims_count = ElementCount(*output_dims);
-  constexpr int inputs_size = 1;
-  constexpr int outputs_size = 1;
-  constexpr int tensors_size = inputs_size + outputs_size;
-  TfLiteTensor tensors[tensors_size] = {
-      CreateTensor(input_data, input_dims),
-      CreateTensor(output_data, output_dims),
-  };
-
-  int inputs_array_data[] = {1, 0};
-  TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
-  int outputs_array_data[] = {1, 1};
-  TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-
-  const TfLiteRegistration registration = Register_ZEROS_LIKE();
-  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
-                             outputs_array,
-                             /*builtin_data=*/nullptr);
-
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
-
-  for (int i = 0; i < output_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_EQ(expected_output_data[i], output_data[i]);
-  }
-}
-
-void TestZerosLikeInt64(const int* input_dims_data, const int64_t* input_data,
-                        const int64_t* expected_output_data,
-                        int64_t* output_data) {
+template <typename T>
+void TestZerosLike(const int* input_dims_data, const T* input_data,
+                   const T* expected_output_data, T* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(input_dims_data);
   const int output_dims_count = ElementCount(*output_dims);
@@ -130,8 +67,17 @@ TF_LITE_MICRO_TEST(TestZerosLikeFloat) {
   const int input_dims[] = {2, 2, 3};
   const float input_values[] = {-2.0, -1.0, 0.0, 1.0, 2.0, 3.0};
   const float golden[] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-  tflite::testing::TestZerosLikeFloat(input_dims, input_values, golden,
-                                      output_data);
+  tflite::testing::TestZerosLike<float>(input_dims, input_values, golden,
+                                        output_data);
+}
+
+TF_LITE_MICRO_TEST(TestZerosLikeInt8) {
+  int8_t output_data[6];
+  const int input_dims[] = {3, 1, 2, 3};
+  const int8_t input_values[] = {-2, -1, 0, 1, 2, 3};
+  const int8_t golden[] = {0, 0, 0, 0, 0, 0};
+  tflite::testing::TestZerosLike<int8_t>(input_dims, input_values, golden,
+                                         output_data);
 }
 
 TF_LITE_MICRO_TEST(TestZerosLikeInt32) {
@@ -139,8 +85,8 @@ TF_LITE_MICRO_TEST(TestZerosLikeInt32) {
   const int input_dims[] = {4, 1, 2, 2, 1};
   const int32_t input_values[] = {-2, -1, 0, 3};
   const int32_t golden[] = {0, 0, 0, 0};
-  tflite::testing::TestZerosLikeInt32(input_dims, input_values, golden,
-                                      output_data);
+  tflite::testing::TestZerosLike<int32_t>(input_dims, input_values, golden,
+                                          output_data);
 }
 
 TF_LITE_MICRO_TEST(TestZerosLikeInt64) {
@@ -148,8 +94,8 @@ TF_LITE_MICRO_TEST(TestZerosLikeInt64) {
   const int input_dims[] = {4, 1, 2, 2, 1};
   const int64_t input_values[] = {-2, -1, 0, 3};
   const int64_t golden[] = {0, 0, 0, 0};
-  tflite::testing::TestZerosLikeInt64(input_dims, input_values, golden,
-                                      output_data);
+  tflite::testing::TestZerosLike<int64_t>(input_dims, input_values, golden,
+                                          output_data);
 }
 
 TF_LITE_MICRO_TESTS_END

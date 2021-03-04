@@ -68,7 +68,7 @@ TEST_P(UnifiedAPI, TestTensorShapeScalar) {
   AbstractTensorHandlePtr x;
   {
     AbstractTensorHandle* x_raw = nullptr;
-    Status s = TestScalarTensorHandle(ctx.get(), 2.0f, &x_raw);
+    Status s = TestScalarTensorHandle<float, TF_FLOAT>(ctx.get(), 2.0f, &x_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
     x.reset(x_raw);
   }
@@ -120,8 +120,8 @@ TEST_P(UnifiedAPI, TestTensorShape2x4) {
     AbstractTensorHandle* x_raw = nullptr;
     float data[] = {0., 0., 0., 0., 0., 0., 0., 0};
     int64_t dim_sizes[] = {2, 4};
-    Status s =
-        TestTensorHandleWithDimsFloat(ctx.get(), data, dim_sizes, 2, &x_raw);
+    Status s = TestTensorHandleWithDims<float, TF_FLOAT>(ctx.get(), data,
+                                                         dim_sizes, 2, &x_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
     x.reset(x_raw);
   }

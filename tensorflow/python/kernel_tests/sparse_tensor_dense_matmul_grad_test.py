@@ -50,9 +50,11 @@ class SparseTensorDenseMatMulGradientTest(test.TestCase):
                     indices_dtype=np.int64):
     n, m = size
     x = np.random.randn(n, m).astype(values_dtype)
+    if values_dtype in (np.complex64, np.complex128):
+      x.imag = np.random.randn(n, m)
 
     if adjoint:
-      x = x.transpose()
+      x = x.transpose().conj()
 
     if sparse:
       return self._sparsify(x, indices_dtype=indices_dtype)
@@ -95,7 +97,10 @@ class SparseTensorDenseMatMulGradientTest(test.TestCase):
     np.random.seed(5)  # Fix seed to avoid flakiness
     self._testGradientsType(np.float32, np.int64)
     self._testGradientsType(np.float64, np.int64)
+    self._testGradientsType(np.complex64, np.int64)
+    self._testGradientsType(np.complex128, np.int64)
     self._testGradientsType(np.float32, np.int32)
+    self._testGradientsType(np.complex64, np.int32)
 
 
 if __name__ == "__main__":

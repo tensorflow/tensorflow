@@ -362,7 +362,6 @@ cc_library(
         "//tensorflow/lite/kernels/internal:types",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@com_google_protobuf//:protobuf_headers",
         "@com_googlesource_code_re2//:re2",
     ],
 )

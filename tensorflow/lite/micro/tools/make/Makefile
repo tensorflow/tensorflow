@@ -273,6 +273,7 @@ tensorflow/lite/micro/kernels/elementwise_test.cc \
 tensorflow/lite/micro/kernels/elu_test.cc \
 tensorflow/lite/micro/kernels/exp_test.cc \
 tensorflow/lite/micro/kernels/expand_dims_test.cc \
+tensorflow/lite/micro/kernels/fill_test.cc \
 tensorflow/lite/micro/kernels/floor_test.cc \
 tensorflow/lite/micro/kernels/fully_connected_test.cc \
 tensorflow/lite/micro/kernels/hard_swish_test.cc \
@@ -329,6 +330,7 @@ tensorflow/lite/micro/kernels/elu.cc \
 tensorflow/lite/micro/kernels/ethosu.cc \
 tensorflow/lite/micro/kernels/exp.cc \
 tensorflow/lite/micro/kernels/expand_dims.cc \
+tensorflow/lite/micro/kernels/fill.cc \
 tensorflow/lite/micro/kernels/flexbuffers_generated_data.cc \
 tensorflow/lite/micro/kernels/floor.cc \
 tensorflow/lite/micro/kernels/fully_connected.cc \
@@ -415,6 +417,7 @@ tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h \
 tensorflow/lite/kernels/internal/reference/dequantize.h \
 tensorflow/lite/kernels/internal/reference/elu.h \
 tensorflow/lite/kernels/internal/reference/exp.h \
+tensorflow/lite/kernels/internal/reference/fill.h \
 tensorflow/lite/kernels/internal/reference/floor.h \
 tensorflow/lite/kernels/internal/reference/fully_connected.h \
 tensorflow/lite/kernels/internal/reference/hard_swish.h \

@@ -136,19 +136,6 @@ class AutoTrackable(base.Trackable):
           break
 
 
-def delete_tracking(obj, name):
-  """Removes the tracking of name from object."""
-  # pylint: disable=protected-access
-  if name in obj._unconditional_dependency_names:
-    del obj._unconditional_dependency_names[name]
-    for index, (dep_name, _) in enumerate(
-        obj._unconditional_checkpoint_dependencies):
-      if dep_name == name:
-        del obj._unconditional_checkpoint_dependencies[index]
-        break
-  # pylint: enable=protected-access
-
-
 class ResourceTracker(object):
   """An object that tracks a list of resources."""
 

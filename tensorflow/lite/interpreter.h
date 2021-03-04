@@ -681,7 +681,7 @@ class Interpreter {
                                  TfLiteExternalContextType type,
                                  TfLiteExternalContext* ctx);
 
-  // Helper method that return the tensot index that corresponds to
+  // Helper method that return the tensor index that corresponds to
   // a name in a SignatureDef. Defined by 'signature_method_name', and
   // 'signature_tensor_name'.
   // If 'is_input' is true then the tensor is checked in input tensors,

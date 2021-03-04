@@ -172,7 +172,7 @@ tf_py_test(
     tags = [
         "no_rocm",
         "no_windows",
-        "notap",  # TODO(b/161198218): flaky timeout
+        "notsan",  #TODO(b/181771982): it is flaky
     ],
     deps = [
         "//tensorflow/python:client_testlib",

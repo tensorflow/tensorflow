@@ -804,9 +804,12 @@ Status XlaCompiler::CompileFunction(
   }
 
   VLOG(1) << "====================================================";
-  MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
-      *graph, config_proto,
-      /*uses_uninitialized_resource_args=*/AnyUninitializedResourceArg(args));
+  MlirBridgeRolloutPolicy policy = MlirBridgeRolloutPolicy::kDisabledByUser;
+  if (options.is_entry_computation) {
+    policy = GetMlirBridgeRolloutPolicy(
+        *graph, config_proto,
+        /*uses_uninitialized_resource_args=*/AnyUninitializedResourceArg(args));
+  }
   if (policy == MlirBridgeRolloutPolicy::kEnabledByUser) {
     VLOG(1) << "Using MLIR bridge";
     GraphDebugInfo debug_info;

@@ -201,6 +201,7 @@ cc_library(
         "include/mlir-c/BuiltinTypes.h",
         "include/mlir-c/Diagnostics.h",
         "include/mlir-c/Dialect/Standard.h",
+        "include/mlir-c/ExecutionEngine.h",
         "include/mlir-c/IR.h",
         "include/mlir-c/IntegerSet.h",
         "include/mlir-c/Pass.h",
@@ -219,12 +220,42 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":ConversionPassIncGen",
         ":IR",
         ":InferTypeOpInterface",
         ":Parser",
         ":Pass",
         ":StandardOps",
         ":Support",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "CAPIConversion",
+    srcs = ["lib/CAPI/Conversion/Passes.cpp"],
+    hdrs = ["include/mlir-c/Conversion.h"],
+    includes = ["include"],
+    deps = [
+        ":CAPIIR",
+        ":ConversionPassIncGen",
+        ":ConversionPasses",
+        ":Pass",
+    ],
+)
+
+cc_library(
+    name = "CAPIExecutionEngine",
+    srcs = ["lib/CAPI/ExecutionEngine/ExecutionEngine.cpp"],
+    hdrs = [
+        "include/mlir-c/ExecutionEngine.h",
+        "include/mlir/CAPI/ExecutionEngine.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":CAPIIR",
+        ":ExecutionEngine",
+        ":LLVMToLLVMIRTranslation",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -259,6 +290,7 @@ cc_library(
     deps = [
         ":AllPassesAndDialectsNoRegistration",
         ":CAPIIR",
+        ":LLVMToLLVMIRTranslation",
     ],
 )
 
@@ -1130,6 +1162,14 @@ gentbl(
             "-gen-pass-decls -name Conversion",
             "include/mlir/Conversion/Passes.h.inc",
         ),
+        (
+            "-gen-pass-capi-header --prefix Conversion",
+            "include/mlir/Conversion/Passes.capi.h.inc",
+        ),
+        (
+            "-gen-pass-capi-impl --prefix Conversion",
+            "include/mlir/Conversion/Passes.capi.cpp.inc",
+        ),
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Conversion/Passes.td",
@@ -1167,6 +1207,8 @@ cc_library(
         ":StandardToLLVM",
         ":StandardToSPIRV",
         ":TosaToLinalg",
+        ":TosaToSCF",
+        ":TosaToStandard",
         ":VectorToLLVM",
         ":VectorToROCDL",
         ":VectorToSCF",
@@ -2061,6 +2103,7 @@ cc_library(
     hdrs = ["include/mlir/Conversion/GPUCommon/GPUCommonPass.h"],
     includes = ["include"],
     deps = [
+        ":Async",
         ":AsyncToLLVM",
         ":ConversionPassIncGen",
         ":GPUDialect",
@@ -3532,7 +3575,7 @@ cc_library(
 )
 
 cc_library(
-    name = "TargetLLVMIRModuleTranslation",
+    name = "ToLLVMIRTranslation",
     srcs = [
         "lib/Target/LLVMIR/DebugTranslation.cpp",
         "lib/Target/LLVMIR/DebugTranslation.h",
@@ -3570,7 +3613,7 @@ cc_library(
         ":LLVMAVX512",
         ":LLVMAVX512ConversionIncGen",
         ":Support",
-        ":TargetLLVMIRModuleTranslation",
+        ":ToLLVMIRTranslation",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
     ],
@@ -3587,7 +3630,7 @@ cc_library(
         ":LLVMArmNeonConversionIncGen",
         ":LLVMArmNeonIncGen",
         ":Support",
-        ":TargetLLVMIRModuleTranslation",
+        ":ToLLVMIRTranslation",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
     ],
@@ -3603,7 +3646,7 @@ cc_library(
         ":LLVMArmSVE",
         ":LLVMArmSVEConversionIncGen",
         ":Support",
-        ":TargetLLVMIRModuleTranslation",
+        ":ToLLVMIRTranslation",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
     ],
@@ -3619,7 +3662,7 @@ cc_library(
         ":NVVMConversionIncGen",
         ":NVVMDialect",
         ":Support",
-        ":TargetLLVMIRModuleTranslation",
+        ":ToLLVMIRTranslation",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
     ],
@@ -3635,7 +3678,7 @@ cc_library(
         ":ROCDLConversionIncGen",
         ":ROCDLDialect",
         ":Support",
-        ":TargetLLVMIRModuleTranslation",
+        ":ToLLVMIRTranslation",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
     ],
@@ -3651,7 +3694,7 @@ cc_library(
         ":LLVMConversionIncGen",
         ":LLVMDialect",
         ":Support",
-        ":TargetLLVMIRModuleTranslation",
+        ":ToLLVMIRTranslation",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
     ],
@@ -3666,7 +3709,7 @@ cc_library(
         ":IR",
         ":OpenMPDialect",
         ":Support",
-        ":TargetLLVMIRModuleTranslation",
+        ":ToLLVMIRTranslation",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:FrontendOpenMP",
         "@llvm-project//llvm:Support",
@@ -3674,32 +3717,46 @@ cc_library(
 )
 
 cc_library(
-    name = "TargetLLVMIR",
+    name = "AllToLLVMIRTranslations",
+    hdrs = ["include/mlir/Target/LLVMIR/Dialect/All.h"],
+    includes = ["include"],
+    deps = [
+        ":LLVMAVX512ToLLVMIRTranslation",
+        ":LLVMArmNeonToLLVMIRTranslation",
+        ":LLVMArmSVEToLLVMIRTranslation",
+        ":LLVMToLLVMIRTranslation",
+        ":NVVMToLLVMIRTranslation",
+        ":OpenMPToLLVMIRTranslation",
+        ":ROCDLToLLVMIRTranslation",
+    ],
+)
+
+cc_library(
+    name = "ToLLVMIRTranslationRegistration",
+    srcs = ["lib/Target/LLVMIR/ConvertToLLVMIR.cpp"],
+    includes = ["include"],
+    deps = [
+        ":AllToLLVMIRTranslations",
+        ":IR",
+        ":ToLLVMIRTranslation",
+        ":Translation",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "FromLLVMIRTranslation",
     srcs = [
         "lib/Target/LLVMIR/ConvertFromLLVMIR.cpp",
-        "lib/Target/LLVMIR/ConvertToLLVMIR.cpp",
     ],
     hdrs = ["include/mlir/Target/LLVMIR.h"],
     includes = ["include"],
     deps = [
         ":IR",
-        ":LLVMAVX512",
-        ":LLVMAVX512ToLLVMIRTranslation",
-        ":LLVMArmNeon",
-        ":LLVMArmNeonToLLVMIRTranslation",
-        ":LLVMArmSVE",
-        ":LLVMArmSVEToLLVMIRTranslation",
         ":LLVMConversionIncGen",
         ":LLVMDialect",
-        ":LLVMToLLVMIRTranslation",
-        ":NVVMDialect",
-        ":NVVMToLLVMIRTranslation",
-        ":OpenMPDialect",
-        ":OpenMPToLLVMIRTranslation",
-        ":ROCDLDialect",
-        ":ROCDLToLLVMIRTranslation",
         ":Support",
-        ":TargetLLVMIRModuleTranslation",
         ":Translation",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:IRReader",
@@ -3719,11 +3776,11 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":AllToLLVMIRTranslations",
         ":IR",
         ":LLVMDialect",
         ":Support",
-        ":TargetLLVMIR",
-        ":TargetLLVMIRModuleTranslation",
+        ":ToLLVMIRTranslation",
         ":Translation",
         "@llvm-project//llvm:BitReader",
         "@llvm-project//llvm:BitWriter",
@@ -3786,14 +3843,9 @@ cc_library(
     name = "AllTranslations",
     hdrs = ["include/mlir/InitAllTranslations.h"],
     deps = [
-        ":LLVMAVX512ToLLVMIRTranslation",
-        ":LLVMArmNeonToLLVMIRTranslation",
-        ":LLVMArmSVEToLLVMIRTranslation",
-        ":LLVMToLLVMIRTranslation",
-        ":NVVMToLLVMIRTranslation",
-        ":ROCDLToLLVMIRTranslation",
+        ":FromLLVMIRTranslation",
         ":SPIRVTranslateRegistration",
-        ":TargetLLVMIR",
+        ":ToLLVMIRTranslationRegistration",
     ],
 )
 
@@ -4008,13 +4060,14 @@ cc_binary(
     srcs = ["tools/mlir-cpu-runner/mlir-cpu-runner.cpp"],
     linkopts = ["-ldl"],
     deps = [
+        ":AllToLLVMIRTranslations",
         ":ExecutionEngineUtils",
         ":IR",
         ":LLVMDialect",
+        ":LLVMToLLVMIRTranslation",
         ":MlirJitRunner",
-        ":OpenMPDialect",
         ":OpenMPToLLVMIRTranslation",
-        ":TargetLLVMIR",
+        ":ToLLVMIRTranslation",
         "@llvm-project//llvm:AsmParser",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:X86AsmParser",
@@ -4037,12 +4090,11 @@ cc_headers_only(
     src = "@llvm-project//llvm:Support",
 )
 
-cc_binary(
-    name = "tools/libcuda-runtime-wrappers.so",
-    srcs = ["tools/mlir-cuda-runner/cuda-runtime-wrappers.cpp"],
+cc_library(
+    name = "mlir_cuda_runtime",
+    srcs = ["lib/ExecutionEngine/CudaRuntimeWrappers.cpp"],
     # Prevent needing EnableABIBreakingChecks symbol from LLVMSupport.
     copts = ["-DLLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING=1"],
-    linkshared = True,
     deps = [
         ":LLVMSupportHeaders",
         ":mlir_c_runner_utils",
@@ -4083,24 +4135,23 @@ cc_binary(
     srcs = ["tools/mlir-cuda-runner/mlir-cuda-runner.cpp"],
     deps = [
         ":Async",
-        ":AsyncToLLVM",
         ":AsyncTransforms",
+        ":ConversionPasses",
         ":ExecutionEngineUtils",
         ":GPUDialect",
         ":GPUToGPURuntimeTransforms",
         ":GPUToNVVMTransforms",
-        ":GPUToROCDLTransforms",
         ":GPUTransforms",
         ":IR",
         ":LLVMDialect",
+        ":LLVMToLLVMIRTranslation",
         ":MlirJitRunner",
         ":NVVMDialect",
         ":NVVMToLLVMIRTranslation",
         ":Pass",
         ":StandardOps",
         ":StandardToLLVM",
-        ":TargetLLVMIR",
-        ":TargetLLVMIRModuleTranslation",
+        ":ToLLVMIRTranslation",
         ":Transforms",
         "//devtools/build/runtime:get_runfiles_dir",
         "//third_party/gpus/cuda:cuda_headers",
@@ -4120,6 +4171,7 @@ cc_binary(
         ":GPUToVulkanTransforms",
         ":GPUTransforms",
         ":LLVMDialect",
+        ":LLVMToLLVMIRTranslation",
         ":MlirJitRunner",
         ":Pass",
         ":SPIRVDialect",
@@ -4127,8 +4179,7 @@ cc_binary(
         ":StandardOps",
         ":StandardToLLVM",
         ":StandardToSPIRV",
-        ":TargetLLVMIR",
-        ":TargetLLVMIRModuleTranslation",
+        ":ToLLVMIRTranslation",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -4143,6 +4194,7 @@ cc_binary(
         ":GPUTransforms",
         ":IR",
         ":LLVMDialect",
+        ":LLVMToLLVMIRTranslation",
         ":MlirJitRunner",
         ":Pass",
         ":SPIRVConversion",
@@ -4151,8 +4203,7 @@ cc_binary(
         ":SPIRVTransforms",
         ":StandardOps",
         ":StandardToLLVM",
-        ":TargetLLVMIR",
-        ":TargetLLVMIRModuleTranslation",
+        ":ToLLVMIRTranslation",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Linker",
         "@llvm-project//llvm:Support",
@@ -4940,7 +4991,7 @@ cc_library(
         ":StandardOps",
         ":StandardToLLVM",
         ":Support",
-        ":TargetLLVMIRModuleTranslation",
+        ":ToLLVMIRTranslation",
         ":Transforms",
         ":VectorOps",
         "@llvm-project//llvm:Core",
@@ -5108,6 +5159,54 @@ cc_library(
         ":MathDialect",
         ":Pass",
         ":StandardOps",
+        ":TosaDialect",
+        ":Transforms",
+    ],
+)
+
+cc_library(
+    name = "TosaToSCF",
+    srcs = glob([
+        "lib/Conversion/TosaToSCF/*.cpp",
+        "lib/Conversion/TosaToSCF/*.h",
+    ]) + ["lib/Conversion/PassDetail.h"],
+    hdrs = glob([
+        "include/mlir/Conversion/TosaToSCF/*.h",
+    ]),
+    includes = [
+        "include",
+        "lib/Conversion/TosaToSCF",
+    ],
+    deps = [
+        ":ConversionPassIncGen",
+        ":IR",
+        ":Pass",
+        ":SCFDialect",
+        ":TensorDialect",
+        ":TosaDialect",
+        ":Transforms",
+    ],
+)
+
+cc_library(
+    name = "TosaToStandard",
+    srcs = glob([
+        "lib/Conversion/TosaToStandard/*.cpp",
+        "lib/Conversion/TosaToStandard/*.h",
+    ]) + ["lib/Conversion/PassDetail.h"],
+    hdrs = glob([
+        "include/mlir/Conversion/TosaToStandard/*.h",
+    ]),
+    includes = [
+        "include",
+        "lib/Conversion/TosaToStandard",
+    ],
+    deps = [
+        ":ConversionPassIncGen",
+        ":IR",
+        ":Pass",
+        ":StandardOps",
+        ":TensorDialect",
         ":TosaDialect",
         ":Transforms",
     ],
@@ -5313,6 +5412,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":IR",
+        ":LLVMDialect",
         ":MathDialect",
         ":Pass",
         ":SCFDialect",

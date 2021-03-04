@@ -18,9 +18,10 @@ It is sometimes useful to be able to build HLO programs directly from
 TensorFlow. This file provides Tensorflow operators that mirror the semantics of
 HLO operators as closely as possible.
 
-Note: There is no promise of backward or forward compatibility for operators
-defined in this module. This is primarily because the underlying HLO operators
-do not promise backward or forward compatibility.
+Note: Most of the operators defined in this module are used by the jax2tf
+converter (see go/jax2tf for details) and are used in SavedModel produced
+by jax2tf. Hence, we need to maintain backwards compatibility for these
+operators. Please reach out to the JAX team if you want to make changes.
 """
 
 from __future__ import absolute_import
@@ -277,9 +278,23 @@ def conv(lhs,
   precision_config_proto = ""
   if precision_config:
     precision_config_proto = precision_config.SerializeToString()
+  needs_v2 = preferred_element_type or (lhs.dtype != rhs.dtype)
   if preferred_element_type is None:
     preferred_element_type = np_utils.result_type(lhs.dtype, rhs.dtype)
-  return gen_xla_ops.xla_conv_v2(
+  if needs_v2:
+    return gen_xla_ops.xla_conv_v2(
+        lhs,
+        rhs,
+        window_strides=window_strides,
+        padding=padding,
+        lhs_dilation=lhs_dilation,
+        rhs_dilation=rhs_dilation,
+        feature_group_count=feature_group_count,
+        dimension_numbers=dimension_numbers.SerializeToString(),
+        precision_config=precision_config_proto,
+        preferred_element_type=preferred_element_type,
+        name=name)
+  return gen_xla_ops.xla_conv(
       lhs,
       rhs,
       window_strides=window_strides,
@@ -289,7 +304,6 @@ def conv(lhs,
       feature_group_count=feature_group_count,
       dimension_numbers=dimension_numbers.SerializeToString(),
       precision_config=precision_config_proto,
-      preferred_element_type=preferred_element_type,
       name=name)
 
 
@@ -309,14 +323,22 @@ def dot_general(lhs,
   precision_config_proto = ""
   if precision_config:
     precision_config_proto = precision_config.SerializeToString()
+  needs_v2 = preferred_element_type or (lhs.dtype != rhs.dtype)
   if preferred_element_type is None:
     preferred_element_type = np_utils.result_type(lhs.dtype, rhs.dtype)
-  return gen_xla_ops.xla_dot_v2(
+  if needs_v2:
+    return gen_xla_ops.xla_dot_v2(
+        lhs,
+        rhs,
+        dimension_numbers=dimension_numbers.SerializeToString(),
+        precision_config=precision_config_proto,
+        preferred_element_type=preferred_element_type,
+        name=name)
+  return gen_xla_ops.xla_dot(
       lhs,
       rhs,
       dimension_numbers=dimension_numbers.SerializeToString(),
       precision_config=precision_config_proto,
-      preferred_element_type=preferred_element_type,
       name=name)
 
 

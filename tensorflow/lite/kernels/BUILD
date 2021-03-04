@@ -349,9 +349,6 @@ cc_library(
         "//conditions:default": ["-DTFLITE_HAVE_CPUINFO"],
     }),
     deps = [
-        # TODO(b/168923364): Remove deprecated_backends after it is added to all
-        # necessary targets.
-        ":deprecated_backends",
         ":tflite_with_ruy",
         ":op_macros",
         # For now this unconditionally depends on both ruy and gemmlowp.
@@ -740,8 +737,10 @@ cc_library(
     srcs = [
         "multinomial.cc",
         "random_standard_normal.cc",
+        "random_uniform.cc",
     ],
     hdrs = ["custom_ops_register.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":kernel_util",
@@ -1438,6 +1437,20 @@ cc_test(
     name = "random_standard_normal_test",
     size = "small",
     srcs = ["random_standard_normal_test.cc"],
+    deps = [
+        ":custom_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "random_uniform_test",
+    size = "small",
+    srcs = ["random_uniform_test.cc"],
     deps = [
         ":custom_ops",
         ":test_main",

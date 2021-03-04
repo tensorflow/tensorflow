@@ -23,7 +23,6 @@ cc_library(
     visibility = [
         ":micro",
         ":microfrontend",
-        "//learning/brain/contrib/micro/tflite:__pkg__",
     ],
     deps = [
         "//tensorflow/lite/c:common",

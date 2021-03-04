@@ -1198,18 +1198,22 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
       return failure();
     }
 
-    // Verify that start_index_map and collapsed_slice_dims are both an iota
-    // with the same number of elements as the last dimension of start_indices.
+    // Verify that start_index_map and collapsed_slice_dims contains the same
+    // values.
     auto start_index_map = gather_op.dimension_numbers().start_index_map();
     auto collapsed_slice_dims =
         gather_op.dimension_numbers().collapsed_slice_dims();
-    if (!IsIotaAttr(start_index_map, start_indices_type.getShape().back()) ||
-        !IsIotaAttr(collapsed_slice_dims,
-                    start_indices_type.getShape().back())) {
-      // TODO(tberghammer): Transform start_indices to support non-standard
-      // start_index_maps.
+    if (start_index_map.getNumElements() !=
+        collapsed_slice_dims.getNumElements()) {
       return rewriter.notifyMatchFailure(
-          gather_op, "unsupported start index map and/or collapsed slice dims");
+          gather_op,
+          "different size for start index map and collapsed slice dims");
+    }
+    for (auto c : collapsed_slice_dims) {
+      if (llvm::count(start_index_map, c) == 0) {
+        return rewriter.notifyMatchFailure(
+            gather_op, "collapsed slice dim isn't present in start index map");
+      }
     }
 
     // Verify that slice_sizes is 1 for the indexed dimensions and the full
@@ -1217,7 +1221,7 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
     auto slice_sizes = gather_op.slice_sizes();
     int64_t index = 0;
     for (int64_t s : slice_sizes.getValues<int64_t>()) {
-      if (index < start_indices_type.getShape().back()) {
+      if (llvm::count(start_index_map, index)) {
         if (s != 1) {
           return rewriter.notifyMatchFailure(gather_op,
                                              "unsupported slice sizes");
@@ -1241,6 +1245,25 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
       }
       ++offset;
     }
+
+    // Transpose the operand to handle non-iota start index map.
+    llvm::SmallVector<int64_t, 4> transpose_dimensions;
+    llvm::SmallVector<int64_t, 4> transpose_shape;
+    for (auto s : start_index_map) {
+      transpose_dimensions.push_back(s.getZExtValue());
+      transpose_shape.push_back(operand_type.getShape()[s.getZExtValue()]);
+    }
+    for (int64_t i = 0, e = operand_type.getRank(); i < e; ++i) {
+      if (llvm::count(start_index_map, i) == 0) {
+        transpose_dimensions.push_back(i);
+        transpose_shape.push_back(operand_type.getShape()[i]);
+      }
+    }
+    operand_type =
+        RankedTensorType::get(transpose_shape, operand_type.getElementType());
+    operand = rewriter.create<mhlo::TransposeOp>(
+        gather_op.getLoc(), operand_type, operand,
+        rewriter.getI64TensorAttr(transpose_dimensions));
 
     rewriter.replaceOpWithNewOp<TF::GatherNdOp>(gather_op, result_type, operand,
                                                 start_indices);

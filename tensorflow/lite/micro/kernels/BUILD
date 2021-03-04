@@ -261,6 +261,7 @@ cc_library(
         "elu.cc",
         "exp.cc",
         "expand_dims.cc",
+        "fill.cc",
         "floor.cc",
         "l2norm.cc",
         "logical.cc",
@@ -604,6 +605,20 @@ cc_test(
 )
 
 cc_test(
+    name = "fill_test",
+    srcs = [
+        "fill_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
     name = "floor_test",
     srcs = [
         "floor_test.cc",
@@ -748,8 +763,8 @@ cc_test(
     ],
     tags = [
         "noasan",
-        "nomsan",
-    ],  # TODO(b/175133159): currently failing with asan and msan
+        "nomsan",  # TODO(b/175133159): currently failing with asan and msan
+    ],
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",

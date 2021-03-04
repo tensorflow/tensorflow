@@ -954,6 +954,28 @@ func @dynamic_broadcast_in_dim(%shape: tensor<1xindex>) -> tensor<?xf32> {
 
 // -----
 
+// CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1) -> ()>
+// CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+
+// CHECK-LABEL: func @dynamic_broadcast_in_dim(
+// CHECK-SAME: [[SHAPE:%.*]]: tensor<2xindex>
+func @dynamic_broadcast_in_dim(%shape: tensor<2xindex>) -> tensor<?x32xf32> {
+  %cst = mhlo.constant dense<0x7F800000> : tensor<f32>
+  %result = "mhlo.dynamic_broadcast_in_dim"(%cst, %shape) {
+     broadcast_dimensions = dense<> : tensor<0xi64>
+  } : (tensor<f32>, tensor<2xindex>) -> tensor<?x32xf32>
+  return %result : tensor<?x32xf32>
+}
+// CHECK: [[CST:%.*]] = constant
+// CHECK: [[INIT:%.*]] = linalg.init_tensor
+// CHECK: linalg.generic
+// CHECK-SAME: indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+// CHECK-SAME: ins([[CST]] : tensor<f32>) outs([[INIT]] : tensor<?x32xf32>)
+// CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: f32, %[[RESULT:.*]]: f32):
+// CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
+
+// -----
+
 func @dot_matmul(%arg0: tensor<2x3xf32>,
                  %arg1: tensor<3x?xf32>) -> tensor<2x?xf32> {
   %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<2x3xf32>,
@@ -982,7 +1004,7 @@ func @dot_matmul_i8_i8_i32(%arg0: tensor<2x3xi8>,
 // CHECK: %[[D1:.*]] = dim %[[ARG1]], %[[C1]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [2, %[[D1]]]
 // CHECK: %[[FILL:.*]] = linalg.fill(%[[INIT]]
-// CHECK: linalg.matmul_i8_i8_i32
+// CHECK: linalg.matmul
 // CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<2x3xi8>, tensor<3x?xi8>)
 // CHECK-SAME: outs(%[[FILL]] : tensor<2x?xi32>)
 
@@ -1000,7 +1022,7 @@ func @dot_matmul_i16_i16_i32(%arg0: tensor<2x3xi16>,
 // CHECK: %[[D1:.*]] = dim %[[ARG1]], %[[C1]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [2, %[[D1]]]
 // CHECK: %[[FILL:.*]] = linalg.fill(%[[INIT]]
-// CHECK: linalg.matmul_i16_i16_i32
+// CHECK: linalg.matmul
 // CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<2x3xi16>, tensor<3x?xi16>)
 // CHECK-SAME: outs(%[[FILL]] : tensor<2x?xi32>)
 
@@ -1018,7 +1040,7 @@ func @dot_matmul_i32_i32_i32(%arg0: tensor<2x3xi32>,
 // CHECK: %[[D1:.*]] = dim %[[ARG1]], %[[C1]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [2, %[[D1]]]
 // CHECK: %[[FILL:.*]] = linalg.fill(%[[INIT]]
-// CHECK: linalg.matmul_i32_i32_i32
+// CHECK: linalg.matmul
 // CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<2x3xi32>, tensor<3x?xi32>)
 // CHECK-SAME: outs(%[[FILL]] : tensor<2x?xi32>)
 
@@ -1109,7 +1131,7 @@ func @dot_general_batch_matmul_i8_i8_i32(%arg0: tensor<?x?x3xi8>,
 // CHECK: %[[D2:.*]] = dim %[[ARG1]], %[[C2]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
 // CHECK: %[[FILL:.*]] = linalg.fill(%[[INIT]]
-// CHECK: linalg.batch_matmul_i8_i8_i32
+// CHECK: linalg.batch_matmul
 // CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<?x?x3xi8>, tensor<?x3x?xi8>)
 // CHECK-SAME: outs(%[[FILL]] : tensor<?x?x?xi32>)
 
@@ -1138,7 +1160,7 @@ func @dot_general_batch_matmul_i16_i16_i32(%arg0: tensor<?x?x3xi16>,
 // CHECK: %[[D2:.*]] = dim %[[ARG1]], %[[C2]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
 // CHECK: %[[FILL:.*]] = linalg.fill(%[[INIT]]
-// CHECK: linalg.batch_matmul_i16_i16_i32
+// CHECK: linalg.batch_matmul
 // CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<?x?x3xi16>, tensor<?x3x?xi16>)
 // CHECK-SAME: outs(%[[FILL]] : tensor<?x?x?xi32>)
 
@@ -1396,3 +1418,204 @@ func @slice_stride_part(%arg0: tensor<3x4xi32>) -> tensor<1x2xi32> {
 }
 // CHECK-LABEL: func @slice_stride_part
 //       CHECK:   subtensor %{{.*}}[1, 1] [1, 2] [1, 1]  : tensor<3x4xi32> to tensor<1x2xi32>
+
+// -----
+
+func @pad_cst(%arg0: tensor<12x4xf32>) -> tensor<18x12xf32> {
+  %0 = constant dense<0.0> : tensor<f32>
+  %1 = "mhlo.pad"(%arg0, %0) {
+    edge_padding_high = dense<[2, 3]> : tensor<2xi64>,
+    edge_padding_low = dense<[4, 5]> : tensor<2xi64>,
+    interior_padding = dense<0> : tensor<2xi64>
+  } : (tensor<12x4xf32>, tensor<f32>) -> tensor<18x12xf32>
+  return %1 : tensor<18x12xf32>
+}
+// CHECK-LABEL: func @pad_cst
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+//   CHECK-DAG: %[[CST:.+]] = constant dense<0.000000e+00> : tensor<f32>
+//   CHECK-DAG: %[[PAD:.+]] = tensor.extract %[[CST]][] : tensor<f32>
+//   CHECK-DAG: %[[C4:.+]] = constant 4 : index
+//   CHECK-DAG: %[[C2:.+]] = constant 2 : index
+//   CHECK-DAG: %[[C5:.+]] = constant 5 : index
+//   CHECK-DAG: %[[C3:.+]] = constant 3 : index
+//       CHECK: linalg.pad_tensor %[[ARG0]] low[%[[C4]], %[[C5]]] high[%[[C2]], %[[C3]]]
+//       CHECK:  linalg.yield %[[PAD]] : f32
+//       CHECK: } : tensor<12x4xf32> to tensor<18x12xf32>
+
+// -----
+
+func @pad_tensor(%arg0: tensor<12x4xf32>, %arg1: tensor<f32>) -> tensor<18x12xf32> {
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_high = dense<[2, 3]> : tensor<2xi64>,
+    edge_padding_low = dense<[4, 5]> : tensor<2xi64>,
+    interior_padding = dense<0> : tensor<2xi64>
+  } : (tensor<12x4xf32>, tensor<f32>) -> tensor<18x12xf32>
+  return %0 : tensor<18x12xf32>
+}
+// CHECK-LABEL: func @pad_tensor
+//  CHECK-SAME:   %[[ARG0:[a-zA-Z0-9_]*]]
+//  CHECK-SAME:   %[[ARG1:[a-zA-Z0-9_]*]]
+//   CHECK-DAG:   %[[C4:.+]] = constant 4 : index
+//   CHECK-DAG:   %[[C2:.+]] = constant 2 : index
+//   CHECK-DAG:   %[[C5:.+]] = constant 5 : index
+//   CHECK-DAG:   %[[C3:.+]] = constant 3 : index
+//   CHECK-DAG:   %[[PAD:.+]] = tensor.extract %[[ARG1]][] : tensor<f32>
+//       CHECK:   linalg.pad_tensor %[[ARG0]] low[%[[C4]], %[[C5]]] high[%[[C2]], %[[C3]]]
+//       CHECK:     linalg.yield %[[PAD]] : f32
+//       CHECK:   } : tensor<12x4xf32> to tensor<18x12xf32>
+
+// -----
+
+func @linalg.conv_1d_input_nwc_filter_wcf(%arg0: tensor<?x8x?xf32>, %arg1: tensor<2x?x?xf32>)
+  -> tensor<?x7x?xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = {
+      input_batch_dimension = 0 : i64,
+      input_feature_dimension = 2 : i64,
+      input_spatial_dimensions = dense<[1]> : tensor<1xi64>,
+      kernel_input_feature_dimension = 1 : i64,
+      kernel_output_feature_dimension = 2 : i64,
+      kernel_spatial_dimensions = dense<[0]> : tensor<1xi64>,
+      output_batch_dimension = 0 : i64,
+      output_feature_dimension = 2 : i64,
+      output_spatial_dimensions = dense<[1]> : tensor<1xi64>
+    },
+    feature_group_count = 1 : i64,
+    padding = dense<[[0], [0]]> : tensor<2x1xi64>,
+    rhs_dilation = dense<1> : tensor<1xi64>,
+    window_strides = dense<1> : tensor<1xi64>
+  } : (tensor<?x8x?xf32>, tensor<2x?x?xf32>) -> tensor<?x7x?xf32>
+  return %0 : tensor<?x7x?xf32>
+}
+// CHECK-LABEL: func @linalg.conv_1d_input_nwc_filter_wcf
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
+// CHECK:         %[[C0:.+]] = constant 0 : index
+// CHECK:         %[[DIM0:.+]] = dim %[[ARG0]], %[[C0]] : tensor<?x8x?xf32>
+// CHECK:         %[[C2:.+]] = constant 2 : index
+// CHECK:         %[[DIM2:.+]] = dim %[[ARG1]], %[[C2]] : tensor<2x?x?xf32>
+// CHECK:         %[[INIT:.+]] = linalg.init_tensor [%[[DIM0]], 7, %[[DIM2]]]
+// CHECK:         %[[ZERO:.+]] = constant 0.000000e+00 : f32
+// CHECK:         %[[FILL:.+]] = linalg.fill(%[[INIT]], %[[ZERO]])
+// CHECK:         linalg.conv_1d_input_nwc_filter_wcf
+// CHECK-SAME:      {dilations = dense<1> : tensor<1xi64>
+// CHECK-SAME:       strides = dense<1> : tensor<1xi64>}
+// CHECK-SAME:     ins(%[[ARG0]], %[[ARG1]] : tensor<?x8x?xf32>, tensor<2x?x?xf32>)
+// CHECK-SAME:    outs(%[[FILL]] : tensor<?x7x?xf32>) -> tensor<?x7x?xf32>
+
+// -----
+
+func @conv_2d_input_nhwc_filter_hwcf(%arg0: tensor<?x4x5x?xf32>, %arg1: tensor<3x2x?x?xf32>)
+  -> tensor<?x2x3x?xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = {
+      input_batch_dimension = 0 : i64,
+      input_feature_dimension = 3 : i64,
+      input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>,
+      kernel_input_feature_dimension = 2 : i64,
+      kernel_output_feature_dimension = 3 : i64,
+      kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>,
+      output_batch_dimension = 0 : i64,
+      output_feature_dimension = 3 : i64,
+      output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>
+    },
+    feature_group_count = 1 : i64,
+    padding = dense<[[0, 0], [0, 0]]> : tensor<2x2xi64>,
+    rhs_dilation = dense<1> : tensor<2xi64>,
+    window_strides = dense<1> : tensor<2xi64>
+  } : (tensor<?x4x5x?xf32>, tensor<3x2x?x?xf32>) -> tensor<?x2x3x?xf32>
+  return %0 : tensor<?x2x3x?xf32>
+}
+// CHECK-LABEL: func @conv_2d_input_nhwc_filter_hwcf
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
+// CHECK:         %[[C0:.+]] = constant 0 : index
+// CHECK:         %[[DIM0:.+]] = dim %[[ARG0]], %[[C0]] : tensor<?x4x5x?xf32>
+// CHECK:         %[[C3:.+]] = constant 3 : index
+// CHECK:         %[[DIM3:.+]] = dim %[[ARG1]], %[[C3]] : tensor<3x2x?x?xf32>
+// CHECK:         %[[INIT:.+]] = linalg.init_tensor [%[[DIM0]], 2, 3, %[[DIM3]]]
+// CHECK:         %[[ZERO:.+]] = constant 0.000000e+00 : f32
+// CHECK:         %[[FILL:.+]] = linalg.fill(%[[INIT]], %[[ZERO]])
+// CHECK:         linalg.conv_2d_input_nhwc_filter_hwcf
+// CHECK-SAME:      {dilations = dense<1> : tensor<2xi64>
+// CHECK-SAME:       strides = dense<1> : tensor<2xi64>}
+// CHECK-SAME:     ins(%[[ARG0]], %[[ARG1]] : tensor<?x4x5x?xf32>, tensor<3x2x?x?xf32>)
+// CHECK-SAME:    outs(%[[FILL]] : tensor<?x2x3x?xf32>) -> tensor<?x2x3x?xf32>
+
+// -----
+
+func @conv_3d_input_ndhwc_filter_dhwcf(%arg0: tensor<?x8x8x8x?xf32>, %arg1: tensor<2x2x2x?x?xf32>)
+  -> tensor<?x7x7x7x?xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = {
+      input_batch_dimension = 0 : i64,
+      input_feature_dimension = 4 : i64,
+      input_spatial_dimensions = dense<[1, 2, 3]> : tensor<3xi64>,
+      kernel_input_feature_dimension = 3 : i64,
+      kernel_output_feature_dimension = 4 : i64,
+      kernel_spatial_dimensions = dense<[0, 1, 2]> : tensor<3xi64>,
+      output_batch_dimension = 0 : i64,
+      output_feature_dimension = 4 : i64,
+      output_spatial_dimensions = dense<[1, 2, 3]> : tensor<3xi64>
+    },
+    feature_group_count = 1 : i64,
+    padding = dense<[[0, 0, 0], [0, 0, 0]]> : tensor<2x3xi64>,
+    rhs_dilation = dense<1> : tensor<3xi64>,
+    window_strides = dense<1> : tensor<3xi64>
+  } : (tensor<?x8x8x8x?xf32>, tensor<2x2x2x?x?xf32>) -> tensor<?x7x7x7x?xf32>
+  return %0 : tensor<?x7x7x7x?xf32>
+}
+// CHECK-LABEL: func @conv_3d_input_ndhwc_filter_dhwcf
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
+// CHECK:         %[[C0:.+]] = constant 0 : index
+// CHECK:         %[[DIM0:.+]] = dim %[[ARG0]], %[[C0]] : tensor<?x8x8x8x?xf32>
+// CHECK:         %[[C4:.+]] = constant 4 : index
+// CHECK:         %[[DIM4:.+]] = dim %[[ARG1]], %[[C4]] : tensor<2x2x2x?x?xf32>
+// CHECK:         %[[INIT:.+]] = linalg.init_tensor [%[[DIM0]], 7, 7, 7, %[[DIM4]]]
+// CHECK:         %[[ZERO:.+]] = constant 0.000000e+00 : f32
+// CHECK:         %[[FILL:.+]] = linalg.fill(%[[INIT]], %[[ZERO]])
+// CHECK:         linalg.conv_3d_input_ndhwc_filter_dhwcf
+// CHECK-SAME:      {dilations = dense<1> : tensor<3xi64>
+// CHECK-SAME:       strides = dense<1> : tensor<3xi64>}
+// CHECK-SAME:     ins(%[[ARG0]], %[[ARG1]] : tensor<?x8x8x8x?xf32>, tensor<2x2x2x?x?xf32>)
+// CHECK-SAME:    outs(%[[FILL]] : tensor<?x7x7x7x?xf32>) -> tensor<?x7x7x7x?xf32>
+
+// -----
+
+func @conv2d_1452x2223_dilated_valid(%arg0: tensor<1x4x5x2xf32>, %arg1: tensor<2x2x2x3xf32>)
+  -> tensor<1x2x4x3xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = {
+      input_batch_dimension = 0 : i64,
+      input_feature_dimension = 3 : i64,
+      input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>,
+      kernel_input_feature_dimension = 2 : i64,
+      kernel_output_feature_dimension = 3 : i64,
+      kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>,
+      output_batch_dimension = 0 : i64,
+      output_feature_dimension = 3 : i64,
+      output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>
+    },
+    feature_group_count = 1 : i64,
+    padding = dense<0> : tensor<2x2xi64>,
+    rhs_dilation = dense<[2, 1]> : tensor<2xi64>,
+    window_strides = dense<1> : tensor<2xi64>
+  } : (tensor<1x4x5x2xf32>, tensor<2x2x2x3xf32>) -> tensor<1x2x4x3xf32>
+  return %0 : tensor<1x2x4x3xf32>
+}
+// CHECK-LABEL: func @conv2d_1452x2223_dilated_valid
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
+// CHECK:         %[[INIT:.+]] = linalg.init_tensor [1, 2, 4, 3] : tensor<1x2x4x3xf32>
+// CHECK:         %[[ZERO:.+]] = constant 0.000000e+00 : f32
+// CHECK:         %[[FILL:.+]] = linalg.fill(%[[INIT]], %[[ZERO]]) : tensor<1x2x4x3xf32>, f32 -> tensor<1x2x4x3xf32>
+// CHECK:         linalg.conv_2d_input_nhwc_filter_hwcf
+// CHECK-SAME:      {dilations = dense<[2, 1]> : tensor<2xi64>
+// CHECK-SAME:       strides = dense<1> : tensor<2xi64>}
+// CHECK-SAME:     ins(%[[ARG0]], %[[ARG1]] : tensor<1x4x5x2xf32>, tensor<2x2x2x3xf32>)
+// CHECK-SAME:    outs(%[[FILL]] : tensor<1x2x4x3xf32>) -> tensor<1x2x4x3xf32>

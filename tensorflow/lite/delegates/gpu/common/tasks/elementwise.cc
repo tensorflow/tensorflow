@@ -205,9 +205,13 @@ GPUOperation CreateElementwiseTwoInput(
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& constant_tensor,
     bool swap_inputs) {
   const BHWC shape = BHWC(1, 1, 1, constant_tensor.shape.v);
-  TensorStorageType storage_type =
-      SelectBestStorageType(gpu_info, shape, definition.GetPrimaryStorageType(),
-                            definition.GetDataType(), Layout::HWC);
+  TensorStorageType storage_type;
+  auto status = SelectBestStorageType(
+      gpu_info, shape, definition.GetPrimaryStorageType(),
+      definition.GetDataType(), Layout::HWC, &storage_type);
+  if (!status.ok()) {
+    storage_type = TensorStorageType::BUFFER;
+  }
   TensorDescriptor desc{definition.GetDataType(), storage_type, Layout::HWC};
   desc.UploadData(constant_tensor);
 
@@ -237,9 +241,13 @@ GPUOperation CreateElementwiseTwoInput(
     bool swap_inputs) {
   const BHWC shape = BHWC(1, constant_tensor.shape.h, constant_tensor.shape.w,
                           constant_tensor.shape.c);
-  TensorStorageType storage_type =
-      SelectBestStorageType(gpu_info, shape, definition.GetPrimaryStorageType(),
-                            definition.GetDataType(), Layout::HWC);
+  TensorStorageType storage_type;
+  auto status = SelectBestStorageType(
+      gpu_info, shape, definition.GetPrimaryStorageType(),
+      definition.GetDataType(), Layout::HWC, &storage_type);
+  if (!status.ok()) {
+    storage_type = TensorStorageType::BUFFER;
+  }
   TensorDescriptor desc{definition.GetDataType(), storage_type, Layout::HWC};
   desc.UploadData(constant_tensor);
 
