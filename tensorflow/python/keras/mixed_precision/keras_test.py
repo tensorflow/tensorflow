@@ -52,6 +52,7 @@ from tensorflow.python.keras.mixed_precision import test_util as mp_test_util
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 # from tensorflow.python.platform import flags
@@ -450,6 +451,34 @@ class KerasLayerTest(keras_parameterized.TestCase):
       mp_test_util.MultiplyLayer(dtype='mixed_float16')
     # Non-mixed policies are fine
     mp_test_util.MultiplyLayer(dtype=policy.Policy('float64'))
+
+  def test_input_spec_dtype(self):
+    # Test the InputSpec's dtype is compared against the inputs before the layer
+    # casts them, not after.
+    layer = mp_test_util.MultiplyLayer(dtype='float64')
+    layer.input_spec = input_spec.InputSpec(dtype='float16')
+
+    # Test passing Eager tensors
+    x = array_ops.ones((2, 2), dtype='float16')
+    layer(x)
+    x = array_ops.ones((2, 2), dtype='float64')
+    with self.assertRaisesRegex(
+        ValueError, 'expected dtype=float16, found dtype=.*float64'):
+      layer(x)
+
+    # Test passing symbolic tensors
+    x = layers.Input((2,), dtype='float16')
+    y = layer(x)
+    model = models.Model(x, y)
+    model(array_ops.ones((2, 2)))
+
+    x = layers.Input((2,), dtype='float64')
+    with self.assertRaisesRegex(
+        ValueError, 'expected dtype=float16, found dtype=.*float64'):
+      # In TF2, the error is only raised when the model is run
+      y = layer(x)
+      model = models.Model(x, y)
+      model(array_ops.ones((2, 2)))
 
 
 class KerasModelTest(keras_parameterized.TestCase):
