@@ -6,9 +6,9 @@ package(
 )
 
 cc_binary(
-    name = "generate_flexbuffers_data",
+    name = "generate_detection_postprocess_flexbuffers_data",
     srcs = [
-        "generate_flexbuffers_data.cc",
+        "generate_detection_postprocess_flexbuffers_data.cc",
     ],
     deps = [
         "@flatbuffers",
