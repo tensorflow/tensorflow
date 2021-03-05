@@ -2169,6 +2169,8 @@ class FeatureColumn(object):
     raise NotImplementedError('Must be implemented in subclasses.')
 
 
+# TODO(b/181853833): Add a tf.type for instance type checking.
+@tf_export('__internal__.feature_column.DenseColumn', v1=[])
 class DenseColumn(FeatureColumn):
   """Represents a column which can be represented as `Tensor`.
 
@@ -2330,6 +2332,8 @@ def _create_categorical_column_weighted_sum(
       name='weighted_sum')
 
 
+# TODO(b/181853833): Add a tf.type for instance type checking.
+@tf_export('__internal__.feature_column.SequenceDenseColumn', v1=[])
 class SequenceDenseColumn(FeatureColumn):
   """Represents dense sequence data."""
 

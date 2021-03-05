@@ -1,6 +1,14 @@
 path: "tensorflow.__internal__.feature_column"
 tf_module {
   member {
+    name: "DenseColumn"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SequenceDenseColumn"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "StateManager"
     mtype: "<type \'type\'>"
   }
