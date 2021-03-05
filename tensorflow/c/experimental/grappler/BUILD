@@ -54,13 +54,9 @@ tf_cc_test(
     srcs = ["grappler_test.cc"],
     deps = [
         ":grappler",
-        "//tensorflow/c:c_api_internal",
-        "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:single_machine",
-        "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
     ],
