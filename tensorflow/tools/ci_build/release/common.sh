@@ -320,7 +320,7 @@ function setup_python_from_pyenv_macos {
   export PYENV_ROOT
   export PATH="$PYENV_ROOT/bin:$PATH"
   eval "$(pyenv init -)"
-  PY_VERSION=3.9.2
+  PY_VERSION=3.9.1
   pyenv install -s "${PY_VERSION}"
   pyenv local "${PY_VERSION}"
   python --version
