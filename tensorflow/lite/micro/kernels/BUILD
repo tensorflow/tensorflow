@@ -282,6 +282,7 @@ cc_library(
         "space_to_batch_nd.cc",
         "split.cc",
         "split_v.cc",
+        "squeeze.cc",
         "strided_slice.cc",
         "sub.cc",
         "svdf_common.cc",
@@ -933,6 +934,18 @@ cc_test(
         ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "squeeze_test",
+    srcs = ["squeeze_test.cc"],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
