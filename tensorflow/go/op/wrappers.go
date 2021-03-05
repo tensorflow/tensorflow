@@ -8324,14 +8324,6 @@ func ModelDatasetRamBudget(value int64) ModelDatasetAttr {
 	}
 }
 
-// ModelDatasetWarmStart sets the optional warm_start attribute to value.
-// If not specified, defaults to false
-func ModelDatasetWarmStart(value bool) ModelDatasetAttr {
-	return func(m optionalAttr) {
-		m["warm_start"] = value
-	}
-}
-
 // Identity transformation that models performance.
 //
 // Identity transformation that models performance.
