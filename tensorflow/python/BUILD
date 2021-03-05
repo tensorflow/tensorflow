@@ -2925,6 +2925,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":client_testlib",
+        ":errors",
         ":gradients",
         ":image_ops",
         "//tensorflow/python/framework:for_generated_wrappers",

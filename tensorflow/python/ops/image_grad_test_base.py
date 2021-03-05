@@ -25,6 +25,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_image_ops
@@ -535,17 +536,28 @@ class CropAndResizeOpTestBase(test.TestCase):
               with test_util.device(use_gpu=True):
                 with self.cached_session():
                   # pylint: disable=cell-var-from-loop
-                  err1 = gradient_checker_v2.max_error(
-                      *gradient_checker_v2.compute_gradient(
+                  if (self.__class__.__name__ ==
+                      "CropAndResizeOpDeterministicTest" and
+                      test_util.is_gpu_available()):
+                    with self.assertRaises(errors_impl.UnimplementedError):
+                      gradient_checker_v2.compute_gradient(
                           lambda x: crop_resize(x, boxes_tensor),
-                          [image_tensor]))
-                  err2 = gradient_checker_v2.max_error(
-                      *gradient_checker_v2.compute_gradient(
+                          [image_tensor])
+                    with self.assertRaises(errors_impl.UnimplementedError):
+                      gradient_checker_v2.compute_gradient(
                           lambda x: crop_resize(image_tensor, x),
-                          [boxes_tensor]))
-                  err = max(err1, err2)
-
-              self.assertLess(err, 2e-3)
+                          [boxes_tensor])
+                  else:
+                    err1 = gradient_checker_v2.max_error(
+                        *gradient_checker_v2.compute_gradient(
+                            lambda x: crop_resize(x, boxes_tensor),
+                            [image_tensor]))
+                    err2 = gradient_checker_v2.max_error(
+                        *gradient_checker_v2.compute_gradient(
+                            lambda x: crop_resize(image_tensor, x),
+                            [boxes_tensor]))
+                    err = max(err1, err2)
+                    self.assertLess(err, 2e-3)
 
 
 @test_util.run_all_in_graph_and_eager_modes

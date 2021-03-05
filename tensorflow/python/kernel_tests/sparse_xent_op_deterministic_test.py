@@ -65,7 +65,13 @@ class SparseSoftmaxCrossEntropyWithLogitsDeterminismExceptionsTest(
 
 
 class SparseSoftmaxCrossEntropyWithLogitsDeterministicTest(test.TestCase):
-  """Test that SparseSoftmaxCrossEntropyWithLogits operates reproducibly."""
+  """Test that SparseSoftmaxCrossEntropyWithLogits operates reproducibly.
+
+  Note that the deterministic functionality currently tested by this class is
+  always activated (not enabled by TF_DETERMINISTIC_OPS), so this class does not
+  currently need to inherit from a base op test class (to ensure that the op
+  still functions correctly when determinism is enabled).
+  """
 
   def _randomInts(self, shape, high, dtype):
     return constant_op.constant(
