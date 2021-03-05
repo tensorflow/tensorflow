@@ -292,13 +292,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       params.cancellation_manager = cancellation_manager_.get();
       TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
           IteratorContext(params), this, prefix(), &input_impl_));
-      TF_RETURN_IF_ERROR(dataset()->captured_func_->Instantiate(
-          ctx, &instantiated_captured_func_));
-      if (ctx->warm_start()) {
-        mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(EnsureThreadsStarted(ctx));
-      }
-      return Status::OK();
+      return dataset()->captured_func_->Instantiate(
+          ctx, &instantiated_captured_func_);
     }
 
     // It is implemented so that it matches the deterministic interleave
@@ -308,7 +303,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(EnsureThreadsStarted(ctx));
+      TF_RETURN_IF_ERROR(EnsureWorkerThreadsStarted(ctx));
       while (!cancelled_) {
         // Wait for an item to become available, blocking if necessary. If we
         // are allowed to be nondeterministic, we can skip over input datasets
@@ -565,7 +560,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       if (reader->Contains(prefix(), kWorkerThreadsRunning)) {
         worker_threads_.reserve(dataset()->num_threads());
         for (size_t i = 0; i < dataset()->num_threads(); ++i) {
-          auto new_ctx = std::make_shared<IteratorContext>(*ctx);
+          std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
           worker_threads_.emplace_back(ctx->StartThread(
               strings::StrCat(kDataParallelInterleaveWorker, "_", i),
               [this, new_ctx, i]() { WorkerThread(new_ctx, i); }));
@@ -666,7 +661,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    Status EnsureThreadsStarted(IteratorContext* ctx)
+    Status EnsureWorkerThreadsStarted(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (worker_threads_.empty() && input_impl_) {
         worker_threads_.reserve(dataset()->num_threads());
@@ -679,7 +674,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             return Status::OK();
           }
           workers_[i].SetInputs(s, std::move(args));
-          auto new_ctx = std::make_shared<IteratorContext>(*ctx);
+          std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
           worker_threads_.push_back(ctx->StartThread(
               strings::StrCat(kDataParallelInterleaveWorker, "_", i),
               [this, new_ctx, i]() { WorkerThread(new_ctx, i); }));

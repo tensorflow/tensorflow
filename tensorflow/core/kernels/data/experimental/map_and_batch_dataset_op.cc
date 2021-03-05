@@ -226,12 +226,8 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       params.cancellation_manager = cancellation_manager_.get();
       TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
           IteratorContext(params), this, prefix(), &input_impl_));
-      TF_RETURN_IF_ERROR(dataset()->captured_func_->Instantiate(
-          ctx, &instantiated_captured_func_));
-      if (ctx->warm_start()) {
-        EnsureThreadsStarted(ctx);
-      }
-      return Status::OK();
+      return dataset()->captured_func_->Instantiate(
+          ctx, &instantiated_captured_func_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -240,7 +236,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       std::shared_ptr<BatchResult> result;
       {
         mutex_lock l(*mu_);
-        EnsureThreadsStarted(ctx);
+        EnsureRunnerThreadStarted(ctx);
         while (!cancelled_ && (batch_results_.empty() ||
                                batch_results_.front()->num_calls > 0)) {
           ++waiting_;
@@ -315,9 +311,6 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       DCHECK(batch_results_.empty());
       for (int i = 0; i < batch_results_size; ++i) {
         TF_RETURN_IF_ERROR(ReadBatchResult(ctx, reader, i));
-      }
-      if (ctx->warm_start()) {
-        EnsureThreadsStarted(ctx);
       }
       return Status::OK();
     }
@@ -497,13 +490,13 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    void EnsureThreadsStarted(IteratorContext* ctx)
+    void EnsureRunnerThreadStarted(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (!runner_thread_) {
-        auto new_ctx = std::make_shared<IteratorContext>(*ctx);
-        runner_thread_ =
-            ctx->StartThread(kTFDataMapAndBatch,
-                             std::bind(&Iterator::RunnerThread, this, new_ctx));
+        auto ctx_copy = std::make_shared<IteratorContext>(*ctx);
+        runner_thread_ = ctx->StartThread(
+            kTFDataMapAndBatch,
+            std::bind(&Iterator::RunnerThread, this, ctx_copy));
       }
     }
 

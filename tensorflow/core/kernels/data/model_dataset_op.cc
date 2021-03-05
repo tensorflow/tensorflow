@@ -14,11 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/model_dataset_op.h"
 
+#include "tensorflow/core/framework/cancellation.h"
+
 // On mobile we do not provide model dataset op because not all of its
 // dependencies are available there. The op is replaced with a no-op.
 #if !defined(IS_MOBILE_PLATFORM)
 #include "absl/memory/memory.h"
-#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
@@ -41,19 +42,17 @@ constexpr double kRamBudgetShare = 0.5;
 /* static */ constexpr const char* const ModelDatasetOp::kAlgorithm;
 /* static */ constexpr const char* const ModelDatasetOp::kCpuBudget;
 /* static */ constexpr const char* const ModelDatasetOp::kRamBudget;
-/* static */ constexpr const char* const ModelDatasetOp::kWarmStart;
 
 class ModelDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input,
           model::AutotuneAlgorithm algorithm, int64 cpu_budget,
-          int64 ram_budget, bool warm_start)
+          int64 ram_budget)
       : DatasetBase(DatasetContext(ctx)),
         input_(input),
         algorithm_(algorithm),
         cpu_budget_(cpu_budget),
         ram_budget_(ram_budget),
-        warm_start_(warm_start),
         traceme_metadata_(
             {{"algorithm", algorithm == model::AutotuneAlgorithm::HILL_CLIMB
                                ? "hill climb"
@@ -61,8 +60,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
              {"cpu_budget",
               strings::Printf("%lld", static_cast<long long>(cpu_budget))},
              {"ram_budget",
-              strings::Printf("%lldB", static_cast<long long>(ram_budget))},
-             {"warm_start", warm_start ? "true" : "false"}}) {
+              strings::Printf("%lldB", static_cast<long long>(ram_budget))}}) {
     input_->Ref();
   }
 
@@ -134,25 +132,24 @@ class ModelDatasetOp::Dataset : public DatasetBase {
     ~Iterator() override { cancellation_manager_->StartCancel(); }
 
     Status Initialize(IteratorContext* ctx) override {
-      TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
-          IteratorContext(CreateParams(ctx)), this, prefix(), &input_impl_));
-      if (ShouldWarmStart(ctx)) {
-        mutex_lock l(mu_);
-        EnsureThreadsStarted(ctx);
-      }
-      return Status::OK();
+      IteratorContext::Params params(ctx);
+      params.model = model_;
+      return dataset()->input_->MakeIterator(IteratorContext(std::move(params)),
+                                             this, prefix(), &input_impl_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
+      IteratorContext::Params params(ctx);
       {
         mutex_lock l(mu_);
-        EnsureThreadsStarted(ctx);
+        TF_RETURN_IF_ERROR(EnsureOptimizationLoopThreadStarted(ctx));
+        params.model = model_;
         int64 now_nanos = EnvTime::NowNanos();
         RecordInput(now_nanos);
       }
-      Status s = input_impl_->GetNext(IteratorContext(CreateParams(ctx)),
+      Status s = input_impl_->GetNext(IteratorContext(std::move(params)),
                                       out_tensors, end_of_sequence);
       int64 now_nanos = EnvTime::NowNanos();
       mutex_lock l(mu_);
@@ -176,12 +173,11 @@ class ModelDatasetOp::Dataset : public DatasetBase {
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
+      IteratorContext::Params params(ctx);
+      params.model = model_;
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(RestoreInput(IteratorContext(CreateParams(ctx)),
+      TF_RETURN_IF_ERROR(RestoreInput(IteratorContext(std::move(params)),
                                       reader, input_impl_));
-      if (ShouldWarmStart(ctx)) {
-        EnsureThreadsStarted(ctx);
-      }
       return Status::OK();
     }
 
@@ -190,14 +186,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
-    IteratorContext::Params CreateParams(IteratorContext* ctx) {
-      IteratorContext::Params params(ctx);
-      params.model = model_;
-      params.warm_start = ShouldWarmStart(ctx);
-      return params;
-    }
-
-    void EnsureThreadsStarted(IteratorContext* ctx)
+    Status EnsureOptimizationLoopThreadStarted(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!model_thread_) {
         model_thread_ = ctx->StartThread("tf_data_model", [this]() {
@@ -209,6 +198,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
           }
         });
       }
+      return Status::OK();
     }
 
     void RecordInput(int64 time_nanos) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -231,10 +221,6 @@ class ModelDatasetOp::Dataset : public DatasetBase {
              static_cast<double>(num_input_events_);
     }
 
-    bool ShouldWarmStart(IteratorContext* ctx) {
-      return !ctx->is_restoring() && dataset()->warm_start_;
-    }
-
     mutex mu_;
     std::shared_ptr<model::Model> model_;
     // Controls cancellation of `model_thread_`. Must be ordered before
@@ -253,7 +239,6 @@ class ModelDatasetOp::Dataset : public DatasetBase {
   const model::AutotuneAlgorithm algorithm_;
   const int64 cpu_budget_;
   const int64 ram_budget_;
-  const bool warm_start_;
   const TraceMeMetadata traceme_metadata_;
 };
 
@@ -275,11 +260,6 @@ ModelDatasetOp::ModelDatasetOp(OpKernelConstruction* ctx)
   } else {
     ram_budget_ = 0;
   }
-  if (ctx->HasAttr(kWarmStart)) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kWarmStart, &warm_start_));
-  } else {
-    warm_start_ = true;
-  }
   OP_REQUIRES(ctx, ram_budget_ >= 0,
               errors::InvalidArgument("RAM budget must be positive but is ",
                                       ram_budget_, "."));
@@ -288,7 +268,7 @@ ModelDatasetOp::ModelDatasetOp(OpKernelConstruction* ctx)
 void ModelDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                  DatasetBase** output) {
   *output = new ModelDatasetOp::Dataset(ctx, input, algorithm_, cpu_budget_,
-                                        ram_budget_, warm_start_);
+                                        ram_budget_);
 }
 
 namespace {

@@ -230,12 +230,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       params.cancellation_manager = cancellation_manager_.get();
       TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
           IteratorContext(params), this, prefix(), &input_impl_));
-      TF_RETURN_IF_ERROR(dataset()->captured_func_->Instantiate(
-          ctx, &instantiated_captured_func_));
-      if (ctx->warm_start()) {
-        EnsureThreadsStarted(ctx);
-      }
-      return Status::OK();
+      return dataset()->captured_func_->Instantiate(
+          ctx, &instantiated_captured_func_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -350,9 +346,6 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         RecordBufferEnqueue(ctx, result.return_values);
         result.notification.Notify();
       }
-      if (ctx->warm_start()) {
-        EnsureThreadsStarted(ctx);
-      }
       return Status::OK();
     }
 
@@ -401,17 +394,16 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
 
     void EnsureThreadsStarted(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
-      if (!threads_started_) {
-        auto new_ctx = std::make_shared<IteratorContext>(*ctx);
-        runner_thread_ =
-            ctx->StartThread("tf_data_parallel_map",
-                             std::bind(&Iterator::RunnerThread, this, new_ctx));
+      if (!runner_thread_) {
+        auto ctx_copy = std::make_shared<IteratorContext>(*ctx);
+        runner_thread_ = ctx->StartThread(
+            "tf_data_parallel_map",
+            std::bind(&Iterator::RunnerThread, this, ctx_copy));
         if (ctx->stats_aggregator()) {
           stats_thread_ = ctx->StartThread(
               "tf_data_parallel_map_stats",
-              std::bind(&Iterator::StatsThread, this, new_ctx));
+              std::bind(&Iterator::StatsThread, this, ctx_copy));
         }
-        threads_started_ = true;
       }
     }
 
@@ -664,8 +656,6 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         TF_GUARDED_BY(*mu_);
     std::unique_ptr<Thread> runner_thread_ TF_GUARDED_BY(*mu_);
     std::unique_ptr<Thread> stats_thread_ TF_GUARDED_BY(*mu_);
-    // Identifies whether the background threads have been started.
-    bool threads_started_ TF_GUARDED_BY(mu_) = false;
     bool cancelled_ TF_GUARDED_BY(*mu_) = false;
 
     // Method for deregistering the cancellation callback.
