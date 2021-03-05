@@ -8,28 +8,6 @@ package(
 exports_files(["LICENSE"])
 
 tf_py_test(
-    name = "auto_shard_dataset_serialization_test",
-    size = "medium",
-    srcs = ["auto_shard_dataset_serialization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python/data/experimental/ops:distribute",
-        "//tensorflow/python/data/experimental/ops:interleave_ops",
-        "//tensorflow/python/data/experimental/ops:readers",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
     name = "batch_dataset_serialization_test",
     size = "medium",
     srcs = ["batch_dataset_serialization_test.py"],
