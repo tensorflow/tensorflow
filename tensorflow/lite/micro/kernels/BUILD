@@ -37,6 +37,16 @@ cc_library(
 )
 
 cc_library(
+    name = "circular_buffer_flexbuffers_generated_data",
+    srcs = [
+        "circular_buffer_flexbuffers_generated_data.cc",
+    ],
+    hdrs = [
+        "circular_buffer_flexbuffers_generated_data.h",
+    ],
+)
+
+cc_library(
     name = "conv",
     srcs = [
         "conv_common.cc",
@@ -166,12 +176,12 @@ cc_library(
 )
 
 cc_library(
-    name = "flexbuffers_generated_data",
+    name = "detection_postprocess_flexbuffers_generated_data",
     srcs = [
-        "flexbuffers_generated_data.cc",
+        "detection_postprocess_flexbuffers_generated_data.cc",
     ],
     hdrs = [
-        "flexbuffers_generated_data.h",
+        "detection_postprocess_flexbuffers_generated_data.h",
     ],
 )
 
@@ -457,6 +467,7 @@ cc_test(
         "circular_buffer_test.cc",
     ],
     deps = [
+        "circular_buffer_flexbuffers_generated_data",
         ":kernel_runner",
         ":micro_ops",
         "//tensorflow/lite/c:common",
@@ -540,7 +551,7 @@ cc_test(
         "detection_postprocess_test.cc",
     ],
     deps = [
-        ":flexbuffers_generated_data",
+        ":detection_postprocess_flexbuffers_generated_data",
         ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:tensor",
