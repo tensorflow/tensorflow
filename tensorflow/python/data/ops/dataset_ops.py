@@ -2397,19 +2397,17 @@ class DatasetV1(DatasetV2):
         return iterator_ops.OwnedIterator(self)
 
     _ensure_same_dataset_graph(self)
-    # Now that we create datasets at python object creation time, the capture
-    # by value _make_dataset() function would try to capture these variant
-    # tensor dataset inputs, which are marked as stateful ops and would throw
-    # an error if we try and capture them. We therefore traverse the graph
-    # to find all these ops and allowlist them so that the capturing
-    # logic instead of throwing an error recreates these ops which is what was
-    # happening before.
-    all_ds_ops = traverse.obtain_all_variant_tensor_ops(self)
+    # Some ops (e.g. dataset ops) are marked as stateful but are stil safe to
+    # to capture by value. We must allowlist these ops so that the capturing
+    # logic captures the ops instead of raising an exception.
+    allowlisted_stateful_ops = traverse.obtain_capture_by_value_ops(self)
     graph_level_seed, op_level_seed = core_random_seed.get_seed(None)
 
     # NOTE(mrry): We capture by value here to ensure that `_make_dataset()` is
     # a 0-argument function.
-    @function.Defun(capture_by_value=True, allowlisted_stateful_ops=all_ds_ops)
+    @function.Defun(
+        capture_by_value=True,
+        allowlisted_stateful_ops=allowlisted_stateful_ops)
     def _make_dataset():
       """Factory function for a dataset."""
       # NOTE(mrry): `Defun` does not capture the graph-level seed from the
