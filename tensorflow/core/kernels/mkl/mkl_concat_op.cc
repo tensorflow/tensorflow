@@ -280,7 +280,7 @@ class MklConcatFwdPrimitive : public MklPrimitive {
                std::shared_ptr<stream> fwd_stream) {
     DCHECK_EQ(in_data.size(), context_.data_mem.size());
     for (size_t i = 0; i < concat_fwd_dims.num_inputs; i++) {
-#ifndef ENABLE_ONEDNN_OPENMP
+#ifdef ENABLE_MKLDNN_THREADPOOL
       context_.data_mem_shdptr[i]->set_data_handle(
           static_cast<void*>(in_data[i].get_data_handle()), *fwd_stream);
     }
@@ -292,7 +292,7 @@ class MklConcatFwdPrimitive : public MklPrimitive {
     }
     context_.dst_mem->set_data_handle(
         static_cast<void*>(dst_data.get_data_handle()));
-#endif  // !ENABLE_ONEDNN_OPENMP
+#endif  // ENABLE_MKLDNN_THREADPOOL
 
     for (size_t i = 0; i < concat_fwd_dims.num_inputs; i++) {
       context_.data_mem[i] = *context_.data_mem_shdptr[i];

@@ -87,13 +87,13 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
 
   void Execute(void* src_data, void* dst_data,
                std::shared_ptr<stream> reorder_stream) {
-#ifndef ENABLE_ONEDNN_OPENMP
+#ifdef ENABLE_MKLDNN_THREADPOOL
     context_.src_mem->set_data_handle(src_data, *reorder_stream);
     context_.dst_mem->set_data_handle(dst_data, *reorder_stream);
 #else
     context_.src_mem->set_data_handle(src_data);
     context_.dst_mem->set_data_handle(dst_data);
-#endif  // !ENABLE_ONEDNN_OPENMP
+#endif  // ENABLE_MKLDNN_THREADPOOL
     context_.reorder_prim->execute(*reorder_stream, context_.prim_args);
     // After execution, set data handle back.
     context_.src_mem->set_data_handle(DummyData);

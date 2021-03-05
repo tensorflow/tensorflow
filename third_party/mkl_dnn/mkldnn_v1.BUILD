@@ -10,7 +10,8 @@ load(
 )
 load(
     "@org_tensorflow//third_party/mkl_dnn:build_defs.bzl",
-    "if_mkldnn_openmp",
+    "if_mkl_open_source_only",
+    "if_mkldnn_threadpool",
 )
 load(
     "@org_tensorflow//third_party/mkl:build_defs.bzl",
@@ -44,8 +45,8 @@ template_rule(
     src = "include/dnnl_config.h.in",
     out = "include/dnnl_config.h",
     substitutions = select({
-        "@org_tensorflow//third_party/mkl_dnn:build_with_mkldnn_openmp": _DNNL_RUNTIME_OMP,
-        "@org_tensorflow//third_party/mkl:build_with_mkl": _DNNL_RUNTIME_THREADPOOL,
+        "@org_tensorflow//third_party/mkl_dnn:build_with_mkldnn_threadpool": _DNNL_RUNTIME_THREADPOOL,
+        "@org_tensorflow//third_party/mkl:build_with_mkl": _DNNL_RUNTIME_OMP,
         "//conditions:default": _DNNL_RUNTIME_SEQ,
     }),
 )

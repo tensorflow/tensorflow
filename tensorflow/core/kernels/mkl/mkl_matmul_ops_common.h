@@ -95,7 +95,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
   void Execute(const Tinput* src_data, const Tweight* weight_data,
                const Tbias* bias_data, Toutput* dst_data,
                std::shared_ptr<stream> fwd_stream) {
-#ifndef ENABLE_ONEDNN_OPENMP
+#ifdef ENABLE_MKLDNN_THREADPOOL
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<Tinput*>(src_data)), *fwd_stream);
     context_.weight_mem->set_data_handle(
@@ -112,7 +112,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     context_.bias_mem->set_data_handle(
         static_cast<void*>(const_cast<Tbias*>(bias_data)));
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
-#endif  // !ENABLE_ONEDNN_OPENMP
+#endif  // ENABLE_MKLDNN_THREADPOOL
 
     execute_primitives(context_.fwd_primitives, fwd_stream, context_.net_args);
 
@@ -534,7 +534,7 @@ class MklMatMulPrimitive : public MklPrimitive {
 
   void Execute(const T* a_data, const T* b_data, T* c_data,
                std::shared_ptr<stream> stream) {
-#ifndef ENABLE_ONEDNN_OPENMP
+#ifdef ENABLE_MKLDNN_THREADPOOL
     context_.a_mem->set_data_handle(static_cast<void*>(const_cast<T*>(a_data)),
                                     *stream);
     context_.b_mem->set_data_handle(static_cast<void*>(const_cast<T*>(b_data)),
@@ -545,7 +545,7 @@ class MklMatMulPrimitive : public MklPrimitive {
     context_.a_mem->set_data_handle(static_cast<void*>(const_cast<T*>(a_data)));
     context_.b_mem->set_data_handle(static_cast<void*>(const_cast<T*>(b_data)));
     context_.c_mem->set_data_handle(static_cast<void*>(const_cast<T*>(c_data)));
-#endif  // !ENABLE_ONEDNN_OPENMP
+#endif  // ENABLE_MKLDNN_THREADPOOL
     execute_primitives(context_.matmul_primitives, stream, context_.net_args);
 
     // After execution, set data handle back

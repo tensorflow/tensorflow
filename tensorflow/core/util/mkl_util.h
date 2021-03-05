@@ -224,7 +224,7 @@ inline bool array_cmp(const T* a1, const T* a2, size_t size) {
 
 inline mkldnn::stream* CreateStream(MklDnnThreadPool* eigen_tp,
                                     const engine& engine) {
-#ifndef ENABLE_ONEDNN_OPENMP
+#ifdef ENABLE_MKLDNN_THREADPOOL
   stream_attr tp_stream_attr(engine::kind::cpu);
   if (eigen_tp != nullptr) {
     tp_stream_attr.set_threadpool(eigen_tp);
@@ -238,7 +238,7 @@ inline mkldnn::stream* CreateStream(MklDnnThreadPool* eigen_tp,
 #else
   stream* tp_stream = new stream(engine);
   return tp_stream;
-#endif  // !ENABLE_ONEDNN_OPENMP
+#endif  // ENABLE_MKLDNN_THREADPOOL
 }
 
 class MklDnnShape {
@@ -1390,11 +1390,11 @@ class MklDnnData {
                                   std::shared_ptr<stream> t_stream = nullptr) {
     CHECK_NOTNULL(user_memory_);
     CHECK_NOTNULL(data_buffer);
-#ifndef ENABLE_ONEDNN_OPENMP
+#ifdef ENABLE_MKLDNN_THREADPOOL
     user_memory_->set_data_handle(data_buffer, *t_stream);
 #else
     user_memory_->set_data_handle(data_buffer);
-#endif  // !ENABLE_ONEDNN_OPENMP
+#endif  // ENABLE_MKLDNN_THREADPOOL
   }
 
   /// Set function for data buffer of user memory primitive.

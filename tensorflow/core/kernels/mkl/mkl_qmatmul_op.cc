@@ -431,7 +431,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
                     ((max_input - min_input) *
                      std::max(std::abs(max_weight), std::abs(min_weight)));
 
-#ifndef ENABLE_ONEDNN_OPENMP
+#ifdef ENABLE_MKLDNN_THREADPOOL
         auto parallel_func = [&](int64 start, int64 end) {
           for (int64 j = start; j < end; j++) {
             int x = 0;
@@ -460,7 +460,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
           comp_bias[j] =
               ((bias_buf[j] * out_scale) + static_cast<float>(x * qa_amin));
         }
-#endif  // !ENABLE_ONEDNN_OPENMP
+#endif  // ENABLE_MKLDNN_THREADPOOL
         return reinterpret_cast<Tbias*>(comp_bias_);
 
       } else if (mode_ == QUANTIZE_MODE_SCALED) {
