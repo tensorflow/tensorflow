@@ -70,6 +70,18 @@ static inline Status ParseAndCheckBoxSizes(const Tensor& boxes,
   if (boxes.dim_size(1) != 4) {
     return errors::InvalidArgument("boxes must have 4 columns");
   }
+  for (int64 i = 0; i < *num_boxes; i++) {
+    for (int64 j = 0; j < 4; j++) {
+      if (!isfinite(boxes.tensor<float, 2>()(i, j))) {
+        return errors::InvalidArgument(
+            "boxes values must be finite, received boxes[", i, "]: ",
+            boxes.tensor<float, 2>()(i, 0), ", ",
+            boxes.tensor<float, 2>()(i, 1), ", ",
+            boxes.tensor<float, 2>()(i, 2), ", ",
+            boxes.tensor<float, 2>()(i, 3));
+      }
+    }
+  }
   // The shape of 'box_index' is [num_boxes].
   if (box_index.dims() != 1) {
     return errors::InvalidArgument("box_index must be 1-D",

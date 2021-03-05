@@ -5224,6 +5224,18 @@ class DecodeImageTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(list(image0.shape), [40, 20, 3])
       self.assertAllEqual(image0, image1)
 
+  def testImageCropAndResize(self):
+    # Test case for GitHub issue 42129
+    message = "boxes values must be finite"
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError), message):
+      v = image_ops_impl.crop_and_resize_v2(
+          image=array_ops.zeros((2, 1, 1, 1)),
+          boxes=[[1.0e+40, 0, 0, 0]],
+          box_indices=[1],
+          crop_size=[1, 1])
+      self.evaluate(v)
+
 
 if __name__ == "__main__":
   googletest.main()

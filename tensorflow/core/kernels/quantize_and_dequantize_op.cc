@@ -71,6 +71,10 @@ class QuantizeAndDequantizeV2Op : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(0);
+    OP_REQUIRES(
+        ctx, (axis_ == -1 || axis_ < input.shape().dims()),
+        errors::InvalidArgument("Shape must be at least rank ", axis_ + 1,
+                                " but is rank ", input.shape().dims()));
     const int depth = (axis_ == -1) ? 1 : input.dim_size(axis_);
     Tensor input_min_tensor;
     Tensor input_max_tensor;
