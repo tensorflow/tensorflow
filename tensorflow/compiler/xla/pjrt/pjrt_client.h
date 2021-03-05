@@ -173,6 +173,8 @@ class PjRtClient {
   // Returns a string that identifies the platform (CPU/GPU/TPU).
   virtual absl::string_view platform_name() const = 0;
 
+  virtual absl::string_view platform_version() const = 0;
+
   // Return a device-specific default device assignment, e.g., GPU and TPU may
   // be different.
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
