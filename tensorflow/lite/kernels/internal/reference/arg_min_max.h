@@ -78,9 +78,8 @@ template <typename T1, typename T2, typename T3>
 void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
                const T3* input2_data, const RuntimeShape& output_shape,
                T2* output_data, const bool is_arg_max) {
-  const auto& cmp = GetComparefunction<T1>(is_arg_max);
   ArgMinMax(input1_shape, input1_data, input2_data, output_shape, output_data,
-            cmp);
+            GetComparefunction<T1>(is_arg_max));
 }
 
 }  // namespace reference_ops
