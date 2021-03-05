@@ -1,0 +1,7 @@
+path: "tensorflow.__internal__.feature_column"
+tf_module {
+  member {
+    name: "StateManager"
+    mtype: "<type \'type\'>"
+  }
+}
