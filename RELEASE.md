@@ -38,6 +38,7 @@
         multiple input batches should be computed in parallel. With
         `num_parallel_calls` set, `deterministic` is used to indicate that
         outputs can be obtained in the non-deterministic order.
+    *   Options returned by `tf.data.Dataset.options()` are no longer mutable.
 
 ## Bug Fixes and Other Changes
 
