@@ -184,17 +184,18 @@ StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
   // RPCs may timeout waiting for other hosts to come up, but will succeed
   // at a later point if retried).
   auto start = absl::Now();
-  // TODO(b/165870356): TpuPlatform::Initialized() always returns true!
-  auto status = platform->Initialize({});
-  while (!platform->Initialized()) {
-    status = platform->Initialize({});
-    if (!status.ok()) {
-      LOG(ERROR) << "Platform initialization failed: " << status;
-      if ((absl::Now() - start) >= init_retry_timeout) {
-        return status;
-      }
+  while (true) {
+    Status status = platform->Initialize({});
+    if (status.ok()) {
+      break;
     }
+    LOG(INFO) << "TPU platform initialization failed: " << status;
+    if ((absl::Now() - start) >= init_retry_timeout) {
+      return status;
+    }
+    absl::SleepFor(absl::Microseconds(10));
   }
+  CHECK(platform->Initialized());
   if (platform->VisibleDeviceCount() <= 0) {
     return InvalidArgument("No TPU devices found.");
   }
