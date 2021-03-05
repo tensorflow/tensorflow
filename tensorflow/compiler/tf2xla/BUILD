@@ -485,6 +485,7 @@ cc_library(
         ":xla_resource",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client",
+        "//tensorflow/compiler/xla/client:value_inference",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1121,6 +1122,18 @@ tf_cuda_cc_test(
         "//third_party/eigen3",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "mlir_xla_op_kernel",
+    srcs = ["mlir_xla_op_kernel.cc"],
+    hdrs = ["mlir_xla_op_kernel.h"],
+    deps = [
+        ":xla_compiler",
+        "//tensorflow/compiler/jit:xla_compilation_cache",
+        "//tensorflow/compiler/mlir:array_container_utils",
+        "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
     ],
 )
 

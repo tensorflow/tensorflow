@@ -2923,16 +2923,17 @@ static LogicalResult VerifyWhileTypes(Operation *op, TypeRange cond_input,
   return success();
 }
 
-static LogicalResult Verify(WhileOp op) {
-  auto cond_fn = op.cond_function();
-  auto body_fn = op.body_function();
+LogicalResult WhileOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
+  // TODO(jpienaar): Remove.
+  if (failed(WhileOpAdaptor(*this).verify(getLoc()))) return failure();
+
+  auto cond_fn = symbol_table.lookupNearestSymbolFrom<FuncOp>(*this, cond());
+  auto body_fn = symbol_table.lookupNearestSymbolFrom<FuncOp>(*this, body());
   if (!cond_fn) {
-    return op.emitOpError("cond refers to an undefined function : ")
-           << op.cond();
+    return emitOpError("cond refers to an undefined function : ") << cond();
   }
   if (!body_fn) {
-    return op.emitOpError("body refers to an undefined function : ")
-           << op.body();
+    return emitOpError("body refers to an undefined function : ") << body();
   }
 
   auto cond_fn_type = cond_fn.getType();
@@ -2940,14 +2941,12 @@ static LogicalResult Verify(WhileOp op) {
 
   // Verify that the cond function has exactly one result.
   if (cond_fn_type.getNumResults() != 1)
-    return op.emitOpError("requires cond function to have exactly one result");
+    return emitOpError("requires cond function to have exactly one result");
 
-  if (failed(VerifyWhileTypes(op, /*cond_input=*/cond_fn_type.getInputs(),
-                              /*body_input=*/body_fn_type.getInputs(),
-                              /*body_result=*/body_fn_type.getResults(),
-                              op.shape_invariant())))
-    return failure();
-  return success();
+  return VerifyWhileTypes(*this, /*cond_input=*/cond_fn_type.getInputs(),
+                          /*body_input=*/body_fn_type.getInputs(),
+                          /*body_result=*/body_fn_type.getResults(),
+                          shape_invariant());
 }
 
 //===----------------------------------------------------------------------===//

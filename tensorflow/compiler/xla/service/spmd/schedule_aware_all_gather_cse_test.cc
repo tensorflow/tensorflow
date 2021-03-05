@@ -63,6 +63,52 @@ ENTRY entry {
   EXPECT_EQ(tuple->operand(0), tuple->operand(1));
 }
 
+TEST_F(AllGatherCseTest, SimpleCseReshapeLookthrough) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  param0 = s32[8]{0} parameter(0)
+  rshp = s32[1,8]{1,0} reshape(param0)
+  rshp2 = s32[1,8]{1,0} reshape(param0)
+  ag1 = s32[2,8]{1,0} all-gather(rshp), replica_groups={{0,1}}, dimensions={0},
+    channel_id=0, use_global_device_ids=true
+  ag2 = s32[2,8]{1,0} all-gather(rshp2), replica_groups={{0,1}}, dimensions={0},
+    channel_id=1, use_global_device_ids=true
+  ROOT tuple = (s32[2,8]{1,0}, s32[2,8]{1,0}) tuple(ag1, ag2)
+})";
+  auto module_status = RunPass(hlo_string);
+  EXPECT_TRUE(module_status.status().ok());
+  auto module = module_status.ConsumeValueOrDie();
+  HloInstruction* tuple = module->entry_computation()->root_instruction();
+  EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
+  EXPECT_EQ(tuple->operand_count(), 2);
+  EXPECT_EQ(tuple->operand(0), tuple->operand(1));
+}
+
+TEST_F(AllGatherCseTest, SimpleNoCseInvalidReshapes) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  param0 = s32[8]{0} parameter(0)
+  rshp = s32[2,4]{1,0} reshape(param0)
+  rshp2 = s32[2,4]{1,0} reshape(param0)
+  ag1 = s32[4,4]{1,0} all-gather(rshp), replica_groups={{0,1}}, dimensions={0},
+    channel_id=0, use_global_device_ids=true
+  ag2 = s32[4,4]{1,0} all-gather(rshp2), replica_groups={{0,1}}, dimensions={0},
+    channel_id=1, use_global_device_ids=true
+  ROOT tuple = (s32[4,4]{1,0}, s32[4,4]{1,0}) tuple(ag1, ag2)
+})";
+  auto module_status = RunPass(hlo_string);
+  EXPECT_TRUE(module_status.status().ok());
+  auto module = module_status.ConsumeValueOrDie();
+  HloInstruction* tuple = module->entry_computation()->root_instruction();
+  EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
+  EXPECT_EQ(tuple->operand_count(), 2);
+  EXPECT_NE(tuple->operand(0), tuple->operand(1));
+}
+
 TEST_F(AllGatherCseTest, SimpleCseDifferentDim) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -72,6 +118,29 @@ ENTRY entry {
   ag1 = s32[1,16]{1,0} all-gather(param0), replica_groups={{0,1}}, dimensions={1},
     channel_id=0, use_global_device_ids=true
   ag2 = s32[1,16]{1,0} all-gather(param0), replica_groups={{0,1}},
+    dimensions={1}, channel_id=1, use_global_device_ids=true
+  ROOT tuple = (s32[1,16]{1,0}, s32[2,8,1,1]{3,2,1,0}) tuple(ag1, ag2)
+})";
+  auto module_status = RunPass(hlo_string);
+  EXPECT_TRUE(module_status.status().ok());
+  auto module = module_status.ConsumeValueOrDie();
+  HloInstruction* tuple = module->entry_computation()->root_instruction();
+  EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
+  EXPECT_EQ(tuple->operand_count(), 2);
+  EXPECT_EQ(tuple->operand(0), tuple->operand(1));
+}
+
+TEST_F(AllGatherCseTest, SimpleCseDifferentDimReshapeLookthrough) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  param0 = s32[8]{0} parameter(0)
+  rshp = s32[1,8]{1,0} reshape(param0)
+  rshp2 = s32[1,8]{1,0} reshape(param0)
+  ag1 = s32[1,16]{1,0} all-gather(rshp), replica_groups={{0,1}}, dimensions={1},
+    channel_id=0, use_global_device_ids=true
+  ag2 = s32[1,16]{1,0} all-gather(rshp2), replica_groups={{0,1}},
     dimensions={1}, channel_id=1, use_global_device_ids=true
   ROOT tuple = (s32[1,16]{1,0}, s32[2,8,1,1]{3,2,1,0}) tuple(ag1, ag2)
 })";

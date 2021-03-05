@@ -41,6 +41,7 @@ class EagerExecutor;
 class EagerContext;
 class CustomDevice;
 class CustomDeviceOpHandler;
+class Device;
 
 // LINT.IfChange
 // Note: Keep in sync with exported copy of enum in eager/c_api.h.
@@ -163,6 +164,17 @@ class ImmediateExecutionContext : public AbstractContext {
   virtual Status RegisterCustomDevice(const string& name,
                                       std::unique_ptr<CustomDevice> device) = 0;
 
+  // Return FunctionLibraryDefinition. Transformations need to use it to use it
+  // to invoke MLIR compiler passes.
+  virtual FunctionLibraryDefinition* FuncLibDef() = 0;
+
+  // When tensor transfer across functions/eager executions using send/recv ops
+  // are required, `reuse_rendezvous_for_functions_` can be set to true so that
+  // function executions and eager executions use the same rendezvous instance,
+  // instead of creating new instance per function calls.
+  virtual void SetReuseRendezvousForFunctions(
+      bool reuse_rendezvous_for_functions) = 0;
+
   //===--------------------------------------------------------------------===//
   // Following are features in current TF Eager Runtime.
   // TODO(tfrt-devs): Figure out a way to deprecate following features after
@@ -184,6 +196,7 @@ class ImmediateExecutionContext : public AbstractContext {
   virtual void SetExecutorForThread(EagerExecutor* executor) = 0;
 
   // Return a list of local tensorflow::Device*.
+  // TODO(tfrt-devs): We shouldn't expose legacy device in this API.
   virtual std::vector<tensorflow::Device*> ListLocalTfDevices() = 0;
 
   //===--------------------------------------------------------------------===//

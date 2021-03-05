@@ -61,7 +61,7 @@ def HLO_ConstOp : HLO_Op<"constant",
   );
 
   let builders = [
-    OpBuilderDAG<(ins "Attribute":$value)>];
+    OpBuilder<(ins "Attribute":$value)>];
 
   let assemblyFormat = "attr-dict $value";
 
@@ -163,7 +163,7 @@ def HLO_ConvertOp : HLO_UnaryElementwiseOp<"convert",
     [NoSideEffect, SameOperandsAndResultShape], HLO_Tensor>,
     BASE_HLO_ConvertOp {
   let builders = [
-    OpBuilderDAG<(ins "Value":$operand, "Type":$result_element_ty)>];
+    OpBuilder<(ins "Value":$operand, "Type":$result_element_ty)>];
 
   let hasFolder = 1;
 
@@ -624,7 +624,7 @@ def HLO_ReduceOp: HLO_Op<"reduce", [
   let results = (outs Variadic<HLO_TensorOrTuple>);
 
   let builders = [
-    OpBuilderDAG<(ins "ValueRange":$operands, "ValueRange":$init_values,
+    OpBuilder<(ins "ValueRange":$operands, "ValueRange":$init_values,
       "DenseIntElementsAttr":$dimensions)>];
 
   let extraClassDeclaration = [{
@@ -662,7 +662,7 @@ def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]>, BASE_HLO
   let hasFolder = 1;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$value, "int32_t":$index)>];
+    OpBuilder<(ins "Value":$value, "int32_t":$index)>];
 }
 
 def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
@@ -670,7 +670,7 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
   let results = (outs HLO_Tuple);
 
   let builders = [
-    OpBuilderDAG<(ins "ValueRange":$values)>];
+    OpBuilder<(ins "ValueRange":$values)>];
 
   let hasCanonicalizer = 1;
 }
@@ -690,7 +690,7 @@ def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
   let hasFolder = 1;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$lhs, "Value":$rhs,
+    OpBuilder<(ins "Value":$lhs, "Value":$rhs,
       "StringAttr":$comparison_direction, CArg<"StringAttr", "{}">:$compare_type)>,
   ];
 
@@ -889,7 +889,7 @@ def HLO_ConcatenateOp : HLO_Op<"concatenate",
   let hasFolder = 1;
 
   let extraClassDeclaration = [{
-    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r) {
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       return succeeded(mlir::verifyCompatibleShapes(l, r));
     }
   }];
@@ -1170,7 +1170,7 @@ def HLO_SortOp : HLO_Op<"sort", [RecursiveSideEffects,
   let regions = (region SizedRegion<1>:$comparator);
 
   let builders = [
-    OpBuilderDAG<(ins "ValueRange":$operands, CArg<"int64_t", "-1">:$dimension,
+    OpBuilder<(ins "ValueRange":$operands, CArg<"int64_t", "-1">:$dimension,
       CArg<"bool", "false">:$is_stable)>];
 
   // TODO(b/129422361): SortOp has special conversion logic to HLO.

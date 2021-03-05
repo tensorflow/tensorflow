@@ -42,7 +42,7 @@ install_macos_pip_deps
 export TF_NEED_CUDA=0
 export CC_OPT_FLAGS='-mavx'
 export TF2_BEHAVIOR=1
-export PYTHON_BIN_PATH=$(which python3.9)
+export PYTHON_BIN_PATH=$(which python)
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
 tag_filters="-no_oss,-oss_serial,-nomac,-no_mac$(maybe_skip_v1),-gpu,-tpu,-benchmark-test"

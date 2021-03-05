@@ -21,9 +21,9 @@ import argparse
 import re
 import sys
 
+from absl import app
 import numpy as np
 
-from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
 from tensorflow.python.training import py_checkpoint_reader
 

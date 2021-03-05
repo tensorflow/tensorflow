@@ -2798,7 +2798,9 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
   auto reduce_window_or_select_and_scatter =
       DoesConvolutionFeedReduceWindowOrSelectAndScatter(convolution);
 
-  if (reduce_window_or_select_and_scatter != nullptr) {
+  if (reduce_window_or_select_and_scatter != nullptr &&
+      reduce_window_or_select_and_scatter->shape().rank() ==
+          convolution->shape().rank()) {
     VLOG(2)
         << "DoesConvolutionFeedReduceWindowOrSelectAndScatter returned true";
     // Take into account the stride of the reduce window while choosing the

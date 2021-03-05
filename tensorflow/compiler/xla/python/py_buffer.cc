@@ -149,19 +149,8 @@ StatusOr<pybind11::object> PyBuffer::AsNumPyArray(py::handle this_obj) {
   return array;
 }
 
-// TODO(zhangqiaorjc): Delete UnsafeBufferPointer.
 StatusOr<std::uintptr_t> PyBuffer::UnsafeBufferPointer() const {
-  if (buffer_->on_device_shape().IsTuple()) {
-    return Unimplemented(
-        "unsafe_buffer_pointer is not implemented for tuple "
-        "buffers.");
-  }
-
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold,
-      buffer_->AcquireExternalReference());
-  const void* ptr = external_reference_hold->OpaqueDeviceMemoryDataPointer();
-  return absl::bit_cast<std::uintptr_t>(ptr);
+  return client_->pjrt_client()->UnsafeBufferPointer(buffer_.get());
 }
 
 StatusOr<py::dict> PyBuffer::CudaArrayInterface() const {

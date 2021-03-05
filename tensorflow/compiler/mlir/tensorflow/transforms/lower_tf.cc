@@ -822,6 +822,7 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
 
     Location loc = op.getLoc();
     auto input_type = op.input().getType().cast<TensorType>();
+    auto element_type = input_type.getElementType();
     if (!input_type.hasStaticShape()) {
       return failure();
     }
@@ -892,8 +893,7 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
       block_shape_ints.resize(block_shape_type.getNumElements(), -1);
     }
 
-    auto padded_type =
-        RankedTensorType::get(padded_shape, rewriter.getF32Type());
+    auto padded_type = RankedTensorType::get(padded_shape, element_type);
     // padded = pad(input, full_paddings)
     auto padded =
         rewriter.create<PadOp>(loc, padded_type, op.input(), full_paddings);
@@ -971,9 +971,8 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
         rewriter, loc, rewriter.getIntegerType(64), reshaped_shape_vals);
 
     auto reshaped = rewriter.create<ReshapeOp>(
-        loc,
-        RankedTensorType::get(reshaped_shape_ints, input_type.getElementType()),
-        padded, reshaped_shape);
+        loc, RankedTensorType::get(reshaped_shape_ints, element_type), padded,
+        reshaped_shape);
 
     SmallVector<int64_t, 6> permutation_vals;
     for (int64_t i = 0; i < block_rank; ++i) {

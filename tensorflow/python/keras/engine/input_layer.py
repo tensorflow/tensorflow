@@ -130,8 +130,12 @@ class InputLayer(base_layer.Layer):
         raise ValueError('Only provide the input_shape OR '
                          'batch_input_shape argument to '
                          'InputLayer, not both at the same time.')
-      batch_size = batch_input_shape[0]
-      input_shape = batch_input_shape[1:]
+      # Set the input shape and batch size from the batch_input_shape.
+      # Note that batch_input_shape can be None (unknown rank) or [] (scalar),
+      # in which case the batch size must be None.
+      if batch_input_shape:
+        batch_size = batch_input_shape[0]
+        input_shape = batch_input_shape[1:]
     if kwargs:
       raise ValueError('Unrecognized keyword arguments:', kwargs.keys())
 

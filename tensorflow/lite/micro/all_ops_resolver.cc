@@ -72,6 +72,7 @@ AllOpsResolver::AllOpsResolver() {
   AddSoftmax();
   AddSplit();
   AddSplitV();
+  AddSqueeze();
   AddSqrt();
   AddSquare();
   AddStridedSlice();

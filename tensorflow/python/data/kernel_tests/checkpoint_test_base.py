@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Base class for testing serializable datasets."""
+"""Base test class for checkpointing datasets."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -51,12 +51,12 @@ def remove_variants(get_next_op):
   return nest.map_structure(_remove_variant, get_next_op)
 
 
-class DatasetSerializationTestBase(test.TestCase):
-  """Base class for testing serializable datasets."""
+class CheckpointTestBase(test.TestCase):
+  """Base test class for checkpointing datasets."""
 
   def tearDown(self):
     self._delete_ckpt()
-    super(DatasetSerializationTestBase, self).tearDown()
+    super(CheckpointTestBase, self).tearDown()
 
   # TODO(b/72657739): Remove sparse_tensor argument, which is to test the
   # (deprecated) saveable `SparseTensorSliceDataset`, once the API
@@ -72,7 +72,7 @@ class DatasetSerializationTestBase(test.TestCase):
     Raises:
       AssertionError if any test fails.
     """
-    # NOTE: We disable all default optimizations in serialization tests in order
+    # NOTE: We disable all default optimizations in checkpoint tests in order
     # to test the actual dataset in question.
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
@@ -113,7 +113,9 @@ class DatasetSerializationTestBase(test.TestCase):
         sparse_tensors=sparse_tensors,
         verify_exhausted=verify_exhausted)
 
-  def verify_fully_used_iterator(self, ds_fn, num_outputs,
+  def verify_fully_used_iterator(self,
+                                 ds_fn,
+                                 num_outputs,
                                  sparse_tensors=False):
     """Verifies that saving and restoring a fully used iterator works.
 
@@ -170,8 +172,8 @@ class DatasetSerializationTestBase(test.TestCase):
     Args:
       ds_fn: See `run_core_tests`.
       num_outputs: See `run_core_tests`.
-      num_breaks: The number of break points. These are uniformly spread in
-        [0, num_outputs] both inclusive.
+      num_breaks: The number of break points. These are uniformly spread in [0,
+        num_outputs] both inclusive.
       sparse_tensors: See `run_core_tests`.
       verify_exhausted: See `gen_outputs`.
 
@@ -222,6 +224,7 @@ class DatasetSerializationTestBase(test.TestCase):
         verify_exhausted=False)
 
     actual = []
+    # TODO(vikoth18): implement eager mode compatible checkpointing
     # Restore from checkpoint and then run init_op.
     with ops.Graph().as_default() as g:
       saver = self._import_meta_graph()
@@ -259,6 +262,7 @@ class DatasetSerializationTestBase(test.TestCase):
     """
 
     break_point = num_outputs // 2 if not break_point else break_point
+    # TODO(vikoth18): implement eager mode compatible checkpointing
     with ops.Graph().as_default() as g:
       init_op, get_next_op, saver = self._build_graph(
           ds_fn, sparse_tensors=sparse_tensors)
@@ -327,10 +331,10 @@ class DatasetSerializationTestBase(test.TestCase):
       ds_fn: 0-argument function that returns the dataset.
       break_points: A list of integers. For each `break_point` in
         `break_points`, we produce outputs till `break_point` number of items
-        have been produced and then checkpoint the state. The current graph
-        and session are destroyed and a new graph and session are used to
-        produce outputs till next checkpoint or till `num_outputs` elements
-        have been produced. `break_point` must be <= `num_outputs`.
+        have been produced and then checkpoint the state. The current graph and
+        session are destroyed and a new graph and session are used to produce
+        outputs till next checkpoint or till `num_outputs` elements have been
+        produced. `break_point` must be <= `num_outputs`.
       num_outputs: The total number of outputs to produce from the iterator.
       ckpt_saved: Whether a checkpoint already exists.
       sparse_tensors:  Whether dataset is built from SparseTensor(s).
@@ -356,6 +360,7 @@ class DatasetSerializationTestBase(test.TestCase):
             ds_fn, sparse_tensors=sparse_tensors)
       return init_op, get_next_op, saver
 
+    # TODO(vikoth18): implement eager mode compatible checkpointing
     for i in range(len(break_points) + 1):
       with ops.Graph().as_default() as g:
         init_op, get_next_op, saver = get_ops()
@@ -485,14 +490,17 @@ class DatasetSerializationTestBase(test.TestCase):
     return all_ops[0], nest.pack_sequence_as(
         self._get_output_types(ds_fn), get_next_list)
 
+  # TODO(vikoth18): replace with `element_spec` and add eager mode support
   def _get_output_types(self, ds_fn):
     with ops.Graph().as_default():
       return dataset_ops.get_legacy_output_types(ds_fn())
 
+  # TODO(vikoth18): replace with `element_spec` and add eager mode support
   def _get_output_shapes(self, ds_fn):
     with ops.Graph().as_default():
       return dataset_ops.get_legacy_output_shapes(ds_fn())
 
+  # TODO(vikoth18): replace with `element_spec` and add eager mode support
   def _get_output_classes(self, ds_fn):
     with ops.Graph().as_default():
       return dataset_ops.get_legacy_output_classes(ds_fn())

@@ -33,7 +33,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#ifndef ENABLE_ONEDNN_OPENMP
 using dnnl::threadpool_interop::threadpool_iface;
 
 // Divide 'n' units of work equally among 'teams' threads. If 'n' is not
@@ -116,7 +116,7 @@ struct MklDnnThreadPool {
   MklDnnThreadPool(OpKernelContext* ctx) {}
 };
 
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
 
 }  // namespace tensorflow
 

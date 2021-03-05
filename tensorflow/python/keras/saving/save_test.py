@@ -1005,13 +1005,22 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
     loaded = keras.models.load_model(saved_model_dir)
     self.assertIs(loaded.layers[1], loaded.layers[2].layer)
 
-  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
-  def test_multi_output_metrics_name_stay_same(self):
+  @combinations.generate(
+      combinations.combine(mode=['graph', 'eager'], fit=[True, False]))
+  def test_multi_output_metrics_name_stay_same(self, fit):
     """Tests that metric names don't change with each save/load cycle.
 
     e.g. "head_0_accuracy" should not become "head_0_head_0_accuracy" after
     saving and loading a model.
+
+    Arguments:
+      fit: Whether the model should be fit before saving.
     """
+    # This doesn't work at all, so we can't check whether metric names are
+    # correct.
+    if not context.executing_eagerly() and not fit:
+      self.skipTest('b/181767784')
+
     with self.cached_session():
       input_ = keras.Input((4,))
       model = keras.Model(
@@ -1023,11 +1032,14 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
                     loss='mse',
                     metrics={'head_0': [metric, 'accuracy']})
 
-      # Run one iteration.
       x = np.random.rand(2, 4)
       y = {'head_0': np.random.randint(2, size=(2, 3)),
            'head_1': np.random.randint(2, size=(2, 5))}
-      model.fit(x, y, verbose=0)
+
+      # Make sure metrix prefixing works the same regardless of whether the user
+      # has fit the model before saving.
+      if fit:
+        model.fit(x, y, verbose=0)
 
       # Save and reload.
       save_format = testing_utils.get_save_format()

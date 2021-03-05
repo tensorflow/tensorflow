@@ -44,7 +44,7 @@ export TF_PYTHON_VERSION='python3.9'
 export TF_BUILD_BOTH_CPU_PACKAGES=1
 
 # Run configure.
-export PYTHON_BIN_PATH=$(which ${TF_PYTHON_VERSION})
+export PYTHON_BIN_PATH=$(which python)
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
 # Export optional variables for running pip.sh

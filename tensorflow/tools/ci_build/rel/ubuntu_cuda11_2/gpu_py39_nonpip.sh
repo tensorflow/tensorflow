@@ -27,8 +27,8 @@ export TF_NEED_GCP=1
 export TF_NEED_HDFS=1
 export TF_NEED_S3=1
 export TF_NEED_CUDA=1
-export TF_CUDA_VERSION=11
-export TF_CUDNN_VERSION=8
+export TF_CUDA_VERSION=11.2
+export TF_CUDNN_VERSION=8.1
 export TF_NEED_TENSORRT=1
 export TENSORRT_INSTALL_PATH=/usr/local/tensorrt
 export CC_OPT_FLAGS='-mavx -march=native'
@@ -47,7 +47,7 @@ tag_filters="gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py39,-no_cuda1
 
 test +e
 bazel test --config=cuda --config=opt \
-  --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda11:toolchain \
+  --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda11.2:toolchain \
   --linkopt=-lrt \
   --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
   --test_lang_filters=py \

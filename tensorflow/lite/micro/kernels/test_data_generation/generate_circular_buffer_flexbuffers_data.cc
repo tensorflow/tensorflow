@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@ limitations under the License.
 #include "flatbuffers/flexbuffers.h"
 
 const char* license =
-    "/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.\n"
+    "/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.\n"
     "Licensed under the Apache License, Version 2.0 (the \"License\");\n"
     "you may not use this file except in compliance with the License.\n"
     "You may obtain a copy of the License at\n\n"
@@ -28,21 +28,9 @@ const char* license =
     "======================================================================="
     "=======*/\n";
 
-void generate(const char* name, bool use_regular_nms) {
+void generate(const char* name) {
   flexbuffers::Builder fbb;
-  fbb.Map([&]() {
-    fbb.Int("max_detections", 3);
-    fbb.Int("max_classes_per_detection", 1);
-    fbb.Int("detections_per_class", 1);
-    fbb.Bool("use_regular_nms", use_regular_nms);
-    fbb.Float("nms_score_threshold", 0.0);
-    fbb.Float("nms_iou_threshold", 0.5);
-    fbb.Int("num_classes", 2);
-    fbb.Float("y_scale", 10.0);
-    fbb.Float("x_scale", 10.0);
-    fbb.Float("h_scale", 5.0);
-    fbb.Float("w_scale", 5.0);
-  });
+  fbb.Map([&]() { fbb.Int("cycles_max", 1); });
   fbb.Finish();
 
   // fbb.GetBuffer returns std::Vector<uint8_t> but TfLite passes char arrays
@@ -62,13 +50,12 @@ void generate(const char* name, bool use_regular_nms) {
 int main() {
   printf("%s\n", license);
   printf("// This file is generated. See:\n");
-  printf("// tensorflow/lite/micro/kernels/detection_postprocess_test/");
+  printf("// third_party/tensorflow/lite/micro/kernels/test_data_generation/");
   printf("README.md\n");
   printf("\n");
   printf(
-      "#include "
-      "\"tensorflow/lite/micro/kernels/flexbuffers_generated_data.h\"");
+      "#include \"third_party/tensorflow/lite/micro/kernels/"
+      "circular_buffer_flexbuffers_generated_data.h\"");
   printf("\n\n");
-  generate("none_regular_nms", false);
-  generate("regular_nms", true);
+  generate("circular_buffer_config");
 }

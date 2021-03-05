@@ -154,11 +154,12 @@ Status MlirBridgePass::Run(const ConfigProto& config_proto,
   return Status::OK();
 }
 
-bool MlirBridgeV1CompatPass::IsEnabled(const DeviceSet* device_set,
-                                       const ConfigProto& config_proto,
-                                       const Graph& graph) const {
+MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
+    const DeviceSet* device_set, const ConfigProto& config_proto,
+    const Graph& graph) const {
   // Skip MLIR TPU Bridge if no TPU devices found.
-  if (device_set && !HasTPUDevice(*device_set)) return false;
+  if (device_set && !HasTPUDevice(*device_set))
+    return MlirOptimizationPassState::Disabled;
 
   // Do not run the bridge if it's enabled by the graph analysis,
   // only run if it's enabled by the user explicitly.
@@ -166,7 +167,9 @@ bool MlirBridgeV1CompatPass::IsEnabled(const DeviceSet* device_set,
   // phase of the bridge is not affected by uninitialized resource args.
   MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
       graph, config_proto, /*uses_uninitialized_resource_args=*/false);
-  return policy == MlirBridgeRolloutPolicy::kEnabledByUser;
+  return (policy == MlirBridgeRolloutPolicy::kEnabledByUser)
+             ? MlirOptimizationPassState::Enabled
+             : MlirOptimizationPassState::Disabled;
 }
 
 Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
@@ -176,8 +179,8 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
 
   // Set device_set to nullptr here as the device specific checks are performed
   // based on the devices in the module.
-  if (!IsEnabled(/*device_set=*/nullptr, options.session_options->config,
-                 **options.graph)) {
+  if (GetPassState(/*device_set=*/nullptr, options.session_options->config,
+                   **options.graph) == MlirOptimizationPassState::Disabled) {
     LOG_AT_LEAST_ONCE(
         "Skipping MLIR TPU Bridge V1 Compat, session flag not enabled");
     mlir_bridge_gauge_v1->GetCell()->Set(false);

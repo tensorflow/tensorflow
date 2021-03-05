@@ -27,12 +27,9 @@ limitations under the License.
 
 namespace jax {
 
-void SetEnableX64(absl::optional<bool> jax_enable_x64_);
-// absl::nullopt means not set, in which case, we should use the Python value of
-// the flag `jax_enable_x64`. The first time (within each thread) a jitted
-// function is being called, the value is set to the FLAG value and should not
-// be nullopt afterwards.
-absl::optional<bool> GetEnableX64();
+// Returns the value for jax_enable_x64 (defined by a thread-local value if
+// defined, defaulting to the value of the flag otherwise).
+bool GetEnableX64();
 
 // Describes the abstract shape and dtype of an argument.
 struct ArgSignature {

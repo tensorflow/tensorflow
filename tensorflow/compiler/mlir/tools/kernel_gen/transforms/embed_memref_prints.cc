@@ -73,12 +73,12 @@ void EmitPrint(Operation* op, Liveness& liveness, OpBuilder* b) {
     element_type = b->getI64Type();
     memref_type = MemRefType::get(memref_type.getShape(), element_type,
                                   memref_type.getAffineMaps(),
-                                  memref_type.getMemorySpace());
+                                  memref_type.getMemorySpaceAsInt());
     memref = b->create<IndexCastOp>(loc, memref, memref_type);
   }
 
   auto unranked_type =
-      UnrankedMemRefType::get(element_type, memref_type.getMemorySpace());
+      UnrankedMemRefType::get(element_type, memref_type.getMemorySpaceAsInt());
   Value unranked_memref = b->create<MemRefCastOp>(loc, memref, unranked_type);
 
   if (element_type.isF32()) {

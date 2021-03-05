@@ -38,6 +38,7 @@
         multiple input batches should be computed in parallel. With
         `num_parallel_calls` set, `deterministic` is used to indicate that
         outputs can be obtained in the non-deterministic order.
+    *   Options returned by `tf.data.Dataset.options()` are no longer mutable.
 
 ## Bug Fixes and Other Changes
 
@@ -108,6 +109,11 @@
        ML authoring is generally discouraged.
     *  Add support for static hash tables through
          `TFLiteConverter.from_saved_model`.
+    *  Quantized x86 execution defaults to Ruy GEMM library for platforms with
+       AVX support.
+    *  Deprecate `tf.compat.v1.lite.experimental.get_potentially_supported_ops`.
+       Use `tf.lite.TFLiteConverter` directly to check whether a model is
+       convertible.
 
 *   TF Core:
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,
