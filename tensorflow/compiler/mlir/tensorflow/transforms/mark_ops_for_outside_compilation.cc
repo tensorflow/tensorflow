@@ -88,6 +88,20 @@ void AddSupportedOpsUsingFolding(MLIRContext* context,
   supported_ops->insert(allowlist_ops.begin(), allowlist_ops.end());
 }
 
+// Adds the list of ops that are supported through dynamic padder using fallback
+// to TF2XLA bridge.
+// TODO(b/168036682): Remove this once ops are supported using dynamic padder
+// on MLIR bridge.
+void AddSupportedOpsUsingDynamicPadder(
+    MLIRContext* context, llvm::DenseSet<OperationName>* supported_ops) {
+  llvm::SmallDenseSet<OperationName, 8> allowlist_ops = {
+      OperationName(TF::WhereOp::getOperationName(), context),
+      OperationName(TF::UniqueOp::getOperationName(), context),
+  };
+
+  supported_ops->insert(allowlist_ops.begin(), allowlist_ops.end());
+}
+
 // TODO(b/159128666): Check the control flow legalization passes instead once
 // added.
 void AddSupportedControlFlowOps(MLIRContext* context,
@@ -370,6 +384,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
       });
   AddSupportedControlFlowOps(module.getContext(), &supported_ops);
   AddSupportedOpsUsingFolding(module.getContext(), &supported_ops);
+  AddSupportedOpsUsingDynamicPadder(module.getContext(), &supported_ops);
   AddRewrittenEmbeddingOps(module.getContext(), &supported_ops);
   AddRewrittenCompositeOps(module.getContext(), &supported_ops);
 
