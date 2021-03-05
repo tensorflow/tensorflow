@@ -4205,7 +4205,6 @@ cc_binary(
         ":StandardToLLVM",
         ":ToLLVMIRTranslation",
         ":Transforms",
-        "//devtools/build/runtime:get_runfiles_dir",
         "//third_party/gpus/cuda:cuda_headers",
         "//third_party/gpus/cuda:cuda_runtime",
         "//third_party/gpus/cuda:libcuda",
