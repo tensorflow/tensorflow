@@ -94,20 +94,120 @@ bool CanBeRefined(Type type) {
   return !shape_type.hasStaticShape();
 }
 
+// Compute a refined type between two types `lhs` and `rhs`, the result type
+// is always more refined (i.e. has more static information) than `lhs`
+// This method will actually merge the information contained in the
+// types, it is capable of refining:
+//   tensor<!tf.variant<tensor<?x8xf32>>>
+// and:
+//   tensor<!tf.variant<tensor<10x?xf32>>>
+// into:
+//   tensor<!tf.variant<tensor<10x8xf32>>>
+//
+// In case of inconsistencies (rank disagreement for example), it returns `lhs`.
+Type TypeMeet(Type lhs, Type rhs) {
+  DCOMMENT("RefineTypeWith : " << lhs << " : " << rhs);
+  if (lhs == rhs) return lhs;
+
+  auto rhs_shape_type = rhs.dyn_cast<ShapedType>();
+  if (!rhs_shape_type) return lhs;
+  auto lhs_shape_type = lhs.cast<ShapedType>();
+  if (lhs_shape_type.hasRank() && rhs_shape_type.hasRank() &&
+      lhs_shape_type.getRank() != rhs_shape_type.getRank()) {
+    DCOMMENT("Unexpected rank mismatch: " << lhs << " vs " << rhs);
+    return lhs;
+  }
+
+  SmallVector<int64_t> shape;
+  bool refined_shape = false;
+  // Build the shape of the refined type, if lhs is unranked it
+  // will be directly the shape of the refined type, otherwise we merged by
+  // taking the most specialized. This combines `10x?x?` and `?x?x8` into
+  // `10x?x8`.
+  if (!lhs_shape_type.hasRank()) {
+    if (rhs_shape_type.hasRank()) {
+      shape.append(rhs_shape_type.getShape().begin(),
+                   rhs_shape_type.getShape().end());
+      refined_shape = true;
+    }
+  } else if (rhs_shape_type.hasRank()) {
+    for (auto shape_elts : llvm::enumerate(
+             llvm::zip(lhs_shape_type.getShape(), rhs_shape_type.getShape()))) {
+      if (ShapedType::isDynamic(std::get<0>(shape_elts.value())) &&
+          !ShapedType::isDynamic(std::get<1>(shape_elts.value()))) {
+        shape.push_back(std::get<1>(shape_elts.value()));
+        refined_shape = true;
+        DCOMMENT("-> refining shape element #" << shape_elts.index());
+      } else {
+        DCOMMENT("-> not refining shape element #" << shape_elts.index());
+        shape.push_back(std::get<0>(shape_elts.value()));
+      }
+    }
+  }
+
+  // Some tensor have an element type wrapping a subtensor, like resource and
+  // variants. In this case we may recurse on the wrapped subtype.
+  // `element_type` will contain the refined inferred element type for the
+  // returned type.
+  auto lhs_element_type = lhs_shape_type.getElementType();
+  auto rhs_element_type_with_subtype =
+      rhs_shape_type.getElementType().dyn_cast<TF::TensorFlowTypeWithSubtype>();
+  // Look for resource or variant element type and ensure we refine the subtype.
+  // We only support a single subtype at the moment, we won't handle something
+  // like:
+  //   tensor<!tf.variant<tensor<10xf32>, tensor<8xf32>>
+  if (rhs_element_type_with_subtype &&
+      rhs_element_type_with_subtype.GetSubtypes().size() == 1) {
+    auto lhs_element_type_with_subtype =
+        lhs_element_type.dyn_cast<TF::TensorFlowTypeWithSubtype>();
+    TensorType subtype;
+    if (!lhs_element_type_with_subtype) {
+      DCOMMENT(
+          "Unexpected inferred `TensorFlowTypeWithSubtype` when original "
+          "result isn't");
+    } else if (lhs_element_type_with_subtype.GetSubtypes().size() > 1) {
+      DCOMMENT(
+          "Unexpected `TensorFlowTypeWithSubtype` original type with size>1");
+    } else if (lhs_element_type_with_subtype.GetSubtypes().empty()) {
+      subtype = rhs_element_type_with_subtype.GetSubtypes().front();
+    } else {
+      // Recurse on the subtypes in the variant/resource. Basically if the input
+      // were:
+      //   tensor<!tf.variant<tensor<?x8xf32>>>
+      // and:
+      //   tensor<!tf.variant<tensor<10x8xf32>>>
+      // we'll try here to refine tensor<?x8xf32> with tensor<10x8xf32>.
+      auto refined_subtype =
+          TypeMeet(lhs_element_type_with_subtype.GetSubtypes().front(),
+                   rhs_element_type_with_subtype.GetSubtypes().front())
+              .cast<TensorType>();
+      if (refined_subtype !=
+          lhs_element_type_with_subtype.GetSubtypes().front())
+        subtype = refined_subtype;
+    }
+    // If we managed to refine the subtype, recreate the element type itself
+    // (i.e. the tf.variant or tf.resource).
+    if (subtype) {
+      lhs_element_type = lhs_element_type_with_subtype.clone({subtype});
+    }
+  }
+  if (refined_shape || lhs_element_type != lhs_shape_type.getElementType()) {
+    Type new_type;
+    if (!lhs_shape_type.hasRank() && !rhs_shape_type.hasRank())
+      new_type = UnrankedTensorType::get(lhs_element_type);
+    else
+      new_type = lhs_shape_type.clone(shape, lhs_element_type);
+    DCOMMENT("Refined to: " << new_type);
+    return new_type;
+  }
+  DCOMMENT("No refinement " << lhs);
+  return lhs;
+}
+
 // Returns whether `original_type` type can be refined with
 // `potential_refined_type` type.
 bool CanRefineTypeWith(Type original_type, Type potential_refined_type) {
-  if (original_type == potential_refined_type || !CanBeRefined(original_type))
-    return false;
-
-  auto shape_type = potential_refined_type.dyn_cast<ShapedType>();
-  if (!shape_type) return false;
-  if (shape_type.hasRank()) return true;
-
-  auto element_type_with_subtype =
-      shape_type.getElementType().dyn_cast<TF::TensorFlowTypeWithSubtype>();
-  return element_type_with_subtype &&
-         !element_type_with_subtype.GetSubtypes().empty();
+  return original_type != TypeMeet(original_type, potential_refined_type);
 }
 
 // Returns if the shape inference pass supports an op outside the TF dialect.
@@ -699,7 +799,7 @@ bool ShapeInference::InferShapeForCall(CallOpInterface call_op) {
   FuncOp func = dyn_cast<FuncOp>(call_op.resolveCallable());
   if (!func) return false;
 
-  LLVM_DEBUG(llvm::dbgs() << "Infer shape for call " << func.getName());
+  DCOMMENT("Infer shape for call " << func.getName());
   Operation* op = call_op.getOperation();
   bool changed = false;
   // Map each of the results of the call to the returned type of the
@@ -708,7 +808,7 @@ bool ShapeInference::InferShapeForCall(CallOpInterface call_op) {
     changed = RefineResultType(op, std::get<0>(result), std::get<1>(result)) ||
               changed;
   }
-  LLVM_DEBUG(llvm::dbgs() << " changed ? " << changed << "\n");
+  DCOMMENT(" - call " << func.getName() << "changed ? " << changed << "\n");
 
   return changed;
 }
@@ -785,7 +885,7 @@ bool ShapeInference::InferShapeForTensorListInitOps(Operation* op) {
     DCOMMENT("InferShapeForListInitOps " << op << " could not infer");
     return false;
   }
-  DCOMMENT("InferShapeForListInitOps " << op << " could be inferred "
+  DCOMMENT("InferShapeForListInitOps " << *op << " could be inferred "
                                        << element_type);
   if (!element_type || !element_type.hasStaticShape()) return false;
   auto variant_type = VariantType::get(element_type, op->getContext());
