@@ -207,6 +207,7 @@ tf_cuda_library(
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            ":env",
             ":logging",
             ":tf_status",
             ":tf_tensor",
