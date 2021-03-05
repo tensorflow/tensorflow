@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-#if defined(_OPENMP) && !defined(ENABLE_MKLDNN_THREADPOOL)
+#if defined(_OPENMP) && defined(ENABLE_ONEDNN_OPENMP)
 TEST(MKLThreadPoolDeviceTest, TestOmpDefaults) {
   SessionOptions options;
   unsetenv("OMP_NUM_THREADS");
@@ -36,7 +36,7 @@ TEST(MKLThreadPoolDeviceTest, TestOmpDefaults) {
   EXPECT_EQ(omp_get_max_threads(), (port::NumSchedulableCPUs() + ht - 1) / ht);
 }
 
-#endif  // defined(_OPENMP) && !defined(ENABLE_MKLDNN_THREADPOOL)
+#endif  // defined(_OPENMP) && defined(ENABLE_ONEDNN_OPENMP)
 
 }  // namespace tensorflow
 

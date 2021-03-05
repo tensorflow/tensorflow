@@ -39,7 +39,7 @@ load(
 load(
     "//third_party/mkl_dnn:build_defs.bzl",
     "if_mkl_open_source_only",
-    "if_mkldnn_threadpool",
+    "if_mkldnn_openmp",
 )
 load("@bazel_skylib//lib:new_sets.bzl", "sets")
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
@@ -364,7 +364,7 @@ def tf_copts(
         if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) +
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
         if_mkl(["-DINTEL_MKL=1"]) +
-        if_mkldnn_threadpool(["-DENABLE_MKLDNN_THREADPOOL"]) +
+        if_mkldnn_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         if_enable_mkl(["-DENABLE_MKL"]) +
         if_android_arm(["-mfpu=neon"]) +
         if_linux_x86_64(["-msse3"]) +

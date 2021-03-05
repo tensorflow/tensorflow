@@ -78,7 +78,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
   void Execute(const T* src_data, const U* weights_data, T* dst_data,
                U* mean_data, U* variance_data,
                std::shared_ptr<stream> fwd_stream, U* workspace_data) {
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#ifndef ENABLE_ONEDNN_OPENMP
     // TODO: Create a common function and avoid the duplicate code
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)), *fwd_stream);
@@ -116,7 +116,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
     if (workspace_data != nullptr) {
       context_.ws_mem->set_data_handle(workspace_data);
     }
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
 
     // Execute batch-normalization forward primitives.
     execute_primitives(context_.fwd_primitives, fwd_stream, context_.net_args);
@@ -422,7 +422,7 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
                const T* diff_dst_data, const U* weights_data, T* diff_src_data,
                U* diff_weights_data, U* res_space_data,
                std::shared_ptr<stream> bwd_stream) {
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#ifndef ENABLE_ONEDNN_OPENMP
     // TODO: Create a common function and avoid the duplicate code
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)), *bwd_stream);
@@ -460,7 +460,7 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
     }
 
     context_.diff_src_mem->set_data_handle(static_cast<void*>(diff_src_data));
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
     // Execute backward batch-normalization primitives.
     DCHECK_EQ(context_.bwd_primitives.size(), context_.net_args.size());
     execute_primitives(context_.bwd_primitives, bwd_stream, context_.net_args);
