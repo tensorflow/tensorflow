@@ -4,4 +4,12 @@ tf_module {
     name: "StateManager"
     mtype: "<type \'type\'>"
   }
+  member_method {
+    name: "deserialize_feature_column"
+    argspec: "args=[\'config\', \'custom_objects\', \'columns_by_name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "serialize_feature_column"
+    argspec: "args=[\'fc\'], varargs=None, keywords=None, defaults=None"
+  }
 }
