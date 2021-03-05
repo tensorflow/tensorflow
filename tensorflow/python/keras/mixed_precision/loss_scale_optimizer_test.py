@@ -28,6 +28,7 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config as tf_config
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
@@ -36,6 +37,7 @@ from tensorflow.python.keras.mixed_precision import loss_scale_optimizer
 from tensorflow.python.keras.mixed_precision import test_util as mp_test_util
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -306,6 +308,58 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       # The loss is the identity of the variable. Therefore the gradient is 1,
       # and so the variable will be init_val - grad * lr == 5 - 1 * 2 == 3
       self.assertAllClose([3.], self.evaluate(var))
+
+  def testNanOnOneReplicaOnly(self):
+    if not test_util.is_gpu_available():
+      self.skipTest('Test requires GPU')
+    if (not context.executing_eagerly() and
+        not control_flow_v2_toggles.control_flow_v2_enabled()):
+      self.skipTest('b/181283011: GradientTape does not work properly with '
+                    'V1 control flow, and opt.minimize uses GradientTape')
+    with create_mirrored_strategy().scope() as strategy:
+      var = variables.Variable([1.0, 2.0])
+      opt = gradient_descent.SGD(1.0)
+      opt = loss_scale_optimizer.LossScaleOptimizer(opt, initial_scale=2,
+                                                    dynamic_growth_steps=2)
+
+      def loss():
+        rep_id = (distribution_strategy_context.get_replica_context()
+                  .replica_id_in_sync_group)
+        # The last element of last replica's gradient is NaN.
+        return control_flow_ops.cond(
+            constant_op.constant(rep_id == 0), lambda: var * 2.,
+            lambda: var * constant_op.constant([1., float('NaN')]))
+      run_fn = lambda: opt.minimize(loss, var_list=[var])
+      run_op = strategy.experimental_run(run_fn)
+      self.evaluate(variables.global_variables_initializer())
+      self._run_if_in_graph_mode(run_op)
+      # Variable should not change from before, due to NaN gradients.
+      self.assertAllClose(self.evaluate(var), [1.0, 2.0])
+      # Loss scale should half due to NaN gradients.
+      self.assertEqual(1., self.evaluate(opt.loss_scale))
+
+  def testCustomAggregater(self):
+    def gradient_aggregator(grads_and_vars):
+      # Simulate an all-reduce where a replica has a NaN gradient by setting
+      # the last gradient to NaN
+      grads_and_vars = list(grads_and_vars)
+      last_grad, last_var = grads_and_vars[-1]
+      grads_and_vars[-1] = (last_grad * float('NaN'), last_var)
+      return grads_and_vars
+
+    var = variables.Variable([1.0, 2.0])
+    opt = gradient_descent.SGD(1.0, gradient_aggregator=gradient_aggregator)
+    opt = loss_scale_optimizer.LossScaleOptimizer(opt, initial_scale=2,
+                                                  dynamic_growth_steps=2)
+
+    loss = lambda: var * 2
+    run_op = opt.minimize(loss, var_list=[var])
+    self.evaluate(variables.global_variables_initializer())
+    self._run_if_in_graph_mode(run_op)
+    # Variable should not change from before, due to NaN gradients.
+    self.assertAllClose(self.evaluate(var), [1.0, 2.0])
+    # Loss scale should half due to NaN gradients.
+    self.assertEqual(1., self.evaluate(opt.loss_scale))
 
   @parameterized.named_parameters(*TESTCASES)
   def testDynamicLossScaleWithSlots(self, strategy_fn):
