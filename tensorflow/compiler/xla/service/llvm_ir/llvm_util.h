@@ -59,7 +59,7 @@ llvm::ArrayRef<T> AsArrayRef(const std::vector<T>& vec) {
 }
 
 template <typename T>
-llvm::ArrayRef<T> AsArrayRef(const absl::Span<const T>& slice) {
+llvm::ArrayRef<T> AsArrayRef(const absl::Span<const T> slice) {
   return llvm::ArrayRef<T>(slice.data(), slice.size());
 }
 
