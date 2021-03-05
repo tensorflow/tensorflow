@@ -241,22 +241,6 @@ class ArithmeticOptimizerStage : public GraphOptimizerStage<string> {
     ctx_ext_.nodes_to_simplify->PushBack(node);
   }
 
-  // Update consumers of node to take new_input as input instead.
-  void UpdateConsumers(NodeDef* node, const string& new_input) {
-    const string& node_name = node->name();
-    const auto consumers = ctx().node_map->GetOutputs(node_name);
-    for (NodeDef* consumer : consumers) {
-      for (int i = 0; i < consumer->input_size(); ++i) {
-        if (consumer->input(i) == node_name &&
-            consumer->name() != NodeName(new_input)) {
-          consumer->set_input(i, new_input);
-          ctx().node_map->UpdateInput(consumer->name(), node_name, new_input);
-        }
-      }
-      AddToOptimizationQueue(consumer);
-    }
-  }
-
   // TODO(ezhulenev): remove this method from ArithmeticOptimizer when all
   // optimizations will be migrated to stages
   void ForwardControlDependencies(
@@ -1811,6 +1795,22 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     return Status::OK();
   }
 
+  // Update consumers of node to take new_input as input instead.
+  void UpdateConsumers(NodeDef* node, const string& new_input) {
+    const string& node_name = node->name();
+    const auto consumers = ctx().node_map->GetOutputs(node_name);
+    for (NodeDef* consumer : consumers) {
+      for (int i = 0; i < consumer->input_size(); ++i) {
+        if (consumer->input(i) == node_name &&
+            consumer->name() != NodeName(new_input)) {
+          consumer->set_input(i, new_input);
+          ctx().node_map->UpdateInput(consumer->name(), node_name, new_input);
+        }
+      }
+      AddToOptimizationQueue(consumer);
+    }
+  }
+
   bool IsAlreadyOptimized(const NodeDef& node) const {
     return optimized_nodes_.find(node.name()) != optimized_nodes_.end();
   }
@@ -2158,83 +2158,96 @@ class ReorderCastLikeAndValuePreserving : public ArithmeticOptimizerStage {
   }
 };
 
-// Reorder reshapes around a single unary element-wise op, i.e.:
+// Reorder redundant reshapes around a single unary element-wise op, i.e.,
+//
 //    input -> reshape A -> unary -> reshape B -> output
+//
 // becomes
+//
 //    input -> unary -> reshape A -> reshape B -> output
 //
-// A later pass (RemoveRedundantReshapeOrBroadcastTo) removes both reshapes
-class ReorderReshapeAroundUnary : public ArithmeticOptimizerStage {
+// We conservatively consider reshapes to be redundant only if:
+//  1) The input shape of A is equal to the output shape of B.
+//  2) Both A and unary have a single output.
+//
+// A later pass (RemoveRedundantReshapeOrBroadcastTo) will remove both reshapes
+//
+class ReorderRedundantReshapeAroundUnary : public ArithmeticOptimizerStage {
  public:
-  explicit ReorderReshapeAroundUnary(const GraphOptimizerContext& ctx,
-                                     const ArithmeticOptimizerContext& ctx_ext)
-      : ArithmeticOptimizerStage("ReorderReshapeAroundUnary", ctx, ctx_ext) {}
+  explicit ReorderRedundantReshapeAroundUnary(
+      const GraphOptimizerContext& ctx,
+      const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("ReorderRedundantReshapeAroundUnary", ctx,
+                                 ctx_ext) {}
 
-  ~ReorderReshapeAroundUnary() override = default;
+  ~ReorderRedundantReshapeAroundUnary() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
     return IsReshape(*node) && !IsInPreserveSet(*node);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
-    // Check that we have a chain of (reshape -> unary -> reshape)
-    NodeDef* reshape_b = node;
-    if (!IsReshape(*reshape_b) || IsInPreserveSet(*reshape_b)) {
+    // Check that we have a chain of (reshape -> unary -> reshape), with no
+    // additional outputs on either the first reshape or unary op
+    NodeDef* head = node;
+    if (!IsReshape(*head) || IsInPreserveSet(*head)) {
       return Status::OK();
     }
 
     NodeDef* unary;
-    TF_RETURN_IF_ERROR(GetInputNode(reshape_b->input(0), &unary));
-    if (!IsUnaryElementWise(*unary) || IsInPreserveSet(*unary)) {
+    TF_RETURN_IF_ERROR(GetInputNode(head->input(0), &unary));
+    if (!IsUnaryElementWise(*unary) || IsInPreserveSet(*unary) ||
+        NumNonControlOutputs(*unary, *ctx().node_map) != 1) {
       return Status::OK();
     }
 
-    NodeDef* reshape_a;
-    TF_RETURN_IF_ERROR(GetInputNode(unary->input(0), &reshape_a));
-    if (!IsReshape(*reshape_a) || IsInPreserveSet(*reshape_a)) {
+    NodeDef* tail;
+    TF_RETURN_IF_ERROR(GetInputNode(unary->input(0), &tail));
+    if (!IsReshape(*tail) || IsInPreserveSet(*tail) ||
+        NumNonControlOutputs(*tail, *ctx().node_map) != 1) {
       return Status::OK();
     }
 
+    // The reshapes are a no-op if the input and output shapes match
     NodeDef* input;
-    TF_RETURN_IF_ERROR(GetInputNode(reshape_a->input(0), &input));
+    TF_RETURN_IF_ERROR(GetInputNode(tail->input(0), &input));
+    if (!InputMatchesOutputShape(*input, *head)) {
+      VLOG(3) << "Input and output shapes are unequal: input=" << input->name()
+              << ", output=" << head->name();
+      return Status::OK();
+    }
 
-    // Attach unary to the input, bypassing reshape_a
+    // Reordering ops with control inputs can result in a cyliclic graph so we
+    // conservatively ignore such ops
+    if (NumControlInputs(*unary) != 0 || NumControlInputs(*tail) != 0) {
+      return Status::OK();
+    }
+
+    // Swap `unary` and `tail` reshape
     unary->set_input(0, input->name());
-    ctx().node_map->UpdateInput(unary->name(), reshape_a->name(),
-                                input->name());
-    ForwardControlDependencies(unary, {reshape_a});
+    ctx().node_map->UpdateInput(unary->name(), tail->name(), input->name());
+    tail->set_input(0, unary->name());
+    ctx().node_map->UpdateInput(tail->name(), input->name(), unary->name());
+    head->set_input(0, tail->name());
+    ctx().node_map->UpdateInput(head->name(), unary->name(), tail->name());
 
-    // Create a copy of reshape_a and insert it after unary
-    NodeDef* new_reshape = CopyReshapeAndInsertAfter(reshape_a, unary);
-    AddToOptimizationQueue(new_reshape);
-
+    *simplified_node_name = node->name();
+    AddToOptimizationQueue(node);
     return Status::OK();
   }
 
  private:
-  NodeDef* CopyReshapeAndInsertAfter(NodeDef* reshape, NodeDef* unary) {
-    NodeScopeAndName root_scope_and_name =
-        ParseNodeScopeAndName(reshape->name());
-    const string& new_reshape_name = OptimizedNodeName(root_scope_and_name);
+  // Returns whether the input shape of the first op matches the output shape of
+  // the second op.
+  bool InputMatchesOutputShape(const NodeDef& input, const NodeDef& output) {
+    const OpInfo::TensorProperties* input_props;
+    const OpInfo::TensorProperties* output_props;
+    if (!GetTensorProperties(input.name(), &input_props).ok() ||
+        !GetTensorProperties(output.name(), &output_props).ok()) {
+      return false;
+    }
 
-    // Copy the attributes of the original reshape
-    NodeDef* new_reshape = AddEmptyNode(new_reshape_name);
-    new_reshape->set_op("Reshape");
-    new_reshape->set_device(unary->device());
-    SetDataTypeToAttr(GetDataTypeFromAttr(*reshape, "T"), "T", new_reshape);
-    SetDataTypeToAttr(GetDataTypeFromAttr(*reshape, "Tshape"), "Tshape",
-                      new_reshape);
-
-    // Forward the consumers of unary to reshape
-    UpdateConsumers(unary, new_reshape->name());
-
-    // Add unary and the original shape as inputs
-    new_reshape->add_input(unary->name());
-    ctx().node_map->AddOutput(unary->name(), new_reshape->name());
-    new_reshape->add_input(reshape->input(1));
-    ctx().node_map->AddOutput(reshape->input(1), new_reshape->name());
-
-    return new_reshape;
+    return ShapesSymbolicallyEqual(input_props->shape(), output_props->shape());
   }
 };
 
@@ -2698,7 +2711,7 @@ class ReplacePackWithTileReshape : public ArithmeticOptimizerStage {
 
   bool IsSupported(const NodeDef* node) const override {
     return IsPack(*node) && NumNonControlInputs(*node) > 1 &&
-           !IsInPreserveSet(*node);
+        !IsInPreserveSet(*node);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
@@ -4104,8 +4117,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<RemoveLogicalNotStage>(ctx, ctx_ext);
   if (options_.reorder_cast_like_and_value_preserving)
     pipeline.AddStage<ReorderCastLikeAndValuePreserving>(ctx, ctx_ext);
-  if (options_.reorder_reshape_around_unary)
-    pipeline.AddStage<ReorderReshapeAroundUnary>(ctx, ctx_ext);
+  if (options_.reorder_redundant_reshape_around_unary)
+    pipeline.AddStage<ReorderRedundantReshapeAroundUnary>(ctx, ctx_ext);
   if (options_.simplify_aggregation)
     pipeline.AddStage<SimplifyAggregation>(ctx, ctx_ext);
   if (options_.hoist_cwise_unary_chains)
