@@ -171,9 +171,9 @@ tensorflow::Status InitGraphPlugin(TFInitGraphPluginFn init_fn) {
       TP_OPTIMIZER_REGISTRATION_PARAMS_STRUCT_SIZE};
   TP_Optimizer optimizer{TP_OPTIMIZER_STRUCT_SIZE};
   TP_OptimizerConfigs optimizer_configs{TP_OPTIMIZER_CONFIGS_STRUCT_SIZE};
-  params.major_version = SE_MAJOR;
-  params.minor_version = SE_MINOR;
-  params.patch_version = SE_PATCH;
+  params.major_version = GO_MAJOR;
+  params.minor_version = GO_MINOR;
+  params.patch_version = GO_PATCH;
   params.optimizer = &optimizer;
   params.optimizer_configs = &optimizer_configs;
 

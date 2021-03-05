@@ -73,9 +73,9 @@ limitations under the License.
 //      params->optimizer->create_func = (My_optimizer::create_func);
 //    }
 
-#define SE_MAJOR 0
-#define SE_MINOR 0
-#define SE_PATCH 1
+#define GO_MAJOR 0
+#define GO_MINOR 0
+#define GO_PATCH 1
 
 #ifdef __cplusplus
 extern "C" {
