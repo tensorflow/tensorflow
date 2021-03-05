@@ -7760,12 +7760,12 @@ inline int ArgMaxVector(const T* input_data, int n) {
   return max_index;
 }
 
-#ifdef USE_NEON
 template <>
 inline int ArgMinVector(const float* input_data, int size) {
   int32_t min_index = 0;
   float min_value = input_data[0];
   int32_t i = 1;
+#ifdef USE_NEON
   if (size >= 4) {
     float32x4_t min_value_f32x4 = vld1q_f32(input_data);
     const int32_t index_init[4] = {0, 1, 2, 3};
@@ -7788,7 +7788,7 @@ inline int ArgMinVector(const float* input_data, int size) {
                                             vget_high_f32(min_value_f32x4));
     min_value_f32x2 = vpmin_f32(min_value_f32x2, min_value_f32x2);
     min_value = vget_lane_f32(min_value_f32x2, 0);
-#endif
+#endif  // __aarch64__
     // Mask indices of non-min values with max int32_t.
     float32x4_t fill_min_value_f32x4 = vdupq_n_f32(min_value);
     uint32x4_t mask = vceqq_f32(min_value_f32x4, fill_min_value_f32x4);
@@ -7802,8 +7802,9 @@ inline int ArgMinVector(const float* input_data, int size) {
                                            vget_high_s32(min_index_s32x4));
     min_index_s32x2 = vpmin_s32(min_index_s32x2, min_index_s32x2);
     min_index = vget_lane_s32(min_index_s32x2, 0);
-#endif
+#endif  // __aarch64__
   }
+#endif  // USE_NEON
   // Leftover loop.
   for (; i < size; ++i) {
     const float curr_value = input_data[i];
@@ -7820,6 +7821,7 @@ inline int ArgMaxVector(const float* input_data, int size) {
   int32_t max_index = 0;
   float max_value = input_data[0];
   int32_t i = 1;
+#ifdef USE_NEON
   if (size >= 4) {
     float32x4_t max_value_f32x4 = vld1q_f32(input_data);
     const int32_t index_init[4] = {0, 1, 2, 3};
@@ -7842,7 +7844,7 @@ inline int ArgMaxVector(const float* input_data, int size) {
                                             vget_high_f32(max_value_f32x4));
     max_value_f32x2 = vpmax_f32(max_value_f32x2, max_value_f32x2);
     max_value = vget_lane_f32(max_value_f32x2, 0);
-#endif
+#endif  // __aarch64__
     // Mask indices of non-max values with max int32_t.
     float32x4_t fill_max_value_f32x4 = vdupq_n_f32(max_value);
     uint32x4_t mask = vceqq_f32(max_value_f32x4, fill_max_value_f32x4);
@@ -7856,8 +7858,9 @@ inline int ArgMaxVector(const float* input_data, int size) {
                                            vget_high_s32(max_index_s32x4));
     max_index_s32x2 = vpmin_s32(max_index_s32x2, max_index_s32x2);
     max_index = vget_lane_s32(max_index_s32x2, 0);
-#endif
+#endif  // __aarch64__
   }
+#endif  // USE_NEON
   // Leftover loop.
   for (; i < size; ++i) {
     const float curr_value = input_data[i];
@@ -7868,7 +7871,6 @@ inline int ArgMaxVector(const float* input_data, int size) {
   }
   return max_index;
 }
-#endif
 
 // Specializes ArgMinMax function with axis=dims-1.
 // In this case, ArgMinMax reduction is applied on contiguous memory.
