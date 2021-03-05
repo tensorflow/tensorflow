@@ -182,23 +182,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "csv_dataset_serialization_test",
-    size = "medium",
-    srcs = ["csv_dataset_serialization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python/data/experimental/ops:readers",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-    ],
-)
-
-tf_py_test(
     name = "dataset_constructor_serialization_test",
     size = "medium",
     srcs = ["dataset_constructor_serialization_test.py"],
