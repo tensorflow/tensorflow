@@ -266,11 +266,10 @@ Status XlaOpKernelContext::ResolveInputDynamismIntoPred(int index, bool* out) {
   xla::StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism(client);
   if (!dynamism_or_status.ok()) {
     // When failed to resolve dynamism, conservatively consider the value
-    // dynamic. This could happen if the input depends on some ops like
-    // custom-call that is not supported generally for dynamism computation.
+    // dynamic.
     //
     // TODO(b/176993339): Support resolving dynamism across computations so
-    // resolving dynamism will not fail in those cases.
+    // resolving dynamism will not fail.
     *out = true;
     return Status::OK();
   }
@@ -297,12 +296,11 @@ Status XlaOpKernelContext::ResolveInputDynamismIntoPredVector(
   xla::StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism(client);
   if (!dynamism_or_status.ok()) {
     // When failed to resolve dynamism, conservatively consider the value
-    // dynamic. This could happen if the input depends on some ops like
-    // custom-call that is not supported generally for dynamism computation.
+    // dynamic.
     //
     // TODO(b/176993339): Support resolving dynamism across computations so
-    // resolving dynamism will not fail in those cases.
-    out->resize(InputShape(index).num_elements(), true);
+    // resolving dynamism will not fail.
+    out->resize(InputShape(index).num_elements(), false);
     return Status::OK();
   }
   Tensor dynamism = dynamism_or_status.ValueOrDie();
