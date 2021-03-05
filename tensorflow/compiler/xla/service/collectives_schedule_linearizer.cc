@@ -52,7 +52,7 @@ StatusOr<bool> CollectivesScheduleLinearizer::Run(HloModule* module) {
     for (HloInstruction* instruction : computation->instructions()) {
       if (auto* next = DynCast<HloCollectiveInstruction>(instruction)) {
         if (prev != nullptr && !reachability->IsConnected(next, prev)) {
-          // We check for reachability as we don't want to form a cycle.
+          // If prev and next are independent, enforce ordering.
           TF_RETURN_IF_ERROR(prev->AddControlDependencyTo(next));
           VLOG(1) << "Adding control dependency from " << prev->ToString()
                   << " to " << next->ToString();
