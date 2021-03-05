@@ -32,7 +32,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#ifndef ENABLE_ONEDNN_OPENMP
 using dnnl::stream_attr;
 using dnnl::threadpool_iface;
 
@@ -116,7 +116,7 @@ struct MklDnnThreadPool {
   MklDnnThreadPool(OpKernelContext* ctx) {}
 };
 
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
 
 }  // namespace tensorflow
 
