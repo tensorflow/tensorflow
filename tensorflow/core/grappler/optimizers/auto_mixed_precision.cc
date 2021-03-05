@@ -43,6 +43,21 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
+
+#if TENSORFLOW_USE_ROCM
+bool GetFastFP16Support(const DeviceProperties &props) {
+  bool supported = false;
+  std::set<std::string> FP16SupportedDevices = {"gfx906", "gfx908"};
+  std::string gcnArchName = props.environment().at("architecture");
+  std::vector<std::string> gpu_arch = absl::StrSplit(gcnArchName, ":");
+  supported = std::find(std::begin(FP16SupportedDevices),
+              std::end(FP16SupportedDevices),
+              gpu_arch[0]) != std::end(FP16SupportedDevices);
+  return supported;
+}
+#endif
+
+
 namespace {
 
 #if GOOGLE_CUDA
@@ -1160,7 +1175,11 @@ std::pair<int, int> GetDeviceGPUArch(
 }
 
 bool AutoMixedPrecisionImpl::IsOnSuitableGPUArch(const NodeDef& node) const {
+#ifndef TENSORFLOW_USE_ROCM
   return GetDeviceGPUArch(virtual_placer_.get_device(node)) >= kMinGPUArch;
+#else
+  return GetFastFP16Support(virtual_placer_.get_device(node)); 
+#endif
 }
 
 bool AutoMixedPrecisionImpl::ShouldProcess(const NodeDef& node) const {
@@ -1970,10 +1989,18 @@ int GetNumGPUs(const Cluster& cluster,
   int num_gpus = 0;
   for (const auto& device : devices) {
     const DeviceProperties& device_properties = device.second;
+#if GOOGLE_CUDA
     std::pair<int, int> arch = GetDeviceGPUArch(device_properties);
     if (device_properties.type() == "GPU" && arch >= min_arch) {
       num_gpus++;
     }
+#elif TENSORFLOW_USE_ROCM
+    if (device_properties.type() == "GPU") {
+      if (ShouldIgnorePerformance() || GetFastFP16Support(device_properties)) {
+        num_gpus++;
+      }
+    }
+#endif
   }
   return num_gpus;
 }
