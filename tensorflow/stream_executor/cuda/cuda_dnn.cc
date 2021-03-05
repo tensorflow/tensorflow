@@ -3169,6 +3169,7 @@ struct RnnDoFP32ComputationFP16Input {
 };
 
 namespace {
+
 #if CUDNN_VERSION >= 8100
 bool IsNonDeterministic(cudnnBackendDescriptor_t engine_config) {
   return cudnn_frontend::hasNumericalNote<
@@ -3196,8 +3197,8 @@ bool IsNonDeterministicOrIsDownConverting(
   return IsNonDeterministic(engine_config) ||
          IsDownConvertingInputs(engine_config);
 }
-
 #endif // CUDNN_VERSION >= 8100
+
 } // namespace
 
 cudnnDataType_t GetRnnComputeType(dnn::DataType data_type) {
@@ -3777,7 +3778,8 @@ port::Status CudnnSupport::DoConvolve(
 
   return port::Status::OK();
 #else
-  return port::InternalError("CUDNN version needs to be >= 8.0");
+  return port::InternalError("To use CuDNN frontend APIs, CuDNN v8.1 or later "
+                             "is required.");
 #endif // CUDNN_VERSION >= 8100
 }
 
