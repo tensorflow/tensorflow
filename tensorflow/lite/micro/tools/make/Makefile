@@ -678,26 +678,26 @@ $(BINDIR)%.bin: $(BINDIR)%
 # microlite_test helper function. For these tests, we also need to make sure to
 # not add targets for them if they have been excluded as part of the target
 # specific Makefile.
-EXPLICITLY_SPECIFIED_TEST:= tensorflow/lite/micro/detection_postprocess_test.cc
+EXPLICITLY_SPECIFIED_TEST:= tensorflow/lite/micro/kernels/detection_postprocess_test.cc
 ifneq ($(findstring $(EXPLICITLY_SPECIFIED_TEST),$(MICROLITE_TEST_SRCS)),)
   MICROLITE_TEST_SRCS := $(filter-out $(EXPLICITLY_SPECIFIED_TEST), $(MICROLITE_TEST_SRCS))
   EXPLICITLY_SPECIFIED_TEST_SRCS := \
   $(EXPLICITLY_SPECIFIED_TEST) \
-  tensorflow/lite/micro/kernels/detection_postprocess_flexbuffer_generated_data.cc
+  tensorflow/lite/micro/kernels/detection_postprocess_flexbuffers_generated_data.cc
   EXPLICITLY_SPECIFIED_TEST_HDRS := \
-  tensorflow/lite/micro/kernels/detection_postprocess_flexbuffer_generated_data.h
+  tensorflow/lite/micro/kernels/detection_postprocess_flexbuffers_generated_data.h
   $(eval $(call microlite_test,kernel_detection_postprocess_test,\
   $(EXPLICITLY_SPECIFIED_TEST_SRCS),$(EXPLICITLY_SPECIFIED_TEST_HDRS)))
 endif
 
-EXPLICITLY_SPECIFIED_TEST:= tensorflow/lite/micro/circular_buffer_test.cc
+EXPLICITLY_SPECIFIED_TEST:= tensorflow/lite/micro/kernels/circular_buffer_test.cc
 ifneq ($(findstring $(EXPLICITLY_SPECIFIED_TEST),$(MICROLITE_TEST_SRCS)),)
   MICROLITE_TEST_SRCS := $(filter-out $(EXPLICITLY_SPECIFIED_TEST), $(MICROLITE_TEST_SRCS))
   EXPLICITLY_SPECIFIED_TEST_SRCS := \
   $(EXPLICITLY_SPECIFIED_TEST) \
-  tensorflow/lite/micro/kernels/circular_buffer_flexbufers_data.cc
+  tensorflow/lite/micro/kernels/circular_buffer_flexbuffers_generated_data.cc
   EXPLICITLY_SPECIFIED_TEST_HDRS := \
-  tensorflow/lite/micro/kernels/circular_buffer_flexbuffers_data.h
+  tensorflow/lite/micro/kernels/circular_buffer_flexbuffers_generated_data.h
   $(eval $(call microlite_test,kernel_circular_buffer_test,\
   $(EXPLICITLY_SPECIFIED_TEST_SRCS),$(EXPLICITLY_SPECIFIED_TEST_HDRS)))
 endif
