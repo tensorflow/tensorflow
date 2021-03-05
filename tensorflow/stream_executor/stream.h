@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/blas.h"
-#include "tensorflow/stream_executor/cuda/cuda_dnn.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/dnn.h"
 #include "tensorflow/stream_executor/event.h"
@@ -41,6 +40,10 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/stream_executor/temporary_memory_manager.h"
+
+#if GOOGLE_CUDA
+#include "tensorflow/stream_executor/cuda/cuda_dnn.h"
+#endif // GOOGLE_CUDA
 
 namespace stream_executor {
 
@@ -363,6 +366,7 @@ class Stream {
       DeviceMemory<OutputType> *output, ScratchAllocator *scratch_allocator,
       const dnn::AlgorithmConfig &plan_config,
       dnn::ProfileResult *output_profile_result) {
+#if GOOGLE_CUDA
     dnn::DnnSupport *dnn = parent_->AsDnn();
     if (dnn) {
       gpu::CudnnSupport *cudnn_dnn = dynamic_cast<gpu::CudnnSupport*>(dnn);
@@ -373,6 +377,7 @@ class Stream {
           output_descriptor, *output, convolution_descriptor, plan_config,
           scratch_allocator, output_profile_result);
     }
+#endif // GOOGLE_CUDA
     return port::UnimplementedError("DNN library is not found.");
   }
 
@@ -469,6 +474,7 @@ class Stream {
       ScratchAllocator *scratch_allocator,
       const dnn::AlgorithmConfig &plan_config,
       dnn::ProfileResult *output_profile_result) {
+#if GOOGLE_CUDA
     dnn::DnnSupport *dnn = parent_->AsDnn();
     if (dnn) {
       gpu::CudnnSupport *cudnn_dnn = dynamic_cast<gpu::CudnnSupport*>(dnn);
@@ -480,6 +486,7 @@ class Stream {
           output_descriptor, backward_output_data, convolution_descriptor,
           plan_config, scratch_allocator, output_profile_result);
     }
+#endif // GOOGLE_CUDA
     return port::UnimplementedError("DNN library is not found.");
   }
 
@@ -559,6 +566,7 @@ class Stream {
       ScratchAllocator *scratch_allocator,
       const dnn::AlgorithmConfig &plan_config,
       dnn::ProfileResult *output_profile_result) {
+#if GOOGLE_CUDA
     dnn::DnnSupport *dnn = parent_->AsDnn();
     if (dnn) {
       gpu::CudnnSupport *cudnn_dnn = dynamic_cast<gpu::CudnnSupport*>(dnn);
@@ -570,6 +578,7 @@ class Stream {
           output_descriptor, backward_output_data, convolution_descriptor,
           plan_config, scratch_allocator, output_profile_result);
     }
+#endif // GOOGLE_CUDA
     return port::UnimplementedError("DNN library is not found.");
   }
 
