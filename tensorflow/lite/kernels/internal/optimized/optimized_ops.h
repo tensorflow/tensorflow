@@ -7731,10 +7731,10 @@ inline void BroadcastPReluDispatch(
 // Returns the index with minimum value within `input_data`.
 // If there is a tie, returns the smaller index.
 template <typename T>
-inline int ArgMinVector(const T* input_data, int n) {
+inline int ArgMinVector(const T* input_data, int size) {
   T min_value = input_data[0];
   int min_index = 0;
-  for (int i = 1; i < n; ++i) {
+  for (int i = 1; i < size; ++i) {
     const T curr_value = input_data[i];
     if (curr_value < min_value) {
       min_value = curr_value;
@@ -7747,10 +7747,10 @@ inline int ArgMinVector(const T* input_data, int n) {
 // Returns the index with maximum value within `input_data`.
 // If there is a tie, returns the smaller index.
 template <typename T>
-inline int ArgMaxVector(const T* input_data, int n) {
+inline int ArgMaxVector(const T* input_data, int size) {
   T max_value = input_data[0];
   int max_index = 0;
-  for (int i = 1; i < n; ++i) {
+  for (int i = 1; i < size; ++i) {
     const T curr_value = input_data[i];
     if (curr_value > max_value) {
       max_value = curr_value;
