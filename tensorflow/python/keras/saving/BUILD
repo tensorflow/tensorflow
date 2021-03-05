@@ -29,7 +29,7 @@ py_library(
         "__init__.py",
         "hdf5_format.py",
         "model_config.py",
-        "pickle.py",
+        "pickle_utils.py",
         "save.py",
         "saved_model/base_serialization.py",
         "saved_model/constants.py",
@@ -67,6 +67,7 @@ py_library(
         "//tensorflow/python/keras/utils:metrics_utils",
         "//tensorflow/python/keras/utils:mode_keys",
         "//tensorflow/python/saved_model",
+        "//tensorflow/python/platform",
         "//tensorflow/python/training/tracking",
     ],
 )

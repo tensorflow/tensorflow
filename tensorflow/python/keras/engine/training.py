@@ -56,7 +56,7 @@ from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.saving import saving_utils
-from tensorflow.python.keras.saving.pickle import pack_model
+from tensorflow.python.keras.saving.pickle_utils import pack_model
 from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import generic_utils
@@ -2085,6 +2085,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
   def __reduce__(self):
     return pack_model(self)
+
+  def __deepcopy__(self):
+    return super().__deepcopy__()
 
   def save_weights(self,
                    filepath,
