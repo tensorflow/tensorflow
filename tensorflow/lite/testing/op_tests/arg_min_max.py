@@ -62,7 +62,7 @@ def make_arg_min_max_tests(options):
     if "axis" not in parameters:
       axis = random.randint(0, max(len(parameters["input_shape"]) - 1, 0))
     else:
-      axis = -1
+      axis = parameters["axis"]
     if parameters["is_arg_max"]:
       out = tf.math.argmax(
           input_value, axis, output_type=parameters["output_type"])
