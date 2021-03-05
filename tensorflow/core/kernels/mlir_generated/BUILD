@@ -109,6 +109,8 @@ filegroup(
         "gpu_op_complex.cc",
         "gpu_op_logical_and.cc",
         "gpu_op_logical_or.cc",
+        "gpu_op_maximum.cc",
+        "gpu_op_minimum.cc",
     ],
     compatible_with = get_compatible_with_cloud(),
 )
@@ -125,8 +127,6 @@ filegroup(
         "gpu_op_left_shift.cc",
         "gpu_op_less.cc",
         "gpu_op_less_equal.cc",
-        "gpu_op_maximum.cc",
-        "gpu_op_minimum.cc",
         "gpu_op_mul.cc",
         "gpu_op_not_equal.cc",
         "gpu_op_pow.cc",
