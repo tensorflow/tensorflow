@@ -46,6 +46,7 @@ _CORNER_CASES = {
         'message': {}
     },
     'train.LooperThread': {
+        'isAlive': {},
         'join': {},
         'native_id': {}
     }
