@@ -328,6 +328,10 @@ struct ConvertPackToReshape : public OpRewritePattern<PackOp> {
       return failure();
     }
 
+    // TODO(b/179286433): Follow up to verify behavior here and the user pass.
+    if (input_ty.getElementType().isa<TensorFlowTypeWithSubtype>())
+      return failure();
+
     // Create constant shape for reshape.
     auto type =
         RankedTensorType::get(output_ty.getRank(), rewriter.getIntegerType(64));
