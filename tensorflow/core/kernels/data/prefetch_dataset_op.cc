@@ -163,8 +163,12 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           &deregister_fn_));
       IteratorContext::Params params(ctx);
       params.cancellation_manager = cancellation_manager_.get();
-      return dataset()->input_->MakeIterator(IteratorContext(params), this,
-                                             prefix(), &input_impl_);
+      TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
+          IteratorContext(params), this, prefix(), &input_impl_));
+      if (ctx->warm_start()) {
+        EnsureThreadsStarted(ctx);
+      }
+      return Status::OK();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -173,7 +177,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       const auto& stats_aggregator = ctx->stats_aggregator();
       {
         mutex_lock l(*mu_);
-        TF_RETURN_IF_ERROR(EnsurePrefetchThreadStarted(ctx));
+        EnsureThreadsStarted(ctx);
         // Wait until the next element in the buffer has been
         // produced, or we are shutting down.
         if (legacy_autotune_) {
@@ -298,6 +302,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           }
         }
         RecordBufferEnqueue(ctx, buffer_element.value);
+      }
+      if (ctx->warm_start()) {
+        EnsureThreadsStarted(ctx);
       }
       return Status::OK();
     }
@@ -435,15 +442,13 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       return s;
     }
 
-    Status EnsurePrefetchThreadStarted(IteratorContext* ctx)
+    void EnsureThreadsStarted(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (!prefetch_thread_) {
-        std::shared_ptr<IteratorContext> new_ctx =
-            std::make_shared<IteratorContext>(*ctx);
+        auto new_ctx = std::make_shared<IteratorContext>(*ctx);
         prefetch_thread_ = ctx->StartThread(
             "tf_data_prefetch", [this, new_ctx]() { PrefetchThread(new_ctx); });
       }
-      return Status::OK();
     }
 
     // Prefetches elements of the input, storing results in an internal buffer.

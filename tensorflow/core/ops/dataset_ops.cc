@@ -916,6 +916,7 @@ REGISTER_OP("ModelDataset")
     .Attr("algorithm: int = 0")
     .Attr("cpu_budget: int = 0")
     .Attr("ram_budget: int = 0")
+    .Attr("warm_start: bool = false")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
