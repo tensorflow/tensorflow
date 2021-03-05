@@ -660,6 +660,7 @@ tf_cuda_cc_test(
         "c_api_test.cc",
     ],
     tags = [
+        "no_cuda_asan",  # TODO(b/181771536)
         "guitar",
         # "multi_gpu",  b/180748118
     ],
