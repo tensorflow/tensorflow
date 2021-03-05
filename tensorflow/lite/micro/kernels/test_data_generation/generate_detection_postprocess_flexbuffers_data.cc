@@ -67,7 +67,8 @@ int main() {
   printf("\n");
   printf(
       "#include "
-      "\"tensorflow/lite/micro/kernels/flexbuffers_generated_data.h\"");
+      "\"tensorflow/lite/micro/kernels/"
+      "detection_postprocess_flexbuffers_generated_data.h\"");
   printf("\n\n");
   generate("none_regular_nms", false);
   generate("regular_nms", true);
