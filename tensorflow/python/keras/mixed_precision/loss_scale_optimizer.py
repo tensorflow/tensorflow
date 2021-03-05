@@ -477,7 +477,7 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
   skipped is `1 / dynamic_growth_steps`).
 
   `LossScaleOptimizer` delegates all public `Optimizer` methods to the inner
-  optimizer. Additionally, in methods `minimize` and `get_gradients, it scales
+  optimizer. Additionally, in methods `minimize` and `get_gradients`, it scales
   the loss and unscales the gradients. In methods `minimize` and
   `apply_gradients`, it additionally updates the loss scale and skips applying
   gradients if any gradient has a nonfinite value.
