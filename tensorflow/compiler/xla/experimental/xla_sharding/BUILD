@@ -25,6 +25,9 @@ py_test(
     srcs = ["xla_sharding_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/181913173): Has dependencies with no visibility
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":xla_sharding",
