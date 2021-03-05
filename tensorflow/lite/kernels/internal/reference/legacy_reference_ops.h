@@ -2146,6 +2146,14 @@ void ArgMinMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
             output_data, cmp);
 }
 
+template <typename T1, typename T2, typename T3>
+void ArgMinMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
+               T2* output_data, const Dims<4>& output_dims,
+               const bool is_arg_max) {
+  ArgMinMax(axis, DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+            output_data, is_arg_max);
+}
+
 template <typename T>
 inline void Pow(const T* input1_data, const Dims<4>& input1_dims,
                 const T* input2_data, const Dims<4>& input2_dims,
