@@ -7772,7 +7772,7 @@ inline int ArgMinVector(const float* input_data, int size) {
     int32x4_t min_index_s32x4 = vld1q_s32(index_init);
     int32x4_t index_s32x4 = min_index_s32x4;
     int32x4_t inc = vdupq_n_s32(4);
-    for (i = 4; i < size - 3; i += 4) {
+    for (i = 4; i <= size - 4; i += 4) {
       // Increase indices by 4.
       index_s32x4 = vaddq_s32(index_s32x4, inc);
       float32x4_t v = vld1q_f32(&input_data[i]);
@@ -7826,7 +7826,7 @@ inline int ArgMaxVector(const float* input_data, int size) {
     int32x4_t max_index_s32x4 = vld1q_s32(index_init);
     int32x4_t index_s32x4 = max_index_s32x4;
     int32x4_t inc = vdupq_n_s32(4);
-    for (i = 4; i < size - 3; i += 4) {
+    for (i = 4; i <= size - 4; i += 4) {
       // Increase indices by 4.
       index_s32x4 = vaddq_s32(index_s32x4, inc);
       float32x4_t v = vld1q_f32(&input_data[i]);
