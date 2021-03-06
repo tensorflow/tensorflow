@@ -1044,25 +1044,25 @@ Status TRTEngineOp::AllocateCalibrationResources(
   }
   cres->calibrator_.reset(
       new TRTInt8Calibrator(cres->device_buffers_, batch_size, name()));
-  const int platform_gpu_id =
+  const int platform_device_id =
       ctx->device()->tensorflow_gpu_device_info()->gpu_id;
-  if (platform_gpu_id < 0) {
+  if (platform_device_id < 0) {
     LOG(ERROR) << "Can't get gpu_device_info from context->device()";
     return errors::InvalidArgument(
         "Context->device doesn't contain device info!");
   }
 
   cache_res->Ref();
-  cres->thr_.reset(new std::thread([this, cres, shapes, platform_gpu_id,
+  cres->thr_.reset(new std::thread([this, cres, shapes, platform_device_id,
                                     cache_res]() {
     core::ScopedUnref sc(cache_res);
 
-    VLOG(1) << "Starting calibration thread on device " << platform_gpu_id
+    VLOG(1) << "Starting calibration thread on device " << platform_device_id
             << ", Calibration Resource @ " << cres;
-    auto err = cudaSetDevice(platform_gpu_id);
+    auto err = cudaSetDevice(platform_device_id);
     if (err != cudaSuccess) {
       // TODO(aaroey): should return error here.
-      LOG(ERROR) << "Couldn't set cuda device to " << platform_gpu_id
+      LOG(ERROR) << "Couldn't set cuda device to " << platform_device_id
                  << " in calibration thread";
     }
     std::vector<PartialTensorShape> partial_shapes(shapes.begin(),
