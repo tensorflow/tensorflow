@@ -134,6 +134,10 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
         layer_name=self.__class__.__name__,
         arg_name="output_mode")
 
+    if invert and output_mode != INT:
+      raise ValueError("`output_mode` must be {} when `invert` is true. You "
+                       "passed {}".format(INT, output_mode))
+
     self.invert = invert
     self.max_tokens = max_tokens
     self.num_oov_indices = num_oov_indices

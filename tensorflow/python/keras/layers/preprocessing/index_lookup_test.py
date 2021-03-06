@@ -1431,6 +1431,17 @@ class IndexLookupInverseVocabularyTest(
           dtype=dtypes.string,
           invert=True)
 
+  def test_non_int_output_fails(self):
+    with self.assertRaisesRegex(ValueError, "`output_mode` must be int"):
+      _ = get_layer_class()(
+          max_tokens=None,
+          num_oov_indices=1,
+          mask_token="",
+          oov_token="[OOV]",
+          dtype=dtypes.string,
+          output_mode=index_lookup.COUNT,
+          invert=True)
+
   def test_vocab_with_repeated_element_fails(self):
     vocab_data = ["earth", "earth", "wind", "and", "fire"]
     layer = get_layer_class()(
