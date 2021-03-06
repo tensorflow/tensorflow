@@ -575,6 +575,7 @@ tf_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/experimental/ops:parsing_ops",
+        "//tensorflow/python/data/experimental/kernel_tests:reader_dataset_ops_test_base",
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
