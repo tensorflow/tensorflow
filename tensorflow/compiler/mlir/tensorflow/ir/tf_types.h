@@ -246,9 +246,6 @@ class TensorFlowTypeWithSubtype : public TensorFlowType {
   // Converts a TypeWithSubtype type to the same type but without its subtypes.
   Type RemoveSubtypes();
 
-  // Clone the current Type with new subtypes.
-  TensorFlowTypeWithSubtype clone(ArrayRef<TensorType> new_subtypes);
-
   // Returns the subtypes.
   ArrayRef<TensorType> GetSubtypes();
 };

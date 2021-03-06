@@ -96,6 +96,9 @@ bool TensorFlowRefType::classof(Type type) {
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
       >();
 }
+bool TensorFlowTypeWithSubtype::classof(Type type) {
+  return type.isa<ResourceType, VariantType>();
+}
 
 TensorFlowType TensorFlowRefType::get(Type type) {
   MLIRContext* ctx = type.getContext();
@@ -178,26 +181,10 @@ Type TensorFlowRefType::RemoveRef() {
   llvm_unreachable("unexpected tensorflow ref type kind");
 }
 
-bool TensorFlowTypeWithSubtype::classof(Type type) {
-  return type.isa<ResourceType, VariantType>();
-}
-
 Type TensorFlowTypeWithSubtype::RemoveSubtypes() {
   MLIRContext* ctx = getContext();
   if (isa<VariantType>()) return VariantType::get(ctx);
   if (isa<ResourceType>()) return ResourceType::get(ctx);
-  llvm_unreachable("unexpected tensorflow type with subtypes kind");
-}
-
-TensorFlowTypeWithSubtype TensorFlowTypeWithSubtype::clone(
-    ArrayRef<TensorType> new_subtypes) {
-  MLIRContext* ctx = getContext();
-  if (isa<VariantType>())
-    return VariantType::get(new_subtypes, ctx)
-        .cast<TensorFlowTypeWithSubtype>();
-  if (isa<ResourceType>())
-    return ResourceType::get(new_subtypes, ctx)
-        .cast<TensorFlowTypeWithSubtype>();
   llvm_unreachable("unexpected tensorflow type with subtypes kind");
 }
 
