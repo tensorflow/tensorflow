@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 #elif defined(__APPLE__)
 #include "TargetConditionals.h"
-#if TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR
+#if (TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR) || TARGET_OS_OSX
 // Only enable metal delegate when using a real iPhone device.
 #define REAL_IPHONE_DEVICE
 #include "tensorflow/lite/delegates/gpu/metal_delegate.h"
