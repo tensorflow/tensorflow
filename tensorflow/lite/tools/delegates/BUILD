@@ -116,6 +116,9 @@ cc_library(
         "//tensorflow:ios": [
             "-xobjective-c++",
         ],
+        "//tensorflow:macos_arm64": [
+            "-xobjective-c++",
+        ],
         "//conditions:default": [],
     }),
     deps = [
@@ -123,6 +126,9 @@ cc_library(
         "//tensorflow/lite/tools/evaluation:utils",
     ] + select({
         "//tensorflow:ios": [
+            "//tensorflow/lite/delegates/coreml:coreml_delegate",
+        ],
+        "//tensorflow:macos_arm64": [
             "//tensorflow/lite/delegates/coreml:coreml_delegate",
         ],
         "//conditions:default": [],
