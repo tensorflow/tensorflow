@@ -243,6 +243,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParseL2Normalization);
   }
 
+  TfLiteStatus AddLeakyRelu() {
+    return AddBuiltin(BuiltinOperator_LEAKY_RELU, tflite::Register_LEAKY_RELU(),
+                      ParseLeakyRelu);
+  }
+
   TfLiteStatus AddLess() {
     return AddBuiltin(BuiltinOperator_LESS, tflite::ops::micro::Register_LESS(),
                       ParseLess);

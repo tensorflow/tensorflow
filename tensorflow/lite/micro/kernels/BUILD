@@ -273,6 +273,7 @@ cc_library(
         "fill.cc",
         "floor.cc",
         "l2norm.cc",
+        "leaky_relu.cc",
         "logical.cc",
         "logistic.cc",
         "maximum_minimum.cc",
@@ -665,6 +666,21 @@ cc_test(
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "leaky_relu_test",
+    srcs = [
+        "leaky_relu_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
