@@ -750,7 +750,10 @@ class BatchNormalizationBase(Layer):
 
   def call(self, inputs, training=None):
     training = self._get_training_value(training)
-
+    
+    if 0 in inputs.shape:
+      raise ValueError("Input shape cannot have a 0 dimension but got a shape {}".format(inputs.shape))
+      
     if self.virtual_batch_size is not None:
       # Virtual batches (aka ghost batches) can be simulated by reshaping the
       # Tensor and reusing the existing batch norm implementation
@@ -1217,6 +1220,8 @@ class LayerNormalization(Layer):
   def call(self, inputs):
     # Compute the axes along which to reduce the mean / variance
     input_shape = inputs.shape
+    if 0 in input_shape:
+      raise ValueError("Input shape cannot have a 0 dimension but got a shape {}".format(input_shape))
     ndims = len(input_shape)
 
     # Broadcasting only necessary for norm when the axis is not just
