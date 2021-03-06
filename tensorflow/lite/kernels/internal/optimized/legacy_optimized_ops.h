@@ -33,6 +33,8 @@ namespace tflite {
 namespace optimized_ops {
 
 // Unoptimized reference ops:
+using reference_ops::ArgMax;
+using reference_ops::ArgMinMax;
 using reference_ops::Broadcast4DSlowGreater;
 using reference_ops::Broadcast4DSlowGreaterEqual;
 using reference_ops::Broadcast4DSlowGreaterEqualWithScaling;
@@ -4962,31 +4964,6 @@ inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
 
   StridedSlice(op_params, DimsToShape(input_dims), input_data,
                DimsToShape(output_dims), output_data);
-}
-
-template <typename T1, typename T2, typename T3>
-void ArgMax(const T3* axis, const T1* input_data,
-            const tflite::Dims<4>& input_dims, T2* output_data,
-            const tflite::Dims<4>& output_dims) {
-  // Assumes the input always has 4 dimensions, and therefore,
-  // output always has three dimensions.
-  auto output_shape = RuntimeShape(
-      {output_dims.sizes[2], output_dims.sizes[1], output_dims.sizes[0]});
-  // Another way to interpret this is that output_dims.sizes[4] is always 1.
-  TFLITE_DCHECK_EQ(output_shape.FlatSize(),
-                   DimsToShape(output_dims).FlatSize());
-  // Legacy path only supported this.
-  TFLITE_DCHECK_EQ(axis[0], 3);
-  ArgMinMax(DimsToShape(input_dims), input_data, axis, output_shape,
-            output_data, /*is_arg_max=*/true);
-}
-
-template <typename T1, typename T2, typename T3>
-void ArgMinMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
-               T2* output_data, const Dims<4>& output_dims,
-               const bool is_arg_max) {
-  ArgMinMax(axis, DimsToShape(input_dims), input_data, DimsToShape(output_dims),
-            output_data, is_arg_max);
 }
 
 }  // namespace optimized_ops
