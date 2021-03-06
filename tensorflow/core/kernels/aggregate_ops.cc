@@ -39,6 +39,8 @@ class AddNOp : public OpKernel {
   explicit AddNOp(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* ctx) override {
+    LOG(ERROR) << "hello world";
+
     if (!ctx->ValidateInputsAreSameShape(this)) return;
 
     const Tensor& input0 = ctx->input(0);
