@@ -88,8 +88,8 @@ void AddSupportedOpsUsingFolding(MLIRContext* context,
   supported_ops->insert(allowlist_ops.begin(), allowlist_ops.end());
 }
 
-// Adds the list of ops that are supported through dynamic padder using fallback
-// to TF2XLA bridge.
+// Adds the list of ops that are supported through dynamic padder using op by op
+// fallback to the TF2XLA bridge.
 // TODO(b/168036682): Remove this once ops are supported using dynamic padder
 // on MLIR bridge.
 void AddSupportedOpsUsingDynamicPadder(
