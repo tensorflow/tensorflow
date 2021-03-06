@@ -26,6 +26,21 @@ namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
+template <typename T>
+struct OutOfBoundsValue {
+  __host__ __device__ static T value() {
+    return Eigen::NumTraits<T>::quiet_NaN();
+  }
+};
+
+template <typename T>
+struct OutOfBoundsValue<std::complex<T>> {
+  __host__ __device__ static std::complex<T> value() {
+    return std::complex<T>(OutOfBoundsValue<T>::value(),
+                           OutOfBoundsValue<T>::value());
+  }
+};
+
 template <typename T, typename Tsum, typename Tindices, bool ADJ_A, bool ADJ_B>
 __global__ void SparseTensorDenseMatMulKernel(
     int nnz, int m, int b_rows, int b_cols, int p,
@@ -45,7 +60,7 @@ __global__ void SparseTensorDenseMatMulKernel(
     // out[i, j]
     Tsum* out_location = out + i * p + j;
     if (!FastBoundsCheck(k, n)) {
-      GpuAtomicAdd(out_location, Eigen::NumTraits<Tsum>::quiet_NaN());
+      GpuAtomicAdd(out_location, OutOfBoundsValue<Tsum>::value());
       continue;
     }
 
