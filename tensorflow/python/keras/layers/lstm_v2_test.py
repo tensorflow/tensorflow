@@ -327,7 +327,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
   @test.disable_with_predicate(
       pred=test.is_built_with_rocm,
       skip_message='Skipping as ROCm MIOpen does not support padded input yet.')
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_lstm_v2_feature_parity_with_canonical_lstm(self):
     input_shape = 10
     rnn_state_size = 8
