@@ -258,6 +258,7 @@ cc_library(
         "activations.cc",
         "hard_swish.cc",
         "add.cc",
+        "add_n.cc",
         "arg_min_max.cc",
         "batch_to_space_nd.cc",
         "cast.cc",
@@ -387,6 +388,21 @@ cc_test(
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "add_n_test",
+    srcs = [
+        "add_n_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
