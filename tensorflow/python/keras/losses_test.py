@@ -165,11 +165,22 @@ class KerasLossesTest(test.TestCase, parameterized.TestCase):
     output_from_logit = losses.binary_crossentropy(
         target, logits, from_logits=True)
     output_from_sigmoid = losses.binary_crossentropy(target, sigmoid_output)
+
     np.testing.assert_allclose(
         backend.eval(output_from_logit),
         backend.eval(output_from_sigmoid),
         atol=1e-5)
 
+    axis=0
+    output_from_logit_axis = losses.binary_crossentropy(
+        target, logits, from_logits=True, axis=axis)
+    output_from_sigmoid_axis = losses.binary_crossentropy(target, sigmoid_output, axis=axis)
+
+    np.testing.assert_allclose(
+        backend.eval(output_from_logit_axis),
+        backend.eval(output_from_sigmoid_axis),
+        atol=1e-5)    
+    
   def test_get_bce(self):
     bce_fn = losses.get('bce')
     self.assertEqual(bce_fn, losses.binary_crossentropy)
