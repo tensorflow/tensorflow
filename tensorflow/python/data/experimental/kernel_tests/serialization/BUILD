@@ -222,24 +222,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "group_by_reducer_serialization_test",
-    size = "medium",
-    srcs = ["group_by_reducer_serialization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/data/experimental/ops:grouping",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
     name = "group_by_window_serialization_test",
     size = "medium",
     srcs = ["group_by_window_serialization_test.py"],
