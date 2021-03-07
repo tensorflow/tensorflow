@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
+#include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/python/types.h"
@@ -99,7 +100,7 @@ PyClient::GetDefaultDeviceAssignment1D(int num_replicas) {
   return result;
 }
 
-StatusOr<std::unique_ptr<PjRtBuffer>> PyClient::PjRtBufferFromPyval(
+StatusOr<py::object> PyClient::BufferFromPyval(
     pybind11::handle argument, PjRtDevice* device, bool force_copy,
     PjRtClient::HostBufferSemantics host_buffer_semantics) {
   if (device == nullptr) {
@@ -116,43 +117,22 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PyClient::PjRtBufferFromPyval(
   }
   GlobalPyRefManager()->CollectGarbage();
 
-  absl::optional<CastToArrayResult> c = CastToArray(argument);
-  if (!c) {
-    return InvalidArgument(
-        "from_python argument must be an array, got value %s",
-        py::cast<std::string>(py::repr(argument)));
-  }
+  DevicePutOptions options;
+  options.squash_64bit_types = false;
+  options.allow_zero_copy =
+      (!force_copy &&
+       (host_buffer_semantics == PjRtClient::HostBufferSemantics::kZeroCopy));
+  options.force_lazy_arrays = true;
+  TF_ASSIGN_OR_RETURN(DevicePutResult put,
+                      DevicePut(argument, device, options));
 
-  std::function<void()> on_done_with_host_buffer;
-  if (host_buffer_semantics !=
-      PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall) {
-    std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref =
-        GlobalPyRefManager()->ManageReference(std::move(c->array));
-    on_done_with_host_buffer =
-        [py_buffer_ref{
-            std::move(py_buffer_ref)}]() { /* keeps py_buffer_ref alive */ };
+  if (put.owned_buffer) {
+    auto traceback = Traceback::Get();
+    return py::cast(std::make_unique<PyBuffer>(
+        shared_from_this(), std::move(put.owned_buffer), std::move(traceback)));
+  } else {
+    return py::reinterpret_borrow<py::object>(put.owning_pybuffer);
   }
-
-  std::unique_ptr<PjRtBuffer> buffer;
-  {
-    py::gil_scoped_release gil_release;
-    TF_ASSIGN_OR_RETURN(buffer,
-                        pjrt_client_->BufferFromHostBuffer(
-                            c->buf_ptr, c->shape, host_buffer_semantics,
-                            std::move(on_done_with_host_buffer), device));
-  }
-  return buffer;
-}
-StatusOr<std::unique_ptr<PyBuffer>> PyClient::BufferFromPyval(
-    pybind11::handle argument, PjRtDevice* device, bool force_copy,
-    PjRtClient::HostBufferSemantics host_buffer_semantics) {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<PjRtBuffer> buffer,
-      PjRtBufferFromPyval(argument, device, force_copy, host_buffer_semantics));
-
-  auto traceback = Traceback::Get();
-  return std::make_unique<PyBuffer>(shared_from_this(), std::move(buffer),
-                                    std::move(traceback));
 }
 
 StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(
