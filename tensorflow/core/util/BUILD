@@ -659,6 +659,7 @@ tf_kernel_library(
 
 cc_library(
     name = "image_resizer_state",
+    srcs = ["image_resizer_state.cc"],
     hdrs = ["image_resizer_state.h"],
     deps = [
         "//tensorflow/core:framework",

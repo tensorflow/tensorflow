@@ -169,7 +169,7 @@ template <class T1>
 EIGEN_ALWAYS_INLINE PerCacheLineParameters<T1> CalculatePerCacheLineParameters(
     int64 cache_height, int64 cache_y, T1* resize_cache, int64 cache_line_width,
     int64 input_width, int64 input_depth, int64 top_padding, int64 pad_offset,
-    int64 resized_height, const ImageResizerState& st,
+    int64 resized_height, const ImageResizerStateData& st_data,
     const T1* input_batch_start) {
   PerCacheLineParameters<T1> result;
   // The cache is organized so that the real y values of the resized image map
@@ -192,10 +192,10 @@ EIGEN_ALWAYS_INLINE PerCacheLineParameters<T1> CalculatePerCacheLineParameters(
     in_y = (resized_height * 2.0f) - (in_y + 1.0f + pad_offset);
   }
   // Here's where to do the actual resize.
-  in_y *= st.height_scale;
+  in_y *= st_data.height_scale;
   const int64 top_y_index = static_cast<int64>(std::floor(in_y));
   const int64 bottom_y_index =
-      std::min(static_cast<int64>(std::ceil(in_y)), (st.in_height - 1));
+      std::min(static_cast<int64>(std::ceil(in_y)), (st_data.in_height - 1));
   // Lerp is used for bilinear filtering when that's needed.
   result.y_lerp = static_cast<T1>(in_y - top_y_index);
   // Which rows of the original input image to pull the values from.
@@ -228,7 +228,7 @@ CalculatePerCachePixelParameters(int64 cache_x, int64 cache_start_x,
                                  T1* cache_line_start, int64 input_depth,
                                  int64 left_padding, int64 pad_offset,
                                  int64 resized_width,
-                                 const ImageResizerState& st) {
+                                 const ImageResizerStateData& st_data) {
   PerCachePixelParameters<T1> result;
   // Figure out where we're going to store the results of our transform.
   const int cache_index_x = cache_x - cache_start_x;
@@ -241,11 +241,11 @@ CalculatePerCachePixelParameters(int64 cache_x, int64 cache_start_x,
     in_x = (resized_width * 2.0f) - (in_x + 1.0f + pad_offset);
   }
   // Resize the x parameters.
-  in_x *= st.width_scale;
+  in_x *= st_data.width_scale;
   // Get the x coordinates for the left and right pixels to pull from.
   result.left_x_index = static_cast<int64>(std::floor(in_x));
   result.right_x_index =
-      std::min(static_cast<int64>(std::ceil(in_x)), (st.in_width - 1));
+      std::min(static_cast<int64>(std::ceil(in_x)), (st_data.in_width - 1));
   // This x_lerp is used to blend pixels in bilinear filtering.
   result.x_lerp = static_cast<T1>(in_x - result.left_x_index);
   return result;

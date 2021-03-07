@@ -1199,3 +1199,52 @@ py_library(
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/python:no_contrib"],
 )
+
+# For compile commands 
+
+load("@com_grail_bazel_compdb//:aspects.bzl", "compilation_database")
+
+compilation_database(
+    name = "example_db",
+    targets = [
+        "//tensorflow:grpc",
+        "//tensorflow:grpc++",
+        
+        #//tensorflow/c
+        "//tensorflow/c:tf_shape",
+        "//tensorflow/c:tf_shape_internal",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/c:tf_file_statistics",
+        "//tensorflow/c:tensor_interface",
+        "//tensorflow/c:tf_datatype",
+        "//tensorflow/c:tf_tensor",
+        "//tensorflow/c:kernels_hdrs",
+        "//tensorflow/c:ops_hdrs",
+
+        #//tensorflow/cc
+        "//tensorflow/cc:gradients",
+        "//tensorflow/cc:gradient_checker",
+        "//tensorflow/cc:grad_ops",
+        "//tensorflow/cc:grad_op_registry",
+        "//tensorflow/cc:array_grad",
+        "//tensorflow/cc:image_grad",
+        "//tensorflow/cc:math_grad",
+        "//tensorflow/cc:nn_grad",
+        "//tensorflow/cc:data_flow_grad",
+        "//tensorflow/cc:manip_grad",
+        "//tensorflow/cc:cc_op_gen_main",
+        "//tensorflow/cc:test_op_op_lib",
+        "//tensorflow/cc:queue_runner",
+        "//tensorflow/cc:coordinator",
+
+        #//tensorflow/core
+        "//tensorflow/core",
+        "//tensorflow/core:platform_base",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:core_stringpiece",
+        "//tensorflow/core:session_options",
+        "//tensorflow/core:framework_lite",
+    ],
+)

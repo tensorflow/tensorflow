@@ -21,7 +21,6 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -30,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/image_resizer_state.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 namespace {
@@ -206,33 +206,35 @@ class CachedInterpolationCalculator {
   int64 indexes_[4];
 };
 
-static void ComputeXWeightsAndIndices(const ImageResizerState& resizer_state,
-                                      const bool half_pixel_centers,
-                                      std::vector<WeightsAndIndices>* x_wais) {
+static void ComputeXWeightsAndIndices(
+    const ImageResizerStateData& resizer_state_data,
+    const bool half_pixel_centers, std::vector<WeightsAndIndices>* x_wais) {
   CachedInterpolationCalculator calc;
   if (half_pixel_centers) {
-    for (int64 x = 0; x < resizer_state.out_width; ++x) {
+    for (int64 x = 0; x < resizer_state_data.out_width; ++x) {
       GetWeightsAndIndices<HalfPixelScaler, true>(
-          resizer_state.width_scale, x, resizer_state.in_width, &(*x_wais)[x]);
+          resizer_state_data.width_scale, x, resizer_state_data.in_width,
+          &(*x_wais)[x]);
       auto& x_wai = (*x_wais)[x];
       x_wai.advance = calc.Advance(x_wai.index_0, x_wai.index_1, x_wai.index_2,
                                    x_wai.index_3);
     }
   } else {
-    for (int64 x = 0; x < resizer_state.out_width; ++x) {
-      GetWeightsAndIndices<LegacyScaler, false>(
-          resizer_state.width_scale, x, resizer_state.in_width, &(*x_wais)[x]);
+    for (int64 x = 0; x < resizer_state_data.out_width; ++x) {
+      GetWeightsAndIndices<LegacyScaler, false>(resizer_state_data.width_scale,
+                                                x, resizer_state_data.in_width,
+                                                &(*x_wais)[x]);
       auto& x_wai = (*x_wais)[x];
       x_wai.advance = calc.Advance(x_wai.index_0, x_wai.index_1, x_wai.index_2,
                                    x_wai.index_3);
     }
   }
   // Scale the values so they can be used as offsets into buffers.
-  for (int x = 0; x < resizer_state.out_width; ++x) {
-    (*x_wais)[x].index_0 *= resizer_state.channels;
-    (*x_wais)[x].index_1 *= resizer_state.channels;
-    (*x_wais)[x].index_2 *= resizer_state.channels;
-    (*x_wais)[x].index_3 *= resizer_state.channels;
+  for (int x = 0; x < resizer_state_data.out_width; ++x) {
+    (*x_wais)[x].index_0 *= resizer_state_data.channels;
+    (*x_wais)[x].index_1 *= resizer_state_data.channels;
+    (*x_wais)[x].index_2 *= resizer_state_data.channels;
+    (*x_wais)[x].index_3 *= resizer_state_data.channels;
   }
 }
 
@@ -293,30 +295,33 @@ static EIGEN_ALWAYS_INLINE float ComputeYInterpolation(
 template <typename T>
 inline void interpolate_with_caching(
     const typename TTypes<T, 4>::ConstTensor& input_data,
-    const ImageResizerState& resizer_state, const bool half_pixel_centers,
+    const ImageResizerStateData& resizer_state_data,
+    const bool half_pixel_centers,
     typename TTypes<float, 4>::Tensor output_data) {
-  std::vector<WeightsAndIndices> x_wais(resizer_state.out_width);
-  ComputeXWeightsAndIndices(resizer_state, half_pixel_centers, &x_wais);
+  std::vector<WeightsAndIndices> x_wais(resizer_state_data.out_width);
+  ComputeXWeightsAndIndices(resizer_state_data, half_pixel_centers, &x_wais);
 
-  const auto num_channels = resizer_state.channels;
-  const int64 in_row_width = resizer_state.in_width * num_channels;
-  const int64 in_batch_width = resizer_state.in_height * in_row_width;
+  const auto num_channels = resizer_state_data.channels;
+  const int64 in_row_width = resizer_state_data.in_width * num_channels;
+  const int64 in_batch_width = resizer_state_data.in_height * in_row_width;
 
   const T* input_b_ptr = input_data.data();
   float* output_y_ptr = output_data.data();
   std::vector<float> cached_value(num_channels == 3 ? 0 : 4 * num_channels, 0);
 
-  for (int64 b = 0; b < resizer_state.batch_size;
+  for (int64 b = 0; b < resizer_state_data.batch_size;
        ++b, input_b_ptr += in_batch_width) {
-    for (int64 y = 0; y < resizer_state.out_height;
-         ++y, output_y_ptr += resizer_state.out_width * num_channels) {
+    for (int64 y = 0; y < resizer_state_data.out_height;
+         ++y, output_y_ptr += resizer_state_data.out_width * num_channels) {
       WeightsAndIndices y_wai;
       if (half_pixel_centers) {
         GetWeightsAndIndices<HalfPixelScaler, true>(
-            resizer_state.height_scale, y, resizer_state.in_height, &y_wai);
+            resizer_state_data.height_scale, y, resizer_state_data.in_height,
+            &y_wai);
       } else {
         GetWeightsAndIndices<LegacyScaler, false>(
-            resizer_state.height_scale, y, resizer_state.in_height, &y_wai);
+            resizer_state_data.height_scale, y, resizer_state_data.in_height,
+            &y_wai);
       }
       // Make pointers represent offsets of data in input_b_ptr.
       const T* y_ptr_0 = input_b_ptr + y_wai.index_0 * in_row_width;
@@ -329,7 +334,7 @@ inline void interpolate_with_caching(
         float cached_value_0[4] = {0};
         float cached_value_1[4] = {0};
         float cached_value_2[4] = {0};
-        for (int64 x = 0; x < resizer_state.out_width; ++x) {
+        for (int64 x = 0; x < resizer_state_data.out_width; ++x) {
           const WeightsAndIndices& x_wai = x_wais[x];
           // Shift values in cached_value_* to fill first 'advance' values.
           switch (x_wai.advance) {
@@ -406,7 +411,7 @@ inline void interpolate_with_caching(
                       x_wai.weight_2, x_wai.weight_3);
         }
       } else {
-        for (int64 x = 0; x < resizer_state.out_width; ++x) {
+        for (int64 x = 0; x < resizer_state_data.out_width; ++x) {
           const WeightsAndIndices& x_wai = x_wais[x];
           // Shift values in cached_value to fill first 'advance' values.
           switch (x_wai.advance) {
@@ -471,21 +476,21 @@ inline void interpolate_with_caching(
 
 template <typename T>
 inline void ResizeBicubicGrad(typename TTypes<float, 4>::ConstTensor input_grad,
-                              const ImageResizerGradientState& resizer_state,
+                              const ImageResizerStateData& resizer_state_data,
                               const bool half_pixel_centers,
                               typename TTypes<T, 4>::Tensor output_grad) {
   // This function computes gradients for the ResizeBicubic op by iterating over
   // the input_grad Tensor and using WeightsAndIndices to appropriately update
   // the output gradient.
-  const float height_scale = resizer_state.height_scale;
-  const int64 original_height = resizer_state.original_height;
-  const int channels = resizer_state.channels;
-  const int64 resized_width = resizer_state.resized_width;
-  const int64 resized_height = resizer_state.resized_height;
+  const float height_scale = resizer_state_data.height_scale;
+  const int64 original_height = resizer_state_data.original_height;
+  const int channels = resizer_state_data.channels;
+  const int64 resized_width = resizer_state_data.resized_width;
+  const int64 resized_height = resizer_state_data.resized_height;
 
   output_grad.setZero();
 
-  std::vector<WeightsAndIndices> x_wais(resizer_state.resized_width);
+  std::vector<WeightsAndIndices> x_wais(resizer_state_data.resized_width);
   ComputeGradientXWeightsAndIndices(resizer_state, half_pixel_centers, &x_wais);
   for (int64 b = 0; b < resizer_state.batch_size; ++b) {
     for (int64 y = 0; y < resized_height; ++y) {
@@ -564,9 +569,12 @@ class ResizeBicubicOp : public OpKernel {
     if (!context->status().ok()) return;
 
     typename TTypes<T, 4>::ConstTensor input_data(input.tensor<T, 4>());
-    TTypes<float, 4>::Tensor output_data = st.output->tensor<float, 4>();
 
-    interpolate_with_caching<T>(input_data, st, half_pixel_centers_,
+    const ImageResizerStateData& resize_data = st.GetData();
+    TTypes<float, 4>::Tensor output_data =
+        resize_data.output->tensor<float, 4>();
+
+    interpolate_with_caching<T>(input_data, resize_data, half_pixel_centers_,
                                 output_data);
   }
 
@@ -592,7 +600,7 @@ class ResizeBicubicOpGrad : public OpKernel {
     const Tensor& original_image = context->input(1);
 
     ImageResizerGradientState st(align_corners_, half_pixel_centers_);
-    st.ValidateAndCreateOutput(context, input, original_image);
+    st.ValidateAndCreateOutput(context, input.shape(), original_image.shape());
 
     if (!context->status().ok()) return;
 
