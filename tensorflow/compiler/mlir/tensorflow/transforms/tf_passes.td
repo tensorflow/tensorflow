@@ -811,3 +811,15 @@ def VerifySuitableForExportPass : Pass<"tf-verify-for-export", "ModuleOp"> {
 
   let constructor = "TF::CreateVerifySuitableForExportPass()";
 }
+
+def PrepareTpuComputationForTfExportPass : Pass<"prepare-tpu-computation-for-tf-export", "FuncOp"> {
+  let summary = "Prepare TPU computation to be legal for export to TensorFlow";
+  let description = [{
+    Prepares TPU computation module attached to _TPUCompileMlir op for
+    TensorFlow graph export by making transformation such as replacing or
+    removing MLIR or XLA specific attributes that are not legal in TensorFlow
+    graph.
+  }];
+
+  let constructor = "TF::CreatePrepareTpuComputationForTfExportPass()";
+}
