@@ -750,7 +750,6 @@ class BatchNormalizationBase(Layer):
 
   def call(self, inputs, training=None):
     training = self._get_training_value(training)
-    
     if 0 in inputs.shape:
       raise ValueError("Input shape cannot have a 0 dimension but got a shape {}".format(inputs.shape))
       
