@@ -400,6 +400,13 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   if (status == kTfLiteDelegateError) {
     TF_LITE_ENSURE_STATUS(RemoveAllDelegates());
   }
+
+  // We already have a delegate. The default delegate in
+  // "lazy_delegate_providers_" could be skipped.
+  if (status == kTfLiteOk) {
+    lazy_delegate_providers_.clear();
+  }
+
   return status;
 }
 
