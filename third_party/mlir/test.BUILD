@@ -1,4 +1,4 @@
-load("@org_tensorflow//third_party/mlir:tblgen.bzl", "gentbl")
+load("@org_tensorflow//third_party/mlir:tblgen.bzl", "gentbl", "td_library")
 
 package(
     default_visibility = [":test_friends"],
@@ -32,13 +32,11 @@ cc_library(
     ],
 )
 
-filegroup(
+td_library(
     name = "TestOpTdFiles",
     srcs = [
         "lib/Dialect/Test/TestInterfaces.td",
         "lib/Dialect/Test/TestOps.td",
-        "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:SideEffectTdFiles",
         "@llvm-project//mlir:include/mlir/IR/OpAsmInterface.td",
         "@llvm-project//mlir:include/mlir/IR/RegionKindInterface.td",
         "@llvm-project//mlir:include/mlir/IR/SymbolInterfaces.td",
@@ -46,6 +44,10 @@ filegroup(
         "@llvm-project//mlir:include/mlir/Interfaces/ControlFlowInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/CopyOpInterface.td",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
+    ],
+    deps = [
+        "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:SideEffectTdFiles",
     ],
 )
 
@@ -88,10 +90,10 @@ gentbl(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "lib/Dialect/Test/TestOps.td",
-    td_srcs = [
+    test = True,
+    deps = [
         ":TestOpTdFiles",
     ],
-    test = True,
 )
 
 gentbl(
@@ -117,9 +119,30 @@ gentbl(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "lib/Dialect/Test/TestInterfaces.td",
-    td_srcs = [
+    test = True,
+    deps = [
         "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:SideEffectBaseTdFiles",
+        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
+    ],
+)
+
+gentbl(
+    name = "TestAttrDefsIncGen",
+    strip_include_prefix = "lib/Dialect/Test",
+    tbl_outs = [
+        (
+            "-gen-attrdef-decls",
+            "lib/Dialect/Test/TestAttrDefs.h.inc",
+        ),
+        (
+            "-gen-attrdef-defs",
+            "lib/Dialect/Test/TestAttrDefs.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "lib/Dialect/Test/TestAttrDefs.td",
+    td_srcs = [
+        ":TestOpTdFiles",
     ],
     test = True,
 )
@@ -139,15 +162,16 @@ gentbl(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "lib/Dialect/Test/TestTypeDefs.td",
-    td_srcs = [
+    test = True,
+    deps = [
         ":TestOpTdFiles",
     ],
-    test = True,
 )
 
 cc_library(
     name = "TestDialect",
     srcs = [
+        "lib/Dialect/Test/TestAttributes.cpp",
         "lib/Dialect/Test/TestDialect.cpp",
         "lib/Dialect/Test/TestInterfaces.cpp",
         "lib/Dialect/Test/TestPatterns.cpp",
@@ -155,6 +179,7 @@ cc_library(
         "lib/Dialect/Test/TestTypes.cpp",
     ],
     hdrs = [
+        "lib/Dialect/Test/TestAttributes.h",
         "lib/Dialect/Test/TestDialect.h",
         "lib/Dialect/Test/TestInterfaces.h",
         "lib/Dialect/Test/TestTypes.h",
@@ -163,6 +188,7 @@ cc_library(
         "lib/Dialect/Test",
     ],
     deps = [
+        ":TestAttrDefsIncGen",
         ":TestInterfacesIncGen",
         ":TestOpsIncGen",
         ":TestTypeDefsIncGen",
@@ -262,6 +288,7 @@ cc_library(
         "@llvm-project//mlir:GPUTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:LLVMToLLVMIRTranslation",
         "@llvm-project//mlir:LLVMTransforms",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgTransforms",
@@ -277,8 +304,7 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:StandardOpsTransforms",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TargetLLVMIR",
-        "@llvm-project//mlir:TargetLLVMIRModuleTranslation",
+        "@llvm-project//mlir:ToLLVMIRTranslation",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorOps",

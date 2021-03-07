@@ -870,8 +870,13 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
     return nullptr;
   }
 
-  auto* result = tensorflow::unwrap(ctx)->CopyTensorHandleToDevice(
-      tensorflow::unwrap(h), device_name, &status->status);
+  tensorflow::ImmediateExecutionContext* unwrapped_ctx =
+      tensorflow::unwrap(ctx);
+
+  auto* result =
+      unwrapped_ctx->GetCustomDeviceOpHandler().CopyTensorHandleToDevice(
+          unwrapped_ctx, tensorflow::unwrap(h), device_name, &status->status);
+
   if (status->status.ok()) {
     return tensorflow::wrap(result);
   }

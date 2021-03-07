@@ -890,7 +890,7 @@ bool ShapeInference::RefineTypeForPassThroughOperands(Operation* op,
                                                       OperandRange operands,
                                                       ResultRange results) {
   bool changed = false;
-  for (auto entry : zip(operands, results)) {
+  for (auto entry : llvm::zip(operands, results)) {
     Type operand_type = std::get<0>(entry).getType();
     Value result = std::get<1>(entry);
     TensorType result_type = result.getType().cast<TensorType>();
@@ -925,7 +925,7 @@ bool ShapeInference::RefineShapeForPassThroughOps(Operation* op) {
   };
 
   bool changed = false;
-  for (auto entry : zip(op->getOperands(), op->getResults())) {
+  for (auto entry : llvm::zip(op->getOperands(), op->getResults())) {
     TensorType operand_type = std::get<0>(entry).getType().cast<TensorType>();
     Value result = std::get<1>(entry);
     TensorType result_type = result.getType().cast<TensorType>();
@@ -1545,9 +1545,6 @@ void ShapeInference::InferShapeForFunctionReturnType(FuncOp func) {
 LogicalResult ShapeInference::InferShapeUntilFixPoint(Region* region,
                                                       int64_t max_iteration) {
   bool changed = true;
-  // TODO(b/180630087): This is due to creating needless intermediate types
-  // which can be really expensive given the current approach here.
-  bool failed_due_inefficiency = false;
 
   // TODO(aminim): we could have a more efficient traversal by guiding the
   // traversal with a worklist and reconsider only the nodes for which an
@@ -1558,12 +1555,6 @@ LogicalResult ShapeInference::InferShapeUntilFixPoint(Region* region,
     LLVM_DEBUG(llvm::dbgs()
                << "Shape inference, iteration " << iteration << "\n");
     region->walk([&](Operation* op) {
-      // TODO(b/180630087): Remove post change.
-      if (op->getNumResults() > 50e3) {
-        failed_due_inefficiency = true;
-        return;
-      }
-
       DCOMMENT_OP(op, "Inferring for");
       if (auto infer_ti = dyn_cast<InferTypeOpInterface>(op)) {
         DCOMMENT("\tRefinining with type op interface");
@@ -1599,11 +1590,6 @@ LogicalResult ShapeInference::InferShapeUntilFixPoint(Region* region,
 
       changed |= InferShapeForSingleOperation(op);
     });
-
-    if (failed_due_inefficiency) {
-      LOG(ERROR) << "skipped inference due to b/180029566";
-      return failure();
-    }
   }
 
   if (changed) {

@@ -348,7 +348,7 @@ class Env {
   /// \brief starts a new transaction on the filesystem that handles filename
   Status StartTransaction(const std::string& filename,
                           TransactionToken** token) {
-    token = nullptr;
+    *token = nullptr;
     return Status::OK();
   }
 
@@ -369,7 +369,7 @@ class Env {
   /// \brief Returns the transaction for `path` or nullptr in `token`
   Status GetTransactionForPath(const std::string& path,
                                TransactionToken** token) {
-    token = nullptr;
+    *token = nullptr;
     return Status::OK();
   }
 

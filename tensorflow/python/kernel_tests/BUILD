@@ -3322,10 +3322,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["conv_ops_3d_test.py"],
     shard_count = 30,
-    tags = [
-        "no_cuda11",
-        "no_gpu",  # TODO(b/181773418)
-    ],
+    tags = ["no_cuda11"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",

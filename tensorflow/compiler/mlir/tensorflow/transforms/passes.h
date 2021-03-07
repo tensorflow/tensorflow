@@ -217,6 +217,10 @@ void AddGraphExportLoweringPasses(OpPassManager& pm);
 // single op.
 std::unique_ptr<OperationPass<ModuleOp>> CreateVerifySuitableForExportPass();
 
+// Returns pass that prepares TPU computation to be legal for export to
+// TensorFlow.
+std::unique_ptr<OperationPass<FuncOp>>
+CreatePrepareTpuComputationForTfExportPass();
 }  // namespace TF
 
 namespace tf_executor {
@@ -404,7 +408,7 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUExtractOutsideCompilationPass();
 
 // Creates a pass that propagates TPU devices to users.
-std::unique_ptr<OperationPass<ModuleOp>> CreateTPUDevicePropagationPass();
+std::unique_ptr<OperationPass<FuncOp>> CreateTPUDevicePropagationPass();
 
 // Populates the supplied passmanager with the passes required to run the
 // bridge.

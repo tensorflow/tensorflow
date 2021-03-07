@@ -80,7 +80,7 @@ LogicalResult ConstantFoldFallbackHook(
   // If any of the result types are variants, don't try to constant fold them.
   // This creates opaque variant constants which lose information and would
   // require "raising" later.
-  for (auto& type : inst->getResultTypes()) {
+  for (auto type : inst->getResultTypes()) {
     if (auto tensor_type = type.dyn_cast<TensorType>()) {
       if (tensor_type.getElementType().isa<VariantType>()) {
         return failure();

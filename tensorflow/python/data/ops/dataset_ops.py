@@ -218,6 +218,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       input_options = input_dataset.options()
       if input_options is not None:
         self._options_attr = self._options_attr.merge(input_options)
+    self._options_attr._set_mutable(False)  # pylint: disable=protected-access
 
   @property
   def _variant_tensor(self):
@@ -2396,19 +2397,17 @@ class DatasetV1(DatasetV2):
         return iterator_ops.OwnedIterator(self)
 
     _ensure_same_dataset_graph(self)
-    # Now that we create datasets at python object creation time, the capture
-    # by value _make_dataset() function would try to capture these variant
-    # tensor dataset inputs, which are marked as stateful ops and would throw
-    # an error if we try and capture them. We therefore traverse the graph
-    # to find all these ops and allowlist them so that the capturing
-    # logic instead of throwing an error recreates these ops which is what was
-    # happening before.
-    all_ds_ops = traverse.obtain_all_variant_tensor_ops(self)
+    # Some ops (e.g. dataset ops) are marked as stateful but are stil safe to
+    # to capture by value. We must allowlist these ops so that the capturing
+    # logic captures the ops instead of raising an exception.
+    allowlisted_stateful_ops = traverse.obtain_capture_by_value_ops(self)
     graph_level_seed, op_level_seed = core_random_seed.get_seed(None)
 
     # NOTE(mrry): We capture by value here to ensure that `_make_dataset()` is
     # a 0-argument function.
-    @function.Defun(capture_by_value=True, allowlisted_stateful_ops=all_ds_ops)
+    @function.Defun(
+        capture_by_value=True,
+        allowlisted_stateful_ops=allowlisted_stateful_ops)
     def _make_dataset():
       """Factory function for a dataset."""
       # NOTE(mrry): `Defun` does not capture the graph-level seed from the
@@ -2990,15 +2989,9 @@ class Options(options_lib.OptionsBase):
   The options are set for the entire dataset and are carried over to datasets
   created through tf.data transformations.
 
-  The options can be set either by mutating the object returned by
-  `tf.data.Dataset.options()` or by constructing an `Options` object and using
-  the `tf.data.Dataset.with_options(options)` transformation, which returns a
+  The options can be set by constructing an `Options` object and using the
+  `tf.data.Dataset.with_options(options)` transformation, which returns a
   dataset with the options set.
-
-  >>> dataset = tf.data.Dataset.range(42)
-  >>> dataset.options().experimental_deterministic = False
-  >>> print(dataset.options().experimental_deterministic)
-  False
 
   >>> dataset = tf.data.Dataset.range(42)
   >>> options = tf.data.Options()
@@ -3098,6 +3091,14 @@ class Options(options_lib.OptionsBase):
     if pb.WhichOneof("optional_slack") is not None:
       self.experimental_slack = pb.slack
     self.experimental_threading._from_proto(pb.threading_options)  # pylint: disable=protected-access
+
+  def _set_mutable(self, mutable):
+    """Change the mutability value to `mutable` on this options and children."""
+    # pylint: disable=protected-access
+    object.__setattr__(self, "_mutable", mutable)
+    self.experimental_distribute._set_mutable(mutable)
+    self.experimental_optimization._set_mutable(mutable)
+    self.experimental_threading._set_mutable(mutable)
 
   def _graph_rewrites(self):
     """Produces lists of enabled, disabled, default static graph rewrites.
@@ -4665,17 +4666,17 @@ class _OptionsDataset(UnaryUnchangedStructureDataset):
   """An identity `Dataset` that stores options."""
 
   def __init__(self, input_dataset, options):
+    # pylint: disable=protected-access
     self._input_dataset = input_dataset
-    variant_tensor = input_dataset._variant_tensor  # pylint: disable=protected-access
+    variant_tensor = input_dataset._variant_tensor
     super(_OptionsDataset, self).__init__(input_dataset, variant_tensor)
 
     if self._options_attr:
+      self._options_attr._set_mutable(True)
       self._options_attr = self._options_attr.merge(options)
     else:
       self._options_attr = options
-
-  def options(self):
-    return self._options_attr
+    self._options_attr._set_mutable(False)
 
 
 class _ModelDataset(UnaryUnchangedStructureDataset):

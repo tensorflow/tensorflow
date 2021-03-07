@@ -653,12 +653,25 @@ LogicalResult Rewrite(
   // used as a placeholder to hook during graph creation the other ops that are
   // intended to consume the compile result.
   Operation* result_id = compile_op;
+  // TODO(jpienaar): Remove this later.
+  auto compile_device_op = compile_op->getAttr("device");
   for (auto res : compilation_result) {
     // Build identity op with the same location/name as the original compilation
     // result op.
     result_id = builder->create<TF::IdentityOp>(
         res.getLoc(), compile_op->getResult(0).getType(),
         result_id->getResult(0));
+    // Assign to same device as result is currently set, unless unset and then
+    // assign to the device on which compilation will happen.
+    // TODO(jpienaar): Remove this later.
+    if (auto device = res->getAttrOfType<StringAttr>("device")) {
+      if (!device.getValue().empty())
+        result_id->setAttr("device", device);
+      else
+        result_id->setAttr("device", compile_device_op);
+    } else if (compile_device_op) {
+      result_id->setAttr("device", compile_device_op);
+    }
     res.output().replaceAllUsesWith(compile_op->getResult(0));
   }
 

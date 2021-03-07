@@ -75,7 +75,8 @@ bool HasTPUDevice(const DeviceSet& device_set) {
 }  // namespace
 
 // Analyzes the user requested policy as well as the contents of the graph and
-// determines whether the MLIR Bridge should be run.
+// function_library_definition to determine whether the MLIR Bridge should be
+// run.
 //
 // If the user explicitly requests the bridge be enabled or disabled, this
 // function will respect the request. If the user does not explicitly request
@@ -85,7 +86,8 @@ bool HasTPUDevice(const DeviceSet& device_set) {
 // redundant for TF2 graphs.
 MlirOptimizationPassState MlirBridgePass::GetPassState(
     const DeviceSet* device_set, const ConfigProto& config_proto,
-    const Graph& graph) const {
+    const Graph& graph,
+    const FunctionLibraryDefinition& function_library) const {
   // Skip MLIR TPU Bridge if no TPU devices found.
   if (device_set && !HasTPUDevice(*device_set)) {
     return MlirOptimizationPassState::Disabled;
@@ -93,8 +95,9 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
 
   // We set `uses_uninitialized_resource_args` to false here because the first
   // phase of the bridge is not affected by uninitialized resource args.
-  MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
-      graph, config_proto, /*uses_uninitialized_resource_args=*/false);
+  MlirBridgeRolloutPolicy policy =
+      GetMlirBridgeRolloutPolicy(graph, &function_library, config_proto,
+                                 /*uses_uninitialized_resource_args=*/false);
   switch (policy) {
     case MlirBridgeRolloutPolicy::kEnabledByUser:
       return MlirOptimizationPassState::Enabled;
@@ -128,11 +131,12 @@ namespace {
 // operation. The kernel for these operations is responsible to lower the
 // encapsulated graph to a particular device.
 Status MlirBridgePass::Run(const ConfigProto& config_proto,
-                           mlir::ModuleOp module, const Graph& graph) {
+                           mlir::ModuleOp module, const Graph& graph,
+                           const FunctionLibraryDefinition& function_library) {
   // Set device_set to nullptr here as the device specific checks are performed
   // based on the devices in the module.
-  if (GetPassState(/*device_set=*/nullptr, config_proto, graph) ==
-      MlirOptimizationPassState::Disabled) {
+  if (GetPassState(/*device_set=*/nullptr, config_proto, graph,
+                   function_library) == MlirOptimizationPassState::Disabled) {
     LOG_AT_LEAST_ONCE("Skipping MLIR TPU Bridge, session flag not enabled");
     mlir_bridge_gauge_v2->GetCell()->Set(false);
     return Status::OK();
@@ -154,19 +158,24 @@ Status MlirBridgePass::Run(const ConfigProto& config_proto,
   return Status::OK();
 }
 
-bool MlirBridgeV1CompatPass::IsEnabled(const DeviceSet* device_set,
-                                       const ConfigProto& config_proto,
-                                       const Graph& graph) const {
+MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
+    const DeviceSet* device_set, const ConfigProto& config_proto,
+    const Graph& graph,
+    const FunctionLibraryDefinition& function_library) const {
   // Skip MLIR TPU Bridge if no TPU devices found.
-  if (device_set && !HasTPUDevice(*device_set)) return false;
+  if (device_set && !HasTPUDevice(*device_set))
+    return MlirOptimizationPassState::Disabled;
 
   // Do not run the bridge if it's enabled by the graph analysis,
   // only run if it's enabled by the user explicitly.
   // We set `uses_uninitialized_resource_args` to false here because the first
   // phase of the bridge is not affected by uninitialized resource args.
   MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
-      graph, config_proto, /*uses_uninitialized_resource_args=*/false);
-  return policy == MlirBridgeRolloutPolicy::kEnabledByUser;
+      graph, /*function_library=*/&function_library, config_proto,
+      /*uses_uninitialized_resource_args=*/false);
+  return (policy == MlirBridgeRolloutPolicy::kEnabledByUser)
+             ? MlirOptimizationPassState::Enabled
+             : MlirOptimizationPassState::Disabled;
 }
 
 Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
@@ -176,8 +185,9 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
 
   // Set device_set to nullptr here as the device specific checks are performed
   // based on the devices in the module.
-  if (!IsEnabled(/*device_set=*/nullptr, options.session_options->config,
-                 **options.graph)) {
+  if (GetPassState(/*device_set=*/nullptr, options.session_options->config,
+                   **options.graph,
+                   *options.flib_def) == MlirOptimizationPassState::Disabled) {
     LOG_AT_LEAST_ONCE(
         "Skipping MLIR TPU Bridge V1 Compat, session flag not enabled");
     mlir_bridge_gauge_v1->GetCell()->Set(false);

@@ -121,8 +121,8 @@ class _BaseFeaturesLayer(Layer):
   def get_config(self):
     # Import here to avoid circular imports.
     from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
-    column_configs = serialization.serialize_feature_columns(
-        self._feature_columns)
+    column_configs = [serialization.serialize_feature_column(fc)
+                      for fc in self._feature_columns]
     config = {'feature_columns': column_configs}
     config['partitioner'] = generic_utils.serialize_keras_object(
         self._partitioner)
@@ -136,8 +136,9 @@ class _BaseFeaturesLayer(Layer):
     # Import here to avoid circular imports.
     from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
     config_cp = config.copy()
-    config_cp['feature_columns'] = serialization.deserialize_feature_columns(
-        config['feature_columns'], custom_objects=custom_objects)
+    columns_by_name = {}
+    config_cp['feature_columns'] = [serialization.deserialize_feature_column(
+        c, custom_objects, columns_by_name) for c in config['feature_columns']]
     config_cp['partitioner'] = generic_utils.deserialize_keras_object(
         config['partitioner'], custom_objects)
 

@@ -243,6 +243,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParseL2Normalization);
   }
 
+  TfLiteStatus AddLeakyRelu() {
+    return AddBuiltin(BuiltinOperator_LEAKY_RELU, tflite::Register_LEAKY_RELU(),
+                      ParseLeakyRelu);
+  }
+
   TfLiteStatus AddLess() {
     return AddBuiltin(BuiltinOperator_LESS, tflite::ops::micro::Register_LESS(),
                       ParseLess);
@@ -405,6 +410,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
   TfLiteStatus AddSplitV() {
     return AddBuiltin(BuiltinOperator_SPLIT_V,
                       tflite::ops::micro::Register_SPLIT_V(), ParseSplitV);
+  }
+
+  TfLiteStatus AddSqueeze() {
+    return AddBuiltin(BuiltinOperator_SQUEEZE, Register_SQUEEZE(),
+                      ParseSqueeze);
   }
 
   TfLiteStatus AddSqrt() {

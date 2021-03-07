@@ -2149,6 +2149,20 @@ def TestFactory(xla_backend, cloud_tpu=False):
 
   tests.append(TracebackTest)
 
+  class ClientTest(parameterized.TestCase):
+
+    def setUp(self):
+      super(ClientTest, self).setUp()
+      self.backend = xla_backend()
+
+    def testPlatformVersion(self):
+      # Check doesn't crash
+      version = self.backend.platform_version
+      if self.backend.platform == "cpu":
+        self.assertEqual(version, "<unknown>")
+
+  tests.append(ClientTest)
+
   return tests
 
 

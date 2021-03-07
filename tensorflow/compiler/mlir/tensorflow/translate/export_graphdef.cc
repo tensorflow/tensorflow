@@ -79,6 +79,7 @@ namespace {
 
 constexpr char kDeviceAttr[] = "tf.device";
 constexpr char kResourceArgUniqueIdAttr[] = "tf._resource_arg_unique_id";
+constexpr char kEntryFuncAttr[] = "tf.entry_function";
 
 // OpOrArgLocNameMapper that legalizes the returned name.
 class LegalizedOpOrValLocNameMapper : public OpOrArgLocNameMapper {
@@ -414,7 +415,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   llvm::SmallVector<llvm::StringRef, 2> input_names;
   llvm::SmallVector<llvm::StringRef, 2> output_names;
   auto dict_attr =
-      function->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
+      function->getAttrOfType<mlir::DictionaryAttr>(kEntryFuncAttr);
   if (dict_attr) {
     TF_RET_CHECK(dict_attr.get("inputs").isa<mlir::StringAttr>())
         << "inputs missing in entry function attribute";
@@ -435,9 +436,6 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
     graph->set_versions(versions);
   }
 
-  // We have to add the function library here, so a custom operation, which is
-  // defined in the function library can be added to the graph.
-  TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(*flib));
   Exporter exporter(graph.get(), tf_dialect);
 
   auto graph_op = llvm::cast<mlir::tf_executor::GraphOp>(block.front());
@@ -508,6 +506,8 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
     if (func != nullptr) {
       TF_RETURN_IF_ERROR(ConvertLibFunction(configs, tf_dialect, func, flib,
                                             visited_functions));
+      // TODO(prakalps): Optimize to only add the requested function to graph
+      // library rather than the all the functions exported so far.
       TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(*flib));
     }
     return Status::OK();
@@ -622,9 +622,10 @@ Status Exporter::ConvertLibFunction(
   }
 
   // Ignore the gradient and is_stateful attribute on the function as they have
-  // been handled above.
+  // been handled above. Ignore the entry func attribute as it is an MLIR
+  // metadata attribute and is not required in the function definition.
   absl::flat_hash_set<absl::string_view> attrs_to_ignore = {
-      grad_string.data(), stateful_string.data()};
+      grad_string.data(), stateful_string.data(), kEntryFuncAttr};
   llvm::SmallVector<mlir::NamedAttribute, 8> funcAttrs(
       function->getDialectAttrs());
   TF_RETURN_IF_ERROR(ConvertAttributes(funcAttrs, attrs_to_ignore,
@@ -689,6 +690,11 @@ Status Exporter::Convert(mlir::ModuleOp module,
     TF_ASSIGN_OR_RETURN(
         *graph, Exporter::Convert(configs, tf_dialect, entry_func.value(),
                                   &flib, visited_functions, control_ret_nodes));
+    // Add FunctionDefs and GradientDefs of MLIR functions to graph's function
+    // library. If duplicate FunctionDefs already exist (can happen if exporter
+    // had already added some FunctionDefs to the library to support legacy
+    // calls), they are ignored.
+    TF_RETURN_IF_ERROR(graph->get()->AddFunctionLibrary(flib));
   }
 
   for (auto& func_def : flib.function()) {
@@ -732,8 +738,10 @@ StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
   // Construct one in that case.
   if (configs.export_entry_func_to_flib) {
     graph = std::make_unique<Graph>(OpRegistry::Global());
+    // TODO(hinsu): Avoid Proto -> Memory -> Proto conversion here.
+    FunctionDefLibrary flib = flib_def.ToProto();
+    TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(flib));
   }
-  TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(flib_def.ToProto()));
 
   auto graphdef = absl::make_unique<GraphDef>();
   graph->ToGraphDef(graphdef.get());

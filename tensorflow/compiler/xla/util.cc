@@ -242,6 +242,18 @@ absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
     ++i;
     ++j;
   }
+  // If the product is different after filtering out zeros, return full group.
+  // E.g.,:
+  // a={0, 10 ,3}
+  //       ^
+  //      i=1
+  //
+  // b={0, 3}
+  //       ^
+  //      j=1
+  if (Product(a.subspan(i)) != Product(b.subspan(j))) {
+    return {std::make_pair(0, 0), std::make_pair(a.size(), b.size())};
+  }
   if (0 == Product(a.subspan(i))) {
     bounds.push_back(std::make_pair(i, j));
     bounds.push_back(std::make_pair(a.size(), b.size()));

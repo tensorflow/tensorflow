@@ -8,6 +8,10 @@ tf_module {
     name: "Trackable"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "TrackableReference"
+    mtype: "<type \'type\'>"
+  }
   member_method {
     name: "wrap"
     argspec: "args=[\'value\'], varargs=None, keywords=None, defaults=None"
