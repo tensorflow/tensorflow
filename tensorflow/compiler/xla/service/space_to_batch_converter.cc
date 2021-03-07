@@ -177,6 +177,12 @@ class ConvolutionVisitor {
       HloInstruction* activations, int64 batch_dimension, int64 old_batch_size,
       int64 spatial_dimension, int64 new_spatial_dim_size);
 
+  // Decreases the spatial dimension size in an already space-to-batched shape
+  // so that the new size is new_spatial_dim_size.
+  StatusOr<HloInstruction*> DecreaseSpatialSizeOnSpaceToBatchedShape(
+      HloInstruction* activations, int64 batch_dimension, int64 old_batch_size,
+      int64 spatial_dimension, int64 new_spatial_dim_size);
+
   // Function that converts spaced-to-batch shape back to the original.
   StatusOr<HloInstruction*> BatchToSpace(HloInstruction* old_instr);
 
@@ -625,6 +631,59 @@ ConvolutionVisitor::IncreaseSpatialSizeOnSpaceToBatchedShape(
                       MakeReshapeHlo(reshape_back_dims, reshaped_activations));
 
   VLOG(3) << "Size increased activations " << activations_new->ToString();
+
+  return activations_new;
+}
+
+StatusOr<HloInstruction*>
+ConvolutionVisitor::DecreaseSpatialSizeOnSpaceToBatchedShape(
+    HloInstruction* activations, int64 batch_dimension, int64 old_batch_size,
+    int64 spatial_dimension, int64 new_spatial_dim_size) {
+  CHECK_EQ(batch_dimension + 1, spatial_dimension);
+  std::vector<int64> new_dimensions(activations->shape().dimensions().begin(),
+                                    activations->shape().dimensions().end());
+
+  const int64 new_batch_size = activations->shape().dimensions(batch_dimension);
+  int64 spatial_dim_size = activations->shape().dimensions(spatial_dimension);
+  const int64 reshaped_space_size =
+      spatial_dim_size * new_batch_size / old_batch_size;
+
+  VLOG(3) << "Decreasing the spatial size while propagating new_batch_size "
+          << new_batch_size << " old_batch_size " << old_batch_size;
+  new_dimensions[spatial_dimension] = reshaped_space_size;
+  new_dimensions[batch_dimension] = old_batch_size;
+
+  // Reshape the output of the new conv into the old convolutions shape.
+  TF_ASSIGN_OR_RETURN(HloInstruction * reshaped_activations,
+                      MakeReshapeHlo(new_dimensions, activations));
+
+  VLOG(3) << "First reshape done";
+
+  const int64 rank = activations->shape().rank();
+
+  std::vector<int64> start_indices(rank, 0),
+      end_indices(reshaped_activations->shape().dimensions().begin(),
+                  reshaped_activations->shape().dimensions().end()),
+      strides(rank, 1);
+  end_indices[spatial_dimension] =
+      new_spatial_dim_size * (new_batch_size / old_batch_size);
+
+  // This is the slice from halo padding.
+  TF_ASSIGN_OR_RETURN(
+      reshaped_activations,
+      MakeSliceHlo(reshaped_activations, start_indices, end_indices, strides));
+
+  std::vector<int64> reshape_back_dims(
+      reshaped_activations->shape().dimensions().begin(),
+      reshaped_activations->shape().dimensions().end());
+
+  reshape_back_dims[spatial_dimension] = new_spatial_dim_size;
+  reshape_back_dims[batch_dimension] = new_batch_size;
+
+  TF_ASSIGN_OR_RETURN(HloInstruction * activations_new,
+                      MakeReshapeHlo(reshape_back_dims, reshaped_activations));
+
+  VLOG(3) << "Size decreased activations " << activations_new->ToString();
 
   return activations_new;
 }
@@ -2009,13 +2068,10 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
     spatial_split_size += c.stride;
   }
 
-  int64 slice_size = spatial_split_size + c.halo_size;
-
-  VLOG(1) << "spatial_split_size " << spatial_split_size << " slice_size "
-          << slice_size;
-
   const int64 new_space_size =
       activations_new->shape().dimensions(c.spatial_dimension_to_split);
+
+  int64 slice_size = spatial_split_size + c.halo_size;
   // In the below case, we cannot use the activations directly for Halo
   // Duplication. We must reshape them.
   if (spatial_split_size > new_space_size) {
@@ -2041,14 +2097,24 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
     // dimension size, we don't need reshaping. Instead, we determine the
     // additional space available, and adjust the required slice size (and
     // thereby the halo size).
+    VLOG(3) << "Decreasing the spatial size while propagating";
     if (spatial_split_size < new_space_size) {
-      VLOG(3) << "Decreasing the spatial size while propagating";
-      const int64 additional_space_present = spatial_split_size % c.stride;
-      spatial_split_size = new_space_size;
-      slice_size =
-          spatial_split_size + std::max(c.kernel_spatial_dim_size - c.stride -
-                                            additional_space_present,
-                                        static_cast<int64>(0));
+      // If there's a stride mismatch, we change the new_space_size be
+      // smaller (equal to spatial_split_size).
+      if (new_space_size % c.stride != 0) {
+        TF_ASSIGN_OR_RETURN(
+            activations_new,
+            DecreaseSpatialSizeOnSpaceToBatchedShape(
+                activations_new, activations_batch_dim, old_batch_size,
+                c.spatial_dimension_to_split, spatial_split_size));
+      } else {
+        const int64 additional_space_present = spatial_split_size % c.stride;
+        spatial_split_size = new_space_size;
+        slice_size =
+            spatial_split_size + std::max(c.kernel_spatial_dim_size - c.stride -
+                                              additional_space_present,
+                                          static_cast<int64>(0));
+      }
     }
 
     TF_ASSIGN_OR_RETURN(
