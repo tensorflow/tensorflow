@@ -1247,6 +1247,8 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
     else
       inferred_type = UnrankedTensorType::get(inferred.getElementType());
 
+    inferred_type =
+        TypeMeet(op_result.getType(), inferred_type).cast<TensorType>();
     if (op_result.getType() == inferred_type) continue;
     UpdateTypeAndInsertIncompatibleUseCasts(inferred_type, op_result);
     changed = true;
