@@ -729,6 +729,7 @@ cuda_py_test(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:test_ops",
         "//tensorflow/python/data/experimental/ops:scan_ops",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
