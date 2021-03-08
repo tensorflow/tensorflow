@@ -524,7 +524,6 @@ class Layer(base_layer.Layer):
       try:
         # Some classes which inherit from Layer do not use its constructor, so
         # rather than initializing to None we check for an AttributeError.
-        # pylint: disable=access-member-before-definition
         scope_context_manager = self._always_reuse_variable_scope
       except AttributeError:
         scope_context_manager = None

@@ -64,8 +64,6 @@ class ModelWithOptimizer(tf.keras.Model):
 
 class FunctionTest(tf.test.TestCase):
 
-  # TODO(rocm): root cause and fix
-  @tf.test.disable_for_rocm("Fails on ROCm - starting 201102 sync")
   def testFunctionRelaxationLosesInnerDimWithKerasLayer(self):
     layer = tf.keras.layers.Dense(1)
     fn = tf.function(experimental_relax_shapes=True)(layer)
