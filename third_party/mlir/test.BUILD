@@ -220,6 +220,7 @@ cc_library(
         "lib/IR/TestSlicing.cpp",
         "lib/IR/TestSymbolUses.cpp",
         "lib/IR/TestTypes.cpp",
+        "lib/IR/TestVisitors.cpp",
     ],
     deps = [
         ":TestDialect",
