@@ -112,6 +112,10 @@ toco::MlirQuantizeModel
 toco::MlirSparsifyModel
 toco::RegisterCustomOpdefs
 
+[//tensorflow/tools/graph_transforms:transform_graph_lib] # transform_graph
+tensorflow::graph_transforms::TransformGraph
+tensorflow::graph_transforms::ParseTransformParameters
+
 [//tensorflow/c:checkpoint_reader] # py_checkpoint_reader
 tensorflow::checkpoint::CheckpointReader
 tensorflow::checkpoint::CheckpointReader::Init

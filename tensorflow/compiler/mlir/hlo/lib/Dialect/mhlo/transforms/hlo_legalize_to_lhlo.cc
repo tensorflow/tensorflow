@@ -607,8 +607,9 @@ struct HloLegalizeToLhlo
     populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
     populateFuncOpTypeConversionPattern(patterns, &context, converter);
     populateCallOpTypeConversionPattern(patterns, &context, converter);
-    populateBranchOpInterfaceAndReturnOpTypeConversionPattern(
-        patterns, &context, converter);
+    populateBranchOpInterfaceTypeConversionPattern(patterns, &context,
+                                                   converter);
+    populateReturnOpTypeConversionPattern(patterns, &context, converter);
     populateEliminateBufferizeMaterializationsPatterns(&context, converter,
                                                        patterns);
 

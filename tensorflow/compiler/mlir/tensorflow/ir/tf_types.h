@@ -246,6 +246,9 @@ class TensorFlowTypeWithSubtype : public TensorFlowType {
   // Converts a TypeWithSubtype type to the same type but without its subtypes.
   Type RemoveSubtypes();
 
+  // Clone the current Type with new subtypes.
+  TensorFlowTypeWithSubtype clone(ArrayRef<TensorType> new_subtypes);
+
   // Returns the subtypes.
   ArrayRef<TensorType> GetSubtypes();
 };
@@ -287,7 +290,7 @@ mlir::Type GetCastCompatibleType(mlir::Type a, mlir::Type b,
                                  bool may_ignore_ref_type_a);
 
 // Returns whether two arrays of Type are broadcast compatible.
-bool BroadcastCompatible(ArrayRef<Type> lhs, ArrayRef<Type> rhs);
+bool BroadcastCompatible(TypeRange lhs, TypeRange rhs);
 
 // Returns whether the two elemental types are compatible. Shapes are compatible
 // if:
@@ -305,11 +308,11 @@ bool HasCompatibleElementTypes(Type lhs, Type rhs,
 // another. In other words, a single run-time value is legal for both the types.
 // For example, tensor<*xf32>, tensor<?xf32> and tensor<3xf32> are cast
 // compatible.
-bool AreCastCompatible(ArrayRef<Type> types);
+bool AreCastCompatible(TypeRange types);
 
 // Returns true if corresponding elements of lhs and rhs AreCastCompatible and
 // lhs and rhs are the same length.
-bool ArraysAreCastCompatible(ArrayRef<Type> lhs, ArrayRef<Type> rhs);
+bool ArraysAreCastCompatible(TypeRange lhs, TypeRange rhs);
 
 // If `ty` is a tensor type and its element type has subtypes, then returns a
 // new type of same shape but dropped subtypes for the element type.

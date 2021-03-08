@@ -4448,11 +4448,16 @@ DistributedTPURewritePass::PerformHostTrainingLoopOptimization(
       TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
           *function_def, AttrSlice(&function_attr.value()), flib_def, &fbody));
       Graph* function_graph = fbody->graph;
+      // TODO(b/181902456) Bring ReshardOp back once libtpu supports it.
+#ifndef LIBTPU_ON_GCE
       TF_RETURN_IF_ERROR(tpu::AddReshardOp(function_graph, host_loop));
+#endif
       TF_RETURN_IF_ERROR(UpdateFunctionLibDefinition(*function_graph,
                                                      *function_name, flib_def));
     } else {
+#ifndef LIBTPU_ON_GCE
       TF_RETURN_IF_ERROR(tpu::AddReshardOp(graph, host_loop));
+#endif
     }
   }
   return Status::OK();

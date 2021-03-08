@@ -36,6 +36,11 @@ class CustomDeviceOpHandler {
   Status Execute(ImmediateExecutionOperation* op,
                  ImmediateExecutionTensorHandle** retvals, int* num_retvals);
 
+  ImmediateExecutionTensorHandle* CopyTensorHandleToDevice(
+      ImmediateExecutionContext* context,
+      ImmediateExecutionTensorHandle* handle, const char* device_name,
+      Status* status);
+
   // Determine whether to place an op on a custom device. This method is
   // exposed as public for test only.
   Status MaybePinToCustomDevice(CustomDevice** device,

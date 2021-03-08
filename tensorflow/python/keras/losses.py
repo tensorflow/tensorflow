@@ -1538,7 +1538,7 @@ def huber(y_true, y_pred, delta=1.0):
 
   ```
   loss = 0.5 * x^2                  if |x| <= d
-  loss = 0.5 * d^2 + d * (|x| - d)  if |x| > d
+  loss = d * |x| - 0.5 * d^2        if |x| > d
   ```
   where d is `delta`. See: https://en.wikipedia.org/wiki/Huber_loss
 
@@ -1558,9 +1558,8 @@ def huber(y_true, y_pred, delta=1.0):
   abs_error = math_ops.abs(error)
   half = ops.convert_to_tensor_v2_with_dispatch(0.5, dtype=abs_error.dtype)
   return K.mean(
-      array_ops.where_v2(
-          abs_error <= delta, half * math_ops.pow(error, 2),
-          half * math_ops.pow(delta, 2) + delta * (abs_error - delta)),
+      array_ops.where_v2(abs_error <= delta, half * math_ops.square(error),
+                         delta * abs_error - half * math_ops.square(delta)),
       axis=-1)
 
 

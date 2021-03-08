@@ -353,10 +353,12 @@ int64 StepNumberForModule(const HloModule& module) {
   tensorflow::mutex_lock lock(mu);
   return module_id_to_step_number[module.unique_id()]++;
 }
-}  // namespace
 
-string TimestampFor(const HloModule& module) {
-  if (!module.config().debug_options().xla_dump_include_timestamp()) {
+// Get a timestamp which we can use as a filename prefix specific to this
+// module.
+string TimestampFor(const HloModule& module,
+                    const DebugOptions& debug_options) {
+  if (!debug_options.xla_dump_include_timestamp()) {
     return "";
   }
   tensorflow::mutex_lock lock(mu);
@@ -364,6 +366,12 @@ string TimestampFor(const HloModule& module) {
       module.unique_id(), tensorflow::Env::Default()->NowMicros());
   return std::to_string(timestamp_emplace.first->second);
 }
+
+string TimestampFor(const HloModule& module) {
+  return TimestampFor(module, module.config().debug_options());
+}
+
+}  // namespace
 
 string FilenameFor(const HloModule& module, string_view prefix,
                    string_view suffix) {
@@ -406,13 +414,19 @@ void DumpExecutionOptions(const ExecutionOptions& execution_options,
   }
 }
 
-void DumpHloModuleIfEnabled(const HloModule& module, string_view name) {
-  CanonicalDebugOptions opts(module.config().debug_options());
+void DumpHloModuleIfEnabled(const HloModule& module, string_view name,
+                            const DebugOptions& debug_options) {
+  CanonicalDebugOptions opts(debug_options);
   if (opts.should_dump_module(module.name())) {
     DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, /*profile=*/nullptr,
-                      TimestampFor(module), name, opts);
+                      TimestampFor(module, debug_options), name, opts);
   }
 }
+
+void DumpHloModuleIfEnabled(const HloModule& module, string_view name) {
+  DumpHloModuleIfEnabled(module, name, module.config().debug_options());
+}
+
 void DumpHloModuleIfEnabled(const HloModule& module,
                             const BufferAssignment& buffer_assn,
                             string_view name) {

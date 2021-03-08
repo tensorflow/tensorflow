@@ -35,6 +35,7 @@ namespace tensorflow {
 
 class ImmediateExecutionContext;
 class AbstractOpAttrs;
+class CancellationManager;
 
 // Abstract interface to an operation.
 class ImmediateExecutionOperation : public AbstractOperation {
@@ -64,6 +65,9 @@ class ImmediateExecutionOperation : public AbstractOperation {
 
   virtual const tensorflow::AbstractOpAttrs* GetOpAttrs() const = 0;
   virtual void AddAttrs(const AbstractOpAttrs* op_attrs) = 0;
+
+  virtual void SetCancellationManager(
+      CancellationManager* cancellation_manager) = 0;
 
   // Returns the stack trace set by `SetStackTrace` if exists.
   virtual absl::optional<ManagedStackTrace> GetStackTrace() = 0;

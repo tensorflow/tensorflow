@@ -46,13 +46,13 @@ def _rdc_copts():
     maxrregcount = "-maxrregcount=96"
 
     return cuda_default_copts() + select({
-        "@local_config_cuda//cuda:using_nvcc": [
+        "@local_config_cuda//:is_cuda_compiler_nvcc": [
             "-nvcc_options",
             "relocatable-device-code=true",
             "-nvcc_options",
             "ptxas-options=" + maxrregcount,
         ],
-        "@local_config_cuda//cuda:using_clang": [
+        "@local_config_cuda//:is_cuda_compiler_clang": [
             "-fcuda-rdc",
             "-Xcuda-ptxas",
             maxrregcount,

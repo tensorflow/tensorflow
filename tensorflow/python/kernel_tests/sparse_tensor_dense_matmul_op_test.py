@@ -21,6 +21,7 @@ from __future__ import print_function
 import sys
 import time
 
+from absl import app
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
@@ -35,7 +36,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
-from tensorflow.python.platform import app
 from tensorflow.python.platform import test
 
 
@@ -162,6 +162,18 @@ class SparseTensorDenseMatMulTest(test.TestCase):
       self.evaluate(
           sparse_ops.sparse_tensor_dense_matmul(
               sparse_t, dense_t, adjoint_a=True))
+
+  def testUnorderedIndicesForSparseTensorDenseMatmul(self):
+    indices = np.array([(2, 1), (0, 0)]).astype(np.int64)
+    values = np.array([10, 11]).astype(np.float32)
+    shape = [3, 2]
+    sparse_t = sparse_tensor.SparseTensor(indices, values, shape)
+
+    dense_t = np.array([[1] * 500, [2] * 500], dtype=np.float32)
+    expected_t = np.array([[11] * 500, [0] * 500, [20] * 500], dtype=np.float32)
+
+    self.assertAllClose(
+        expected_t, sparse_ops.sparse_tensor_dense_matmul(sparse_t, dense_t))
 
   @test_util.run_gpu_only
   def testInvalidIndicesForSparseTensorDenseMatmulOnGPU(self):

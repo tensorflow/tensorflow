@@ -28,6 +28,7 @@ import os
 import re
 import sys
 
+from absl import app  # pylint: disable=unused-import
 import numpy as np
 import six
 
@@ -41,7 +42,6 @@ from tensorflow.python.framework import meta_graph as meta_graph_lib
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
-from tensorflow.python.platform import app  # pylint: disable=unused-import
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader

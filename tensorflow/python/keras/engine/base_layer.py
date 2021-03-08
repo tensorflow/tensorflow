@@ -870,8 +870,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       input_masks = nest.map_structure(
           keras_tensor.keras_tensor_to_placeholder, input_masks)
 
-      inputs = self._maybe_cast_inputs(inputs)
-
       with backend.name_scope(self._name_scope()):
         with autocast_variable.enable_auto_cast_variables(
             self._compute_dtype_object):
@@ -879,6 +877,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           # overridden).
           # TODO(kaftan): do we maybe_build here, or have we already done it?
           self._maybe_build(inputs)
+          inputs = self._maybe_cast_inputs(inputs)
           outputs = call_fn(inputs, *args, **kwargs)
 
         self._handle_activity_regularization(inputs, outputs)
@@ -1012,9 +1011,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         build_graph=not eager,
         training=training_mode):
 
-      if self._autocast:
-        inputs = self._maybe_cast_inputs(inputs, input_list)
-
       input_spec.assert_input_compatibility(self.input_spec, inputs, self.name)
       if eager:
         call_fn = self.call
@@ -1026,6 +1022,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       with ops.name_scope_v2(name_scope):
         if not self.built:
           self._maybe_build(inputs)
+
+        if self._autocast:
+          inputs = self._maybe_cast_inputs(inputs, input_list)
 
         with autocast_variable.enable_auto_cast_variables(
             self._compute_dtype_object):
@@ -1135,8 +1134,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         layer=self, inputs=inputs, build_graph=True, training=training_value):
       # Symbolic execution on symbolic tensors. We will attempt to build
       # the corresponding TF subgraph inside `backend.get_graph()`
-      # TODO(reedwm): We should assert input compatibility after the inputs
-      # are casted, not before.
       input_spec.assert_input_compatibility(self.input_spec, inputs, self.name)
       graph = backend.get_graph()
       # Use `self._name_scope()` to avoid auto-incrementing the name.
@@ -2348,6 +2345,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       self._dtype_policy = dtype
     elif isinstance(dtype, dict):
       self._dtype_policy = policy.deserialize(dtype)
+    elif isinstance(dtype, str) and dtype in ('mixed_float16',
+                                              'mixed_bfloat16'):
+      # The isinstance check is required since np.dtype raises an error if
+      # compared to a non-dtype string.
+      self._dtype_policy = policy.Policy(dtype)
     elif dtype:
       self._dtype_policy = policy.Policy(dtypes.as_dtype(dtype).name)
     else:
@@ -2978,12 +2980,15 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     self.__class__._call_accepts_kwargs.fget.cache.pop(self, None)
 
     call_fn_args = self._call_fn_args
+    call_fn_args += self._call_full_argspec.kwonlyargs or []
     self._expects_training_arg = ('training' in call_fn_args or
                                   self._call_accepts_kwargs)
     # The default training arg will be any (non-None) default specified in the
     # method signature, or None if no value is specified.
-    self._default_training_arg = self._call_fn_arg_defaults.get(
-        'training')
+    call_fn_arg_defaults = self._call_fn_arg_defaults.copy()
+    call_fn_arg_defaults.update(self._call_full_argspec.kwonlydefaults or {})
+    self._default_training_arg = call_fn_arg_defaults.get('training')
+
     self._expects_mask_arg = ('mask' in call_fn_args or
                               self._call_accepts_kwargs)
 

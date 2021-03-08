@@ -95,6 +95,7 @@ py_binary(
         "//tensorflow/python:_pywrap_toco_api",
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tensorflow",
+        "@absl_py//absl:app",
     ],
 )
 

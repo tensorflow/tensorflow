@@ -68,6 +68,7 @@ cc_library(
         "@llvm-project//mlir:GPUTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:LLVMToLLVMIRTranslation",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:NVVMDialect",
@@ -86,7 +87,7 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:StandardOpsTransforms",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TargetLLVMIR",
+        "@llvm-project//mlir:ToLLVMIRTranslation",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -117,8 +118,8 @@ tf_cc_binary(
         "@llvm-project//llvm:X86Disassembler",  # fixdeps: keep
         "@llvm-project//mlir:ExecutionEngineUtils",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:TargetLLVMIR",
-        "@llvm-project//mlir:TargetLLVMIRModuleTranslation",
+        "@llvm-project//mlir:LLVMToLLVMIRTranslation",
+        "@llvm-project//mlir:ToLLVMIRTranslation",
     ] + if_llvm_system_z_available([
         "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
     ]) + if_llvm_aarch64_available([

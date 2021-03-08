@@ -223,9 +223,8 @@ struct ConvertUnrankedDynamicBroadcastOpHelper {
   }
 
   static Value createBroadcastToKnownRank(OpBuilder &builder, ChloOpTy op,
-                                          Value value, int targeted_rank) {
+                                          Value shape, int targeted_rank) {
     auto loc = op.getLoc();
-    Value shape = builder.create<shape::ShapeOfOp>(loc, value);
     SmallVector<int64_t, 6> ranked_shape(targeted_rank, 1);
     auto unknown_rank_extent_tensor_type = RankedTensorType::get(
         {RankedTensorType::kDynamicSize}, builder.getIndexType());
@@ -246,6 +245,7 @@ struct ConvertUnrankedDynamicBroadcastOpHelper {
   static void createRankSpecializedBroadcastAndOp(OpBuilder &if_builder,
                                                   ChloOpTy op,
                                                   ValueRange operands,
+                                                  ValueRange operand_shapes,
                                                   int targeted_rank) {
     auto loc = op.getLoc();
     SmallVector<Value, 2> reshaped_operands;
@@ -253,10 +253,12 @@ struct ConvertUnrankedDynamicBroadcastOpHelper {
     auto dynamic_dimensions = llvm::SmallVector<int64_t, 6>(
         targeted_rank, RankedTensorType::kDynamicSize);
 
-    for (Value operand : operands) {
+    for (auto it : llvm::zip(operands, operand_shapes)) {
+      Value operand, shape;
+      std::tie(operand, shape) = it;
       // Handle shape broadcasting and inference.
       Value extended_operand_casted =
-          createBroadcastToKnownRank(if_builder, op, operand, targeted_rank);
+          createBroadcastToKnownRank(if_builder, op, shape, targeted_rank);
 
       // 1. Reshape operands to the given rank (with the same number of
       // elements)
@@ -290,13 +292,37 @@ struct ConvertUnrankedDynamicBroadcastOpHelper {
                                     ValueRange operands) {
     auto loc = op.getLoc();
 
-    // Find the larger rank of the operands.
+    // Get the minimum broadcast shapes of the operands.
+    SmallVector<Value> shapes;
+    shapes.reserve(operands.size());
     auto extent_tensor_type = RankedTensorType::get({ShapedType::kDynamicSize},
                                                     rewriter.getIndexType());
-    Value greater_rank;
     for (Value operand : operands) {
       Value shape =
           rewriter.create<shape::ShapeOfOp>(loc, extent_tensor_type, operand);
+      shapes.push_back(shape);
+    }
+    auto broadcast_shape = rewriter.create<shape::BroadcastOp>(
+        loc, extent_tensor_type, shapes, nullptr);
+    SmallVector<Type> result_types(shapes.size(), extent_tensor_type);
+    auto reduced_shapes =
+        rewriter
+            .create<chlo::MinimumBroadcastShapesOp>(loc, result_types, shapes)
+            .results();
+    SmallVector<Value> reshaped_operands;
+    reshaped_operands.reserve(operands.size());
+    for (auto it : llvm::zip(operands, reduced_shapes)) {
+      Value operand;
+      Value reduced_shape;
+      std::tie(operand, reduced_shape) = it;
+      auto reshaped_operand = rewriter.create<mhlo::DynamicReshapeOp>(
+          loc, operand.getType(), operand, reduced_shape);
+      reshaped_operands.push_back(reshaped_operand);
+    }
+
+    // Find the largest rank of the operands.
+    Value greater_rank;
+    for (Value shape : reduced_shapes) {
       Value rank =
           rewriter.create<shape::RankOp>(loc, rewriter.getIndexType(), shape);
       if (!greater_rank) {
@@ -314,17 +340,19 @@ struct ConvertUnrankedDynamicBroadcastOpHelper {
     scf::IfOp if_op = createIfOpForRankSpecializedBroadcastAndOp(
         rewriter, op, greater_rank, 1);
     OpBuilder if_builder = if_op.getThenBodyBuilder(rewriter.getListener());
-    createRankSpecializedBroadcastAndOp(if_builder, op, operands, 1);
+    createRankSpecializedBroadcastAndOp(if_builder, op, reshaped_operands,
+                                        reduced_shapes, 1);
 
     // Put each subsequent rank specialization inside the else statement of the
     // previous one.
     OpBuilder else_builder = if_op.getElseBodyBuilder(rewriter.getListener());
-    constexpr int kMaxRankSpecialization = 6;
+    constexpr int kMaxRankSpecialization = 5;
     for (int i = 2; i < kMaxRankSpecialization; i++) {
       auto inner_if = createIfOpForRankSpecializedBroadcastAndOp(
           else_builder, op, greater_rank, i);
       if_builder = inner_if.getThenBodyBuilder(rewriter.getListener());
-      createRankSpecializedBroadcastAndOp(if_builder, op, operands, i);
+      createRankSpecializedBroadcastAndOp(if_builder, op, reshaped_operands,
+                                          reduced_shapes, i);
       else_builder.create<scf::YieldOp>(loc, inner_if.getResult(0));
       else_builder = inner_if.getElseBodyBuilder(rewriter.getListener());
     }
@@ -336,12 +364,15 @@ struct ConvertUnrankedDynamicBroadcastOpHelper {
                        kMaxRankSpecialization),
         "Input for dynamic binary op lowering was of a rank greater than " +
             std::to_string(kMaxRankSpecialization));
-    // Add the rank 6 specialization to the innermost else block.
-    createRankSpecializedBroadcastAndOp(else_builder, op, operands,
-                                        kMaxRankSpecialization);
+    // Add the rank 5 specialization to the innermost else block.
+    createRankSpecializedBroadcastAndOp(else_builder, op, reshaped_operands,
+                                        reduced_shapes, kMaxRankSpecialization);
 
-    // Return the result of the outermost if statement.
-    return if_op.getResult(0);
+    // Return the reshaped result of the outermost if statement.
+    auto result = if_op.getResult(0);
+    auto reshaped_result = rewriter.create<mhlo::DynamicReshapeOp>(
+        loc, result.getType(), result, broadcast_shape);
+    return reshaped_result;
   }
 };
 
@@ -497,16 +528,17 @@ struct ConvertUnrankedDynamicBroadcastSelectOp
 struct TransformUnrankedHloPass
     : public PassWrapper<TransformUnrankedHloPass, FunctionPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<shape::ShapeDialect, mhlo::MhloDialect>();
+    registry.insert<chlo::HloClientDialect, mhlo::MhloDialect,
+                    shape::ShapeDialect>();
   }
 
   void runOnFunction() override {
     // Setup conversion target.
     MLIRContext &ctx = getContext();
     ConversionTarget target(ctx);
-    target.addLegalDialect<mhlo::MhloDialect, StandardOpsDialect,
-                           shape::ShapeDialect, scf::SCFDialect,
-                           tensor::TensorDialect>();
+    target.addLegalDialect<chlo::HloClientDialect, mhlo::MhloDialect,
+                           StandardOpsDialect, shape::ShapeDialect,
+                           scf::SCFDialect, tensor::TensorDialect>();
     target.addLegalOp<FuncOp>();
 #define ADD_LEGAL_MHLO(op) AddLegalOpOnRankedTensor<mhlo::op>(&target)
 #define ADD_LEGAL_CHLO(op) AddLegalOpOnRankedTensor<chlo::op>(&target)

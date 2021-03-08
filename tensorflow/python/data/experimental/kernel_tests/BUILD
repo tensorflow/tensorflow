@@ -394,6 +394,7 @@ tf_py_test(
         "//tensorflow/python:script_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/experimental/ops:batching",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",

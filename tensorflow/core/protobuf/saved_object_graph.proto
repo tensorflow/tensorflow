@@ -37,7 +37,7 @@ message SavedObject {
   // Objects which this object depends on: named edges in the dependency
   // graph.
   //
-  // Note: currently only valid if kind == "user_object".
+  // Note: currently only valid if kind == "user_object" or "resource".
   repeated TrackableObjectGraph.TrackableObject.ObjectReference children = 1;
 
   // Removed when forking SavedObject from TrackableObjectGraph.

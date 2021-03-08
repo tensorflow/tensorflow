@@ -171,6 +171,7 @@ tf_py_test(
     shard_count = 4,
     tags = [
         "no_windows",
+        "notsan",  #TODO(b/181771982): it is flaky
     ],
     deps = [
         "//tensorflow/python:client_testlib",

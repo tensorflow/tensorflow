@@ -74,7 +74,7 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
   //   dst_data:  output data buffer of dst
   void Execute(const T* src_data, T* dst_data,
                std::shared_ptr<stream> fwd_stream) {
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)), *fwd_stream);
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data),
@@ -83,7 +83,7 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)));
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
     DCHECK_EQ(context_.fwd_primitives.size(),
               context_.fwd_primitives_args.size());
     execute_primitives(context_.fwd_primitives, fwd_stream,
@@ -255,7 +255,7 @@ class MklEltwiseBwdPrimitive : public MklPrimitive {
   //   diff_src_data:  output data buffer of diff_src
   void Execute(const T* src_data, const T* diff_dst_data, T* diff_src_data,
                std::shared_ptr<stream> bwd_stream) {
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)), *bwd_stream);
     context_.diff_dst_mem->set_data_handle(
@@ -268,7 +268,7 @@ class MklEltwiseBwdPrimitive : public MklPrimitive {
     context_.diff_dst_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(diff_dst_data)));
     context_.diff_src_mem->set_data_handle(static_cast<void*>(diff_src_data));
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
     DCHECK_EQ(context_.bwd_primitives.size(),
               context_.bwd_primitives_args.size());
     execute_primitives(context_.bwd_primitives, bwd_stream,
@@ -479,7 +479,8 @@ class MklReluOpBase : public OpKernel {
           MklEltwiseFwdPrimitiveFactory<T>::Get(fwdParams);
       auto eltwise_fwd_pd = eltwise_fwd->GetEltwiseFwdPd();
       std::shared_ptr<stream> fwd_cpu_stream;
-      fwd_cpu_stream.reset(CreateStream(context, eltwise_fwd->GetEngine()));
+      MklDnnThreadPool eigen_tp(context);
+      fwd_cpu_stream.reset(CreateStream(&eigen_tp, eltwise_fwd->GetEngine()));
       // Check if src needs to be reordered
       bool is_src_reordered = false;
       const T* src_data = src_tensor.flat<T>().data();
@@ -685,7 +686,8 @@ class MklReluGradOpBase : public OpKernel {
 
       auto eltwise_bwd_pd = eltwise_bwd->GetEltwiseBwdPd();
       std::shared_ptr<stream> bwd_cpu_stream;
-      bwd_cpu_stream.reset(CreateStream(context, eltwise_bwd->GetEngine()));
+      MklDnnThreadPool eigen_tp(context);
+      bwd_cpu_stream.reset(CreateStream(&eigen_tp, eltwise_bwd->GetEngine()));
       // check whether need reorder for src / diff_dst
       const T* src_data = src_tensor.flat<T>().data();
       if (src_md != eltwise_bwd_pd->src_desc()) {

@@ -4539,6 +4539,7 @@ Stream &Stream::ThenRnnForward(
     const dnn::RnnDescriptor &rnn_desc,
     const dnn::RnnSequenceTensorDescriptor &input_desc,
     const DeviceMemory<Eigen::half> &input_data,
+    const DeviceMemory<int> &seq_lengths_data,
     const dnn::RnnStateTensorDescriptor &input_h_desc,
     const DeviceMemory<Eigen::half> &input_h_data,
     const dnn::RnnStateTensorDescriptor &input_c_desc,
@@ -4556,10 +4557,11 @@ Stream &Stream::ThenRnnForward(
   // TODO(zhengxq): add VLOG PARAM calls.
   if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
     auto status = dnn->DoRnnForward(
-        this, rnn_desc, input_desc, input_data, input_h_desc, input_h_data,
-        input_c_desc, input_c_data, params, output_desc, output_data,
-        output_h_desc, output_h_data, output_c_desc, output_c_data, is_training,
-        reserve_space_allocator, workspace_allocator, output_profile_result);
+        this, rnn_desc, input_desc, input_data, seq_lengths_data, input_h_desc,
+        input_h_data, input_c_desc, input_c_data, params, output_desc,
+        output_data, output_h_desc, output_h_data, output_c_desc, output_c_data,
+        is_training, reserve_space_allocator, workspace_allocator,
+        output_profile_result);
     if (!status && !output_profile_result) {
       SetError();
     }
@@ -4573,6 +4575,7 @@ Stream &Stream::ThenRnnForward(
     const dnn::RnnDescriptor &rnn_desc,
     const dnn::RnnSequenceTensorDescriptor &input_desc,
     const DeviceMemory<float> &input_data,
+    const DeviceMemory<int> &seq_lengths_data,
     const dnn::RnnStateTensorDescriptor &input_h_desc,
     const DeviceMemory<float> &input_h_data,
     const dnn::RnnStateTensorDescriptor &input_c_desc,
@@ -4589,10 +4592,11 @@ Stream &Stream::ThenRnnForward(
   // TODO(zhengxq): add VLOG PARAM calls.
   if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
     auto status = dnn->DoRnnForward(
-        this, rnn_desc, input_desc, input_data, input_h_desc, input_h_data,
-        input_c_desc, input_c_data, params, output_desc, output_data,
-        output_h_desc, output_h_data, output_c_desc, output_c_data, is_training,
-        reserve_space_allocator, workspace_allocator, output_profile_result);
+        this, rnn_desc, input_desc, input_data, seq_lengths_data, input_h_desc,
+        input_h_data, input_c_desc, input_c_data, params, output_desc,
+        output_data, output_h_desc, output_h_data, output_c_desc, output_c_data,
+        is_training, reserve_space_allocator, workspace_allocator,
+        output_profile_result);
     if (!status && !output_profile_result) {
       SetError();
     }
@@ -4606,6 +4610,7 @@ Stream &Stream::ThenRnnForward(
     const dnn::RnnDescriptor &rnn_desc,
     const dnn::RnnSequenceTensorDescriptor &input_desc,
     const DeviceMemory<double> &input_data,
+    const DeviceMemory<int> &seq_lengths_data,
     const dnn::RnnStateTensorDescriptor &input_h_desc,
     const DeviceMemory<double> &input_h_data,
     const dnn::RnnStateTensorDescriptor &input_c_desc,
@@ -4623,10 +4628,11 @@ Stream &Stream::ThenRnnForward(
   // TODO(zhengxq): add VLOG PARAM calls.
   if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
     auto status = dnn->DoRnnForward(
-        this, rnn_desc, input_desc, input_data, input_h_desc, input_h_data,
-        input_c_desc, input_c_data, params, output_desc, output_data,
-        output_h_desc, output_h_data, output_c_desc, output_c_data, is_training,
-        reserve_space_allocator, workspace_allocator, output_profile_result);
+        this, rnn_desc, input_desc, input_data, seq_lengths_data, input_h_desc,
+        input_h_data, input_c_desc, input_c_data, params, output_desc,
+        output_data, output_h_desc, output_h_data, output_c_desc, output_c_data,
+        is_training, reserve_space_allocator, workspace_allocator,
+        output_profile_result);
     if (!status && !output_profile_result) {
       SetError();
     }
@@ -4640,6 +4646,7 @@ Stream &Stream::ThenRnnBackward(
     const dnn::RnnDescriptor &rnn_desc,
     const dnn::RnnSequenceTensorDescriptor &input_desc,
     const DeviceMemory<Eigen::half> &input_data,
+    const DeviceMemory<int> &seq_lengths_data,
     const dnn::RnnStateTensorDescriptor &input_h_desc,
     const DeviceMemory<Eigen::half> &input_h_data,
     const dnn::RnnStateTensorDescriptor &input_c_desc,
@@ -4664,9 +4671,9 @@ Stream &Stream::ThenRnnBackward(
   // TODO(zhengxq): add VLOG PARAM calls.
   if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
     auto status = dnn->DoRnnBackward(
-        this, rnn_desc, input_desc, input_data, input_h_desc, input_h_data,
-        input_c_desc, input_c_data, params, output_desc, output_data,
-        output_h_desc, output_h_data, output_c_desc, output_c_data,
+        this, rnn_desc, input_desc, input_data, seq_lengths_data, input_h_desc,
+        input_h_data, input_c_desc, input_c_data, params, output_desc,
+        output_data, output_h_desc, output_h_data, output_c_desc, output_c_data,
         output_backprop_data, output_h_backprop_data, output_c_backprop_data,
         input_backprop_data, input_h_backprop_data, input_c_backprop_data,
         params_backprop_data, reserve_space_data, workspace_allocator,
@@ -4685,6 +4692,7 @@ Stream &Stream::ThenRnnBackward(
     const dnn::RnnDescriptor &rnn_desc,
     const dnn::RnnSequenceTensorDescriptor &input_desc,
     const DeviceMemory<float> &input_data,
+    const DeviceMemory<int> &seq_lengths_data,
     const dnn::RnnStateTensorDescriptor &input_h_desc,
     const DeviceMemory<float> &input_h_data,
     const dnn::RnnStateTensorDescriptor &input_c_desc,
@@ -4708,9 +4716,9 @@ Stream &Stream::ThenRnnBackward(
   // TODO(zhengxq): add VLOG PARAM calls.
   if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
     auto status = dnn->DoRnnBackward(
-        this, rnn_desc, input_desc, input_data, input_h_desc, input_h_data,
-        input_c_desc, input_c_data, params, output_desc, output_data,
-        output_h_desc, output_h_data, output_c_desc, output_c_data,
+        this, rnn_desc, input_desc, input_data, seq_lengths_data, input_h_desc,
+        input_h_data, input_c_desc, input_c_data, params, output_desc,
+        output_data, output_h_desc, output_h_data, output_c_desc, output_c_data,
         output_backprop_data, output_h_backprop_data, output_c_backprop_data,
         input_backprop_data, input_h_backprop_data, input_c_backprop_data,
         params_backprop_data, reserve_space_data, workspace_allocator,
@@ -4729,6 +4737,7 @@ Stream &Stream::ThenRnnBackward(
     const dnn::RnnDescriptor &rnn_desc,
     const dnn::RnnSequenceTensorDescriptor &input_desc,
     const DeviceMemory<double> &input_data,
+    const DeviceMemory<int> &seq_lengths_data,
     const dnn::RnnStateTensorDescriptor &input_h_desc,
     const DeviceMemory<double> &input_h_data,
     const dnn::RnnStateTensorDescriptor &input_c_desc,
@@ -4753,9 +4762,9 @@ Stream &Stream::ThenRnnBackward(
   // TODO(zhengxq): add VLOG PARAM calls.
   if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
     auto status = dnn->DoRnnBackward(
-        this, rnn_desc, input_desc, input_data, input_h_desc, input_h_data,
-        input_c_desc, input_c_data, params, output_desc, output_data,
-        output_h_desc, output_h_data, output_c_desc, output_c_data,
+        this, rnn_desc, input_desc, input_data, seq_lengths_data, input_h_desc,
+        input_h_data, input_c_desc, input_c_data, params, output_desc,
+        output_data, output_h_desc, output_h_data, output_c_desc, output_c_data,
         output_backprop_data, output_h_backprop_data, output_c_backprop_data,
         input_backprop_data, input_h_backprop_data, input_c_backprop_data,
         params_backprop_data, reserve_space_data, workspace_allocator,

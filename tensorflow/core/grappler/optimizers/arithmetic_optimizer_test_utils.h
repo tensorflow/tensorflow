@@ -169,6 +169,11 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     optimizer->options_.replace_mul_with_square = true;
   }
 
+  void EnableOnlyReplacePackWithTileReshape(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.replace_pack_with_tile_reshape = true;
+  }
+
   void EnableOnlyHoistCWiseUnaryChains(ArithmeticOptimizer* optimizer) {
     DisableAllStages(optimizer);
     optimizer->options_.hoist_cwise_unary_chains = true;

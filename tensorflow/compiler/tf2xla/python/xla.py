@@ -18,9 +18,10 @@ It is sometimes useful to be able to build HLO programs directly from
 TensorFlow. This file provides Tensorflow operators that mirror the semantics of
 HLO operators as closely as possible.
 
-Note: There is no promise of backward or forward compatibility for operators
-defined in this module. This is primarily because the underlying HLO operators
-do not promise backward or forward compatibility.
+Note: Most of the operators defined in this module are used by the jax2tf
+converter (see go/jax2tf for details) and are used in SavedModel produced
+by jax2tf. Hence, we need to maintain backwards compatibility for these
+operators. Please reach out to the JAX team if you want to make changes.
 """
 
 from __future__ import absolute_import
