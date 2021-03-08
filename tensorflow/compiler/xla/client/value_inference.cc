@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/xla/client/value_inference.h"
 
+#include "absl/types/span.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -24,12 +26,34 @@ limitations under the License.
 namespace xla {
 namespace {
 Literal CreatePredLiteral(bool pred, const Shape& reference_shape) {
+  if (reference_shape.IsTuple()) {
+    std::vector<Literal> sub_literals;
+    for (const Shape& shape : reference_shape.tuple_shapes()) {
+      sub_literals.emplace_back(CreatePredLiteral(pred, shape));
+    }
+    return Literal::MoveIntoTuple(absl::MakeSpan(sub_literals));
+  }
   Literal literal = LiteralUtil::CreateR0(pred);
   Literal literal_broadcast =
       literal
           .Broadcast(ShapeUtil::ChangeElementType(Shape(reference_shape), PRED),
                      {})
           .ValueOrDie();
+  return literal_broadcast;
+}
+
+Literal CreateZeroLiteral(const Shape& reference_shape) {
+  if (reference_shape.IsTuple()) {
+    std::vector<Literal> sub_literals;
+    for (const Shape& shape : reference_shape.tuple_shapes()) {
+      sub_literals.emplace_back(CreateZeroLiteral(shape));
+    }
+    return Literal::MoveIntoTuple(absl::MakeSpan(sub_literals));
+  }
+  Literal literal = LiteralUtil::Zero(reference_shape.element_type());
+  Literal literal_broadcast =
+      literal.Broadcast(reference_shape, {}).ValueOrDie();
+
   return literal_broadcast;
 }
 
@@ -121,9 +145,6 @@ struct HloProtoEvaluator {
 StatusOr<Literal> ValueInference::AnalyzeConstantLiteral(int64 handle) {
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
                       builder_->LookUpInstructionByHandle(handle));
-  if (constant_.contains(handle)) {
-    return constant_[handle].Clone();
-  }
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(root->opcode()));
   switch (opcode) {
     case HloOpcode::kGetDimensionSize: {
@@ -132,9 +153,8 @@ StatusOr<Literal> ValueInference::AnalyzeConstantLiteral(int64 handle) {
       TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
                           builder_->LookUpInstructionByHandle(operand_handle));
       if (operand_proto->shape().is_dynamic_dimension(dimension)) {
-        return InvalidArgument(
-            "AnalyzeConstant is called on a GetDimensionSize on dynamic "
-            "dimension.");
+        // The value is dynamic, but we return a 0 here as garbage data.
+        return CreateZeroLiteral(Shape(root->shape()));
       } else {
         return LiteralUtil::CreateR0<int32>(
             operand_proto->shape().dimensions(dimension));
@@ -159,8 +179,25 @@ StatusOr<Literal> ValueInference::AnalyzeConstantLiteral(int64 handle) {
     case HloOpcode::kSend:
     case HloOpcode::kRecv:
     case HloOpcode::kParameter: {
-      return InvalidArgument("Can't analyze constant values on instruction %s",
-                             root->DebugString());
+      // The values are dynamic, but we return 0s here as garbage data.
+      return CreateZeroLiteral(Shape(root->shape()));
+    }
+    case HloOpcode::kGetTupleElement: {
+      int64 operand_handle = root->operand_ids(0);
+      TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
+                          builder_->LookUpInstructionByHandle(operand_handle));
+      TF_ASSIGN_OR_RETURN(HloOpcode operand_opcode,
+                          StringToHloOpcode(operand_proto->opcode()));
+      if (operand_opcode == HloOpcode::kParameter) {
+        // Don't materialize the whole parameter if it's followed by a GTE.
+        return CreateZeroLiteral(Shape(root->shape()));
+      }
+      return HloProtoEvaluator(*root,
+                               [&](int64 operand_index, int64 operand_handle) {
+                                 return AnalyzeConstant(operand_handle);
+                               })
+          .WithPrimitiveType(PRED)
+          .Evaluate();
     }
     case HloOpcode::kReduce:
     case HloOpcode::kScatter:
@@ -188,9 +225,6 @@ StatusOr<Literal> ValueInference::AnalyzeConstantLiteral(int64 handle) {
 StatusOr<Literal> ValueInference::AnalyzeIsDynamicLiteral(int64 handle) {
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
                       builder_->LookUpInstructionByHandle(handle));
-  if (is_dynamic_.contains(handle)) {
-    return is_dynamic_[handle].Clone();
-  }
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(root->opcode()));
   switch (opcode) {
     case HloOpcode::kGetDimensionSize: {
@@ -319,26 +353,41 @@ StatusOr<Literal> ValueInference::AnalyzeIsDynamicLiteral(int64 handle) {
       return CreatePredLiteral(true, Shape(root->shape()));
     }
     case HloOpcode::kSelect: {
-      if (!AnalyzeConstant(root->operand_ids(0)).ok()) {
-        // If the predicate operand is not constant, conservatively assume the
-        // entire result values are dynamic.
-        return CreatePredLiteral(true, Shape(root->shape()));
-      }
-      return HloProtoEvaluator(*root,
-                               [&](int64 operand_index, int64 operand_handle) {
-                                 if (operand_index == 0) {
-                                   return AnalyzeConstant(operand_handle);
-                                 } else {
-                                   return AnalyzeIsDynamic(operand_handle);
-                                 }
-                               })
-          .WithPrimitiveType(PRED)
-          .Evaluate();
+      TF_ASSIGN_OR_RETURN(OptionaLiteralSlice optional_selector_literal,
+                          AnalyzeOptionalConstant(root->operand_ids(0)));
+      TF_ASSIGN_OR_RETURN(LiteralSlice lhs,
+                          AnalyzeIsDynamic(root->operand_ids(1)));
+      TF_ASSIGN_OR_RETURN(LiteralSlice rhs,
+                          AnalyzeIsDynamic(root->operand_ids(2)));
+
+      auto result = CreatePredLiteral(true, Shape(root->shape()));
+
+      result.MutableEachCell<bool>(
+          [&](absl::Span<const int64> indices, bool value) {
+            absl::optional<bool> optional_selector =
+                optional_selector_literal.Get<bool>(indices);
+
+            bool lhs_value = lhs.Get<bool>(indices);
+            bool rhs_value = rhs.Get<bool>(indices);
+            if (optional_selector.has_value()) {
+              // Manually evaluate the selection without using Evaluator.
+              if (*optional_selector) {
+                return lhs_value;
+              } else {
+                return rhs_value;
+              }
+            } else {
+              // Conservatively assume value is dynamic if selector is dynamic.
+              return true;
+            }
+          });
+      return result;
     }
     case HloOpcode::kGather: {
-      if (!AnalyzeConstant(root->operand_ids(1)).ok()) {
-        // If the index operand is not constant, conservatively assume the
-        // entire result values are dynamic.
+      TF_ASSIGN_OR_RETURN(OptionaLiteralSlice optional_selector_literal,
+                          AnalyzeOptionalConstant(root->operand_ids(1)));
+      if (!optional_selector_literal.AllValid()) {
+        // Conservatively assume result are dynamic.
         return CreatePredLiteral(true, Shape(root->shape()));
       }
       return HloProtoEvaluator(*root,
@@ -370,15 +419,28 @@ StatusOr<Literal> ValueInference::AnalyzeIsDynamicLiteral(int64 handle) {
 }
 
 StatusOr<LiteralSlice> ValueInference::AnalyzeIsDynamic(int64 handle) {
+  if (is_dynamic_.contains(handle)) {
+    return LiteralSlice(is_dynamic_[handle]);
+  }
   TF_ASSIGN_OR_RETURN(Literal literal, AnalyzeIsDynamicLiteral(handle));
   is_dynamic_[handle] = std::move(literal);
   return LiteralSlice(is_dynamic_[handle]);
 }
 
 StatusOr<LiteralSlice> ValueInference::AnalyzeConstant(int64 handle) {
+  if (constant_.contains(handle)) {
+    return LiteralSlice(constant_[handle]);
+  }
   TF_ASSIGN_OR_RETURN(Literal literal, AnalyzeConstantLiteral(handle));
   constant_[handle] = std::move(literal);
   return LiteralSlice(constant_[handle]);
+}
+
+StatusOr<OptionaLiteralSlice> ValueInference::AnalyzeOptionalConstant(
+    int64 handle) {
+  TF_ASSIGN_OR_RETURN(LiteralSlice value, AnalyzeConstant(handle));
+  TF_ASSIGN_OR_RETURN(LiteralSlice mask, AnalyzeIsDynamic(handle));
+  return OptionaLiteralSlice(value, mask);
 }
 
 }  // namespace xla
