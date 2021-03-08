@@ -187,10 +187,10 @@ struct DepthToSpaceGenerator {
   }
 
   typename TTypes<T, 4>::ConstTensor input_;
-  const Eigen::Index block_size_;
-  const Eigen::Index output_height_;
-  const Eigen::Index output_width_;
-  const Eigen::Index output_depth_;
+  const Eigen::Index block_size;
+  const Eigen::Index output_height;
+  const Eigen::Index output_width;
+  const Eigen::Index output_depth;
   std::vector<std::pair<Eigen::Index, Eigen::Index>> ys_, xs_;
 };
 }  // namespace generator
