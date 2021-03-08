@@ -1,5 +1,6 @@
 # Generates CUDA kernels using MLIR codegen.
 
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load(
     "//tensorflow/core/kernels/mlir_generated:build_defs.bzl",
     "cpu_kernel_library",
@@ -27,14 +28,24 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-config_setting(
-    name = "mlir_generated_gpu_kernels_disabled",
-    define_values = {"tensorflow_enable_mlir_generated_gpu_kernels": "0"},
+bool_flag(
+    name = "enable_gpu",
+    build_setting_default = True,
 )
 
 config_setting(
-    name = "mlir_experimental_kernels_enabled",
-    define_values = {"enable_unranked_kernels": "1"},
+    name = "is_gpu_enabled",
+    flag_values = {":enable_gpu": "True"},
+)
+
+bool_flag(
+    name = "enable_experimental",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "is_experimental_enabled",
+    flag_values = {":enable_experimental": "True"},
 )
 
 filegroup(

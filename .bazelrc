@@ -187,9 +187,9 @@ build:cuda --crosstool_top=@local_config_cuda//crosstool:toolchain
 build:cuda --@local_config_cuda//:enable_cuda
 
 # Enable the mlir generated GPU kernels only for cuda builds.
-build --define=tensorflow_enable_mlir_generated_gpu_kernels=0
-# This is a more specific option, so it takes precedence over the line above for cuda builds.
-build:cuda --define=tensorflow_enable_mlir_generated_gpu_kernels=1
+build --//tensorflow/core/kernels/mlir_generated:enable_gpu=false
+# This option overrides the line above for cuda builds.
+build:cuda --//tensorflow/core/kernels/mlir_generated:enable_gpu=true
 
 # This config refers to building CUDA op kernels with clang.
 build:cuda_clang --config=cuda
