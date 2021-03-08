@@ -2779,10 +2779,11 @@ static void BroadcastBatchMatMulV2Operands(Value lhs, Value rhs, Location loc,
   Value rhs_shape = rewriter->create<shape::ShapeOfOp>(loc, rhs);
   Value const_neg2 =
       rewriter->create<ConstantOp>(loc, rewriter->getIndexAttr(-2));
-  auto lhs_splitted =
-      rewriter->create<shape::SplitAtOp>(loc, lhs_shape, const_neg2);
-  auto rhs_splitted =
-      rewriter->create<shape::SplitAtOp>(loc, rhs_shape, const_neg2);
+  auto shape_type = shape::ShapeType::get(rewriter->getContext());
+  auto lhs_splitted = rewriter->create<shape::SplitAtOp>(
+      loc, TypeRange{shape_type, shape_type}, lhs_shape, const_neg2);
+  auto rhs_splitted = rewriter->create<shape::SplitAtOp>(
+      loc, TypeRange{shape_type, shape_type}, rhs_shape, const_neg2);
   auto lhs_type = lhs.getType().cast<RankedTensorType>();
   auto rhs_type = rhs.getType().cast<RankedTensorType>();
   // The last two dimensions are the matrix row/col dimensions. Don't broadcast
@@ -2792,8 +2793,7 @@ static void BroadcastBatchMatMulV2Operands(Value lhs, Value rhs, Location loc,
                                      rhs_type.getShape().drop_back(2),
                                      result_batch_shape_compile_time_extents);
   auto result_batch_shape = rewriter->create<shape::BroadcastOp>(
-      loc, shape::ShapeType::get(rewriter->getContext()), lhs_splitted.head(),
-      rhs_splitted.head(),
+      loc, shape_type, lhs_splitted.head(), rhs_splitted.head(),
       /*error=*/nullptr);
   // Lambda which handles the broadcasting of one side to the common
   // leading-batch dimensions.
