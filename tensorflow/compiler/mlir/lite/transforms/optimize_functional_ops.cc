@@ -59,7 +59,7 @@ bool IsSideEffectFree(FuncOp func) {
   return !func.getBody()
               .walk([&](Operation* op) {
                 if (!MemoryEffectOpInterface::hasNoEffect(op) &&
-                    !op->isKnownTerminator())
+                    !op->hasTrait<OpTrait::IsTerminator>())
                   return WalkResult::interrupt();
                 return WalkResult::advance();
               })
@@ -123,7 +123,7 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
     for (auto& op_to_inline : func.front()) {
       // If this is a terminator, identify the values to use to replace the
       // original If op.
-      if (op_to_inline.isKnownTerminator()) {
+      if (op_to_inline.hasTrait<OpTrait::IsTerminator>()) {
         updated_results.reserve(op_to_inline.getNumOperands());
         for (Value operand : op_to_inline.getOperands())
           updated_results.push_back(mapper.lookup(operand));
@@ -150,7 +150,7 @@ void OptimizeFunctionalOpsPass::runOnOperation() {
   patterns.insert<FoldIfOp>(&getContext());
 
   ModuleOp module = getOperation();
-  applyPatternsAndFoldGreedily(module, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(module, std::move(patterns));
 }
 
 PassRegistration<OptimizeFunctionalOpsPass> pass(

@@ -40,7 +40,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDispatcherStop(self):
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     num_elements = 100
     ds = self.make_distributed_range_dataset(num_elements, cluster)
     iterator = iter(ds)
@@ -55,7 +55,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDispatcherRestartBeforeReading(self):
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     num_elements = 100
     ds = self.make_distributed_range_dataset(num_elements, cluster)
     cluster.restart_dispatcher()
@@ -64,7 +64,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDispatcherRestartDuringReading(self):
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     num_elements = 100
     ds = self.make_distributed_range_dataset(num_elements, cluster)
     iterator = iter(ds)
@@ -79,7 +79,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDispatcherRestartDuringDistributedEpoch(self):
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     num_elements = 100
     ds = self.make_distributed_range_dataset(
         num_elements, cluster, processing_mode="distributed_epoch")
@@ -95,7 +95,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDispatcherRestartDuringDistributedEpochRepeat(self):
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     num_elements = 100
     repetitions = 5
     breakpoints = [50, 250, 450, 500]
@@ -115,7 +115,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDispatcherRestartBetweenIterations(self):
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     num_elements = 100
     ds = self.make_distributed_range_dataset(100, cluster)
     self.assertDatasetProduces(ds, list(range(num_elements)))
@@ -124,7 +124,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDispatcherManyRestarts(self):
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     num_elements_start = 10
     num_elements_end = 15
     datasets = []
@@ -138,21 +138,109 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDispatcherAndWorkerRestart(self):
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     num_elements = 100
     ds = self.make_distributed_range_dataset(num_elements, cluster)
 
     cluster.restart_dispatcher()
-    cluster.restart_worker()
+    cluster.workers[0].restart()
     self.assertDatasetProduces(ds, list(range(num_elements)))
     cluster.restart_dispatcher()
-    cluster.restart_worker()
+    cluster.workers[0].restart()
     self.assertDatasetProduces(ds, list(range(num_elements)))
+
+  @combinations.generate(
+      combinations.times(test_base.eager_only_combinations(),
+                         combinations.combine(workers_to_add=[1, 3, 10])))
+  def testRoundRobinAddWorkers(self, workers_to_add):
+    starting_workers = 3
+    cluster = data_service_test_base.TestCluster(num_workers=starting_workers)
+    # Round robin reads can cause slow cluster shutdown.
+    data_service_test_base.GLOBAL_CLUSTERS.add(cluster)
+    num_consumers = 7
+    ds = self.make_round_robin_dataset(cluster, num_consumers)
+
+    get_next = self.getNext(ds, requires_initialization=True)
+    results = []
+    zeros_seen = 0
+    for _ in range(25):
+      results.append(self.evaluate(get_next()))
+      if results[-1] == 0:
+        zeros_seen += 1
+    for _ in range(workers_to_add):
+      cluster.add_worker()
+    # Read until all new workers have joined.
+    while zeros_seen < starting_workers + workers_to_add:
+      results.append(self.evaluate(get_next()))
+      if results[-1] == 0:
+        zeros_seen += 1
+    # Read some more.
+    for _ in range(25):
+      results.append(self.evaluate(get_next()))
+
+    self.checkRoundRobinGroups(results, num_consumers)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testRoundRobinRestartWorker(self):
+    num_workers = 3
+    # Set a shutdown quiet period to prevent workers from shutting down partway
+    # through a round.
+    cluster = data_service_test_base.TestCluster(
+        num_workers, worker_shutdown_quiet_period_ms=2000)
+    # Round robin reads can cause slow cluster shutdown.
+    data_service_test_base.GLOBAL_CLUSTERS.add(cluster)
+    num_consumers = 5
+    ds = self.make_round_robin_dataset(cluster, num_consumers)
+
+    get_next = self.getNext(ds, requires_initialization=True)
+    results = []
+
+    self.read(get_next, results, 20)
+    cluster.workers[1].stop()
+    # Check that we can continue to read even with a worker stopped.
+    self.read(get_next, results, 20)
+    cluster.workers[1].restart()
+    # Read until we get results from the restarted worker, then read some more.
+    while results[-1] != 0:
+      results.append(self.evaluate(get_next()))
+    self.read(get_next, results, 20)
+
+    self.checkRoundRobinGroups(results, num_consumers)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testRoundRobinMultiStartStop(self):
+    num_workers = 3
+    # Set a shutdown quiet period to prevent workers from shutting down partway
+    # through a round.
+    cluster = data_service_test_base.TestCluster(
+        num_workers, worker_shutdown_quiet_period_ms=2000)
+    # Round robin reads can cause slow cluster shutdown.
+    data_service_test_base.GLOBAL_CLUSTERS.add(cluster)
+    num_consumers = 5
+    ds = self.make_round_robin_dataset(cluster, num_consumers)
+
+    get_next = self.getNext(ds, requires_initialization=True)
+    results = []
+
+    self.read(get_next, results, 20)
+    for i in range(num_workers):
+      cluster.workers[i].stop()
+      self.read(get_next, results, 20)
+      cluster.workers[i].restart()
+      self.read(get_next, results, 20)
+
+    cluster.add_worker()
+    cluster.restart_dispatcher()
+    for i in range(num_workers):
+      cluster.workers[i].stop()
+    self.read(get_next, results, 20)
+
+    self.checkRoundRobinGroups(results, num_consumers)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDispatcherAndMultiWorkerRestart(self):
     num_workers = 2
-    cluster = self.create_cluster(num_workers=num_workers)
+    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     num_elements = 100
     ds = self.make_distributed_range_dataset(num_elements, cluster)
     iterator = iter(ds)
@@ -160,13 +248,13 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
     cluster.restart_dispatcher()
     for worker_index in range(num_workers):
-      cluster.restart_worker(worker_index=worker_index)
+      cluster.workers[worker_index].restart()
     for elem in iterator:
       results.append(elem.numpy())
     self.assertCountEqual(num_workers * list(range(num_elements)), results)
     cluster.restart_dispatcher()
     for worker_index in range(num_workers):
-      cluster.restart_worker(worker_index=worker_index)
+      cluster.workers[worker_index].restart()
     for elem in iterator:
       results.append(elem.numpy())
     self.assertCountEqual(num_workers * list(range(num_elements)), results)
@@ -181,7 +269,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     except:
       raise self.skipTest("Flakes in portpicker library do not represent "
                           "TensorFlow errors.")
-    cluster = self.create_cluster(
+    cluster = data_service_test_base.TestCluster(
         num_workers=1, dispatcher_port=dispatcher_port, start=False)
 
     def start_servers():
@@ -200,7 +288,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testAddWorkerMidJob(self):
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     num_elements = 100
     ds = self.make_distributed_range_dataset(num_elements, cluster)
     iterator = iter(ds)
@@ -224,7 +312,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
                          combinations.combine(use_same_port=[True, False]),
                          data_service_test_base.all_cluster_configurations()))
   def testRestartWorker(self, use_same_port, work_dir, fault_tolerant_mode):
-    cluster = self.create_cluster(
+    cluster = data_service_test_base.TestCluster(
         num_workers=1,
         work_dir=work_dir,
         fault_tolerant_mode=fault_tolerant_mode)
@@ -237,7 +325,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
       self.assertEqual(i, next(iterator).numpy())
 
     # Stop the original worker and start a new one.
-    cluster.restart_worker(use_same_port=use_same_port)
+    cluster.workers[0].restart(use_same_port=use_same_port)
 
     # There may have been some elements prefetched from the first worker
     # before it was stopped.
@@ -256,7 +344,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   @combinations.generate(test_base.eager_only_combinations())
   def testChangeProcessingModeAfterRestart(self):
     self.skipTest("b/170910141")
-    cluster = self.create_cluster(num_workers=1)
+    cluster = data_service_test_base.TestCluster(num_workers=1)
     num_elements = 100
     range_dataset = dataset_ops.Dataset.range(num_elements)
     ds = range_dataset.apply(
@@ -282,7 +370,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
           test_base.eager_only_combinations(),
           combinations.combine(work_dir=[TMP_WORK_DIR, NO_WORK_DIR])))
   def testDistributeLargeGraphThenRegisterWorker(self, work_dir):
-    cluster = self.create_cluster(
+    cluster = data_service_test_base.TestCluster(
         num_workers=0, work_dir=work_dir, fault_tolerant_mode=False)
     # Larger than default OSS grpc message size limit of 4MB.
     tensor = array_ops.ones((2, 1000, 1000), dtype=dtypes.float32)

@@ -315,11 +315,9 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_PadWithConv2D_Common_Input);
   }
 REGISTER_TEST(NodeMerge_PadWithConv2D_Common_InOutput, DT_FLOAT, Float32Input,
               Float32Output2);
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
 // TODO(nhasabni): Enable bfloat16 test when we enable the operator.
 REGISTER_TEST(NodeMerge_PadWithConv2D_Common_InOutput, DT_BFLOAT16,
               BFloat16Input, BFloat16Output2);
-#endif
 #undef REGISTER_TEST
 
 // Pad + Conv2D; padding is SAME
@@ -2190,11 +2188,9 @@ REGISTER_TEST_ALL_TYPES(Output_ControlEdge_PadWithFusedConv2D_Positive);
   }
 REGISTER_TEST(NodeMerge_PadWithFusedConv2D_Common_InOutput, DT_FLOAT,
               Float32Input, Float32Output2);
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
 // TODO(nhasabni): Enable bfloat16 test when we enable the operator.
 REGISTER_TEST(NodeMerge_PadWithFusedConv2D_Common_InOutput, DT_BFLOAT16,
               BFloat16Input, BFloat16Output2);
-#endif
 #undef REGISTER_TEST
 
 #define REGISTER_TEST(NAME, T, INPUT)                                                \

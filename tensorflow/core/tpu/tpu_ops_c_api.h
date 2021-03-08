@@ -19,7 +19,7 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/tpu/libtftpu.h"
 #include "tensorflow/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
@@ -85,6 +85,15 @@ struct CompilationCacheKeyResult {
 
 typedef struct XLA_TpuNodeContext XLA_TpuNodeContext;
 
+typedef struct TfTpu_OrdinalSelector TfTpuOrdinalSelector;
+
+struct TpuPartitionedCall_Params {
+  bool input_shape_opt;
+  bool group_tensors_for_packing;
+  int32_t minimum_input_tensors_packing;
+  int32_t minimum_output_tensors_packing;
+};
+
 // Compiles Mlir or TF function computation by lowering into HLO IR and returns
 // `count` number of TPU programs ready for execution.
 // The API allocates the `XLA_TpuProgram*[]` array `tpu_programs` and creates
@@ -106,20 +115,40 @@ TFTPU_CAPI_EXPORT void TpuCompile_XrtCompileAndBuild(
     TpuSerializedProto xrt_computation, const XLA_TpuMeshState* mesh_state,
     XLA_TpuProgram** tpu_programs[], size_t* count, TF_Status* status);
 
-// Creates a new TPU profiler object.
-TFTPU_CAPI_EXPORT TpuProfiler* TpuProfiler_Create();
-
-TFTPU_CAPI_EXPORT TpuProfiler* TpuProfiler_Free(TpuProfiler* tpu_profiler);
-
+// Creates a TPU profiler that is ready to start profiling.
+TFTPU_CAPI_EXPORT void TpuProfiler_Create(TpuProfiler** tpu_profiler,
+                                          TF_Status* status);
+// Destroys the given TPU profiler.
+TFTPU_CAPI_EXPORT void TpuProfiler_Destroy(TpuProfiler* tpu_profiler);
+// Starts profiling if not already started, returns an error otherwise.
 TFTPU_CAPI_EXPORT void TpuProfiler_Start(TpuProfiler* tpu_profiler,
                                          TF_Status* status);
-
+// Stops profiling if not already stopped, returns an error otherwise.
 TFTPU_CAPI_EXPORT void TpuProfiler_Stop(TpuProfiler* tpu_profiler,
                                         TF_Status* status);
-
-TFTPU_CAPI_EXPORT void TpuProfiler_CollectData(
-    TpuProfiler* tpu_profiler, TF_Status* status,
-    tensorflow::profiler::XSpace* space);
+// Serializes profiled data into `buffer` and returns the size of `buffer`. The
+// profile data held by the TPU driver will be cleared after retrieval.
+//
+// Step 1. Query the size of buffer required into `size_in_bytes`.
+//
+//   size_t size_in_bytes;
+//   TpuProfiler_CollectData(profiler, status, nullptr, &size_in_bytes);
+//
+// Step 2. Retrieve the data into a `buffer` of size `size_in_bytes`.
+//         Subsequently,The TPU driver clears its copy of the profile data.
+//
+//   uint8_t buffer = new uint8_t[size_in_bytes];
+//   TpuProfiler_CollectData(profiler, status, buffer, size_in_bytes);
+//
+// Step 3. Unpack the data into an XSpace.
+//
+//   tensorflow::profiler::XSpace space;
+//   space.ParseFromArray(buffer, size_in_bytes);
+//
+TFTPU_CAPI_EXPORT void TpuProfiler_CollectData(TpuProfiler* tpu_profiler,
+                                               TF_Status* status,
+                                               uint8_t* buffer,
+                                               size_t* size_in_bytes);
 
 // Creates a new TPU mesh state object.
 TFTPU_CAPI_EXPORT XLA_TpuMeshState* TpuMeshState_Create();
@@ -131,6 +160,23 @@ TFTPU_CAPI_EXPORT void TpuMeshState_Free(XLA_TpuMeshState* mesh_state);
 // Returns a pointer to an opaque mesh data structure used internally.
 TFTPU_CAPI_EXPORT void* TpuMeshState_MeshCommonState(
     XLA_TpuMeshState* mesh_state);
+
+TFTPU_CAPI_EXPORT void TfTpuOrdinalSelector_Create(
+    TfTpuOrdinalSelector** ordinal_selector, int num_cores_per_replica);
+
+TFTPU_CAPI_EXPORT void TfTpuOrdinalSelector_Destroy(
+    TfTpuOrdinalSelector* ordinal_selector);
+
+TFTPU_CAPI_EXPORT void TfTpuOrdinalSelector_GetOrdinal(
+    TfTpuOrdinalSelector* ordinal_selector, absl::optional<uint64_t> key,
+    int64_t* req_id, int64_t* ordinal);
+
+TFTPU_CAPI_EXPORT void TfTpuOrdinalSelector_DequeueFromCoreSelector(
+    TfTpuOrdinalSelector* ordinal_selector, int32_t device_ordinal,
+    int64_t req_id);
+
+TFTPU_CAPI_EXPORT void TfTpu_GetTpuPartitionedCallParams(
+    TpuPartitionedCall_Params* params);
 
 typedef struct TpuExecutable_LoadProgramAndEnqueueToStream_Params {
   int32_t struct_size;
@@ -407,6 +453,11 @@ void TpuNodeContext_CloseTpuHost(TF_Status* status);
 
 void TpuNodeContext_Initialize(int device_ordinal, TF_Status* status);
 
+bool TpuNodeContext_CompactionSupported(int device_ordinal);
+
+// Globally initialize the TPU system for inference.
+TFTPU_CAPI_EXPORT void TfTpu_InitializeTpuModelServer();
+
 struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CompileAndBuild);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_XrtCompileAndBuild);
@@ -416,7 +467,7 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuMeshState_MeshCommonState);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Create);
-  TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Free);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Destroy);
   TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Start);
   TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Stop);
   TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_CollectData);
@@ -473,6 +524,15 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuNodeContext_StopChipHeartbeats);
   TFTPU_ADD_FN_IN_STRUCT(TpuNodeContext_CloseTpuHost);
   TFTPU_ADD_FN_IN_STRUCT(TpuNodeContext_Initialize);
+  TFTPU_ADD_FN_IN_STRUCT(TpuNodeContext_CompactionSupported);
+
+  TFTPU_ADD_FN_IN_STRUCT(TfTpu_InitializeTpuModelServer);
+
+  TFTPU_ADD_FN_IN_STRUCT(TfTpuOrdinalSelector_Create);
+  TFTPU_ADD_FN_IN_STRUCT(TfTpuOrdinalSelector_Destroy);
+  TFTPU_ADD_FN_IN_STRUCT(TfTpuOrdinalSelector_GetOrdinal);
+  TFTPU_ADD_FN_IN_STRUCT(TfTpuOrdinalSelector_DequeueFromCoreSelector);
+  TFTPU_ADD_FN_IN_STRUCT(TfTpu_GetTpuPartitionedCallParams);
 };
 
 }  // extern "C"

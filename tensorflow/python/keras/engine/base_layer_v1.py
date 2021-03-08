@@ -61,7 +61,6 @@ from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # p
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging
@@ -754,8 +753,6 @@ class Layer(base_layer.Layer):
       if build_graph:
         # Symbolic execution on symbolic tensors. We will attempt to build
         # the corresponding TF subgraph inside `backend.get_graph()`
-        # TODO(reedwm): We should assert input compatibility after the inputs
-        # are casted, not before.
         input_spec.assert_input_compatibility(self.input_spec, inputs,
                                               self.name)
         graph = backend.get_graph()
@@ -1751,6 +1748,11 @@ class Layer(base_layer.Layer):
       self._dtype_policy = dtype
     elif isinstance(dtype, dict):
       self._dtype_policy = policy.deserialize(dtype)
+    elif isinstance(dtype, str) and dtype in ('mixed_float16',
+                                              'mixed_bfloat16'):
+      # The isinstance check is required since np.dtype raises an error if
+      # compared to a non-dtype string.
+      self._dtype_policy = policy.Policy(dtype)
     elif dtype:
       self._dtype_policy = policy.Policy(dtypes.as_dtype(dtype).name)
     else:
@@ -2149,8 +2151,10 @@ class Layer(base_layer.Layer):
     # For any super.__delattr__() call, we will directly use the implementation
     # in Trackable and skip the behavior in AutoTrackable. The Layer was
     # originally use Trackable as base class, the change of using Module as base
-    # class forced us to have AutoTrackable in the class hierarchy. Skipping
-    # the __delattr__ and __setattr__ in AutoTrackable will keep the status quo.
+    # class forced us to have AutoTrackable in the class hierarchy.
+    #
+    # TODO(b/180760306) Keeping the status quo of skipping _delattr__ and
+    # __setattr__ in AutoTrackable may be unsustainable.
     existing_value = getattr(self, name, None)
 
     # If this value is replacing an existing object assigned to an attribute, we
@@ -2240,11 +2244,7 @@ class Layer(base_layer.Layer):
     # TODO(b/125122625): This won't pick up on any variables added to a
     # list/dict after creation.
     for val in nest.flatten(value):
-      # TODO(b/126450014): Remove `_UnreadVariable` check here when assign ops
-      # no longer return True for isinstance Variable checks.
       if not isinstance(val, tf_variables.Variable):
-        continue
-      if isinstance(val, resource_variable_ops._UnreadVariable):  # pylint: disable=protected-access
         continue
 
       # Users may add extra weights/variables
@@ -2262,8 +2262,8 @@ class Layer(base_layer.Layer):
 
       backend.track_variable(val)
 
-    # Skip the auto trackable from tf.Module to keep status quo. See the comment
-    # at __delattr__.
+    # TODO(b/180760306) Skip the auto trackable from tf.Module to keep status
+    # quo. See the comment at __delattr__.
     super(tracking.AutoTrackable, self).__setattr__(name, value)
 
   # This is a hack so that the is_layer (within

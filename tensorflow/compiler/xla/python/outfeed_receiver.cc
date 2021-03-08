@@ -188,8 +188,8 @@ class OutfeedReceiverImpl {
   Status SendShutdownOutfeedHeader(int device_idx);
 
   // Receives a raw Literal from a device outfeed.
-  StatusOr<std::unique_ptr<Literal>> ReceiveRawFromOutfeed(
-      const PjRtDevice* device, const Shape& shape);
+  StatusOr<std::unique_ptr<Literal>> ReceiveRawFromOutfeed(PjRtDevice* device,
+                                                           const Shape& shape);
 
   // Enqueues received data in the callbaback queue.
   void EnqueueReceivedData(std::unique_ptr<OutfeedData> received)
@@ -231,7 +231,7 @@ OutfeedReceiverImpl::OutfeedReceiverImpl(
   callback_ = callback;
   max_callback_queue_size_bytes_ = max_callback_queue_size_bytes;
   for (const auto& client : clients) {
-    for (auto device : client->devices()) {
+    for (auto device : client->addressable_devices()) {
       devices_.push_back(device);
     }
   }
@@ -340,12 +340,10 @@ void OutfeedReceiverImpl::EnqueueReceivedData(
 }
 
 StatusOr<std::unique_ptr<Literal>> OutfeedReceiverImpl::ReceiveRawFromOutfeed(
-    const PjRtDevice* device, const Shape& shape) {
-  std::shared_ptr<Literal> literal_shared;
-
-  TF_ASSIGN_OR_RETURN(Literal literal, device->TransferFromOutfeed(shape));
-
-  return absl::make_unique<Literal>(std::move(literal));
+    PjRtDevice* device, const Shape& shape) {
+  auto literal = std::make_unique<Literal>(shape);
+  TF_RETURN_IF_ERROR(device->TransferFromOutfeed(literal.get()));
+  return literal;
 }
 
 void OutfeedReceiverImpl::CallbackThreadLoop() {

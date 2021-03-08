@@ -31,6 +31,7 @@ namespace {
 
 constexpr char kTFImplements[] = "tf._implements";
 constexpr char kMaxUnpooling[] = "MaxUnpooling2D";
+constexpr char kImageWarping[] = "DenseImageWarp";
 
 inline OpaqueElementsAttr CustomOption(OpBuilder* builder,
                                        const std::string& content) {
@@ -70,7 +71,7 @@ LogicalResult ConvertMaxUnpoolingFunc::RewriteFunc() {
   func_.eraseBody();
   func_.addEntryBlock();
   func_->setAttr(kTFImplements,
-                 StringAttr::get(kMaxUnpooling, func_.getContext()));
+                 StringAttr::get(func_.getContext(), kMaxUnpooling));
 
   OpBuilder builder(func_.getBody());
   std::string custom_option_buffer;
@@ -140,6 +141,59 @@ LogicalResult ConvertMaxUnpoolingFunc::CreateCustomOptions(
 
   custom_option_buffer.assign(reinterpret_cast<char*>(&pool_params),
                               sizeof(TfLitePoolParams));
+  return success();
+}
+
+LogicalResult ConvertDenseImageWarpFunc::RewriteFunc() {
+  func_.eraseBody();
+  func_.addEntryBlock();
+  func_->setAttr(kTFImplements,
+                 StringAttr::get(func_.getContext(), kImageWarping));
+
+  OpBuilder builder(func_.getBody());
+  auto op = builder.create<CustomOp>(
+      func_.getLoc(), func_.getType().getResults(), func_.getArguments(),
+      kImageWarping, CustomOption(&builder, /*content=*/""));
+  builder.create<ReturnOp>(func_.getLoc(), op.getResults());
+
+  return success();
+}
+
+LogicalResult ConvertDenseImageWarpFunc::VerifySignature() {
+  // Verify high-level function signature.
+  if (func_.getNumArguments() != 2) {
+    return func_.emitError()
+           << "Invalid number of arguments to " << kImageWarping << ": "
+           << func_.getNumArguments();
+  }
+  if (func_.getType().getNumResults() != 1) {
+    return func_.emitError()
+           << "Invalid number of results from " << kImageWarping << ": "
+           << func_.getType().getNumResults();
+  }
+
+  // Check types and shapes.
+  auto image_type =
+      func_.getType().getInput(0).dyn_cast_or_null<RankedTensorType>();
+  if (!image_type || !image_type.getElementType().isF32() ||
+      image_type.getRank() != 4) {
+    return func_.emitError() << "Image should be a 4D float tensor";
+  }
+
+  auto flow_type =
+      func_.getType().getInput(1).dyn_cast_or_null<RankedTensorType>();
+  if (!flow_type || !flow_type.getElementType().isF32() ||
+      flow_type.getRank() != 4) {
+    return func_.emitError() << "Flow should be a 4D float tensor";
+  }
+
+  auto output_type =
+      func_.getType().getResult(0).dyn_cast_or_null<RankedTensorType>();
+  if (!output_type || !output_type.getElementType().isF32() ||
+      output_type.getRank() != 4) {
+    return func_.emitError() << "Output should be a 4D float tensor";
+  }
+
   return success();
 }
 

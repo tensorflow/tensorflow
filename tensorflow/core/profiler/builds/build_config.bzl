@@ -16,4 +16,4 @@ def if_profiler_oss(if_true, if_false = []):
     })
 
 def tf_profiler_copts():
-    return if_profiler_oss(["-Wc++14-compat"])
+    return []

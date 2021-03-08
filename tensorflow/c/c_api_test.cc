@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/c_test_util.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/strcat.h"
@@ -2574,6 +2576,20 @@ TEST(CAPI, TestTensorIsNotAligned) {
     EXPECT_FALSE(TF_TensorIsAligned(a));
   }
   TF_DeleteTensor(a);
+}
+
+TEST(CAPI, MessageBufferConversion) {
+  NodeDef node_in, node_out;
+  node_in.set_name("Test name");
+  node_in.set_op("Test op");
+
+  TF_Buffer* buffer = TF_NewBuffer();
+  TF_CHECK_OK(MessageToBuffer(node_in, buffer));
+  TF_CHECK_OK(BufferToMessage(buffer, &node_out));
+  TF_DeleteBuffer(buffer);
+
+  protobuf::util::MessageDifferencer differencer;
+  EXPECT_TRUE(differencer.Compare(node_in, node_out));
 }
 
 }  // namespace

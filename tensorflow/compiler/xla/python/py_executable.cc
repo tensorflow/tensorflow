@@ -114,8 +114,9 @@ PyExecutable::ExecuteOnLocalDevices(
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
   {
     py::gil_scoped_release gil_release;
-    std::vector<std::vector<PjRtBuffer*>> arg_buffers(args.size());
-    for (int computation = 0; computation < args.size(); ++computation) {
+    const int num_devices = args.size();
+    std::vector<std::vector<PjRtBuffer*>> arg_buffers(num_devices);
+    for (int computation = 0; computation < num_devices; ++computation) {
       arg_buffers[computation].resize(args[computation].size());
       absl::c_transform(args[computation], arg_buffers[computation].begin(),
                         [](PyBuffer* buf) { return buf->buffer(); });
@@ -131,6 +132,53 @@ PyExecutable::ExecuteOnLocalDevices(
     for (auto& buffer : output_buffers[computation]) {
       outputs[computation].push_back(
           std::make_unique<PyBuffer>(client_, std::move(buffer), traceback));
+    }
+  }
+  return outputs;
+}
+
+StatusOr<std::vector<std::vector<std::unique_ptr<PyBuffer>>>>
+PyExecutable::ExecuteShardedOnLocalDevices(
+    absl::Span<const std::vector<PyBuffer*>> args) {
+  std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
+  int num_computations = executable_->addressable_devices().size();
+  {
+    py::gil_scoped_release gil_release;
+    for (const auto& arg : args) {
+      if (arg.size() != num_computations) {
+        return xla::InvalidArgument(
+            "Expected args to execute_sharded_on_local_devices to have %d "
+            "shards, got: [%s]",
+            num_computations,
+            absl::StrJoin(
+                args, ", ",
+                [](std::string* out, const std::vector<PyBuffer*>& arg) {
+                  out->append(std::to_string(arg.size()));
+                }));
+      }
+    }
+    std::vector<std::vector<PjRtBuffer*>> arg_buffers(num_computations);
+    const int num_args = args.size();
+    for (int computation = 0; computation < num_computations; ++computation) {
+      arg_buffers[computation].resize(num_args);
+      absl::c_transform(args, arg_buffers[computation].begin(),
+                        [&](const std::vector<PyBuffer*>& arg) {
+                          return arg[computation]->buffer();
+                        });
+    }
+    TF_ASSIGN_OR_RETURN(output_buffers,
+                        executable_->Execute(arg_buffers, options_));
+  }
+  auto traceback = Traceback::Get();
+  int num_output_buffers = output_buffers[0].size();
+  std::vector<std::vector<std::unique_ptr<PyBuffer>>> outputs;
+  outputs.resize(num_output_buffers);
+  for (int buffer_id = 0; buffer_id < num_output_buffers; ++buffer_id) {
+    outputs[buffer_id].reserve(num_computations);
+    for (int computation = 0; computation < num_computations; ++computation) {
+      outputs[buffer_id].push_back(std::make_unique<PyBuffer>(
+          client_, std::move(output_buffers[computation][buffer_id]),
+          traceback));
     }
   }
   return outputs;

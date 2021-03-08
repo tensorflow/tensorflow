@@ -114,6 +114,10 @@ else
   git pull -a
   git checkout ${FLAG_CHECKPOINT}
 
+  # Configure Bazel.
+  source tensorflow/tools/ci_build/release/common.sh
+  install_bazelisk
+
   # Building with bazel.
   export BAZEL_CACHE_DIR=${BAZEL_CACHE_DIR}
   export OMIT_PRINTING_OUTPUT_PATHS=YES

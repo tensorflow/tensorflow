@@ -101,18 +101,18 @@ static Graph* MatrixTriangularSolveWithBroadcast(int64 b0, int64 b1, int64 m,
 //    T: C++ type of scalars (e.g. float, std::complex)
 //   TT: TensorFlow type of scalars (e.g. DT_FLOAT, DT_COMPLEX128
 //    D: Device (e.g. cpu, gpu)
-#define BM_MatrixTriangularSolveDev(B1, B2, M, N, MB, T, TT, D)                \
-  static void                                                                  \
-      BM_MatrixTriangularSolve##_##B1##_##B2##_##M##_##N##_##MB##_##TT##_##D(  \
-          int iters) {                                                         \
-    testing::UseRealTime();                                                    \
-    testing::ItemsProcessed(static_cast<int64>(iters) * std::max(B1, B2) * M * \
-                            M * N * 2);                                        \
-    test::Benchmark(                                                           \
-        #D, MatrixTriangularSolveWithBroadcast<T>(B1, B2, M, N, MB, TT))       \
-        .Run(iters);                                                           \
-  }                                                                            \
-  BENCHMARK(                                                                   \
+#define BM_MatrixTriangularSolveDev(B1, B2, M, N, MB, T, TT, D)               \
+  static void                                                                 \
+      BM_MatrixTriangularSolve##_##B1##_##B2##_##M##_##N##_##MB##_##TT##_##D( \
+          ::testing::benchmark::State& state) {                               \
+    state.SetItemsProcessed(state.iterations() * std::max(B1, B2) * M * M *   \
+                            N * 2);                                           \
+    test::Benchmark(                                                          \
+        #D, MatrixTriangularSolveWithBroadcast<T>(B1, B2, M, N, MB, TT),      \
+        /*old_benchmark_api*/ false)                                          \
+        .Run(state);                                                          \
+  }                                                                           \
+  BENCHMARK(                                                                  \
       BM_MatrixTriangularSolve##_##B1##_##B2##_##M##_##N##_##MB##_##TT##_##D);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

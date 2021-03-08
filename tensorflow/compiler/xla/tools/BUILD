@@ -259,6 +259,7 @@ cc_library(
     name = "hlo_module_loader",
     srcs = ["hlo_module_loader.cc"],
     hdrs = ["hlo_module_loader.h"],
+    visibility = ["//tensorflow/compiler/xla:friends"],
     deps = [
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",

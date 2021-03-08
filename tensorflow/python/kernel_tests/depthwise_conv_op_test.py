@@ -425,7 +425,7 @@ class DepthwiseConv2DTest(test.TestCase):
     # GitHub issue 22110.
     if not test.is_gpu_available():
       return
-    with self.session(use_gpu=True):
+    with self.session():
       x = array_ops.placeholder(dtypes.float32)
       f = np.ones([1, 1, 1, 1], np.float32)
       v = nn_impl.depthwise_conv2d(

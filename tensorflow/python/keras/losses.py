@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import functools
 
 import six
 
@@ -25,8 +26,10 @@ from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils import losses_utils
@@ -34,9 +37,13 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops.losses import losses_impl
+from tensorflow.python.ops.ragged import ragged_map_ops
+from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
@@ -250,6 +257,7 @@ class LossFunctionWrapper(Loss):
     """
     if tensor_util.is_tf_type(y_pred) and tensor_util.is_tf_type(y_true):
       y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(y_pred, y_true)
+
     ag_fn = autograph.tf_convert(self.fn, ag_ctx.control_status_ctx())
     return ag_fn(y_true, y_pred, **self._fn_kwargs)
 
@@ -1213,6 +1221,75 @@ def mean_squared_error(y_true, y_pred):
   return K.mean(math_ops.squared_difference(y_pred, y_true), axis=-1)
 
 
+def _ragged_tensor_apply_loss(loss_fn, y_true, y_pred):
+  """Apply a loss function on a per batch basis.
+
+  Args:
+    loss_fn: The loss function
+    y_true: truth values (RaggedTensor)
+    y_pred: predicted values (RaggedTensor)
+
+  Returns:
+    Loss-function result. A dense tensor if the output has a single dimension
+    (per-batch loss value); a ragged tensor otherwise.
+  """
+
+  def rt_is_equiv_dense(rt):
+    """Returns true if this RaggedTensor has the same row_lenghts across
+
+       all ragged dimensions and thus can be converted to a dense tensor
+       without loss of information.
+
+    Args:
+      rt: RaggedTensor
+    """
+    return math_ops.reduce_all([
+        math_ops.equal(
+            math_ops.reduce_variance(math_ops.cast(row_lens, K.floatx())),
+            constant_op.constant([0.])) for row_lens in rt.nested_row_lengths()
+    ])
+
+  def _convert_to_dense(inputs):
+    return tuple(rt.to_tensor() for rt in inputs)
+
+  def _wrapper(inputs):
+    _, y_pred = inputs
+    if isinstance(y_pred, ragged_tensor.RaggedTensor):
+      return control_flow_ops.cond(
+          rt_is_equiv_dense(y_pred),
+          lambda: loss_fn(*_convert_to_dense(inputs)), lambda: loss_fn(*inputs))
+
+    return loss_fn(*inputs)
+
+  lshape = y_pred.shape.as_list()[1:-1]
+  if len(lshape) > 0:
+    spec = ragged_tensor.RaggedTensorSpec(shape=lshape, dtype=y_pred.dtype)
+  else:
+    spec = tensor_spec.TensorSpec(shape=[], dtype=y_pred.dtype)
+
+  nested_splits_list = [rt.nested_row_splits for rt in (y_true, y_pred)]
+  assertion_list = ragged_util.assert_splits_match(nested_splits_list)
+  with ops.control_dependencies(assertion_list):
+    return ragged_map_ops.map_fn(_wrapper, elems=(y_true, y_pred), dtype=spec)
+
+
+@dispatch.dispatch_for_types(mean_squared_error, ragged_tensor.RaggedTensor)
+def _ragged_tensor_mse(y_true, y_pred):
+  """ Implements support for handling RaggedTensors.
+
+  Args:
+    y_true: RaggedTensor truth values. shape = `[batch_size, d0, .. dN]`.
+    y_pred: RaggedTensor predicted values. shape = `[batch_size, d0, .. dN]`.
+
+  Returns:
+    Mean squared error values. shape = `[batch_size, d0, .. dN-1]`.
+    When the number of dimensions of the batch feature vector [d0, .. dN] is
+    greater than one the return value is a RaggedTensor. Otherwise a Dense
+    tensor with dimensions [batch_size] is returned.
+  """
+  return _ragged_tensor_apply_loss(mean_squared_error, y_true, y_pred)
+
+
 @keras_export('keras.metrics.mean_absolute_error', 'keras.metrics.mae',
               'keras.metrics.MAE', 'keras.losses.mean_absolute_error',
               'keras.losses.mae', 'keras.losses.MAE')
@@ -1241,6 +1318,12 @@ def mean_absolute_error(y_true, y_pred):
   y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   return K.mean(math_ops.abs(y_pred - y_true), axis=-1)
+
+
+@dispatch.dispatch_for_types(mean_absolute_error, ragged_tensor.RaggedTensor)
+def _ragged_tensor_mae(y_true, y_pred):
+  """ RaggedTensor adapter for mean_absolute_error"""
+  return _ragged_tensor_apply_loss(mean_absolute_error, y_true, y_pred)
 
 
 @keras_export('keras.metrics.mean_absolute_percentage_error',
@@ -1278,6 +1361,14 @@ def mean_absolute_percentage_error(y_true, y_pred):
   return 100. * K.mean(diff, axis=-1)
 
 
+@dispatch.dispatch_for_types(mean_absolute_percentage_error,
+                             ragged_tensor.RaggedTensor)
+def _ragged_tensor_mape(y_true, y_pred):
+  """ Support RaggedTensors."""
+  return _ragged_tensor_apply_loss(mean_absolute_percentage_error, y_true,
+                                   y_pred)
+
+
 @keras_export('keras.metrics.mean_squared_logarithmic_error',
               'keras.metrics.msle', 'keras.metrics.MSLE',
               'keras.losses.mean_squared_logarithmic_error',
@@ -1313,6 +1404,14 @@ def mean_squared_logarithmic_error(y_true, y_pred):
   first_log = math_ops.log(K.maximum(y_pred, K.epsilon()) + 1.)
   second_log = math_ops.log(K.maximum(y_true, K.epsilon()) + 1.)
   return K.mean(math_ops.squared_difference(first_log, second_log), axis=-1)
+
+
+@dispatch.dispatch_for_types(mean_squared_logarithmic_error,
+                             ragged_tensor.RaggedTensor)
+def _ragged_tensor_msle(y_true, y_pred):
+  """ Implements support for handling RaggedTensors."""
+  return _ragged_tensor_apply_loss(mean_squared_logarithmic_error, y_true,
+                                   y_pred)
 
 
 def _maybe_convert_labels(y_true):
@@ -1404,7 +1503,7 @@ def categorical_hinge(y_true, y_pred):
   where `neg=maximum((1-y_true)*y_pred) and pos=sum(y_true*y_pred)`
 
   Standalone usage:
-
+  
   >>> y_true = np.random.randint(0, 3, size=(2,))
   >>> y_true = tf.keras.utils.to_categorical(y_true, num_classes=3)
   >>> y_pred = np.random.random(size=(2, 3))
@@ -1413,9 +1512,10 @@ def categorical_hinge(y_true, y_pred):
   >>> pos = np.sum(y_true * y_pred, axis=-1)
   >>> neg = np.amax((1. - y_true) * y_pred, axis=-1)
   >>> assert np.array_equal(loss.numpy(), np.maximum(0., neg - pos + 1.))
-
+  
   Args:
-    y_true: The ground truth values. `y_true` values are expected to be 0 or 1.
+    y_true: The ground truth values. `y_true` values are expected to be
+    either `{-1, +1}` or `{0, 1}` (i.e. a one-hot-encoded tensor).
     y_pred: The predicted values.
 
   Returns:
@@ -1438,7 +1538,7 @@ def huber(y_true, y_pred, delta=1.0):
 
   ```
   loss = 0.5 * x^2                  if |x| <= d
-  loss = 0.5 * d^2 + d * (|x| - d)  if |x| > d
+  loss = d * |x| - 0.5 * d^2        if |x| > d
   ```
   where d is `delta`. See: https://en.wikipedia.org/wiki/Huber_loss
 
@@ -1458,9 +1558,8 @@ def huber(y_true, y_pred, delta=1.0):
   abs_error = math_ops.abs(error)
   half = ops.convert_to_tensor_v2_with_dispatch(0.5, dtype=abs_error.dtype)
   return K.mean(
-      array_ops.where_v2(
-          abs_error <= delta, half * math_ops.pow(error, 2),
-          half * math_ops.pow(delta, 2) + delta * (abs_error - delta)),
+      array_ops.where_v2(abs_error <= delta, half * math_ops.square(error),
+                         delta * abs_error - half * math_ops.square(delta)),
       axis=-1)
 
 
@@ -1547,6 +1646,31 @@ def categorical_crossentropy(y_true,
   return K.categorical_crossentropy(y_true, y_pred, from_logits=from_logits)
 
 
+@dispatch.dispatch_for_types(categorical_crossentropy,
+                             ragged_tensor.RaggedTensor)
+def _ragged_tensor_categorical_crossentropy(y_true,
+                                            y_pred,
+                                            from_logits=False,
+                                            label_smoothing=0):
+  """ Implements support for handling RaggedTensors.
+
+      Expected shape: (batch, sequence_len, n_classes) with sequence_len
+      being variable per batch.
+      Return shape: (batch, sequence_len).
+
+      When used by CategoricalCrossentropy() with the default reduction
+      (SUM_OVER_BATCH_SIZE), the reduction averages the loss over the
+      number of elements independent of the batch. E.g. if the RaggedTensor
+      has 2 batches with [2, 1] values respectivly the resulting loss is
+      the sum of the individual loss values divided by 3.
+  """
+  fn = functools.partial(
+      categorical_crossentropy,
+      from_logits=from_logits,
+      label_smoothing=label_smoothing)
+  return _ragged_tensor_apply_loss(fn, y_true, y_pred)
+
+
 @keras_export('keras.metrics.sparse_categorical_crossentropy',
               'keras.losses.sparse_categorical_crossentropy')
 @dispatch.add_dispatch_support
@@ -1618,6 +1742,28 @@ def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0):
                                  lambda: y_true)
   return K.mean(
       K.binary_crossentropy(y_true, y_pred, from_logits=from_logits), axis=-1)
+
+
+@dispatch.dispatch_for_types(binary_crossentropy, ragged_tensor.RaggedTensor)
+def _ragged_tensor_binary_crossentropy(y_true,
+                                       y_pred,
+                                       from_logits=False,
+                                       label_smoothing=0):
+  """ Implements support for handling RaggedTensors.
+
+      Expected shape: (batch, sequence_len) with sequence_len being variable
+      per batch.
+      Return shape: (batch,); returns the per batch mean of the loss values.
+
+      When used by BinaryCrossentropy() with the default reduction
+      (SUM_OVER_BATCH_SIZE), the reduction averages the per batch losses over
+      the number of batches.
+  """
+  fn = functools.partial(
+      binary_crossentropy,
+      from_logits=from_logits,
+      label_smoothing=label_smoothing)
+  return _ragged_tensor_apply_loss(fn, y_true, y_pred)
 
 
 @keras_export('keras.metrics.kl_divergence',

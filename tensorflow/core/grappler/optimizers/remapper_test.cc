@@ -461,10 +461,10 @@ class RemapperFuseMatMulWithBiasTest : public RemapperTest {
 TEST_F(RemapperFuseMatMulWithBiasTest, F32) { RunTest<DT_FLOAT>(); }
 
 TEST_F(RemapperFuseMatMulWithBiasTest, Bf16) {
-#if !defined(INTEL_MKL) || !defined(ENABLE_INTEL_MKL_BFLOAT16)
+#if !defined(INTEL_MKL)
   GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
                   "FuseMatMulWithBias with bfloat16.";
-#endif  // !defined(INTEL_MKL) || !defined(ENABLE_INTEL_MKL_BFLOAT16)
+#endif                     // !defined(INTEL_MKL)
   RunTest<DT_BFLOAT16>();  // NOLINT
 }
 
@@ -742,10 +742,10 @@ TEST_F(RemapperFuseMatMulWithBiasAndActivationTest, F32) {
 }
 
 TEST_F(RemapperFuseMatMulWithBiasAndActivationTest, Bf16) {
-#if !defined(INTEL_MKL) || !defined(ENABLE_INTEL_MKL_BFLOAT16)
+#if !defined(INTEL_MKL)
   GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
                   "FuseMatMulWithBiasAndActivation with bfloat16.";
-#endif  // !defined(INTEL_MKL) || !defined(ENABLE_INTEL_MKL_BFLOAT16)
+#endif                     // !defined(INTEL_MKL)
   RunTest<DT_BFLOAT16>();  // NOLINT
 }
 
@@ -932,6 +932,7 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNormAndActivation) {
     test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
   }
 }
+#endif  // !INTEL_MKL
 
 TEST_F(RemapperTest, FuseConv2DWithSqueezeAndBias) {
   using ops::Placeholder;
@@ -1003,7 +1004,6 @@ TEST_F(RemapperTest, FuseConv2DWithSqueezeAndBias) {
   ASSERT_EQ(tensors.size(), 1);
   test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
 }
-#endif  // !INTEL_MKL
 
 }  // namespace grappler
 }  // namespace tensorflow

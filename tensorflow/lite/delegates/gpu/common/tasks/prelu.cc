@@ -48,9 +48,13 @@ GPUOperation CreatePReLU(const GpuInfo& gpu_info,
   if (alpha_hwc) {
     const BHWC shape =
         BHWC(1, alpha_hwc->shape.h, alpha_hwc->shape.w, alpha_hwc->shape.c);
-    TensorStorageType storage_type = SelectBestStorageType(
+    TensorStorageType storage_type;
+    auto status = SelectBestStorageType(
         gpu_info, shape, definition.GetPrimaryStorageType(),
-        definition.GetDataType(), Layout::HWC);
+        definition.GetDataType(), Layout::HWC, &storage_type);
+    if (!status.ok()) {
+      storage_type = TensorStorageType::BUFFER;
+    }
     TensorDescriptor desc{definition.GetDataType(), storage_type, Layout::HWC};
     desc.UploadData(*alpha_hwc);
     result.args_.AddObject(
@@ -73,15 +77,15 @@ GPUOperation CreatePReLU(const GpuInfo& gpu_info,
     } else {
       result.args_.AddHalf("clip", half(attr.clip));
     }
-    result.code_ =
-        alpha_read +
-        "in_out_value = clamp(in_out_value, (FLT4)(0.0f), (FLT4)(args.clip)) + "
-        "min((FLT4)(0.0f), in_out_value) * alpha_val;";
+    result.code_ = alpha_read +
+                   "in_out_value = clamp(in_out_value, INIT_FLT4(0.0f), "
+                   "INIT_FLT4(args.clip)) + "
+                   "min(INIT_FLT4(0.0f), in_out_value) * alpha_val;";
   } else {
-    result.code_ =
-        alpha_read +
-        "in_out_value = max((FLT4)(0.0f), in_out_value) + min((FLT4)(0.0f), "
-        "in_out_value) * alpha_val;";
+    result.code_ = alpha_read +
+                   "in_out_value = max(INIT_FLT4(0.0f), in_out_value) + "
+                   "min(INIT_FLT4(0.0f), "
+                   "in_out_value) * alpha_val;";
   }
 
   return result;

@@ -73,7 +73,6 @@ from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # p
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -167,14 +166,20 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     depend on the shape(s) of the input(s), using `add_weight()`. `__call__()`
     will automatically build the layer (if it has not been built yet) by
     calling `build()`.
-  * `call(self, *args, **kwargs)`: Called in `__call__` after making sure
-    `build()` has been called. `call()` performs the logic of applying the
+  * `call(self, inputs, *args, **kwargs)`: Called in `__call__` after making
+    sure `build()` has been called. `call()` performs the logic of applying the
     layer to the input tensors (which should be passed in as argument).
     Two reserved keyword arguments you can optionally use in `call()` are:
-      - `training` (boolean, whether the call is in
-        inference mode or training mode)
+      - `training` (boolean, whether the call is in inference mode or training
+        mode). See more details in [the layer/model subclassing guide](
+        https://www.tensorflow.org/guide/keras/custom_layers_and_models#privileged_training_argument_in_the_call_method)
       - `mask` (boolean tensor encoding masked timesteps in the input, used
-        in RNN layers)
+        in RNN layers). See more details in [the layer/model subclassing guide](
+        https://www.tensorflow.org/guide/keras/custom_layers_and_models#privileged_mask_argument_in_the_call_method)
+    A typical signature for this method is `call(self, inputs)`, and user could
+    optionally add `training` and `mask` if the layer need them. `*args` and
+    `**kwargs` is only useful for future extension when more input parameters
+    are planned to be added.
   * `get_config(self)`: Returns a dictionary containing the configuration used
     to initialize this layer. If the keys differ from the arguments
     in `__init__`, then override `from_config(self)` as well.
@@ -300,6 +305,13 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   # not available to the restoration code).
   _must_restore_from_config = False
 
+  def _get_cell_name(self):
+    canonical_name = get_canonical_name_for_symbol(
+        self.__class__, api_name='keras', add_prefix_to_v1_names=True)
+    if canonical_name is not None:
+      return 'tf.{}'.format(canonical_name)
+    return self.__class__.__module__ + '.' + self.__class__.__name__
+
   def _instrument_layer_creation(self):
     self._instrumented_keras_api = False
     self._instrumented_keras_layer_class = False
@@ -308,10 +320,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       keras_api_gauge.get_cell('layer').set(True)
       self._instrumented_keras_api = True
       if getattr(self, '_is_model_for_instrumentation', False):
-        keras_models_gauge.get_cell(self.__class__.__name__).set(True)
+        keras_models_gauge.get_cell(self._get_cell_name()).set(True)
         self._instrumented_keras_model_class = True
       else:
-        keras_layers_gauge.get_cell(self.__class__.__name__).set(True)
+        keras_layers_gauge.get_cell(self._get_cell_name()).set(True)
         self._instrumented_keras_layer_class = True
 
   @trackable.no_automatic_dependency_tracking
@@ -470,7 +482,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     self.built = True
 
   @doc_controls.for_subclass_implementers
-  def call(self, inputs, **kwargs):  # pylint: disable=unused-argument
+  def call(self, inputs, *args, **kwargs):  # pylint: disable=unused-argument
     """This is where the layer's logic lives.
 
     Note here that `call()` method in `tf.keras` is little bit different
@@ -480,6 +492,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     Args:
         inputs: Input tensor, or list/tuple of input tensors.
+        *args: Additional positional arguments. Currently unused.
         **kwargs: Additional keyword arguments. Currently unused.
 
     Returns:
@@ -857,8 +870,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       input_masks = nest.map_structure(
           keras_tensor.keras_tensor_to_placeholder, input_masks)
 
-      inputs = self._maybe_cast_inputs(inputs)
-
       with backend.name_scope(self._name_scope()):
         with autocast_variable.enable_auto_cast_variables(
             self._compute_dtype_object):
@@ -866,6 +877,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           # overridden).
           # TODO(kaftan): do we maybe_build here, or have we already done it?
           self._maybe_build(inputs)
+          inputs = self._maybe_cast_inputs(inputs)
           outputs = call_fn(inputs, *args, **kwargs)
 
         self._handle_activity_regularization(inputs, outputs)
@@ -999,9 +1011,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         build_graph=not eager,
         training=training_mode):
 
-      if self._autocast:
-        inputs = self._maybe_cast_inputs(inputs, input_list)
-
       input_spec.assert_input_compatibility(self.input_spec, inputs, self.name)
       if eager:
         call_fn = self.call
@@ -1013,6 +1022,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       with ops.name_scope_v2(name_scope):
         if not self.built:
           self._maybe_build(inputs)
+
+        if self._autocast:
+          inputs = self._maybe_cast_inputs(inputs, input_list)
 
         with autocast_variable.enable_auto_cast_variables(
             self._compute_dtype_object):
@@ -1122,8 +1134,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         layer=self, inputs=inputs, build_graph=True, training=training_value):
       # Symbolic execution on symbolic tensors. We will attempt to build
       # the corresponding TF subgraph inside `backend.get_graph()`
-      # TODO(reedwm): We should assert input compatibility after the inputs
-      # are casted, not before.
       input_spec.assert_input_compatibility(self.input_spec, inputs, self.name)
       graph = backend.get_graph()
       # Use `self._name_scope()` to avoid auto-incrementing the name.
@@ -1647,8 +1657,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         self.mean = tf.keras.metrics.Mean(name='metric_1')
 
       def call(self, inputs):
-        self.add_metric(self.mean(x))
-        self.add_metric(tf.reduce_sum(x), name='metric_2')
+        self.add_metric(self.mean(inputs))
+        self.add_metric(tf.reduce_sum(inputs), name='metric_2')
         return inputs
     ```
 
@@ -2335,6 +2345,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       self._dtype_policy = dtype
     elif isinstance(dtype, dict):
       self._dtype_policy = policy.deserialize(dtype)
+    elif isinstance(dtype, str) and dtype in ('mixed_float16',
+                                              'mixed_bfloat16'):
+      # The isinstance check is required since np.dtype raises an error if
+      # compared to a non-dtype string.
+      self._dtype_policy = policy.Policy(dtype)
     elif dtype:
       self._dtype_policy = policy.Policy(dtypes.as_dtype(dtype).name)
     else:
@@ -2781,8 +2796,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # For any super.__delattr__() call, we will directly use the implementation
     # in Trackable and skip the behavior in AutoTrackable. The Layer was
     # originally use Trackable as base class, the change of using Module as base
-    # class forced us to have AutoTrackable in the class hierarchy. Skipping
-    # the __delattr__ and __setattr__ in AutoTrackable will keep the status quo.
+    # class forced us to have AutoTrackable in the class hierarchy.
+    #
+    # TODO(b/180760306) Keeping the status quo of skipping _delattr__ and
+    # __setattr__ in AutoTrackable may be unsustainable.
     existing_value = getattr(self, name, None)
 
     # If this value is replacing an existing object assigned to an attribute, we
@@ -2870,11 +2887,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # TODO(b/125122625): This won't pick up on any variables added to a
     # list/dict after creation.
     for val in nest.flatten(value, expand_composites=True):
-      # TODO(b/126450014): Remove `_UnreadVariable` check here when assign ops
-      # no longer return True for isinstance Variable checks.
       if not isinstance(val, tf_variables.Variable):
-        continue
-      if isinstance(val, resource_variable_ops._UnreadVariable):  # pylint: disable=protected-access
         continue
 
       # Users may add extra weights/variables
@@ -2892,8 +2905,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
       backend.track_variable(val)
 
-    # Skip the auto trackable from tf.Module to keep status quo. See the comment
-    # at __delattr__.
+    # TODO(b/180760306) Skip the auto trackable from tf.Module to keep status
+    # quo. See the comment at __delattr__.
     super(tracking.AutoTrackable, self).__setattr__(name, value)
 
   def _gather_children_attribute(self, attribute):
@@ -2967,12 +2980,15 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     self.__class__._call_accepts_kwargs.fget.cache.pop(self, None)
 
     call_fn_args = self._call_fn_args
+    call_fn_args += self._call_full_argspec.kwonlyargs or []
     self._expects_training_arg = ('training' in call_fn_args or
                                   self._call_accepts_kwargs)
     # The default training arg will be any (non-None) default specified in the
     # method signature, or None if no value is specified.
-    self._default_training_arg = self._call_fn_arg_defaults.get(
-        'training')
+    call_fn_arg_defaults = self._call_fn_arg_defaults.copy()
+    call_fn_arg_defaults.update(self._call_full_argspec.kwonlydefaults or {})
+    self._default_training_arg = call_fn_arg_defaults.get('training')
+
     self._expects_mask_arg = ('mask' in call_fn_args or
                               self._call_accepts_kwargs)
 

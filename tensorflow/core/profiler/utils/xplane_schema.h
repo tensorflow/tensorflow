@@ -31,6 +31,10 @@ namespace profiler {
 TF_CONST_INIT extern const absl::string_view kHostThreadsPlaneName;
 // Name prefix of XPlane that contains GPU events.
 TF_CONST_INIT extern const absl::string_view kGpuPlanePrefix;
+// Name prefix of XPlane that contains TPU events.
+TF_CONST_INIT extern const absl::string_view kTpuPlanePrefix;
+// Name prefix of XPlane that contains TPU runtime events.
+TF_CONST_INIT extern const absl::string_view kTpuRuntimePlaneName;
 // Name of XPlane that contains CUPTI driver API generated events.
 TF_CONST_INIT extern const absl::string_view kCuptiDriverApiPlaneName;
 // Name of XPlane that contains profile metadata such as XLA debug info.
@@ -146,6 +150,7 @@ enum StatType {
   kRegionType,
   kDataType,
   kTensorShapes,
+  kTensorLayout,
   kKpiName,
   kKpiValue,
   kElementId,
@@ -167,6 +172,7 @@ enum StatType {
   kMemallocDetails,
   kMemFreeDetails,
   kMemsetDetails,
+  kMemoryResidencyDetails,
   kKernelAnnotation,
   kNVTXRange,
   kKernelDetails,

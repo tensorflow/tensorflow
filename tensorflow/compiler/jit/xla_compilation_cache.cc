@@ -286,7 +286,10 @@ Status XlaCompilationCache::CompileSingleOp(
     const ConfigProto* config = ctx->function_library()->config_proto();
     // TODO(b/171039585): Support tf.VarIsInitializedOp using MLIR.
     bool use_mlir = config &&
-                    GetMlirBridgeRolloutPolicy(*graph, *config) ==
+                    GetMlirBridgeRolloutPolicy(
+                        *graph, /*function_library=*/nullptr,
+                        *config, /*uses_uninitialized_resource_args=*/
+                        AnyUninitializedResourceArg(args)) ==
                         MlirBridgeRolloutPolicy::kEnabledByUser &&
                     node_def.op() != "VarIsInitializedOp";
     if (!use_mlir) {

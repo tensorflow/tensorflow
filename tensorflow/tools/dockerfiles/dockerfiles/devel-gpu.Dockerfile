@@ -41,6 +41,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         cuda-command-line-tools-${CUDA/./-} \
         libcublas-${CUDA/./-} \
         libcublas-dev-${CUDA/./-} \
+        cuda-nvprune-${CUDA/./-} \
         cuda-nvrtc-${CUDA/./-} \
         cuda-nvrtc-dev-${CUDA/./-} \
         cuda-cudart-dev-${CUDA/./-} \
@@ -76,7 +77,7 @@ RUN [[ "${ARCH}" = "ppc64le" ]] || { apt-get update && \
         && rm -rf /var/lib/apt/lists/*; }
 
 # Configure the build for our CUDA configuration.
-ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda/lib64:/usr/local/cuda/lib64/stubs:/usr/include/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda/lib64:/usr/include/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH:/usr/local/cuda/lib64/stubs
 ENV TF_NEED_CUDA 1
 ENV TF_NEED_TENSORRT 1
 ENV TF_CUDA_VERSION=${CUDA}

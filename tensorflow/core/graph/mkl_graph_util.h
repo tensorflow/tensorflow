@@ -176,11 +176,9 @@ inline string GetMklEagerOpName(const string& name) {
   return string(kMklEagerOpPrefix) + name;
 }
 
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
 static inline bool IsBF16SupportedByOneDNNOnThisCPU() {
   return port::TestCPUFeature(port::CPUFeature::AVX512F);
 }
-#endif
 
 static inline void BF16UnsupportedWarning() {
   static absl::once_flag cpu_bfloat16_warn_once_flag;
@@ -204,7 +202,6 @@ static inline bool IsMklLayoutDependentOp(const string& op_name, DataType T) {
   if (kernel.find(kMklQuantizedOpLabelPattern) != string::npos) {
     return (T == DT_QUINT8 || T == DT_QINT8 || T == DT_QINT32);
   }
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
   // Restrict regular ops to FLOAT and BFLOAT16
   if (kernel.find(kMklLayoutDependentOpLabelPattern) != string::npos) {
     if (T == DT_FLOAT) return true;
@@ -220,12 +217,6 @@ static inline bool IsMklLayoutDependentOp(const string& op_name, DataType T) {
     }
     return false;
   }
-#else
-  // Restrict regular ops to FLOAT
-  if (kernel.find(kMklLayoutDependentOpLabelPattern) != string::npos) {
-    return (T == DT_FLOAT);
-  }
-#endif  // ENABLE_INTEL_MKL_BFLOAT16
   return false;
 }
 
@@ -274,7 +265,6 @@ static inline bool IsMklNameChangeOp(const string& op_name, DataType T) {
   if (kernel.find(search_string) != string::npos) {
     isTypeAllowed = (T == DT_COMPLEX128 || T == DT_COMPLEX64 ||
                      T == DT_DOUBLE || T == DT_FLOAT);
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
     if (!isTypeAllowed) {
       if (T == DT_BFLOAT16) {
         if (IsBF16SupportedByOneDNNOnThisCPU()) {
@@ -287,7 +277,6 @@ static inline bool IsMklNameChangeOp(const string& op_name, DataType T) {
         }
       }
     }
-#endif
     return isTypeAllowed;
   }
 

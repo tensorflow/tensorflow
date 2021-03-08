@@ -42,5 +42,12 @@ TEST(PrimitiveUtilTest, StringToPrimitiveType) {
   EXPECT_IS_NOT_OK(primitive_util::StringToPrimitiveType("preD").status());
 }
 
+TEST(PrimitiveUtilTest, FloatTypes) {
+  EXPECT_EQ(primitive_util::SignificandWidth(F32), 24);
+  EXPECT_EQ(primitive_util::SignificandWidth(BF16), 8);
+  EXPECT_EQ(primitive_util::ExponentWidth(F32), 8);
+  EXPECT_EQ(primitive_util::ExponentWidth(BF16), 8);
+}
+
 }  // namespace
 }  // namespace xla

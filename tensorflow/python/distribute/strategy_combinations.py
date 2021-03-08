@@ -119,6 +119,12 @@ def _get_tpu_strategy_creator(steps_per_run,
   return _create_tpu_strategy
 
 
+def _mirrored_strategy_with_collective_key_base(devices):
+  mirrored_lib.MirroredStrategyV1._collective_key_base += 100000
+  mirrored_lib.MirroredStrategy._collective_key_base += 100000
+  return MirroredStrategy(devices)
+
+
 def _get_multi_worker_mirrored_creator(required_gpus):
 
   def _create_multi_worker_mirrored():
@@ -244,20 +250,24 @@ cloud_tpu_strategy = combinations.NamedDistribution(
     required_tpu=True,
     use_cloud_tpu=True)
 mirrored_strategy_with_one_cpu = combinations.NamedDistribution(
-    "Mirrored1CPU", lambda: MirroredStrategy(["/cpu:0"]))
+    "Mirrored1CPU",
+    lambda: _mirrored_strategy_with_collective_key_base(["/cpu:0"]))
 mirrored_strategy_with_one_gpu = combinations.NamedDistribution(
-    "Mirrored1GPU", lambda: MirroredStrategy(["/gpu:0"]), required_gpus=1)
+    "Mirrored1GPU",
+    lambda: _mirrored_strategy_with_collective_key_base(["/gpu:0"]),
+    required_gpus=1)
 mirrored_strategy_with_gpu_and_cpu = combinations.NamedDistribution(
     "MirroredCPUAndGPU",
-    lambda: MirroredStrategy(["/gpu:0", "/cpu:0"]),
+    lambda: _mirrored_strategy_with_collective_key_base(["/gpu:0", "/cpu:0"]),
     required_gpus=1)
 mirrored_strategy_with_two_gpus = combinations.NamedDistribution(
     "Mirrored2GPUs",
-    lambda: MirroredStrategy(["/gpu:0", "/gpu:1"]),
+    lambda: _mirrored_strategy_with_collective_key_base(["/gpu:0", "/gpu:1"]),
     required_gpus=2)
 # Should call set_virtual_cpus_to_at_least(3) in your test's setUp methods.
 mirrored_strategy_with_cpu_1_and_2 = combinations.NamedDistribution(
-    "Mirrored2CPU", lambda: MirroredStrategy(["/cpu:1", "/cpu:2"]))
+    "Mirrored2CPU",
+    lambda: _mirrored_strategy_with_collective_key_base(["/cpu:1", "/cpu:2"]))
 mirrored_strategy_with_cpu_1_and_2.__doc__ = (
     """Mirrored strategy with 2 virtual CPUs.
 

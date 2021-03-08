@@ -27,9 +27,8 @@ TfLiteStatus InvokeConv(TfLiteTensor* tensors, int tensors_size,
   int outputs_array_data[] = {1, 3};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  micro::KernelRunner runner(
-      registration, tensors, tensors_size, inputs_array, outputs_array,
-      reinterpret_cast<void*>(conv_params), micro_test::reporter);
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array, conv_params);
 
   const char* init_data = reinterpret_cast<const char*>(conv_params);
   TfLiteStatus status = runner.InitAndPrepare(init_data);
@@ -112,13 +111,14 @@ TfLiteStatus ValidateConvGoldens(TfLiteTensor* tensors, int tensors_size,
       registration, output_data, tolerance);
 }
 
-void TestConvFloat(const int* input_dims_data, const float* input_data,
-                   const int* filter_dims_data, const float* filter_data,
-                   const int* bias_dims_data, const float* bias_data,
-                   const int* output_dims_data,
-                   const float* expected_output_data,
-                   TfLiteConvParams* conv_params,
-                   TfLiteRegistration registration, float* output_data) {
+TfLiteStatus TestConvFloat(const int* input_dims_data, const float* input_data,
+                           const int* filter_dims_data,
+                           const float* filter_data, const int* bias_dims_data,
+                           const float* bias_data, const int* output_dims_data,
+                           const float* expected_output_data,
+                           TfLiteConvParams* conv_params,
+                           TfLiteRegistration registration,
+                           float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* filter_dims = IntArrayFromInts(filter_dims_data);
   TfLiteIntArray* bias_dims = IntArrayFromInts(bias_dims_data);
@@ -134,13 +134,12 @@ void TestConvFloat(const int* input_dims_data, const float* input_data,
       CreateTensor(output_data, output_dims),
   };
 
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, ValidateConvGoldens(tensors, tensors_size,
-                                     expected_output_data, output_dims_count,
-                                     conv_params, registration, output_data));
+  return ValidateConvGoldens(tensors, tensors_size, expected_output_data,
+                             output_dims_count, conv_params, registration,
+                             output_data);
 }
 
-void TestConvQuantizedPerLayer(
+TfLiteStatus TestConvQuantizedPerLayer(
     const int* input_dims_data, const float* input_data,
     uint8_t* input_quantized, float input_scale, const int* filter_dims_data,
     const float* filter_data, uint8_t* filter_quantized, float filter_scale,
@@ -177,14 +176,12 @@ void TestConvQuantizedPerLayer(
                                            0};
   tensors[1].quantization = {kTfLiteAffineQuantization, &filter_quant};
 
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk,
-      ValidateConvGoldens(tensors, tensors_size, expected_output_quantized,
-                          output_dims_count, conv_params, registration,
-                          output_data));
+  return ValidateConvGoldens(tensors, tensors_size, expected_output_quantized,
+                             output_dims_count, conv_params, registration,
+                             output_data);
 }
 
-void TestConvQuantizedPerChannel(
+TfLiteStatus TestConvQuantizedPerChannel(
     const int* input_dims_data, const float* input_data,
     int8_t* input_quantized, float input_scale, int input_zero_point,
     const int* filter_dims_data, const float* filter_data,
@@ -241,11 +238,9 @@ void TestConvQuantizedPerChannel(
 
   tflite::Quantize(expected_output_data, expected_output_data_quantized,
                    output_dims_count, output_scale, output_zero_point);
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk,
-      ValidateConvGoldens(tensors, tensors_size, expected_output_data_quantized,
-                          output_dims_count, conv_params, registration,
-                          output_data, 1.0 /* tolerance */));
+  return ValidateConvGoldens(
+      tensors, tensors_size, expected_output_data_quantized, output_dims_count,
+      conv_params, registration, output_data, 1.0 /* tolerance */);
 }
 
 }  // namespace testing

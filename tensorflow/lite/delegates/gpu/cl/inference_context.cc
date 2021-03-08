@@ -135,22 +135,6 @@ bool IsGenericAdd(const Node& node, const std::vector<Value*>& inputs,
 
 }  // namespace
 
-CLNode::CLNode(CLNode&& node)
-    : cl_operation(std::move(node.cl_operation)),
-      inputs(std::move(node.inputs)),
-      outputs(std::move(node.outputs)),
-      name(std::move(node.name)) {}
-
-CLNode& CLNode::operator=(CLNode&& node) {
-  if (this != &node) {
-    cl_operation = std::move(node.cl_operation);
-    inputs = std::move(node.inputs);
-    outputs = std::move(node.outputs);
-    name = std::move(node.name);
-  }
-  return *this;
-}
-
 absl::Status InferenceContext::InitFromGraph(
     const CreateInferenceInfo& create_info, const GraphFloat32& graph,
     Environment* env, std::vector<uint8_t>* serialized_model) {
@@ -160,7 +144,8 @@ absl::Status InferenceContext::InitFromGraph(
   creation_context.queue = env->queue();
   creation_context.cache = env->program_cache();
 
-  ReserveGraphTensors(create_info, creation_context.GetGpuInfo(), graph);
+  RETURN_IF_ERROR(
+      ReserveGraphTensors(create_info, creation_context.GetGpuInfo(), graph));
   precision_ = create_info.precision;
   storage_type_ = create_info.storage_type;
   if (env->device().GetInfo().IsMali()) {
@@ -276,7 +261,7 @@ void InferenceContext::CopyInAndOutIds(const GraphFloat32& graph) {
   }
 }
 
-void InferenceContext::ReserveGraphTensors(
+absl::Status InferenceContext::ReserveGraphTensors(
     const CreateInferenceInfo& create_info, const GpuInfo& gpu_info,
     const GraphFloat32& graph) {
   ValueId max_id = 0;
@@ -291,17 +276,19 @@ void InferenceContext::ReserveGraphTensors(
           CanCreateTensorWithShape(
               gpu_info, shape,
               TensorDescriptor{data_type, TensorStorageType::SINGLE_TEXTURE_2D,
-                               layout})) {
+                               layout})
+              .ok()) {
         storage_type = TensorStorageType::SINGLE_TEXTURE_2D;
       }
     }
-    storage_type =
-        SelectBestStorageType(gpu_info, shape, storage_type, data_type, layout);
+    RETURN_IF_ERROR(SelectBestStorageType(gpu_info, shape, storage_type,
+                                          data_type, layout, &storage_type));
     tensor_reserver_.Add(
         t->id, {shape, TensorDescriptor{data_type, storage_type, layout}});
     max_id = std::max(max_id, t->id);
   }
   tensor_reserver_.SetNext(max_id + 1);
+  return absl::OkStatus();
 }
 
 absl::Status InferenceContext::ConvertOperations(const GpuInfo& gpu_info,
@@ -326,7 +313,7 @@ absl::Status InferenceContext::ConvertOperations(const GpuInfo& gpu_info,
       continue;
     }
     auto op_type = OperationTypeFromString(node.operation.type);
-    if (op_type == OperationType::CONST) {
+    if (op_type == OperationType::CONSTANT) {
       auto attr =
           absl::any_cast<ConstTensorAttributes>(node.operation.attributes);
       auto outputs = graph.FindOutputs(node.id);

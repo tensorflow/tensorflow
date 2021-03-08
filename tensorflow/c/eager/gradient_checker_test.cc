@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/ops/math_ops.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -96,6 +97,11 @@ class GradientCheckerTest
       ASSERT_EQ(errors::OK, s.code()) << s.error_message();
       ctx_.reset(ctx_raw);
     }
+
+    // Computing numerical gradients with TensorFloat-32 is numerically
+    // unstable. Some forward pass tests also fail with TensorFloat-32 due to
+    // low tolerances
+    enable_tensor_float_32_execution(false);
   }
 
   AbstractContextPtr ctx_;
@@ -111,8 +117,8 @@ TEST_P(GradientCheckerTest, TestMatMul) {
   AbstractTensorHandlePtr A;
   {
     AbstractTensorHandle* A_raw;
-    Status s =
-        TestTensorHandleWithDimsFloat(ctx_.get(), A_vals, A_dims, 2, &A_raw);
+    Status s = TestTensorHandleWithDims<float, TF_FLOAT>(ctx_.get(), A_vals,
+                                                         A_dims, 2, &A_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
     A.reset(A_raw);
   }
@@ -121,8 +127,8 @@ TEST_P(GradientCheckerTest, TestMatMul) {
   AbstractTensorHandlePtr B;
   {
     AbstractTensorHandle* B_raw;
-    Status s =
-        TestTensorHandleWithDimsFloat(ctx_.get(), B_vals, B_dims, 2, &B_raw);
+    Status s = TestTensorHandleWithDims<float, TF_FLOAT>(ctx_.get(), B_vals,
+                                                         B_dims, 2, &B_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
     B.reset(B_raw);
   }
@@ -137,7 +143,8 @@ TEST_P(GradientCheckerTest, TestMul) {
   AbstractTensorHandlePtr x;
   {
     AbstractTensorHandle* x_raw = nullptr;
-    Status s = TestScalarTensorHandle(ctx_.get(), 2.0f, &x_raw);
+    Status s =
+        TestScalarTensorHandle<float, TF_FLOAT>(ctx_.get(), 2.0f, &x_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
     x.reset(x_raw);
   }
@@ -145,7 +152,8 @@ TEST_P(GradientCheckerTest, TestMul) {
   AbstractTensorHandlePtr y;
   {
     AbstractTensorHandle* y_raw = nullptr;
-    Status s = TestScalarTensorHandle(ctx_.get(), 7.0f, &y_raw);
+    Status s =
+        TestScalarTensorHandle<float, TF_FLOAT>(ctx_.get(), 7.0f, &y_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
     y.reset(y_raw);
   }

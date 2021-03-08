@@ -40,6 +40,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_asm_extra_flags("");
   opts.set_xla_eliminate_hlo_implicit_broadcast(true);
   opts.set_xla_dump_hlo_as_html(false);
+  opts.set_xla_dump_fusion_visualization(false);
   opts.set_xla_dump_include_timestamp(true);
   opts.set_xla_dump_max_hlo_modules(-1);
   opts.set_xla_dump_module_metadata(false);
@@ -169,6 +170,12 @@ static void AllocateFlags() {
   // Custom "sub-parser" lambda for xla_gpu_ptx_file.
   auto setter_for_xla_gpu_ptx_file = [](string value) {
     flag_values->add_xla_gpu_ptx_file(value);
+    return true;
+  };
+
+  // Custom "sub-parser" lambda for xla_gpu_llvm_ir_file.
+  auto setter_for_xla_gpu_llvm_ir_file = [](const string& value) {
+    flag_values->add_xla_gpu_llvm_ir_file(value);
     return true;
   };
 
@@ -369,7 +376,15 @@ static void AllocateFlags() {
       "If non-empty, specifies a file containing ptx to use. The filename "
       "prefix must have the same pattern as PTX dumped by XLA. This allows to "
       "match one specific module. General workflow. Get the generated module "
-      "ptx from XLA. Modify it. Then pass it back via this option."));
+      "ptx from XLA, modify it, then pass it back via this option."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_llvm_ir_file", setter_for_xla_gpu_llvm_ir_file, "",
+      "If non-empty, specifies a file containing textual LLVM IR to use. The "
+      "filename prefix must have the same pattern as LLVM dumped by XLA "
+      "(i.e. module_0001.ir-no-opt.ll -> module_0001.MY_NEW_FILE.ll). This "
+      "allows to match one specific module. General workflow. Get the not "
+      "optimized LLVM IR from XLA, modify it, then pass it back via this "
+      "option."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_test_all_output_layouts",
       bool_setter_for(&DebugOptions::set_xla_test_all_output_layouts),
@@ -483,6 +498,15 @@ static void AllocateFlags() {
       "directory specified by --xla_dump_to). This is not implemented by "
       "default; you need to add a plugin which calls "
       "RegisterGraphToURLRenderer()."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_dump_fusion_visualization",
+      bool_setter_for(&DebugOptions::set_xla_dump_fusion_visualization),
+      flag_values->xla_dump_fusion_visualization(),
+      "Tries to generate HLO fusion visualization as an HTML page to the "
+      "directory specified by --xla_dump_to). This is not implemented by "
+      "default; you need to add a plugin which calls "
+      "RegisterGraphToURLRenderer(). Generates a file per computation. "
+      "Currently only implemented for the GPU backend."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_dump_hlo_snapshots",
       bool_setter_for(&DebugOptions::set_xla_dump_hlo_snapshots),

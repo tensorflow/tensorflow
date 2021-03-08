@@ -28,6 +28,8 @@ namespace profiler {
 
 const absl::string_view kHostThreadsPlaneName = "/host:CPU";
 const absl::string_view kGpuPlanePrefix = "/device:GPU:";
+const absl::string_view kTpuPlanePrefix = "/device:TPU:";
+const absl::string_view kTpuRuntimePlaneName = "/host:TPU-runtime";
 const absl::string_view kCuptiDriverApiPlaneName = "/host:CUPTI";
 const absl::string_view kMetadataPlaneName = "/host:metadata";
 const absl::string_view kTFStreamzPlaneName = "/host:tfstreamz";
@@ -157,6 +159,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"region_type", kRegionType},
       {"data_type", kDataType},
       {"shape", kTensorShapes},
+      {"layout", kTensorLayout},
       {"kpi_name", kKpiName},
       {"kpi_value", kKpiValue},
       {"element_id", kElementId},
@@ -176,6 +179,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"memalloc_details", kMemallocDetails},
       {"MemFree_details", kMemFreeDetails},
       {"Memset_details", kMemsetDetails},
+      {"MemoryResidency_details", kMemoryResidencyDetails},
       {"kernel_details", kKernelDetails},
       {"annotation", kKernelAnnotation},
       {"nvtx_range", kNVTXRange},

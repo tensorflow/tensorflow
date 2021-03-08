@@ -719,38 +719,21 @@ void AddUnifiedMemoryActivityEvent(
   collector->AddEvent(std::move(event));
 }
 
-void AddMemAllocActivityEvent(CuptiTraceCollector *collector,
-                              const CUpti_ActivityMemory *memory) {
+void AddMemoryActivityEvent(CuptiTraceCollector *collector,
+                            const CUpti_ActivityMemory *memory) {
   CuptiTracerEvent event{};
-  event.name = absl::StrCat("MemAlloc ", GetMemoryKindName(memory->memoryKind));
-  event.type = CuptiTracerEventType::MemoryAlloc;
+  event.name = absl::StrCat("Memory ", GetMemoryKindName(memory->memoryKind));
+  event.type = CuptiTracerEventType::MemoryResidency;
   event.source = CuptiTracerEventSource::Activity;
   event.start_time_ns = memory->start;
   event.end_time_ns = std::max(memory->end, memory->start + 1);
   event.device_id = memory->deviceId;
   event.context_id = memory->contextId;
-  event.memalloc_info.num_bytes = memory->bytes;
-  event.memalloc_info.kind = memory->memoryKind;
-  event.memalloc_info.address = memory->address;
-  VLOG(5) << "Cuda activity " << event.name
-          << " addr: " << reinterpret_cast<void *>(memory->address)
-          << " bytes: " << memory->bytes;
-  collector->AddEvent(std::move(event));
-}
-
-void AddMemFreeActivityEvent(CuptiTraceCollector *collector,
-                             const CUpti_ActivityMemory *memory) {
-  CuptiTracerEvent event{};
-  event.name = absl::StrCat("MemFree ", GetMemoryKindName(memory->memoryKind));
-  event.type = CuptiTracerEventType::MemoryFree;
-  event.source = CuptiTracerEventSource::Activity;
-  event.start_time_ns = memory->start;
-  event.end_time_ns = std::max(memory->end, memory->start + 1);
-  event.device_id = memory->deviceId;
-  event.context_id = memory->contextId;
-  event.memfree_info.num_bytes = memory->bytes;
-  event.memfree_info.kind = memory->memoryKind;
-  event.memfree_info.address = memory->address;
+  // Assign to default stream (0) so that event is included during Flush().
+  event.stream_id = 0;
+  event.memory_residency_info.num_bytes = memory->bytes;
+  event.memory_residency_info.kind = memory->memoryKind;
+  event.memory_residency_info.address = memory->address;
   VLOG(5) << "Cuda activity " << event.name
           << " addr: " << reinterpret_cast<void *>(memory->address)
           << " bytes: " << memory->bytes;
@@ -768,11 +751,42 @@ void AddMemsetActivityEvent(CuptiTraceCollector *collector,
   event.device_id = memset->deviceId;
   event.correlation_id = memset->correlationId;
   event.context_id = memset->contextId;
+  event.stream_id = memset->streamId;
   event.memset_info.num_bytes = memset->bytes;
   event.memset_info.kind = memset->memoryKind;
   event.memset_info.async = (memset->flags & CUPTI_ACTIVITY_FLAG_MEMSET_ASYNC);
   VLOG(5) << "Cuda activity " << event.name << " bytes: " << memset->bytes
           << " async: " << event.memset_info.async;
+  collector->AddEvent(std::move(event));
+}
+
+void AddSynchronizationActivityEvent(
+    CuptiTraceCollector *collector, const CUpti_ActivitySynchronization *sync) {
+  CuptiTracerEvent event{};
+  event.type = CuptiTracerEventType::Generic;
+  event.source = CuptiTracerEventSource::Activity;
+  switch (sync->type) {
+    case CUPTI_ACTIVITY_SYNCHRONIZATION_TYPE_EVENT_SYNCHRONIZE:
+      event.name = "cuEventSynchronize";
+      break;
+    case CUPTI_ACTIVITY_SYNCHRONIZATION_TYPE_STREAM_WAIT_EVENT:
+      event.name = "cuStreamWaitEvent";
+      break;
+    case CUPTI_ACTIVITY_SYNCHRONIZATION_TYPE_STREAM_SYNCHRONIZE:
+      event.name = "cuStreamSynchronize";
+      break;
+    case CUPTI_ACTIVITY_SYNCHRONIZATION_TYPE_CONTEXT_SYNCHRONIZE:
+      event.name = "cuCtxSynchronize";
+      break;
+    default:
+      event.name = "unknown synchronization event";
+      break;
+  }
+  event.start_time_ns = sync->start;
+  event.end_time_ns = std::max(sync->end, sync->start + 1);
+  event.correlation_id = sync->correlationId;
+  event.context_id = sync->contextId;
+  VLOG(5) << "Cuda activity " << event.name;
   collector->AddEvent(std::move(event));
 }
 
@@ -1542,6 +1556,8 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
 }
 
 const char *GetTraceEventTypeName(const CuptiTracerEventType &type) {
+  // Do not use a default so that this gives a build error when
+  // CuptiTracerEventType is extended but this is not.
   switch (type) {
     case CuptiTracerEventType::MemcpyH2D:
       return "MemcpyH2D";
@@ -1567,8 +1583,9 @@ const char *GetTraceEventTypeName(const CuptiTracerEventType &type) {
       return "UnifiedMemory";
     case CuptiTracerEventType::Generic:
       return "Generic";
-    default:
-      DCHECK(false);
+    case CuptiTracerEventType::MemoryResidency:
+      return "MemoryResidency";
+    case CuptiTracerEventType::Unsupported:
       return "";
   }
 }
@@ -1889,20 +1906,20 @@ Status CuptiTracer::ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
               reinterpret_cast<CUpti_ActivityUnifiedMemoryCounter2 *>(record));
           break;
         case CUPTI_ACTIVITY_KIND_MEMORY: {
-          const auto *p = reinterpret_cast<CUpti_ActivityMemory *>(record);
-          // Free PC having a value of zero implies an allocation.
-          if (p->freePC == 0) {
-            AddMemAllocActivityEvent(collector_, p);
-          } else {
-            AddMemFreeActivityEvent(collector_, p);
-          }
+          AddMemoryActivityEvent(
+              collector_, reinterpret_cast<CUpti_ActivityMemory *>(record));
         } break;
         case CUPTI_ACTIVITY_KIND_MEMSET:
           AddMemsetActivityEvent(
               collector_, reinterpret_cast<CUpti_ActivityMemset *>(record));
           break;
+        case CUPTI_ACTIVITY_KIND_SYNCHRONIZATION:
+          AddSynchronizationActivityEvent(
+              collector_,
+              reinterpret_cast<CUpti_ActivitySynchronization *>(record));
+          break;
         default:
-          LOG(ERROR) << "Activity type " << record->kind << " not supported.";
+          VLOG(3) << "Activity type " << record->kind << " is not supported.";
           break;
       }
     } else if (status == CUPTI_ERROR_MAX_LIMIT_REACHED) {

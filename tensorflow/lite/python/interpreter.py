@@ -40,6 +40,13 @@ else:
     return lambda x: x
 
 
+try:
+  from tensorflow.lite.python import metrics_portable as metrics
+except ImportError:
+  from tensorflow.lite.python import metrics_nonportable as metrics
+# pylint: enable=g-import-not-at-top
+
+
 class Delegate(object):
   """Python wrapper class to manage TfLiteDelegate objects.
 
@@ -320,6 +327,9 @@ class Interpreter(object):
         self._interpreter.ModifyGraphWithDelegate(
             delegate._get_native_delegate_pointer())  # pylint: disable=protected-access
     self._signature_defs = self.get_signature_list()
+
+    self._metrics = metrics.TFLiteMetrics()
+    self._metrics.increase_counter_interpreter_creation()
 
   def __del__(self):
     # Must make sure the interpreter is destroyed before things that
@@ -817,7 +827,7 @@ class InterpreterWithCustomOps(Interpreter):
     Raises:
       ValueError: If the interpreter was unable to create.
     """
-    self._custom_op_registerers = custom_op_registerers
+    self._custom_op_registerers = custom_op_registerers or []
     super(InterpreterWithCustomOps, self).__init__(
         model_path=model_path,
         model_content=model_content,

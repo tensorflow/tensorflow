@@ -42,6 +42,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.callbacks import BackupAndRestore
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.layers import Activation
 from tensorflow.python.keras.layers import Dense
@@ -54,6 +55,7 @@ from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.profiler import profiler_v2 as profiler
 from tensorflow.python.saved_model import save_options as save_options_lib
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.training import adam
@@ -282,6 +284,14 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       self.assertRegex(printed.contents(), expected_log)
 
   @keras_parameterized.run_all_keras_modes
+  def test_trivial_backup_restore(self):
+    if testing_utils.should_run_eagerly():
+      model = keras.Sequential([keras.layers.Dense(1)])
+      model.compile('sgd', 'mse')
+      cbk = BackupAndRestore(self.get_temp_dir())
+      model.fit(np.ones((10, 1)), np.ones((10, 1)), epochs=0, callbacks=[cbk])
+
+  @keras_parameterized.run_all_keras_modes
   def test_callback_warning(self):
 
     class SleepCallback(keras.callbacks.Callback):
@@ -448,11 +458,15 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     if h5py is None:
       return  # Skip test if models cannot be saved.
 
+    model_type = testing_utils.get_model_type()
+    if model_type == 'subclass':
+      return  # Skip test since subclassed models cannot be saved in .h5 format.
+
     layers = [
         keras.layers.Dense(NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'),
         keras.layers.Dense(NUM_CLASSES, activation='softmax')
     ]
-    model = testing_utils.get_model_from_layers(layers, input_shape=(10,))
+    model = testing_utils.get_model_from_layers(layers, input_shape=(3,))
     model.compile(
         loss='categorical_crossentropy', optimizer='rmsprop', metrics=['acc'])
 
@@ -467,18 +481,11 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         num_classes=NUM_CLASSES)
     y_test = np_utils.to_categorical(y_test)
     y_train = np_utils.to_categorical(y_train)
-    # case 1
+
+    # Case 1
     monitor = 'val_loss'
     save_best_only = False
     mode = 'auto'
-
-    model = keras.models.Sequential()
-    model.add(
-        keras.layers.Dense(
-            NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'))
-    model.add(keras.layers.Dense(NUM_CLASSES, activation='softmax'))
-    model.compile(
-        loss='categorical_crossentropy', optimizer='rmsprop', metrics=['acc'])
 
     cbks = [
         keras.callbacks.ModelCheckpoint(
@@ -498,7 +505,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     assert os.path.exists(filepath)
     os.remove(filepath)
 
-    # case 2
+    # Case 2
     mode = 'min'
     cbks = [
         keras.callbacks.ModelCheckpoint(
@@ -518,7 +525,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     assert os.path.exists(filepath)
     os.remove(filepath)
 
-    # case 3
+    # Case 3
     mode = 'max'
     monitor = 'val_acc'
     cbks = [
@@ -539,7 +546,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     assert os.path.exists(filepath)
     os.remove(filepath)
 
-    # case 4
+    # Case 4
     save_best_only = True
     cbks = [
         keras.callbacks.ModelCheckpoint(
@@ -559,7 +566,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     assert os.path.exists(filepath)
     os.remove(filepath)
 
-    # Case: metric not available.
+    # Case 5: metric not available.
     cbks = [
         keras.callbacks.ModelCheckpoint(
             filepath,
@@ -577,7 +584,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     # File won't be written.
     assert not os.path.exists(filepath)
 
-    # case 5
+    # Case 6
     save_best_only = False
     period = 2
     mode = 'auto'
@@ -613,7 +620,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         save_best_only=save_best_only,
         mode='unknown')
 
-    # Case 6: `ModelCheckpoint` with a combination of `save_freq` and `period`.
+    # Case 7: `ModelCheckpoint` with a combination of `save_freq` and `period`.
     # Though `period` is deprecated, we're testing it for
     # backward-compatibility.
     filepath = os.path.join(temp_dir, 'checkpoint.epoch{epoch:02d}.h5')
@@ -641,7 +648,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     os.remove(filepath.format(epoch=5))
     os.remove(filepath.format(epoch=10))
 
-    # Case 7: `ModelCheckpoint` with an integer `save_freq`
+    # Case 8: `ModelCheckpoint` with an integer `save_freq`
     filepath = os.path.join(temp_dir, 'checkpoint.epoch{epoch:02d}.h5')
     cbks = [
         keras.callbacks.ModelCheckpoint(
@@ -674,7 +681,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     os.remove(filepath.format(epoch=6))
     os.remove(filepath.format(epoch=9))
 
-    # Case 8: `ModelCheckpoint` with valid and invalid save_freq argument.
+    # Case 9: `ModelCheckpoint` with valid and invalid save_freq argument.
     with self.assertRaisesRegex(ValueError, 'Unrecognized save_freq'):
       keras.callbacks.ModelCheckpoint(
           filepath,
@@ -696,7 +703,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         mode=mode,
         save_freq=3)
 
-    # Case 9: `ModelCheckpoint` with valid and invalid `options` argument.
+    # Case 10: `ModelCheckpoint` with valid and invalid `options` argument.
     with self.assertRaisesRegex(TypeError, 'tf.train.CheckpointOptions'):
       keras.callbacks.ModelCheckpoint(
           filepath,
@@ -727,6 +734,33 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         save_weights_only=False,
         mode=mode,
         options=save_options_lib.SaveOptions())
+
+  @testing_utils.run_v2_only
+  def test_ModelCheckpoint_subclass_save_weights_false(self):
+    model = testing_utils.get_small_subclass_mlp(NUM_HIDDEN, NUM_CLASSES)
+    model.compile(
+        loss='categorical_crossentropy', optimizer='rmsprop', metrics=['acc'])
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
+    filepath = os.path.join(temp_dir, 'checkpoint')
+    cbks = [keras.callbacks.ModelCheckpoint(
+        filepath, save_weights_only=False)]
+
+    (x_train, y_train), _ = testing_utils.get_test_data(
+        train_samples=TRAIN_SAMPLES,
+        test_samples=TEST_SAMPLES,
+        input_shape=(INPUT_DIM,),
+        num_classes=NUM_CLASSES)
+    y_train = np_utils.to_categorical(y_train, num_classes=NUM_CLASSES)
+
+    model.fit(
+        x_train,
+        y_train,
+        callbacks=cbks,
+        epochs=1,
+        verbose=0)
+    # Check that the filepath is a SavedModel directory.
+    self.assertIn('saved_model.pb', os.listdir(filepath))
 
   def _get_dummy_resource_for_model_checkpoint_testing(self):
 
@@ -1121,6 +1155,25 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     # The best configuration is in epoch 2 (loss = 0.1000),
     # and while patience = 2, we're restoring the best weights,
     # so we end up at the epoch with the best weights, i.e. epoch 2
+    self.assertEqual(early_stop.model.get_weights(), 2)
+
+    # Check early stopping when no model beats the baseline.
+    early_stop = keras.callbacks.EarlyStopping(
+        monitor='val_loss', patience=5, baseline=0.5, restore_best_weights=True)
+    early_stop.model = DummyModel()
+    losses = [0.9, 0.8, 0.7, 0.71, 0.72, 0.73]
+    # The best configuration is in the epoch 2 (loss = 0.7000).
+    epochs_trained = 0
+    early_stop.on_train_begin()
+    for epoch in range(len(losses)):
+      epochs_trained += 1
+      early_stop.model.set_weight_to_epoch(epoch=epoch)
+      early_stop.on_epoch_end(epoch, logs={'val_loss': losses[epoch]})
+      if early_stop.model.stop_training:
+        break
+    # No epoch improves on the baseline, so we should train for only 5 epochs,
+    # and restore the second model.
+    self.assertEqual(epochs_trained, 5)
     self.assertEqual(early_stop.model.get_weights(), 2)
 
   def test_RemoteMonitor(self):
@@ -1817,6 +1870,7 @@ class _SummaryFile(object):
     self.histograms = set()
     self.tensors = set()
     self.graph_defs = []
+    self.convert_from_v2_summary_proto = False
 
 
 def list_summaries(logdir):
@@ -1864,11 +1918,17 @@ def list_summaries(logdir):
                 'Unexpected summary kind %r in event file %s:\n%r'
                 % (kind, path, event))
           elif kind == 'tensor' and tag != 'keras':
-            # Check for V2 scalar summaries, which have a different PB
-            # structure.
-            if event.summary.value[
-                0].metadata.plugin_data.plugin_name == 'scalars':
-              container = result.scalars
+            # Convert the tf2 summary proto to old style for type checking.
+            plugin_name = value.metadata.plugin_data.plugin_name
+            container = {
+                'images': result.images,
+                'histograms': result.histograms,
+                'scalars': result.scalars,
+            }.get(plugin_name)
+            if container is not None:
+              result.convert_from_v2_summary_proto = True
+            else:
+              container = result.tensors
           container.add(_ObservedSummary(logdir=dirpath, tag=tag))
   return result
 
@@ -1918,6 +1978,8 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         summary_file.scalars, {
             _ObservedSummary(logdir=train_dir, tag='epoch_loss'),
             _ObservedSummary(logdir=validation_dir, tag='epoch_loss'),
+            _ObservedSummary(
+                logdir=validation_dir, tag='evaluation_loss_vs_iterations'),
         })
 
   def test_TensorBoard_basic(self):
@@ -1938,6 +2000,9 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         summary_file.scalars, {
             _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
             _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+            _ObservedSummary(
+                logdir=self.validation_dir,
+                tag='evaluation_loss_vs_iterations'),
         })
 
   def test_TensorBoard_across_invocations(self):
@@ -1963,6 +2028,9 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         summary_file.scalars, {
             _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
             _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+            _ObservedSummary(
+                logdir=self.validation_dir,
+                tag='evaluation_loss_vs_iterations'),
         })
 
   def test_TensorBoard_no_spurious_event_files(self):
@@ -2003,6 +2071,9 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
             _ObservedSummary(logdir=self.train_dir, tag='batch_loss'),
             _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
             _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+            _ObservedSummary(
+                logdir=self.validation_dir,
+                tag='evaluation_loss_vs_iterations'),
         },
     )
 
@@ -2041,9 +2112,13 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         y,
         batch_size=2,
         epochs=2,
+        verbose=0,
         callbacks=[
             keras.callbacks.TensorBoard(
-                self.logdir, update_freq=1, write_steps_per_second=True)
+                self.logdir,
+                update_freq=1,
+                profile_batch=0,
+                write_steps_per_second=True)
         ])
 
     summary_file = list_summaries(self.logdir)
@@ -2080,6 +2155,9 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         {
             _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
             _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+            _ObservedSummary(
+                logdir=self.validation_dir,
+                tag='evaluation_loss_vs_iterations'),
         },
     )
     self.assertEqual(
@@ -2111,6 +2189,9 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         {
             _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
             _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+            _ObservedSummary(
+                logdir=self.validation_dir,
+                tag='evaluation_loss_vs_iterations'),
         },
     )
     self.assertEqual(
@@ -2120,14 +2201,21 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
             _ObservedSummary(logdir=self.train_dir, tag='kernel_0'),
         },
     )
+    if summary_file.convert_from_v2_summary_proto:
+      expected = {
+          _ObservedSummary(logdir=self.train_dir, tag='bias_0'),
+          _ObservedSummary(logdir=self.train_dir, tag='kernel_0'),
+      }
+    else:
+      expected = {
+          _ObservedSummary(logdir=self.train_dir, tag='bias_0/image/0'),
+          _ObservedSummary(logdir=self.train_dir, tag='kernel_0/image/0'),
+          _ObservedSummary(logdir=self.train_dir, tag='kernel_0/image/1'),
+          _ObservedSummary(logdir=self.train_dir, tag='kernel_0/image/2'),
+      }
     self.assertEqual(
         self._strip_layer_names(summary_file.images, model_type),
-        {
-            _ObservedSummary(logdir=self.train_dir, tag='bias_0/image/0'),
-            _ObservedSummary(logdir=self.train_dir, tag='kernel_0/image/0'),
-            _ObservedSummary(logdir=self.train_dir, tag='kernel_0/image/1'),
-            _ObservedSummary(logdir=self.train_dir, tag='kernel_0/image/2'),
-        },
+        expected
     )
 
   def test_TensorBoard_projector_callback(self):
@@ -2203,6 +2291,9 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         {
             _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
             _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+            _ObservedSummary(
+                logdir=self.validation_dir,
+                tag='evaluation_loss_vs_iterations'),
             _ObservedSummary(logdir=self.train_dir, tag='batch_loss'),
             _ObservedSummary(
                 logdir=self.train_dir,
@@ -2391,6 +2482,36 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
         },
     )
     self.assertEqual(1, self._count_trace_file(logdir=self.train_dir))
+
+  def test_TensorBoard_autoTrace_outerProfiler(self):
+    """Runs a profiler session that interferes with the one from the callback.
+
+    The callback will not generate a profile but execution will proceed without
+    crashing due to unhandled exceptions.
+    """
+    profiler.start(logdir='')
+    model = self._get_seq_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(
+        self.logdir, histogram_freq=1, profile_batch=1, write_graph=False)
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
+    profiler.stop(save=False)
+
+    self.assertEqual(
+        summary_file.tensors,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag=u'batch_1'),
+        },
+    )
+    self.assertEqual(0, self._count_trace_file(logdir=self.train_dir))
 
   def test_TensorBoard_autoTrace_tagNameWithBatchNum(self):
     model = self._get_seq_model()

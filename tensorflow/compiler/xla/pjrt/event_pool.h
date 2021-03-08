@@ -77,6 +77,11 @@ class EventPool {
   // cudaEventRecord.
   StatusOr<Handle> ThenAllocateAndRecordEvent(se::Stream* stream);
 
+  // Version of ThenAllocateAndRecordEvent split into two phases; this is
+  // sometimes helpful if we want to avoid failures by preallocating events.
+  StatusOr<Handle> AllocateEvent(se::StreamExecutor* executor);
+  void ThenRecordEvent(se::Stream* stream, EventPool::Handle& handle);
+
  private:
   const bool allow_reuse_;
 

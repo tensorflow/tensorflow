@@ -2299,14 +2299,19 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
   switch (type) {
     case FLOAT:
       return ArrayDataType::kFloat;
+    case UINT8:
     case QUANTIZED_UINT8:
       return ArrayDataType::kUint8;
     case INT8:
+    case QUANTIZED_INT8:
       return ArrayDataType::kInt8;
+    case INT16:
     case QUANTIZED_INT16:
       return ArrayDataType::kInt16;
     case INT32:
       return ArrayDataType::kInt32;
+    case UINT32:
+      return ArrayDataType::kUint32;
     case INT64:
       return ArrayDataType::kInt64;
     case UINT64:
@@ -2323,6 +2328,8 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
       return ArrayDataType::kFloat16;
     case FLOAT64:
       return ArrayDataType::kFloat64;
+    case RESOURCE:
+    case VARIANT:
     default:
       return ArrayDataType::kNone;
   }

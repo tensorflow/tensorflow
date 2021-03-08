@@ -71,6 +71,9 @@ class LeakyReLU(Layer):
 
   def __init__(self, alpha=0.3, **kwargs):
     super(LeakyReLU, self).__init__(**kwargs)
+    if alpha is None:
+      raise ValueError('alpha of leaky Relu layer '
+                       'cannot be None. Required a float')
     self.supports_masking = True
     self.alpha = K.cast_to_floatx(alpha)
 
@@ -206,6 +209,8 @@ class ELU(Layer):
 
   def __init__(self, alpha=1.0, **kwargs):
     super(ELU, self).__init__(**kwargs)
+    if alpha is None:
+      raise ValueError('alpha of ELU layer ' 'cannot be None. Required a float')
     self.supports_masking = True
     self.alpha = K.cast_to_floatx(alpha)
 
@@ -308,7 +313,8 @@ class Softmax(Layer):
       normalization is applied.
   Call arguments:
     inputs: The inputs, or logits to the softmax layer.
-    mask: A boolean mask of the same shape as `inputs`. Defaults to `None`.
+    mask: A boolean mask of the same shape as `inputs`. Defaults to `None`. The
+      mask specifies 1 to keep and 0 to mask.
 
   Returns:
     softmaxed output with the same shape as `inputs`.
@@ -321,7 +327,7 @@ class Softmax(Layer):
 
   def call(self, inputs, mask=None):
     if mask is not None:
-      # Since attention_mask is 1.0 for positions we want to attend and 0.0 for
+      # Since mask is 1.0 for positions we want to keep and 0.0 for
       # masked positions, this operation will create a tensor which is 0.0 for
       # positions we want to attend and -1e.9 for masked positions.
       adder = (1.0 - math_ops.cast(mask, inputs.dtype)) * (

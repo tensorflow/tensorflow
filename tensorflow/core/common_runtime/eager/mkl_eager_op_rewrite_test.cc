@@ -38,13 +38,12 @@ class EagerOpRewriteTest : public ::testing::Test {
         absl::make_unique<StaticDeviceMgr>(DeviceFactory::NewDevice(
             "CPU", {}, "/job:localhost/replica:0/task:0/device:CPU:0"));
     bool async = false;
-    bool lazy_remote_tensor_copy = false;
     tensorflow::Rendezvous* rendezvous =
         new tensorflow::IntraProcessRendezvous(device_mgr.get());
     eager_ctx_ = new tensorflow::EagerContext(
         SessionOptions(),
         tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-        async, lazy_remote_tensor_copy, device_mgr.get(), false, rendezvous);
+        async, device_mgr.get(), false, rendezvous);
 
     EagerExecutor executor_(false);
     std::unique_ptr<tensorflow::EagerOperation> op(
@@ -57,8 +56,9 @@ class EagerOpRewriteTest : public ::testing::Test {
   // Validates the result of MKL eager rewrite.
   void CheckRewrite(EagerOperation* orig_op, string expected_op_name) {
     std::unique_ptr<tensorflow::EagerOperation> out_op;
-    EagerOpRewriteRegistry::Global()->RunRewrite(
-        EagerOpRewriteRegistry::PRE_EXECUTION, orig_op, &out_op);
+    EXPECT_EQ(Status::OK(),
+              EagerOpRewriteRegistry::Global()->RunRewrite(
+                  EagerOpRewriteRegistry::PRE_EXECUTION, orig_op, &out_op));
 
     // actual_op_name is same as original op name if rewrite didn't happen.
     string actual_op_name = orig_op->Name();
@@ -160,11 +160,12 @@ REGISTER_TEST_ALL_TYPES(MostOps_Positive);
   }
 #define DATA_FORMAT "NCDHW"
 REGISTER_TEST_ALL_TYPES(FusedBatchNormV3_5D_Negative_1);
+#undef DATA_FORMAT
 
 #define DATA_FORMAT "NDHWC"
 REGISTER_TEST_ALL_TYPES(FusedBatchNormV3_5D_Negative_2);
-
 #undef DATA_FORMAT
+
 #undef REGISTER_TEST
 
 }  // namespace tensorflow

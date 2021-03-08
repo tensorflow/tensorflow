@@ -269,8 +269,15 @@ class StateManager(object):
     raise NotImplementedError('StateManager.get_resource')
 
 
+@tf_export('__internal__.feature_column.StateManager', v1=[])
 class _StateManagerImpl(StateManager):
-  """Manages the state of DenseFeatures and LinearLayer."""
+  """Manages the state of DenseFeatures and LinearLayer.
+
+  Some `FeatureColumn`s create variables or resources to assist their
+  computation. The `StateManager` is responsible for creating and storing these
+  objects since `FeatureColumn`s are supposed to be stateless configuration
+  only.
+  """
 
   def __init__(self, layer, trainable):
     """Creates an _StateManagerImpl object.
@@ -294,6 +301,21 @@ class _StateManagerImpl(StateManager):
                       trainable=True,
                       use_resource=True,
                       initializer=None):
+    """Creates a new variable.
+
+    Args:
+      feature_column: A `FeatureColumn` object this variable corresponds to.
+      name: variable name.
+      shape: variable shape.
+      dtype: The type of the variable. Defaults to `self.dtype` or `float32`.
+      trainable: Whether this variable is trainable or not.
+      use_resource: If true, we use resource variables. Otherwise we use
+        RefVariable.
+      initializer: initializer instance (callable).
+
+    Returns:
+      The created variable.
+    """
     if name in self._cols_to_vars_map[feature_column]:
       raise ValueError('Variable already exists.')
 
@@ -323,11 +345,29 @@ class _StateManagerImpl(StateManager):
     return var
 
   def get_variable(self, feature_column, name):
+    """Returns an existing variable.
+
+    Args:
+      feature_column: A `FeatureColumn` object this variable corresponds to.
+      name: variable name.
+    """
     if name in self._cols_to_vars_map[feature_column]:
       return self._cols_to_vars_map[feature_column][name]
     raise ValueError('Variable does not exist.')
 
   def add_resource(self, feature_column, resource_name, resource):
+    """Creates a new resource.
+
+    Resources can be things such as tables, variables, trackables, etc.
+
+    Args:
+      feature_column: A `FeatureColumn` object this resource corresponds to.
+      resource_name: Name of the resource.
+      resource: The resource.
+
+    Returns:
+      The created resource.
+    """
     self._cols_to_resources_map[feature_column][resource_name] = resource
     # pylint: disable=protected-access
     if self._layer is not None and isinstance(resource, trackable.Trackable):
@@ -339,9 +379,25 @@ class _StateManagerImpl(StateManager):
     # pylint: enable=protected-access
 
   def has_resource(self, feature_column, resource_name):
+    """Returns true iff a resource with same name exists.
+
+    Resources can be things such as tables, variables, trackables, etc.
+
+    Args:
+      feature_column: A `FeatureColumn` object this variable corresponds to.
+      resource_name: Name of the resource.
+    """
     return resource_name in self._cols_to_resources_map[feature_column]
 
   def get_resource(self, feature_column, resource_name):
+    """Returns an already created resource.
+
+    Resources can be things such as tables, variables, trackables, etc.
+
+    Args:
+      feature_column: A `FeatureColumn` object this variable corresponds to.
+      resource_name: Name of the resource.
+    """
     if (feature_column not in self._cols_to_resources_map or
         resource_name not in self._cols_to_resources_map[feature_column]):
       raise ValueError('Resource does not exist.')
@@ -1142,16 +1198,27 @@ def categorical_column_with_hash_bucket(key,
   Example:
 
   ```python
-  keywords = categorical_column_with_hash_bucket("keywords", 10K)
-  columns = [keywords, ...]
-  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
-  linear_prediction = linear_model(features, columns)
+  import tensorflow as tf
+  keywords = tf.feature_column.categorical_column_with_hash_bucket("keywords",
+  10000)
+  columns = [keywords]
+  features = {'keywords': tf.constant([['Tensorflow', 'Keras', 'RNN', 'LSTM',
+  'CNN'], ['LSTM', 'CNN', 'Tensorflow', 'Keras', 'RNN'], ['CNN', 'Tensorflow',
+  'LSTM', 'Keras', 'RNN']])}
+  linear_prediction, _, _ = tf.compat.v1.feature_column.linear_model(features,
+  columns)
 
   # or
-  keywords_embedded = embedding_column(keywords, 16)
-  columns = [keywords_embedded, ...]
-  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
-  dense_tensor = input_layer(features, columns)
+  import tensorflow as tf
+  keywords = tf.feature_column.categorical_column_with_hash_bucket("keywords",
+  10000)
+  keywords_embedded = tf.feature_column.embedding_column(keywords, 16)
+  columns = [keywords_embedded]
+  features = {'keywords': tf.constant([['Tensorflow', 'Keras', 'RNN', 'LSTM',
+  'CNN'], ['LSTM', 'CNN', 'Tensorflow', 'Keras', 'RNN'], ['CNN', 'Tensorflow',
+  'LSTM', 'Keras', 'RNN']])}
+  input_layer = tf.keras.layers.DenseFeatures(columns)
+  dense_tensor = input_layer(features)
   ```
 
   Args:
@@ -1208,12 +1275,16 @@ def categorical_column_with_vocabulary_file(key,
   ID 50-54.
 
   ```python
-  states = categorical_column_with_vocabulary_file(
-      key='states', vocabulary_file='/us/states.txt', vocabulary_size=50,
-      num_oov_buckets=5)
-  columns = [states, ...]
-  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
-  linear_prediction = linear_model(features, columns)
+  import tensorflow as tf
+  states = tf.feature_column.categorical_column_with_vocabulary_file(
+    key='states', vocabulary_file='states.txt', vocabulary_size=5,
+    num_oov_buckets=1)
+  columns = [states]
+  features = {'states':tf.constant([['california', 'georgia', 'michigan',
+  'texas', 'new york'], ['new york', 'georgia', 'california', 'michigan',
+  'texas']])}
+  linear_prediction = tf.compat.v1.feature_column.linear_model(features,
+  columns)
   ```
 
   Example with `default_value`:
@@ -1223,20 +1294,31 @@ def categorical_column_with_vocabulary_file(key,
   others are assigned the corresponding line number 1-50.
 
   ```python
-  states = categorical_column_with_vocabulary_file(
-      key='states', vocabulary_file='/us/states.txt', vocabulary_size=51,
-      default_value=0)
-  columns = [states, ...]
-  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
-  linear_prediction, _, _ = linear_model(features, columns)
+  import tensorflow as tf
+  states = tf.feature_column.categorical_column_with_vocabulary_file(
+    key='states', vocabulary_file='states.txt', vocabulary_size=6,
+    default_value=0)
+  columns = [states]
+  features = {'states':tf.constant([['california', 'georgia', 'michigan',
+  'texas', 'new york'], ['new york', 'georgia', 'california', 'michigan',
+  'texas']])}
+  linear_prediction = tf.compat.v1.feature_column.linear_model(features,
+  columns)
   ```
 
   And to make an embedding with either:
 
   ```python
-  columns = [embedding_column(states, 3),...]
-  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
-  dense_tensor = input_layer(features, columns)
+  import tensorflow as tf
+  states = tf.feature_column.categorical_column_with_vocabulary_file(
+    key='states', vocabulary_file='states.txt', vocabulary_size=5,
+    num_oov_buckets=1)
+  columns = [tf.feature_column.embedding_column(states, 3)]
+  features = {'states':tf.constant([['california', 'georgia', 'michigan',
+  'texas', 'new york'], ['new york', 'georgia', 'california', 'michigan',
+  'texas']])}
+  input_layer = tf.keras.layers.DenseFeatures(columns)
+  dense_tensor = input_layer(features)
   ```
 
   Args:
@@ -1534,19 +1616,27 @@ def categorical_column_with_identity(key, num_buckets, default_value=None):
   Linear model:
 
   ```python
-  video_id = categorical_column_with_identity(
+  import tensorflow as tf
+  video_id = tf.feature_column.categorical_column_with_identity(
       key='video_id', num_buckets=1000000, default_value=0)
-  columns = [video_id, ...]
-  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
-  linear_prediction, _, _ = linear_model(features, columns)
+  columns = [video_id]
+  features = {'video_id': tf.sparse.from_dense([[2, 85, 0, 0, 0],
+  [33,78, 2, 73, 1]])}
+  linear_prediction = tf.compat.v1.feature_column.linear_model(features,
+  columns)
   ```
 
   Embedding for a DNN model:
 
   ```python
-  columns = [embedding_column(video_id, 9),...]
-  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
-  dense_tensor = input_layer(features, columns)
+  import tensorflow as tf
+  video_id = tf.feature_column.categorical_column_with_identity(
+      key='video_id', num_buckets=1000000, default_value=0)
+  columns = [tf.feature_column.embedding_column(video_id, 9)]
+  features = {'video_id': tf.sparse.from_dense([[2, 85, 0, 0, 0],
+  [33,78, 2, 73, 1]])}
+  input_layer = tf.keras.layers.DenseFeatures(columns)
+  dense_tensor = input_layer(features)
   ```
 
   Args:
@@ -2079,6 +2169,8 @@ class FeatureColumn(object):
     raise NotImplementedError('Must be implemented in subclasses.')
 
 
+# TODO(b/181853833): Add a tf.type for instance type checking.
+@tf_export('__internal__.feature_column.DenseColumn', v1=[])
 class DenseColumn(FeatureColumn):
   """Represents a column which can be represented as `Tensor`.
 
@@ -2240,6 +2332,8 @@ def _create_categorical_column_weighted_sum(
       name='weighted_sum')
 
 
+# TODO(b/181853833): Add a tf.type for instance type checking.
+@tf_export('__internal__.feature_column.SequenceDenseColumn', v1=[])
 class SequenceDenseColumn(FeatureColumn):
   """Represents dense sequence data."""
 

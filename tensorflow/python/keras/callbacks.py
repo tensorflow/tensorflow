@@ -27,6 +27,7 @@ import io
 import json
 import os
 import re
+import sys
 import time
 
 import numpy as np
@@ -40,6 +41,7 @@ from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.distribute import distributed_file_utils
@@ -246,8 +248,8 @@ class CallbackList(object):
 
     # Performance check: Check batch hooks for slowness compared to batch time.
     # Only run check for custom callbacks (i.e. not present in this file).
-    self._check_timing = any([cbk.__class__.__name__ not in globals()
-                              for cbk in self.callbacks])
+    self._check_timing = any(
+        cbk.__class__.__name__ not in globals() for cbk in self.callbacks)
     self._num_batches_for_timing_check = 5
     self._hook_times = {}
     self._batch_start_time = None
@@ -670,7 +672,8 @@ class Callback(object):
         logs: Dict, metric results for this training epoch, and for the
           validation epoch if validation is performed. Validation result keys
           are prefixed with `val_`. For training epoch, the values of the
-         `Model`'s metrics are returned. Example : `{'loss': 0.2, 'acc': 0.7}`.
+         `Model`'s metrics are returned. Example : `{'loss': 0.2, 'accuracy':
+           0.7}`.
     """
 
   @doc_controls.for_subclass_implementers
@@ -1105,6 +1108,19 @@ class History(Callback):
   This callback is automatically applied to
   every Keras model. The `History` object
   gets returned by the `fit` method of models.
+
+  Example:
+
+  >>> model = tf.keras.models.Sequential([tf.keras.layers.Dense(10)])
+  >>> model.compile(tf.keras.optimizers.SGD(), loss='mse')
+  >>> history = model.fit(np.arange(100).reshape(5, 20), np.zeros(5),
+  ...                     epochs=10)
+  >>> print(history.params)
+  {'verbose': 1, 'epochs': 10, 'steps': 1}
+  >>> # check the keys of history object
+  >>> print(history.history.keys())
+  dict_keys(['loss'])
+
   """
 
   def __init__(self):
@@ -1205,8 +1221,9 @@ class ModelCheckpoint(Callback):
         decision to overwrite the current save file is made based on either
         the maximization or the minimization of the monitored quantity.
         For `val_acc`, this should be `max`, for `val_loss` this should be
-        `min`, etc. In `auto` mode, the direction is automatically inferred
-        from the name of the monitored quantity.
+        `min`, etc. In `auto` mode, the mode is set to `max` if the quantities
+        monitored are 'acc' or start with 'fmeasure' and are set to `min` for
+        the rest of the quantities.
       save_weights_only: if True, then only the model's weights will be saved
         (`model.save_weights(filepath)`), else the full model is saved
         (`model.save(filepath)`).
@@ -1252,7 +1269,7 @@ class ModelCheckpoint(Callback):
           options, checkpoint_options_lib.CheckpointOptions):
         self._options = options or checkpoint_options_lib.CheckpointOptions()
       else:
-        raise TypeError('If save_weights_only is True, then `options` must be'
+        raise TypeError('If save_weights_only is True, then `options` must be '
                         'either None or a tf.train.CheckpointOptions')
     else:
       if options is None or isinstance(options, save_options_lib.SaveOptions):
@@ -1306,14 +1323,6 @@ class ModelCheckpoint(Callback):
     # Only the chief worker writes model checkpoints, but all workers
     # restore checkpoint at on_train_begin().
     self._chief_worker_only = False
-
-  def set_model(self, model):
-    self.model = model
-    # Use name matching rather than `isinstance` to avoid circular dependencies.
-    if (not self.save_weights_only and
-        not model._is_graph_network and  # pylint: disable=protected-access
-        model.__class__.__name__ != 'Sequential'):
-      self.save_weights_only = True
 
   def on_train_begin(self, logs=None):
     if self.load_weights_on_restart:
@@ -1626,9 +1635,6 @@ class BackupAndRestore(Callback):
     # restore checkpoint at on_train_begin().
     self._chief_worker_only = False
 
-  def set_model(self, model):
-    self.model = model
-
   def on_train_begin(self, logs=None):
     # TrainingState is used to manage the training state needed for
     # failure-recovery of a worker in training.
@@ -1697,7 +1703,10 @@ class EarlyStopping(Callback):
     restore_best_weights: Whether to restore model weights from
         the epoch with the best value of the monitored quantity.
         If False, the model weights obtained at the last step of
-        training are used.
+        training are used. An epoch will be restored regardless
+        of the performance relative to the `baseline`. If no epoch
+        improves on `baseline`, training will run for `patience`
+        epochs and restore weights from the best epoch in that set.
 
   Example:
 
@@ -1757,30 +1766,33 @@ class EarlyStopping(Callback):
     # Allow instances to be re-used
     self.wait = 0
     self.stopped_epoch = 0
-    if self.baseline is not None:
-      self.best = self.baseline
-    else:
-      self.best = np.Inf if self.monitor_op == np.less else -np.Inf
+    self.best = np.Inf if self.monitor_op == np.less else -np.Inf
     self.best_weights = None
 
   def on_epoch_end(self, epoch, logs=None):
     current = self.get_monitor_value(logs)
     if current is None:
       return
-    if self.monitor_op(current - self.min_delta, self.best):
+    if self.restore_best_weights and self.best_weights is None:
+      # Restore the weights after first epoch if no progress is ever made.
+      self.best_weights = self.model.get_weights()
+
+    self.wait += 1
+    if self._is_improvement(current, self.best):
       self.best = current
-      self.wait = 0
       if self.restore_best_weights:
         self.best_weights = self.model.get_weights()
-    else:
-      self.wait += 1
-      if self.wait >= self.patience:
-        self.stopped_epoch = epoch
-        self.model.stop_training = True
-        if self.restore_best_weights:
-          if self.verbose > 0:
-            print('Restoring model weights from the end of the best epoch.')
-          self.model.set_weights(self.best_weights)
+      # Only restart wait if we beat both the baseline and our previous best.
+      if self.baseline is None or self._is_improvement(current, self.baseline):
+        self.wait = 0
+
+    if self.wait >= self.patience:
+      self.stopped_epoch = epoch
+      self.model.stop_training = True
+      if self.restore_best_weights and self.best_weights is not None:
+        if self.verbose > 0:
+          print('Restoring model weights from the end of the best epoch.')
+        self.model.set_weights(self.best_weights)
 
   def on_train_end(self, logs=None):
     if self.stopped_epoch > 0 and self.verbose > 0:
@@ -1794,6 +1806,9 @@ class EarlyStopping(Callback):
                       'which is not available. Available metrics are: %s',
                       self.monitor, ','.join(list(logs.keys())))
     return monitor_value
+
+  def _is_improvement(self, monitor_value, reference_value):
+    return self.monitor_op(monitor_value - self.min_delta, reference_value)
 
 
 @keras_export('keras.callbacks.RemoteMonitor')
@@ -1983,6 +1998,11 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
   * Training graph visualization
   * Activation histograms
   * Sampled profiling
+
+  When used in `Model.evaluate`, in addition to epoch summaries, there will be
+  a summary that records evaluation metrics vs `Model.optimizer.iterations`
+  written. The metric names will be prepended with `evaluation`, with
+  `Model.optimizer.iterations` being the step in the visualized TensorBoard.
 
   If you have installed TensorFlow with pip, you should be able
   to launch TensorBoard from the command line:
@@ -2263,35 +2283,24 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     if self.update_freq == 'epoch':
       return
 
-    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
-    self._prev_summary_state.append({
-        'is_recording': summary_state.is_recording,
-        'writer': summary_state.writer,
-        'step': summary_state.step
-    })
-
-    if self.update_freq == 'epoch':
-      should_record = False
-      writer = None
-    else:
-      should_record = lambda: math_ops.equal(step % self.update_freq, 0)
-
-    summary_state.is_recording = should_record
-    summary_state.writer = writer
+    should_record = lambda: math_ops.equal(step % self.update_freq, 0)
     # TODO(b/151339474): Fix deadlock when not using .value() here.
-    summary_ops_v2.set_step(step.value())
+    summary_context = (writer.as_default(step.value()),
+                       summary_ops_v2.record_if(should_record))
+    self._prev_summary_state.append(summary_context)
+    summary_context[0].__enter__()
+    summary_context[1].__enter__()
 
   def _pop_writer(self):
     """Pops the current writer."""
     if self.update_freq == 'epoch':
       return
 
-    prev_state = self._prev_summary_state.pop()
-
-    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
-    summary_state.is_recording = prev_state['is_recording']
-    summary_state.writer = prev_state['writer']
-    summary_ops_v2.set_step(prev_state['step'])
+    # See _push_writer for the content of the previous_context, which is pair
+    # of context.
+    previous_context = self._prev_summary_state.pop()
+    previous_context[1].__exit__(*sys.exc_info())
+    previous_context[0].__exit__(*sys.exc_info())
 
   def _close_writers(self):
     for writer in self._writers.values():
@@ -2335,10 +2344,14 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     if self._start_batch < 0 or self._stop_batch < self._start_batch:
       raise ValueError(profile_batch_error_message)
 
+    # True when the profiler was successfully started by this callback.
+    # We track the status here to make sure callbacks do not interfere with
+    # each other. The callback will only stop the profiler it started.
+    self._profiler_started = False
     if self._start_batch > 0:
       # Warm up and improve the profiling accuracy.
-      profiler.start('')
-      profiler.stop(save=False)
+      self._start_profiler(logdir='')
+      self._stop_profiler(save=False)
     # True when a trace is running.
     self._is_tracing = False
 
@@ -2364,10 +2377,18 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     self._push_writer(self._val_writer, self._val_step)
 
   def on_test_end(self, logs=None):
+    if self.model.optimizer and hasattr(self.model.optimizer, 'iterations'):
+      with summary_ops_v2.record_if(True), self._val_writer.as_default():
+        for name, value in logs.items():
+          summary_ops_v2.scalar(
+              'evaluation_' + name + '_vs_iterations',
+              value,
+              step=self.model.optimizer.iterations.read_value())
     self._pop_writer()
 
   def _implements_train_batch_hooks(self):
-    return self._should_trace  # Only call batch hooks when tracing is enabled
+    # Only call batch hooks when tracing or write_steps_per_second are enabled
+    return self._should_trace or self.write_steps_per_second
 
   def on_train_batch_begin(self, batch, logs=None):
     self._global_train_batch += 1
@@ -2412,7 +2433,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
 
   def _start_trace(self):
     summary_ops_v2.trace_on(graph=True, profiler=False)
-    profiler.start(logdir=self._train_dir)
+    self._start_profiler(logdir=self._train_dir)
     self._is_tracing = True
 
   def _stop_trace(self, batch=None):
@@ -2423,7 +2444,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
       with summary_ops_v2.record_if(True):
         # TODO(b/126388999): Remove step info in the summary name.
         summary_ops_v2.trace_export(name='batch_%d' % batch, step=batch)
-    profiler.stop()
+    self._stop_profiler()
     self._is_tracing = False
 
   def _collect_learning_rate(self, logs):
@@ -2505,6 +2526,37 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     embeddings_ckpt = os.path.join(self._log_write_dir, 'train',
                                    'keras_embedding.ckpt-{}'.format(epoch))
     self.model.save_weights(embeddings_ckpt)
+
+  def _start_profiler(self, logdir):
+    """Starts the profiler if currently inactive.
+
+    Args:
+      logdir: Directory where profiler results will be saved.
+    """
+    if self._profiler_started:
+      return
+    try:
+      profiler.start(logdir=logdir)
+      self._profiler_started = True
+    except errors.AlreadyExistsError as e:
+      # Profiler errors should not be fatal.
+      logging.error('Failed to start profiler: %s', e.message)
+
+  def _stop_profiler(self, save=True):
+    """Stops the profiler if currently active.
+
+    Args:
+      save: Whether to save the profiler results to TensorBoard.
+    """
+    if not self._profiler_started:
+      return
+    try:
+      profiler.stop(save=save)
+    except errors.UnavailableError as e:
+      # Profiler errors should not be fatal.
+      logging.error('Failed to stop profiler: %s', e.message)
+    finally:
+      self._profiler_started = False
 
 
 @keras_export('keras.callbacks.ReduceLROnPlateau')

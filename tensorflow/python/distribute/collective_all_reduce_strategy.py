@@ -31,6 +31,7 @@ from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
+from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_util
@@ -206,11 +207,10 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
   def cluster_resolver(self):
     """Returns the cluster resolver associated with this strategy.
 
-    As a multi-worker strategy,
-    `tf.distribute.experimental.MultiWorkerMirroredStrategy` provides the
-    associated `tf.distribute.cluster_resolver.ClusterResolver`. If the user
-    provides one in `__init__`, that instance is returned; if the user does
-    not, a default `TFConfigClusterResolver` is provided.
+    As a multi-worker strategy, `tf.distribute.MultiWorkerMirroredStrategy`
+    provides the associated `tf.distribute.cluster_resolver.ClusterResolver`. If
+    the user provides one in `__init__`, that instance is returned; if the user
+    does not, a default `TFConfigClusterResolver` is provided.
     """
     return self.extended._cluster_resolver  # pylint: disable=protected-access
 
@@ -521,7 +521,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
   def _input_workers_with_options(self, options=None):
     host_device = device_util.get_host_for_device(self._worker_device)
-    if not options or options.experimental_prefetch_to_device:
+    if not options or options.experimental_fetch_to_device:
       return input_lib.InputWorkers([(host_device, self.worker_devices)])
     else:
       return input_lib.InputWorkers([(
@@ -603,7 +603,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         self._input_workers_with_options(options),
         self._container_strategy(),
         num_replicas_in_sync=self._num_replicas_in_sync,
-        input_context=input_context)
+        input_context=input_context,
+        options=options)
 
   def _distribute_datasets_from_function(self, dataset_fn, options):
     if (options and options.experimental_replication_mode ==
@@ -618,7 +619,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         dataset_fn=dataset_fn,
         input_workers=self._input_workers_with_options(options),
         input_contexts=[input_context],
-        strategy=self._container_strategy())
+        strategy=self._container_strategy(),
+        options=options)
 
   def _experimental_distribute_values_from_function(self, value_fn):
     per_replica_values = []
@@ -770,6 +772,30 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         value,
         destinations=destinations,
         options=self._communication_options.merge(options))
+
+  def _replica_ctx_all_reduce(self, reduce_op, value, options=None):
+    """Implements `StrategyExtendedV2._replica_ctx_all_reduce`."""
+    # This implementation avoids using `merge_call` and just launches collective
+    # ops in one replica.
+    if options is None:
+      options = collective_util.Options()
+
+    if context.executing_eagerly():
+      # In eager mode, falls back to the default implemenation that uses
+      # `merge_call`. Replica functions are running sequentially in eager mode,
+      # and due to the blocking nature of collective ops, execution will hang if
+      # collective ops are to be launched sequentially.
+      return super()._replica_ctx_all_reduce(reduce_op, value, options)
+
+    replica_context = ds_context.get_replica_context()
+    assert replica_context, (
+        "`StrategyExtended._replica_ctx_all_reduce` must be called in a "
+        "replica context")
+    return self._cross_device_ops._all_reduce(  # pylint: disable=protected-access
+        reduce_op,
+        value,
+        replica_context._replica_id,  # pylint: disable=protected-access
+        options)
 
   def _check_health(self):
     while True:

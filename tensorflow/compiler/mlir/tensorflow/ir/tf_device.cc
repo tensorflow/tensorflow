@@ -66,6 +66,14 @@ struct TFInlinerInterface : public DialectInlinerInterface {
                        bool wouldBeCloned) const final {
     return true;
   }
+
+  // Returns if its legal to inline 'src' region into the 'dest' region
+  // attached to a TF Device operation.
+  bool isLegalToInline(Region* dest, Region* src, bool wouldBeCloned,
+                       BlockAndValueMapping& valueMapping) const final {
+    return true;
+  }
+
   // Defines the legality of inlining TF Device operations.
   bool isLegalToInline(Operation*, Region*, bool,
                        BlockAndValueMapping&) const final {
@@ -171,8 +179,7 @@ LogicalResult Verify(ParallelExecuteOp op) {
 
 // static
 void ParallelExecuteOp::build(OpBuilder& builder, OperationState& state,
-                              int num_regions,
-                              llvm::ArrayRef<Type> output_types) {
+                              int num_regions, TypeRange output_types) {
   DCHECK_GE(num_regions, 2);
   for (int i = 0; i < num_regions; ++i) {
     Region* region = state.addRegion();
@@ -195,10 +202,7 @@ Operation::result_range ParallelExecuteOp::GetRegionOutputs(
     return_value_offset +=
         GetRegionBlockWithIndex(region_id).getTerminator()->getNumOperands();
 
-  Operation::result_range region_results(getOperation(),
-                                         /*startIndex=*/return_value_offset,
-                                         /*count=*/num_region_results);
-  return region_results;
+  return getResults().slice(return_value_offset, num_region_results);
 }
 
 bool ParallelExecuteOp::RegionWrapsSingleOp(unsigned index) {
@@ -405,7 +409,7 @@ void Print(ReplicateOp op, OpAsmPrinter* p) {
   // Skip derived `operand_segment_sizes` attribute as custom print format of
   // operands holds enough information to calculate these variadic operand list
   // lengths.
-  p->printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/ArrayRef<StringRef>{
+  p->printOptionalAttrDict(op->getAttrs(), /*elidedAttrs=*/ArrayRef<StringRef>{
                                kOperandSegmentSizesAttr});
   p->printRegion(op.body(), /*printEntryBlockArgs=*/false);
 }
@@ -624,15 +628,10 @@ bool ReplicateOp::IsPackedBlockArgument(BlockArgument block_arg) {
 // block argument (of the replicate op) and a valid replica is provided.
 unsigned ReplicateOp::GetReplicaOperandIndexForBlockArgument(
     BlockArgument block_arg, unsigned replica) {
-  const int32_t num_replicas = nAttr().getInt();
-  assert(replica < num_replicas && block_arg.getOwner() == &GetBody());
+  MutableArrayRef<OpOperand> operands = GetOperandsForBlockArgument(block_arg);
+  if (operands.size() == 1) return operands.front().getOperandNumber();
 
-  const unsigned num_replicated_args = GetNumReplicatedBlockArguments();
-  if (block_arg.getArgNumber() < num_replicated_args)
-    return block_arg.getArgNumber() * num_replicas + replica;
-
-  return block_arg.getArgNumber() - num_replicated_args +
-         replicated_inputs().size();
+  return operands[replica].getOperandNumber();
 }
 
 // Returns the operand being forwarded as a replicated/packed block argument for
@@ -640,9 +639,34 @@ unsigned ReplicateOp::GetReplicaOperandIndexForBlockArgument(
 // and a valid replica is provided.
 Value ReplicateOp::GetReplicaOperandForBlockArgument(BlockArgument block_arg,
                                                      unsigned replica) {
-  const unsigned operand_index =
-      GetReplicaOperandIndexForBlockArgument(block_arg, replica);
-  return getOperand(operand_index);
+  MutableArrayRef<OpOperand> operands = GetOperandsForBlockArgument(block_arg);
+  if (operands.size() == 1) return operands.front().get();
+
+  return operands[replica].get();
+}
+
+// Returns the list of replica op operands that maps to the given block
+// argument. Returns list with num_replicas elements for replicated operands
+// and list with a single element for packed operands.
+//
+// Requires that block argument is of this replicate op.
+MutableArrayRef<OpOperand> ReplicateOp::GetOperandsForBlockArgument(
+    BlockArgument block_arg) {
+  assert(block_arg.getOwner() == &GetBody());
+
+  unsigned arg_number = block_arg.getArgNumber();
+  unsigned num_replicated_args = GetNumReplicatedBlockArguments();
+  int32_t num_replicas = nAttr().getInt();
+  MutableArrayRef<OpOperand> operands = getOperation()->getOpOperands();
+
+  // All replicated arguments are before packed arguments so return replicated
+  // operands if the given argument is one of the replicated arguments.
+  if (arg_number < num_replicated_args)
+    return operands.slice(arg_number * num_replicas, num_replicas);
+
+  operands = operands.drop_front(num_replicated_args * num_replicas);
+  arg_number -= num_replicated_args;
+  return operands.slice(arg_number, 1);
 }
 
 // Checks if a tf_device.replicate wraps a single operation and the single

@@ -84,9 +84,9 @@ static Graph* Conv2DBackpropInput(int batch, int height, int width,
           .Input(backprop)
           .Attr("T", DataTypeToEnum<T>::value)
           .Attr("strides", {1, stride_h, stride_w, 1})
-          .Attr("padding", padding == Padding::SAME
-                               ? "SAME"
-                               : padding == Padding::VALID ? "VALID" : "N/A")
+          .Attr("padding", padding == Padding::SAME    ? "SAME"
+                           : padding == Padding::VALID ? "VALID"
+                                                       : "N/A")
           .Attr("data_format", ToString(data_format))
           .Finalize(graph, &conv2d));
 
@@ -115,12 +115,14 @@ static Graph* Conv2DBackpropInput(int batch, int height, int width,
 #define BM_Conv2DBwdInput(T, FMT, N, H, W, C, FW, FH, FC, SH, SW, PADDING,    \
                           type)                                               \
   static void BM_NAME(BM_Conv2DBackpropInput, type, T, FMT, N, H, W, C, FH,   \
-                      FW, FC, SH, SW, PADDING)(int iters) {                   \
-    testing::ItemsProcessed(static_cast<int64>(iters) * (N) * (H) * (W) *     \
-                            (C));                                             \
-    test::Benchmark(#type, Conv2DBackpropInput<T>(N, H, W, C, FH, FW, FC, SH, \
-                                                  SW, PADDING, FORMAT_##FMT)) \
-        .Run(iters);                                                          \
+                      FW, FC, SH, SW,                                         \
+                      PADDING)(::testing::benchmark::State & state) {         \
+    test::Benchmark(#type,                                                    \
+                    Conv2DBackpropInput<T>(N, H, W, C, FH, FW, FC, SH, SW,    \
+                                           PADDING, FORMAT_##FMT),            \
+                    /*old_benchmark_api*/ false)                              \
+        .Run(state);                                                          \
+    state.SetItemsProcessed(state.iterations() * (N) * (H) * (W) * (C));      \
   }                                                                           \
   BENCHMARK(BM_NAME(BM_Conv2DBackpropInput, type, T, FMT, N, H, W, C, FH, FW, \
                     FC, SH, SW, PADDING));

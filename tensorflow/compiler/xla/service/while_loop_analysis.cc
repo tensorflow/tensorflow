@@ -14,11 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
+
 #include "absl/base/casts.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 
 namespace xla {
@@ -76,6 +78,146 @@ static optional<int64> GetGTEOperandIndex(const HloInstruction* instr,
     }
   }
   return tuple_idx;
+}
+
+// The below function identifies a subset of all possible auxiliary
+// induction variables (AIV). Specifically, candidates are gtes, e.g.,
+// gte(param0, N)
+// The function checks if the loop body plumbs the AIV
+// through the same tuple index at root, and that ops involving AIV
+// involve constants.
+//   op2 = op(constants, gte(param0, N), constants)
+//   op3 = op(constants, f(op2, gte(param0, N), constants)
+//   op4 = op(constants, f(op3, constants)
+//   root = tuple(..., op4, ...)
+// Further, the ops are restricted to basic math ops (+,-,*,/).
+// Finally, loop invariant GTEs are excluded from AIVs.
+// We can expand the ops category/nature of AIVs as needed.
+std::vector<const HloInstruction*> GetAuxiliaryLoopInductionVars(
+    const HloInstruction* while_op) {
+  std::vector<const HloInstruction*> aux_ind_gte;
+  CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
+  auto* while_body = while_op->while_body();
+  auto* while_body_param = while_body->parameter_instruction(0);
+  VLOG(2) << "Aux Induction Variables for loop:" << while_op->ToShortString();
+  VLOG(2) << "the parameter instr:" << while_body_param->ToShortString();
+  VLOG(2) << "the parameter user count:" << while_body_param->users().size();
+  if (while_body_param == nullptr) return aux_ind_gte;
+
+  // candidates_pairs = pair<inst, inst>(
+  //   operands of the root while body,
+  //   GTE only operands that index into the same position in the parameter)
+  // for each candidate_pair (x, y)
+  //  find all paths between x and y,
+  //  each paths should satisfy the above listed criterion
+  //  index that x and y used is added as a aux variable index
+  std::map<int64, const HloInstruction*> extractions;
+  for (const HloInstruction* indx_instr : while_body_param->users()) {
+    if (indx_instr->opcode() != HloOpcode::kGetTupleElement) {
+      continue;
+    }
+    auto it = extractions.find(indx_instr->tuple_index());
+    // if we find two extractions at the same index, we ignore such
+    // a candidate
+    if (it != extractions.end()) {
+      it->second = nullptr;
+      VLOG(2) << "two extractions at same index:" << indx_instr->ToString();
+    } else {
+      extractions.insert(std::make_pair(indx_instr->tuple_index(), indx_instr));
+      VLOG(2) << "inserting extraction :" << indx_instr->ToString();
+    }
+  }
+  VLOG(2) << "total extractions size:" << extractions.size() << std::endl;
+  if (extractions.empty()) {
+    return aux_ind_gte;
+  }
+
+  auto* while_body_root = while_body->root_instruction();
+  if (while_body_root->opcode() != HloOpcode::kTuple) {
+    VLOG(2) << "While body root is not a tuple:" << while_body_root->ToString();
+    return aux_ind_gte;
+  }
+  int64 index = -1;
+  std::map<int64, const HloInstruction*> insertions;
+  for (const HloInstruction* operand : while_body_root->operands()) {
+    index++;
+    if (!operand->IsConstant()) {
+      auto it = insertions.find(index);
+      if (it != insertions.end()) {
+        it->second = nullptr;
+        VLOG(2) << "two insertions at same index:" << operand->ToString();
+      } else {
+        insertions.insert(std::make_pair(index, operand));
+        VLOG(2) << "inserting insertions:" << operand->ToString();
+      }
+    }
+  }
+  if (insertions.empty()) {
+    return aux_ind_gte;
+  }
+
+  std::map<int64, std::pair<const HloInstruction*, const HloInstruction*>>
+      candidate_pairs;
+  for (; index >= 0; --index) {
+    const HloInstruction *ext, *inst;
+    ext = (extractions.find(index) != extractions.end())
+              ? extractions.find(index)->second
+              : nullptr;
+    inst = (insertions.find(index) != insertions.end())
+               ? insertions.find(index)->second
+               : nullptr;
+    if (ext != nullptr && inst != nullptr) {
+      // Filter out trivial aux, i.e., extract directly to an insert.
+      if (ext != inst) {
+        candidate_pairs.insert(
+            std::make_pair(index, std::make_pair(ext, inst)));
+      }
+    }
+  }
+  VLOG(2) << "total candidate pairs:" << candidate_pairs.size() << std::endl;
+
+  // Passed to ReachabilityMap to decide the type of produce-consumer edges
+  // along the reachability path.
+  const auto add_dependencies = [](const HloInstruction* hlo,
+                                   std::vector<HloInstruction*>* inputs) {
+    HloInstruction* non_const_operand = nullptr;
+    int num_non_constants = 0;
+    for (HloInstruction* operand : hlo->operands()) {
+      if (!operand->IsConstant()) {
+        num_non_constants++;
+        non_const_operand = operand;
+      }
+    }
+    if (num_non_constants == 1 &&
+        (hlo->opcode() == HloOpcode::kGetTupleElement ||
+         hlo->opcode() == HloOpcode::kAdd ||
+         hlo->opcode() == HloOpcode::kMultiply ||
+         hlo->opcode() == HloOpcode::kDivide ||
+         hlo->opcode() == HloOpcode::kSubtract)) {
+      inputs->push_back(non_const_operand);
+    }
+  };
+
+  std::unique_ptr<HloReachabilityMap> hrm =
+      HloReachabilityMap::BuildWithRestrictions(
+          while_body,
+          absl::FunctionRef<void(const HloInstruction* hlo,
+                                 std::vector<HloInstruction*>* inputs)>(
+              add_dependencies));
+
+  for (auto candidates : candidate_pairs) {
+    VLOG(2) << "are reachable?:" << (candidates.second.first)->ToString()
+            << "*************" << (candidates.second.second)->ToString()
+            << std::endl;
+    if (hrm->IsReachable(candidates.second.first, candidates.second.second)) {
+      aux_ind_gte.push_back(candidates.second.first);
+      VLOG(2) << "YES";
+    } else {
+      VLOG(2) << "NO";
+    }
+  }
+  VLOG(2) << "num auxiliary candidates :" << aux_ind_gte.size();
+  return aux_ind_gte;
 }
 
 // Tries to get the tuple index of the induction variable of a while loop.

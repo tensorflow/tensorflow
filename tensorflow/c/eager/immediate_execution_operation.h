@@ -33,6 +33,10 @@ struct TFE_Op;
 
 namespace tensorflow {
 
+class ImmediateExecutionContext;
+class AbstractOpAttrs;
+class CancellationManager;
+
 // Abstract interface to an operation.
 class ImmediateExecutionOperation : public AbstractOperation {
  public:
@@ -41,6 +45,15 @@ class ImmediateExecutionOperation : public AbstractOperation {
   // Returns the inputs of this op.
   virtual absl::Span<ImmediateExecutionTensorHandle* const> GetInputs()
       const = 0;
+  virtual Status SetInput(size_t index,
+                          ImmediateExecutionTensorHandle* input) = 0;
+
+  virtual ImmediateExecutionContext* GetContext() const = 0;
+
+  // Following two methods are used to support custom device.
+  // Return true if the inputs contain custom device tensor handle. It means
+  // that the argument need to be handled by a custom device.
+  virtual bool HasCustomDeviceInput() const = 0;
 
   virtual const tensorflow::OpDef* OpDef() const = 0;
 
@@ -49,6 +62,12 @@ class ImmediateExecutionOperation : public AbstractOperation {
 
   // Set stack trace to be used for potential async error reporting.
   virtual void SetStackTrace(ManagedStackTrace stack_trace) = 0;
+
+  virtual const tensorflow::AbstractOpAttrs* GetOpAttrs() const = 0;
+  virtual void AddAttrs(const AbstractOpAttrs* op_attrs) = 0;
+
+  virtual void SetCancellationManager(
+      CancellationManager* cancellation_manager) = 0;
 
   // Returns the stack trace set by `SetStackTrace` if exists.
   virtual absl::optional<ManagedStackTrace> GetStackTrace() = 0;

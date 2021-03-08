@@ -248,10 +248,20 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     elif isinstance(
         strategy,
         (mirrored_strategy.MirroredStrategy,
-         central_storage_strategy.CentralStorageStrategy)) and pure_eager:
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  r'Ranks of all input tensors should match'):
-        run()
+         central_storage_strategy.CentralStorageStrategy)):
+      if pure_eager:
+        with self.assertRaises(errors.InvalidArgumentError) as e:
+          run()
+        # Different error message depending on whether collective ops is used.
+        self.assertRegexMatch(
+            str(e.exception),
+            ['Ranks of all input tensors should match', 'Shape mismatch'])
+      else:
+        with self.assertRaises((errors.InvalidArgumentError, ValueError)) as e:
+          run()
+        self.assertRegexMatch(
+            str(e.exception),
+            [r'Shape must be rank \d but is rank \d', 'Shape mismatch'])
     elif _is_tpu_strategy(strategy) and pure_eager:
       with self.assertRaisesRegex(ValueError,
                                   r'Dimension \d in both shapes must be equal'):
@@ -562,13 +572,18 @@ class GatherTest(test.TestCase, parameterized.TestCase):
                     (mirrored_strategy.MirroredStrategy,
                      central_storage_strategy.CentralStorageStrategy)):
       if pure_eager:
-        with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                    r'Ranks of all input tensors should match'):
+        with self.assertRaises(errors.InvalidArgumentError) as e:
           strategy.run(run, args=(per_replica_value,))
+        # Different error message depending on whether collective ops is used.
+        self.assertRegexMatch(
+            str(e.exception),
+            ['Ranks of all input tensors should match', 'Shape mismatch'])
       else:
-        with self.assertRaisesRegex(ValueError,
-                                    r'Shape must be rank \d but is rank \d'):
+        with self.assertRaises((errors.InvalidArgumentError, ValueError)) as e:
           strategy.run(run, args=(per_replica_value,))
+        self.assertRegexMatch(
+            str(e.exception),
+            [r'Shape must be rank \d but is rank \d', 'Shape mismatch'])
     else:
       with self.assertRaisesRegex(ValueError,
                                   r'Dimension \d in both shapes must be equal'):

@@ -12,16 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the StatsDataset serialization."""
+"""Tests for checkpointing the StatsDataset."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
 from tensorflow.python.data.experimental.ops import stats_aggregator
 from tensorflow.python.data.experimental.ops import stats_ops
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -33,9 +33,8 @@ from tensorflow.python.platform import test
 # TODO(b/116814321): Can not checkpoint input_pipeline with the
 # transformation `stats_ops.set_stats_aggregator`, since we don't support
 # saving/restoring resources (StatsAggregator in this case) yet.
-class StatsDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase,
-    parameterized.TestCase):
+class StatsDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                 parameterized.TestCase):
 
   def _build_dataset_bytes_stats(self, num_elements):
     return dataset_ops.Dataset.range(num_elements).map(

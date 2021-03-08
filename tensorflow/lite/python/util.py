@@ -36,7 +36,6 @@ from tensorflow.lite.python import schema_util
 from tensorflow.lite.python import tflite_keras_util as _tflite_keras_util
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.lite.python.op_hint import find_all_hinted_output_nodes
-from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.eager import function
 from tensorflow.python.framework import convert_to_constants as _convert_to_constants
 from tensorflow.python.framework import dtypes
@@ -49,23 +48,7 @@ from tensorflow.python.training.saver import export_meta_graph as _export_meta_g
 model_input_signature = _tflite_keras_util.model_input_signature
 trace_model_call = _tflite_keras_util.trace_model_call
 
-# Map of tf.dtypes to TFLite types_flag_pb2.
-_MAP_TF_TO_TFLITE_TYPES = {
-    dtypes.float32: _types_pb2.FLOAT,
-    dtypes.float16: _types_pb2.FLOAT16,
-    dtypes.int32: _types_pb2.INT32,
-    dtypes.uint8: _types_pb2.QUANTIZED_UINT8,
-    dtypes.int64: _types_pb2.INT64,
-    dtypes.uint64: _types_pb2.UINT64,
-    dtypes.string: _types_pb2.STRING,
-    dtypes.bool: _types_pb2.BOOL,
-    dtypes.int16: _types_pb2.QUANTIZED_INT16,
-    dtypes.complex64: _types_pb2.COMPLEX64,
-    dtypes.int8: _types_pb2.INT8,
-    dtypes.float64: _types_pb2.FLOAT64,
-    dtypes.complex128: _types_pb2.COMPLEX128,
-}
-
+# Defined as per TFLite schema
 _MAP_TFLITE_ENUM_TO_TF_TYPES = {
     0: dtypes.float32,
     1: dtypes.float16,
@@ -79,6 +62,7 @@ _MAP_TFLITE_ENUM_TO_TF_TYPES = {
     9: dtypes.int8,
     10: dtypes.float64,
     11: dtypes.complex128,
+    16: dtypes.uint32,
 }
 
 _TFLITE_FILE_IDENTIFIER = b"TFL3"
@@ -87,24 +71,6 @@ _MAP_QUANT_TO_IO_TYPES = {
     dtypes.int8: {dtypes.int8, dtypes.uint8},
     dtypes.int16: {dtypes.int16},
 }
-
-
-def convert_dtype_to_tflite_type(tf_dtype):
-  """Converts tf.dtype to TFLite proto type.
-
-  Args:
-    tf_dtype: tf.dtype
-
-  Raises:
-    ValueError: Unsupported tf.dtype.
-
-  Returns:
-    types_flag_pb2.
-  """
-  result = _MAP_TF_TO_TFLITE_TYPES.get(tf_dtype)
-  if result is None:
-    raise ValueError("Unsupported tf.dtype {0}".format(tf_dtype))
-  return result
 
 
 def _convert_tflite_enum_type_to_tf_type(tflite_enum_type):
@@ -592,6 +558,26 @@ def _convert_model_from_object_to_bytearray(model_object):
   return bytes(builder.Output())
 
 
+def get_quantize_opcode_idx(model):
+  """Returns the quantize op idx."""
+  quant_opcode_idxs = []
+  for idx, opcode in enumerate(model.operatorCodes):
+    builtin_code = schema_util.get_builtin_code_from_operator_code(opcode)
+    if builtin_code == schema_fb.BuiltinOperator.QUANTIZE:
+      quant_opcode_idxs.append(idx)
+  return quant_opcode_idxs
+
+
+def get_dequantize_opcode_idx(model):
+  """Returns the quantize op idx."""
+  quant_opcode_idxs = []
+  for idx, opcode in enumerate(model.operatorCodes):
+    builtin_code = schema_util.get_builtin_code_from_operator_code(opcode)
+    if builtin_code == schema_fb.BuiltinOperator.DEQUANTIZE:
+      quant_opcode_idxs.append(idx)
+  return quant_opcode_idxs
+
+
 def _remove_tensors_from_model(model, remove_tensors_idxs):
   """Remove tensors from model."""
   if not remove_tensors_idxs:
@@ -646,11 +632,7 @@ def _modify_model_input_type(model, inference_input_type=dtypes.float32):
   operators = subgraph.operators
 
   # Find all quantize operators
-  quant_opcode_idxs = []
-  for idx, opcode in enumerate(model.operatorCodes):
-    builtin_code = schema_util.get_builtin_code_from_operator_code(opcode)
-    if builtin_code == schema_fb.BuiltinOperator.QUANTIZE:
-      quant_opcode_idxs.append(idx)
+  quant_opcode_idxs = get_quantize_opcode_idx(model)
   if operators and not quant_opcode_idxs:
     for input_idx in subgraph.inputs:
       input_type = _convert_tflite_enum_type_to_tf_type(tensors[input_idx].type)
@@ -739,11 +721,7 @@ def _modify_model_output_type(model, inference_output_type=dtypes.float32):
   operators = subgraph.operators
 
   # Find all dequantize operators
-  dequant_opcode_idxs = []
-  for idx, opcode in enumerate(model.operatorCodes):
-    builtin_code = schema_util.get_builtin_code_from_operator_code(opcode)
-    if builtin_code == schema_fb.BuiltinOperator.DEQUANTIZE:
-      dequant_opcode_idxs.append(idx)
+  dequant_opcode_idxs = get_dequantize_opcode_idx(model)
   if operators and not dequant_opcode_idxs:
     for output in subgraph.outputs:
       output_type = _convert_tflite_enum_type_to_tf_type(tensors[output].type)
@@ -837,6 +815,53 @@ def _modify_model_output_type(model, inference_output_type=dtypes.float32):
             get_tf_type_name(inference_output_type)))
 
 
+def _remove_redundant_quantize_ops(model):
+  """Finds back to back quantize ops and remove the first quantize op."""
+  subgraph = model.subgraphs[0]
+  tensors = subgraph.tensors
+  operators = subgraph.operators
+
+  # Find all quantize operators.
+  quant_opcode_idxs = get_quantize_opcode_idx(model)
+  dequant_opcode_idxs = get_dequantize_opcode_idx(model)
+
+  # Find all redundant quant tensors.
+  all_quant_ops = []
+  redundant_quant_tensors = {}
+  output_dequant_tensors = {}
+  for op in operators:
+    if op.opcodeIndex in quant_opcode_idxs:
+      all_quant_ops.append(op)
+      input_tensor = tensors[op.inputs[0]]
+      output_tensor = tensors[op.outputs[0]]
+      input_type = _convert_tflite_enum_type_to_tf_type(input_tensor.type)
+      output_type = _convert_tflite_enum_type_to_tf_type(output_tensor.type)
+      # This is a requantize op, so write down its input tensor index.
+      if input_type != dtypes.float32 and output_type != dtypes.float32:
+        redundant_quant_tensors[op.inputs[0]] = op
+    if op.opcodeIndex in dequant_opcode_idxs and \
+        op.outputs[0] in subgraph.outputs:
+      output_dequant_tensors[op.inputs[0]] = op
+
+  # Remove all the quant ops which produce the redundant quant tensors.
+  for op in all_quant_ops:
+    output_tensor_idx = op.outputs[0]
+    if output_tensor_idx in redundant_quant_tensors:
+      requantize_op = redundant_quant_tensors[output_tensor_idx]
+      # Reset the input of the requantize op to the float input
+      requantize_op.inputs[0] = op.inputs[0]
+      operators.remove(op)
+
+  # Remove all the quant ops which connect to the output dequant op.
+  for op in all_quant_ops:
+    output_tensor_idx = op.outputs[0]
+    if output_tensor_idx in output_dequant_tensors:
+      dequant_op = output_dequant_tensors[output_tensor_idx]
+      subgraph.outputs[subgraph.outputs == dequant_op.outputs[0]] = op.inputs[0]
+      operators.remove(op)
+      operators.remove(dequant_op)
+
+
 def modify_model_io_type(
     model, inference_input_type=dtypes.float32,
     inference_output_type=dtypes.float32):
@@ -875,5 +900,7 @@ def modify_model_io_type(
   _modify_model_input_type(model_object, inference_input_type)
 
   _modify_model_output_type(model_object, inference_output_type)
+
+  _remove_redundant_quantize_ops(model_object)
 
   return _convert_model_from_object_to_bytearray(model_object)

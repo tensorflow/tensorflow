@@ -372,7 +372,7 @@ class PadOpTest(test.TestCase):
     for dtype in [dtypes.int32, dtypes.int64]:
       paddings = np.zeros((0, 2))
       inp = np.asarray(7)
-      with self.cached_session(use_gpu=True):
+      with self.cached_session():
         tf_val = array_ops.pad(inp, constant_op.constant(paddings, dtype=dtype))
         out = self.evaluate(tf_val)
       self.assertAllEqual(inp, out)
@@ -397,7 +397,7 @@ class PadOpTest(test.TestCase):
             padded,
             [paddings_value[i][0] + inp.shape.dims[i].value for i in range(4)],
             [-1, -1, -1, -1])
-        with self.cached_session(use_gpu=True):
+        with self.cached_session():
           self.assertAllEqual(inp, self.evaluate(middle))
           self.assertAllEqual(
               np.zeros([row[0] for row in paddings_value]), self.evaluate(left))

@@ -43,6 +43,7 @@ struct CanonicalDebugOptions {
         dump_as_dot(opts.xla_dump_hlo_as_dot()),
         dump_as_html(opts.xla_dump_hlo_as_html()),
         dump_as_url(opts.xla_dump_hlo_as_url()),
+        dump_fusion_visualization(opts.xla_dump_fusion_visualization()),
         dump_snapshots(opts.xla_dump_hlo_snapshots()),
         dump_include_timestamp(opts.xla_dump_include_timestamp()),
         dump_max_hlo_modules(opts.xla_dump_max_hlo_modules()),
@@ -135,6 +136,7 @@ struct CanonicalDebugOptions {
   bool dump_as_dot;
   bool dump_as_html;
   bool dump_as_url;
+  bool dump_fusion_visualization;
   bool dump_snapshots;
   bool dump_include_timestamp;
   int64 dump_max_hlo_modules;
@@ -268,6 +270,24 @@ std::vector<std::string> DumpHloModuleImpl(const HloModule& module,
                             render_graph(RenderedGraphFormat::kHtml), opts));
   }
 
+  if (opts.dump_fusion_visualization) {
+    for (const HloComputation* computation :
+         module.MakeNonfusionComputations()) {
+      StatusOr<string> rendered_graph = RenderGraph(
+          *computation,
+          /*label=*/absl::StrCat(filename, "_", computation->name()),
+          module.config().debug_options(),
+          RenderedGraphFormat::kFusionVisualization, profile);
+      file_paths.push_back(DumpToFileInDirImpl(
+          StrFormat("%s_%s_fusion_visualization.html", filename,
+                    computation->name()),
+          rendered_graph.ok() ? *rendered_graph
+                              : StrFormat("Error rendering graph: %s",
+                                          rendered_graph.status().ToString()),
+          opts));
+    }
+  }
+
   // Special case for rendering graphs as URLs.  We'll dump them to a file
   // because why not, but we always log them to stdout as well.
   if (opts.dump_as_url) {
@@ -333,10 +353,12 @@ int64 StepNumberForModule(const HloModule& module) {
   tensorflow::mutex_lock lock(mu);
   return module_id_to_step_number[module.unique_id()]++;
 }
-}  // namespace
 
-string TimestampFor(const HloModule& module) {
-  if (!module.config().debug_options().xla_dump_include_timestamp()) {
+// Get a timestamp which we can use as a filename prefix specific to this
+// module.
+string TimestampFor(const HloModule& module,
+                    const DebugOptions& debug_options) {
+  if (!debug_options.xla_dump_include_timestamp()) {
     return "";
   }
   tensorflow::mutex_lock lock(mu);
@@ -344,6 +366,12 @@ string TimestampFor(const HloModule& module) {
       module.unique_id(), tensorflow::Env::Default()->NowMicros());
   return std::to_string(timestamp_emplace.first->second);
 }
+
+string TimestampFor(const HloModule& module) {
+  return TimestampFor(module, module.config().debug_options());
+}
+
+}  // namespace
 
 string FilenameFor(const HloModule& module, string_view prefix,
                    string_view suffix) {
@@ -386,13 +414,19 @@ void DumpExecutionOptions(const ExecutionOptions& execution_options,
   }
 }
 
-void DumpHloModuleIfEnabled(const HloModule& module, string_view name) {
-  CanonicalDebugOptions opts(module.config().debug_options());
+void DumpHloModuleIfEnabled(const HloModule& module, string_view name,
+                            const DebugOptions& debug_options) {
+  CanonicalDebugOptions opts(debug_options);
   if (opts.should_dump_module(module.name())) {
     DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, /*profile=*/nullptr,
-                      TimestampFor(module), name, opts);
+                      TimestampFor(module, debug_options), name, opts);
   }
 }
+
+void DumpHloModuleIfEnabled(const HloModule& module, string_view name) {
+  DumpHloModuleIfEnabled(module, name, module.config().debug_options());
+}
+
 void DumpHloModuleIfEnabled(const HloModule& module,
                             const BufferAssignment& buffer_assn,
                             string_view name) {

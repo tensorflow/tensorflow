@@ -40,6 +40,9 @@ op. The order of ops will be preserved. Functions named `main` with no
 have been imported from a V1 TensorFlow graph, where feeds/fetches/targets are
 not provided at certain stages of IR transformation (e.g. pre-placement).
 
+Option `ops-to-preserve` allows to specify ops that should not be pruned,
+regardless of their reachability.
+
 For example, the following:
 
 ```mlir
@@ -74,6 +77,13 @@ func @graph(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
   }];
 
   let constructor = "tf_executor::CreateTFExecutorGraphPruningPass()";
+
+  let options = [
+   ListOption<"ops_to_preserve_", "ops-to-preserve", "std::string",
+               "Comma separated list of ops that should not be pruned "
+               "regardless of reachability",
+               "llvm::cl::MiscFlags::CommaSeparated">
+  ];
 }
 
 def ExecutorDialectToFunctionalPass : FunctionPass<"tf-executor-to-functional-conversion"> {
@@ -492,6 +502,47 @@ will be transformed into this functional operation
   let constructor = "TF::CreateTFRegionControlFlowToFunctional()";
 }
 
+def TPUReorderReplicateAndPartitionedInputsPass : FunctionPass<"tf-tpu-reorder-replicate-partitioned-inputs"> {
+  let summary = "Reorder replicated and partitioned input ops.";
+
+  let description = [{
+This pass rewrites how data parallelism and model parallelism is expressed for
+inputs. It reorders `tf.TPUPartitionedInput` (model parallelism) and
+`tf.TPUReplicatedInput` (data parallelism) ops. It transforms a DAG where
+multiple `tf.TPUPartitionedInput` ops are feeding into a single
+`tf.TPUReplicatedInput` into a DAG where multiple `tf.TPUReplicatedInput` ops
+are feeding into a single `tf.TPUPartitionedInput`. Transforming the IR in such
+a manner will allow subsequent cluster formation pass to handle IR with both
+data and model parallelism in an easier manner.
+
+For example, the following:
+
+```mlir
+!rtype = type tensor<!tf.resource<tensor<10x3xf32>>>
+func @data_and_model_parallelism(%arg0: !rtype, %arg1: !rtype, %arg2: !rtype, %arg3: !rtype) -> !rtype {
+  %pi_0 = "tf.TPUPartitionedInput"(%arg0, %arg1) {_XlaSharding = "", device = "", partition_dim = -1 : i64} : (!rtype, !rtype) -> !rtype
+  %pi_1 = "tf.TPUPartitionedInput"(%arg2, %arg3) {_XlaSharding = "", device = "", partition_dim = -1 : i64} : (!rtype, !rtype) -> !rtype
+  %ri = "tf.TPUReplicatedInput"(%pi_0, %pi_1) : (!rtype, !rtype) -> !rtype
+  return %ri : !rtype
+}
+```
+
+will be transformed into:
+
+```mlir
+!rtype = type tensor<!tf.resource<tensor<10x3xf32>>>
+func @data_and_model_parallelism(%arg0: !rtype, %arg1: !rtype, %arg2: !rtype, %arg3: !rtype) -> !rtype {
+  %ri_0 = "tf.TPUReplicatedInput"(%arg0, %arg2) : (!rtype, !rtype) -> !rtype
+  %ri_1 = "tf.TPUReplicatedInput"(%arg1, %arg3) : (!rtype, !rtype) -> !rtype
+  %pi = "tf.TPUPartitionedInput"(%ri_0, %ri_1) {_XlaSharding = "", device = "", partition_dim = -1 : i64} : (!rtype, !rtype) -> !rtype
+  return %pi : !rtype
+}
+```
+  }];
+
+  let constructor = "TFTPU::CreateTPUReorderReplicateAndPartitionedInputsPass()";
+}
+
 def TPUResourceReadsWritesPartitioningPass : FunctionPass<"tf-tpu-resource-partition"> {
   let summary = "Partitions unpartitioned resource read/write to partitioned resource variables.";
 
@@ -660,3 +711,115 @@ func @tf_tpu_rewrite(%arg0: tensor<8xi32>) -> tensor<8xi32> {
   let constructor = "TFTPU::CreateTPURewritePass()";
 }
 
+def ClusterOpsByPolicyPass : FunctionPass<"cluster-ops-by-policy"> {
+  let summary = "Clusters ops according to specified policy.";
+
+  let description = [{
+This pass clusters ops according to the policy specified by the pass options.
+Clustered ops are moved to a tf_device::clusterOp region.
+
+First you need to specify the 'oplist=<list of ops>' option. This option
+specifies the names of the ops that should be clustered together. Then you need
+to specify the algorithm for forming a cluster with a `mode=<algorithm>` option:
+
+1. `use-def` (default): cluster ops together if they form a single use def-use
+   chain, that is, the next op in the list uses the result of the previous op
+   and is the only user of that result.
+2. `union-find`: cluster ops together that are connected to each other with
+   potentially different use def chains using union-find algorithm.
+
+For both algorithms the ops should be located in the same block, be assigned to
+the same device and have no side effects.
+
+For example, running this pass with options:
+  "oplist=tf.Cast,tf.Add algorithm=use-def"
+
+```mlir
+func @cluster_oplist(%arg0 : tensor<f32>, %arg1 : tensor<i32>) -> tensor<i32> {
+  %0 = "tf.Cast"(%arg0) : (tensor<f32>) -> tensor<i32>
+  %1 = "SomeOp" (%arg1) : (tensor<i32>) -> tensor<i32>
+  %2 = "tf.Add"(%0, %1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  return %2 : tensor<i32>
+}
+```
+
+will produce tf_device::opCluster enclosing tf.Add and tf.Neg:
+
+```mlir
+func @cluster_oplist(%arg0: tensor<f32>, %arg1: tensor<i32>) -> tensor<i32> {
+  %0 = "SomeOp"(%arg1) : (tensor<i32>) -> tensor<i32>
+  %1 = "tf_device.cluster"() ( {
+    %2 = "tf.Cast"(%arg0) : (tensor<f32>) -> tensor<i32>
+    %3 = "tf.Add"(%2, %0) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    tf_device.return %3 : tensor<i32>
+  }) : () -> tensor<i32>
+  return %1 : tensor<i32>
+}
+```
+
+Running with `union-find` algorithm allows to cluster together operations that
+do not form a single use-def chain:
+  "oplist=tf.Add,tf.Sub algorithm=union-find"
+
+```mlir
+func @cluster_oplist(%arg0 : tensor<f32>, %arg1 : tensor<i32>) -> tensor<i32> {
+  %0 = "tf.Add"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<i32>
+  %1 = "tf.Sub"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<i32>
+  %2 = "tf.Add"(%0, %1) : (tensor<f32>, tensor<f32>) -> tensor<i32>
+  return %2 : tensor<i32>
+}
+```
+
+will produce tf_device::opCluster enclosing tf.Add and tf.Sub:
+
+```mlir
+func @cluster_oplist(%arg0: tensor<f32>, %arg1: tensor<i32>) -> tensor<i32> {
+  %0 = "tf_device.cluster"() ( {
+    %1 = "tf.Add"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<i32>
+    %2 = "tf.Sub"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<i32>
+    %3 = "tf.Add"(%1, %2) : (tensor<f32>, tensor<f32>) -> tensor<i32>
+    tf_device.return %3 : tensor<i32>
+  }) : () -> tensor<i32>
+  return %0 : tensor<i32>
+}
+  }];
+
+  let constructor = "TFDevice::CreateClusterOpsByPolicyPass()";
+
+  let options = [
+   Option<"policy_name", "policy-name", "std::string", /*default=*/"",
+          "Adds a policy string attribute to all extracted clusters. This "
+          "attribute allows to distinguish clusters formed by different "
+          "policies or maybe other clustering algorithms.">,
+   Option<"min_cluster_size", "min-cluster-size", "int" , /*default=*/"1",
+          "Do not form clusters smaller of the given size.">,
+   Option<"algorithm", "algorithm", "std::string", /*default=*/"\"use-def\"",
+          "Clustering algorithm type: `use-def` or `union-find`">,
+   ListOption<"oplist", "oplist", "std::string",
+               "Cluster listed ops when they form a single use def-use chain, "
+               "such that each op's single user is the next op in the list.",
+               "llvm::cl::MiscFlags::CommaSeparated">
+  ];
+}
+
+def VerifySuitableForExportPass : Pass<"tf-verify-for-export", "ModuleOp"> {
+  let summary = "Verify module is suitable for export back to TF Graph";
+  let description = [{
+    Verifies whether all functions in module are of single tf_executor.graph and
+    each tf_executor.island in tf_executor.graph only has a single op.
+  }];
+
+  let constructor = "TF::CreateVerifySuitableForExportPass()";
+}
+
+def PrepareTpuComputationForTfExportPass : Pass<"prepare-tpu-computation-for-tf-export", "FuncOp"> {
+  let summary = "Prepare TPU computation to be legal for export to TensorFlow";
+  let description = [{
+    Prepares TPU computation module attached to _TPUCompileMlir op for
+    TensorFlow graph export by making transformation such as replacing or
+    removing MLIR or XLA specific attributes that are not legal in TensorFlow
+    graph.
+  }];
+
+  let constructor = "TF::CreatePrepareTpuComputationForTfExportPass()";
+}

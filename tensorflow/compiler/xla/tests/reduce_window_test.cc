@@ -69,7 +69,7 @@ class ReduceWindowTest : public ::testing::WithParamInterface<bool>,
  public:
   ReduceWindowTest() : builder_(TestName()) { set_use_bfloat16(GetParam()); }
 
-  void ReduceWindowAdd(const XlaOp& input,
+  void ReduceWindowAdd(const XlaOp input,
                        absl::Span<const int64> window_dimensions,
                        absl::Span<const int64> window_strides,
                        Padding padding) {
@@ -80,7 +80,7 @@ class ReduceWindowTest : public ::testing::WithParamInterface<bool>,
                  window_dimensions, window_strides, padding);
   }
 
-  void ReduceWindowMax(const XlaOp& input,
+  void ReduceWindowMax(const XlaOp input,
                        absl::Span<const int64> window_dimensions,
                        absl::Span<const int64> window_strides,
                        Padding padding) {
@@ -91,7 +91,7 @@ class ReduceWindowTest : public ::testing::WithParamInterface<bool>,
                  window_dimensions, window_strides, padding);
   }
 
-  void ReduceWindowMin(const XlaOp& input,
+  void ReduceWindowMin(const XlaOp input,
                        absl::Span<const int64> window_dimensions,
                        absl::Span<const int64> window_strides,
                        Padding padding) {
@@ -1704,8 +1704,7 @@ ENTRY R4OnlyDilation {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.001}));
 }
 
-XLA_TEST_F(HloTestBase,
-           DISABLED_ON_GPU(DISABLED_ON_CPU(ReduceWindowVariadicSupport))) {
+XLA_TEST_F(HloTestBase, DISABLED_ON_GPU(ReduceWindowVariadicSupport)) {
   const char* const hlo_string = R"(
 HloModule module
 
@@ -1732,8 +1731,7 @@ ENTRY entry {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-4, 1e-4}));
 }
 
-XLA_TEST_F(HloTestBase,
-           DISABLED_ON_GPU(DISABLED_ON_CPU(ReduceWindowVariadicSupport2))) {
+XLA_TEST_F(HloTestBase, DISABLED_ON_GPU(ReduceWindowVariadicSupport2)) {
   const char* const hlo_string = R"(
 HloModule module
 
@@ -1759,8 +1757,7 @@ ENTRY entry {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-4, 1e-4}));
 }
 
-XLA_TEST_F(HloTestBase,
-           DISABLED_ON_GPU(DISABLED_ON_CPU(ReduceWindowVariadicSupport3))) {
+XLA_TEST_F(HloTestBase, DISABLED_ON_GPU(ReduceWindowVariadicSupport3)) {
   const char* const hlo_string = R"(
 HloModule module
 
@@ -1786,8 +1783,7 @@ ENTRY entry {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-4, 1e-4}));
 }
 
-XLA_TEST_F(HloTestBase,
-           DISABLED_ON_GPU(DISABLED_ON_CPU(ReduceWindowVariadicSupport4))) {
+XLA_TEST_F(HloTestBase, DISABLED_ON_GPU(ReduceWindowVariadicSupport4)) {
   const char* const hlo_string = R"(
 HloModule module
 

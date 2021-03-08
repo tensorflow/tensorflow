@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Threading.h"
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
@@ -150,6 +151,8 @@ DECL_CONVERT_OP(Split);
 DECL_CONVERT_OP(SplitV);
 DECL_CONVERT_OP(Unpack);
 DECL_CONVERT_OP(RandomUniform);
+DECL_CONVERT_OP(Conv3D);
+DECL_CONVERT_OP(HashTableV2);
 
 #undef DECL_CONVERT_OP
 
@@ -232,7 +235,7 @@ LogicalResult ConvertTFConcatV2Op::matchAndRewrite(
   if (failed(ConvertToI32Attr(axis_int, &axis_i32))) return failure();
 
   StringAttr fused_activation_function =
-      StringAttr::get("NONE", rewriter.getContext());
+      StringAttr::get(rewriter.getContext(), "NONE");
   rewriter.replaceOpWithNewOp<ConcatenationOp>(
       op, output_type, values, axis_i32, fused_activation_function);
   return success();
@@ -335,6 +338,46 @@ LogicalResult ConvertTFUnpackOp::matchAndRewrite(
 
   rewriter.replaceOpWithNewOp<UnpackOp>(op, tf_unpack_op.output().getTypes(),
                                         input, num, axis);
+  return success();
+}
+
+LogicalResult ConvertTFConv3DOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  if (!TFDataFormatIsNDHWC(op)) return failure();
+
+  auto tf_op = cast<TF::Conv3DOp>(op);
+
+  IntegerAttr stride_depth, stride_height, stride_width;
+  if (!TFIntListIs1XYZ1(op, "strides", &stride_depth, &stride_height,
+                        &stride_width))
+    return failure();
+
+  IntegerAttr dilation_depth_factor, dilation_height_factor,
+      dilation_width_factor;
+  if (!TFIntListIs1XYZ1(op, "dilations", &dilation_depth_factor,
+                        &dilation_height_factor, &dilation_width_factor)) {
+    // If the 'dilations' attribute is missing, we use the default value (1)
+    // for all dilation depth, height and width factor.
+    dilation_depth_factor = rewriter.getI32IntegerAttr(1);
+    dilation_height_factor = rewriter.getI32IntegerAttr(1);
+    dilation_width_factor = rewriter.getI32IntegerAttr(1);
+  }
+
+  StringAttr padding;
+  if (!TFPaddingIsSameOrValid(op, &padding)) return failure();
+
+  // TensorFlow Conv3D has no bias, optimization patterns will fuse Conv3D
+  // with other ops can fill the bias.
+  Value none = rewriter.create<mlir::ConstantOp>(
+      op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
+
+  rewriter.replaceOpWithNewOp<TFL::Conv3DOp>(
+      op, tf_op.getType(), tf_op.input(), tf_op.filter(),
+      /*bias=*/none, dilation_depth_factor, dilation_height_factor,
+      dilation_width_factor,
+      /*fused_activation_function=*/rewriter.getStringAttr("NONE"), padding,
+      stride_depth, stride_height, stride_width);
+
   return success();
 }
 
@@ -534,6 +577,24 @@ struct LegalizeUnidirectionalSequenceRnn : public RewritePattern {
   }
 };
 
+LogicalResult ConvertTFHashTableV2Op::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tf_hash_table_v2_op = cast<TF::HashTableV2Op>(op);
+  auto output_type =
+      RankedTensorType::get({1}, TF::ResourceType::get(rewriter.getContext()));
+
+  // Hash the shared name to generate integer hash table id.
+  // TODO(b/180645662): Issue a zero-based integer hash table ID.
+  auto table_id = static_cast<int32_t>(
+      ::llvm::hash_value(tf_hash_table_v2_op.shared_name()));
+  auto key_dtype = tf_hash_table_v2_op.key_dtype();
+  auto value_dtype = tf_hash_table_v2_op.value_dtype();
+
+  rewriter.replaceOpWithNewOp<TFL::HashtableOp>(op, output_type, table_id,
+                                                key_dtype, value_dtype);
+  return success();
+}
+
 // Put two TFL BroadcastTo ops in front of the given TF binary broadcast op to
 // to make binary broadcast-able op conversion always successful and does not
 // require flex delegate.
@@ -692,7 +753,8 @@ void addPatterns(MLIRContext* context, OwningRewritePatternList& patterns) {
       .insert<ConvertTFConcatV2Op, ConvertTFMatMulOp, ConvertTFMatrixDiagV2Op,
               ConvertTFMatrixDiagV3Op, ConvertTFPackOp, ConvertTFSplitOp,
               ConvertTFSplitVOp, ConvertTFUnpackOp, ConvertTFAssertOp,
-              ConvertTFRandomUniformOp>(context);
+              ConvertTFRandomUniformOp, ConvertTFConv3DOp,
+              ConvertTFHashTableV2Op>(context);
 
   // Ophint python converter converted tf node pattern.
   patterns.insert<LegalizeUnidirectionalSequenceLstm,

@@ -46,7 +46,6 @@ from six.moves.urllib.request import urlopen
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras.utils.io_utils import path_to_string
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -530,10 +529,6 @@ def get_pool_class(use_multiprocessing):
   global _FORCE_THREADPOOL
   if not use_multiprocessing or _FORCE_THREADPOOL:
     return multiprocessing.dummy.Pool  # ThreadPool
-  logging.warning(
-      'multiprocessing can interact badly with TensorFlow, causing '
-      'nondeterministic deadlocks. For high performance data pipelines tf.data '
-      'is recommended.')
   return multiprocessing.Pool
 
 
@@ -700,8 +695,6 @@ class SequenceEnqueuer(object):
 class OrderedEnqueuer(SequenceEnqueuer):
   """Builds a Enqueuer from a Sequence.
 
-  Used in `fit_generator`, `evaluate_generator`, `predict_generator`.
-
   Args:
       sequence: A `tf.keras.utils.data_utils.Sequence` object.
       use_multiprocessing: use multiprocessing if True, otherwise threading
@@ -838,20 +831,17 @@ class GeneratorEnqueuer(SequenceEnqueuer):
   The provided generator can be finite in which case the class will throw
   a `StopIteration` exception.
 
-  Used in `fit_generator`, `evaluate_generator`, `predict_generator`.
-
   Args:
       generator: a generator function which yields data
       use_multiprocessing: use multiprocessing if True, otherwise threading
-      wait_time: time to sleep in-between calls to `put()`
       random_seed: Initial seed for workers,
           will be incremented by one for each worker.
   """
 
-  def __init__(self, sequence,
+  def __init__(self, generator,
                use_multiprocessing=False,
                random_seed=None):
-    super(GeneratorEnqueuer, self).__init__(sequence, use_multiprocessing)
+    super(GeneratorEnqueuer, self).__init__(generator, use_multiprocessing)
     self.random_seed = random_seed
 
   def _get_executor_init(self, workers):

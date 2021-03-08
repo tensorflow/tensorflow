@@ -153,6 +153,19 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     output_data = model.predict(input_array)
     self.assertAllEqual(expected_output, output_data)
 
+  def test_int_output_explicit_vocab_with_special_tokens(self):
+    vocab_data = ["", "[UNK]", "earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(vocabulary=vocab_data)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_data = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_data)
+
   def test_no_vocab(self):
     with self.assertRaisesRegex(
         ValueError, "You must set the layer's vocabulary"):
@@ -252,7 +265,7 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
 
   def test_inverse_layer(self):
     vocab_data = ["earth", "wind", "and", "fire"]
-    input_array = np.array([[1, 2, 3, 4], [4, 3, 1, 0]])
+    input_array = np.array([[2, 3, 4, 5], [5, 4, 2, 0]])
     expected_output = np.array([["earth", "wind", "and", "fire"],
                                 ["fire", "and", "earth", ""]])
 
@@ -263,7 +276,7 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
     output_data = model.predict(input_array)
     self.assertAllEqual(expected_output, output_data)
 
-  def test_forward_backward_layer(self):
+  def test_forward_backward_explicit_vocab(self):
     vocab_data = ["earth", "wind", "and", "fire"]
     input_array = np.array([["earth", "wind", "and", "fire"],
                             ["fire", "and", "earth", "michigan"]])
@@ -272,6 +285,23 @@ class StringLookupVocabularyTest(keras_parameterized.TestCase,
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
     layer = get_layer_class()(vocabulary=vocab_data)
+    invert_layer = get_layer_class()(vocabulary=vocab_data, invert=True)
+    int_data = layer(input_data)
+    out_data = invert_layer(int_data)
+    model = keras.Model(inputs=input_data, outputs=out_data)
+    output_data = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_data)
+
+  def test_forward_backward_adapted_vocab(self):
+    adapt_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    expected_output = np.array([["earth", "wind", "and", "fire"],
+                                ["fire", "and", "earth", "[UNK]"]])
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()()
+    layer.adapt(adapt_data)
     invert_layer = get_layer_class()(
         vocabulary=layer.get_vocabulary(), invert=True)
     int_data = layer(input_data)

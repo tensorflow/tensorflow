@@ -130,8 +130,12 @@ class InputLayer(base_layer.Layer):
         raise ValueError('Only provide the input_shape OR '
                          'batch_input_shape argument to '
                          'InputLayer, not both at the same time.')
-      batch_size = batch_input_shape[0]
-      input_shape = batch_input_shape[1:]
+      # Set the input shape and batch size from the batch_input_shape.
+      # Note that batch_input_shape can be None (unknown rank) or [] (scalar),
+      # in which case the batch size must be None.
+      if batch_input_shape:
+        batch_size = batch_input_shape[0]
+        input_shape = batch_input_shape[1:]
     if kwargs:
       raise ValueError('Unrecognized keyword arguments:', kwargs.keys())
 
@@ -317,13 +321,17 @@ def Input(  # pylint: disable=invalid-name
 
   Note that even if eager execution is enabled,
   `Input` produces a symbolic tensor-like object (i.e. a placeholder).
-  This symbolic tensor-like object can be used with other
-  TensorFlow ops, as such:
+  This symbolic tensor-like object can be used with lower-level
+  TensorFlow ops that take tensors as inputs, as such:
 
   ```python
   x = Input(shape=(32,))
-  y = tf.square(x)
+  y = tf.square(x)  # This op will be treated like a layer
+  model = Model(x, y)
   ```
+
+  (This behavior does not work for higher-order TensorFlow APIs such as
+  control flow and being directly watched by a `tf.GradientTape`).
 
   However, the resulting model will not track any variables that were
   used as inputs to TensorFlow ops. All variable usages must happen within

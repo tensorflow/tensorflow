@@ -23,6 +23,16 @@ package(
 # TODO(b/152902651): Remove this file once all circular dependencies are resolved.
 tf_cuda_library(
     name = "core",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":core_no_xla",
+        "//tensorflow/compiler/jit:xla_kernel_creator",
+    ],
+    alwayslink = 1,
+)
+
+tf_cuda_library(
+    name = "core_no_xla",
     srcs = [
         "core.cc",
     ],
@@ -113,8 +123,14 @@ tf_cuda_library(
 
 tf_cuda_library(
     name = "custom_device",
-    srcs = ["custom_device.cc"],
-    hdrs = ["custom_device.h"],
+    srcs = [
+        "custom_device.cc",
+        "custom_device_op_handler.cc",
+    ],
+    hdrs = [
+        "custom_device.h",
+        "custom_device_op_handler.h",
+    ],
     visibility = ["//tensorflow:internal"],
     deps = select({
         "//tensorflow:android": [
@@ -122,8 +138,10 @@ tf_cuda_library(
         ],
         "//conditions:default": [
             "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
             "//tensorflow/c/eager:immediate_execution_context",
             "//tensorflow/c/eager:immediate_execution_tensor_handle",
+            "//tensorflow/c/eager:immediate_execution_operation",
             "//tensorflow/core/lib/core:status",
         ],
     }),
@@ -136,11 +154,15 @@ tf_cc_test(
         ":context",
         ":core",
         ":custom_device",
+        ":eager_operation",
+        ":placement_utils",
         ":tensor_handle",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/kernels:resource_variable_ops",
+        "//tensorflow/core/ops:resource_variable_ops_op_lib",
     ],
 )
 
@@ -228,6 +250,7 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":attr_builder",
+        ":custom_device",
         ":context",
         ":eager_executor",
         ":kernel_and_device",
@@ -245,7 +268,7 @@ tf_cuda_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:platform_port",
-        "//tensorflow/core/util:abstract_stack_trace",
+        "//tensorflow/core/util:managed_stack_trace",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -416,10 +439,7 @@ tf_cuda_library(
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
-        "//tensorflow:windows": KERNEL_AND_DEVICE_DEPS,
-        "//conditions:default": KERNEL_AND_DEVICE_DEPS + [
-            "//tensorflow/compiler/jit:xla_kernel_creator",
-        ],
+        "//conditions:default": KERNEL_AND_DEVICE_DEPS,
     }),
 )
 
@@ -540,10 +560,14 @@ tf_cc_test_mkl(
     ],
     deps = [
         ":core",
+        ":eager_op_rewrite_registry",
         ":mkl_eager_op_rewrite",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:device_mgr",
     ],
 )
 
@@ -631,8 +655,10 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
+        ":custom_device",
         ":attr_builder",
         ":eager_operation",
+        "//tensorflow/c/eager:immediate_execution_operation",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
     ] + select({
         "//tensorflow:android": [
@@ -659,6 +685,7 @@ tf_cuda_library(
         # TODO(b/113535673): Break this dependency and avoid the C header completely.
         "//tensorflow/c:tf_attrtype",
         "@farmhash_archive//:farmhash",
+        "//tensorflow/c/eager:abstract_op_attrs",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -700,6 +727,7 @@ filegroup(
         "attr_builder.h",
         "context.h",
         "custom_device.h",
+        "custom_device_op_handler.h",
         "eager_executor.h",
         "eager_operation.h",
         "kernel_and_device.h",
