@@ -1,11 +1,7 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
     "//tensorflow:tensorflow.bzl",
-<<<<<<< HEAD
-    "if_cuda_is_configured_compat",
-    "if_rocm_is_configured_compat",
-=======
->>>>>>> google_upstream/master
     "tf_copts",
     "tf_cuda_library",
 )
@@ -150,8 +146,8 @@ tf_cuda_library(
 
 tf_cuda_library(
     name = "rocm_tracer",
-    srcs = if_rocm_is_configured_compat(["rocm_tracer.cc"]),
-    hdrs = if_rocm_is_configured_compat(["rocm_tracer.h"]),
+    srcs = if_rocm(["rocm_tracer.cc"]),
+    hdrs = if_rocm(["rocm_tracer.h"]),
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
