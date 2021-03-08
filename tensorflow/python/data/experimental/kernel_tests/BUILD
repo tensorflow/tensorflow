@@ -13,6 +13,7 @@ tf_py_test(
     srcs = ["assert_cardinality_test.py"],
     deps = [
         "//tensorflow/python/data/experimental/ops:cardinality",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "@absl_py//absl/testing:parameterized",
@@ -50,6 +51,7 @@ tf_py_test(
         "//tensorflow/python/data/experimental/ops:distribute",
         "//tensorflow/python/data/experimental/ops:readers",
         "//tensorflow/python/data/experimental/ops:testing",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
@@ -133,6 +135,7 @@ tf_py_test(
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python/data/experimental/ops:error_ops",
         "//tensorflow/python/data/experimental/ops:readers",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/eager:context",

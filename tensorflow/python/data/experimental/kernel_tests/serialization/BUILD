@@ -8,46 +8,6 @@ package(
 exports_files(["LICENSE"])
 
 tf_py_test(
-    name = "assert_cardinality_dataset_serialization_test",
-    size = "small",
-    srcs = ["assert_cardinality_dataset_serialization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "auto_shard_dataset_serialization_test",
-    size = "medium",
-    srcs = ["auto_shard_dataset_serialization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python/data/experimental/ops:distribute",
-        "//tensorflow/python/data/experimental/ops:interleave_ops",
-        "//tensorflow/python/data/experimental/ops:readers",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
     name = "batch_dataset_serialization_test",
     size = "medium",
     srcs = ["batch_dataset_serialization_test.py"],
@@ -178,23 +138,6 @@ tf_py_test(
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "csv_dataset_serialization_test",
-    size = "medium",
-    srcs = ["csv_dataset_serialization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python/data/experimental/ops:readers",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
     ],
 )
 
