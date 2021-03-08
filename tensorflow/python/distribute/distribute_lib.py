@@ -626,7 +626,6 @@ class InputOptions(
         "experimental_replication_mode",
         "experimental_place_dataset_on_device",
         "experimental_per_replica_buffer_size",
-        "experimental_prefetch_to_device",  # Deprecated
     ])):
   """Run options for `experimental_distribute_dataset(s_from_function)`.
 
@@ -677,19 +676,15 @@ class InputOptions(
               experimental_fetch_to_device=None,
               experimental_replication_mode=InputReplicationMode.PER_WORKER,
               experimental_place_dataset_on_device=False,
-              experimental_per_replica_buffer_size=1,
-              experimental_prefetch_to_device=True):
+              experimental_per_replica_buffer_size=1):
     if experimental_fetch_to_device is None:
-      # TODO(b/180133992): Remove `experimental_prefetch_to_device` after
-      # replacing all its usages with `experimental_fetch_to_device`.
-      experimental_fetch_to_device = experimental_prefetch_to_device
+      experimental_fetch_to_device = True
 
     return super(InputOptions,
                  cls).__new__(cls, experimental_fetch_to_device,
                               experimental_replication_mode,
                               experimental_place_dataset_on_device,
-                              experimental_per_replica_buffer_size,
-                              experimental_prefetch_to_device)
+                              experimental_per_replica_buffer_size)
 
 # ------------------------------------------------------------------------------
 # Base classes for all distribution strategies.
