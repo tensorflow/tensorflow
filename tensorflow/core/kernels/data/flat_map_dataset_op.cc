@@ -162,6 +162,49 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
       } while (true);
     }
 
+    Status SkipInternal(IteratorContext* ctx, int num_to_skip,
+                        bool* end_of_sequence, int* num_skipped) override {
+      mutex_lock l(mu_);
+      *num_skipped = 0;
+      do {
+        if (!input_impl_) {
+          *end_of_sequence = true;
+          return Status::OK();
+        }
+        if (current_element_iterator_) {
+          // We are currently processing a mapped element, so try to get the
+          // next subelement.
+          bool end_of_element;
+          int last_num_skipped;
+          TF_RETURN_IF_ERROR(current_element_iterator_->Skip(
+              ctx, num_to_skip - *num_skipped, &end_of_element,
+              &last_num_skipped));
+          *num_skipped += last_num_skipped;
+          if (!end_of_element) {
+            // Produce the subelement as output.
+            *end_of_sequence = false;
+            return Status::OK();
+          }
+
+          // We have reached the end of the current element, so maybe move on
+          // to the next element.
+          current_element_iterator_.reset();
+        }
+
+        // Get the next element from the input dataset.
+        captured_func_inputs_.clear();
+        TF_RETURN_IF_ERROR(
+            input_impl_->GetNext(ctx, &captured_func_inputs_, end_of_sequence));
+        if (*end_of_sequence) {
+          input_impl_.reset();
+          return Status::OK();
+        }
+
+        TF_RETURN_IF_ERROR(BuildCurrentElementIteratorLocked(
+            ctx, /*is_get_next=*/false));
+      } while (true);
+    }
+
    protected:
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
