@@ -413,25 +413,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "sql_dataset_serialization_test",
-    size = "small",
-    srcs = ["sql_dataset_serialization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python/data/experimental/kernel_tests:sql_dataset_test_base",
-        "//tensorflow/python/data/experimental/ops:readers",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-    ],
-)
-
-tf_py_test(
     name = "stats_dataset_serialization_test",
     size = "medium",
     srcs = ["stats_dataset_serialization_test.py"],
