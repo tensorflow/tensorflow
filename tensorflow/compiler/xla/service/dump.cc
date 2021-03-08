@@ -227,8 +227,10 @@ std::vector<std::string> DumpHloModuleImpl(const HloModule& module,
   std::vector<absl::optional<std::string>> file_paths;
 
   if (opts.dump_as_text) {
-    file_paths.push_back(DumpToFileInDirOrStdoutImpl(StrCat(filename, ".txt"),
-                                                     module.ToString(), opts));
+    file_paths.push_back(DumpToFileInDirOrStdoutImpl(
+        StrCat(filename, ".txt"),
+        module.ToString(HloPrintOptions().set_print_backend_config(true)),
+        opts));
     if (buffer_assn) {
       file_paths.push_back(DumpToFileInDirOrStdoutImpl(
           StrCat(filename, "-buffer-assignment.txt"), buffer_assn->ToString(),
