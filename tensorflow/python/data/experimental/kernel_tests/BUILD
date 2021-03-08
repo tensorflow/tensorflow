@@ -876,6 +876,7 @@ tf_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/data/experimental/ops:take_while_ops",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
