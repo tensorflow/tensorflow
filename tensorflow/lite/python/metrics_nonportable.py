@@ -30,7 +30,7 @@ class TFLiteMetrics(object):
 
   _counter_interpreter_creation = monitoring.Counter(
       '/tensorflow/lite/interpreter/created',
-      'Counter for number of interpreter created in Python.', 'python')
+      'Counter for number of interpreter created in Python.', 'language')
 
   def __init__(self,
                md5: Optional[Text] = None,
