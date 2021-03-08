@@ -4208,6 +4208,11 @@ cc_binary(
 cc_binary(
     name = "mlir-cuda-runner",
     srcs = ["tools/mlir-cuda-runner/mlir-cuda-runner.cpp"],
+    # Avoid duplicate definitions that prevent the ThreadPoolExecutor d'tor to
+    # join all threads. The details are unclear. This is a temporary solution
+    # because we will replace the mlir-cuda-runner with cuda-opt, mlir-opt, and
+    # mlir-cpu-runner.
+    linkstatic = False,
     deps = [
         ":Async",
         ":AsyncTransforms",
