@@ -978,13 +978,13 @@ class MklTanhGradOp
 #define RELU6_UPPER_BOUND 6.0f
 template <typename Device, typename T>
 class MklRelu6Op
-    : public MklReluOpBase<Device, T, dnnl::algorithm::eltwise_bounded_relu> {
+    : public MklReluOpBase<Device, T, mkldnn::algorithm::eltwise_clip_v2> {
  public:
   ~MklRelu6Op() {}
 
   explicit MklRelu6Op(OpKernelConstruction* context)
-      : MklReluOpBase<Device, T, dnnl::algorithm::eltwise_bounded_relu>(
-            context, RELU6_UPPER_BOUND, 0.0f) {}
+      : MklReluOpBase<Device, T, mkldnn::algorithm::eltwise_clip_v2>(
+            context, 0.0f, RELU6_UPPER_BOUND) {}
 
   virtual void Compute_Scalar(OpKernelContext* context) {
     const size_t src_index = 0;  // index of src input tensor
@@ -1008,14 +1008,17 @@ class MklRelu6Op
 
 template <typename Device, typename T>
 class MklRelu6GradOp
-    : public MklReluGradOpBase<Device, T,
-                               dnnl::algorithm::eltwise_bounded_relu> {
+    : public MklReluGradOpBase<
+          Device, T, mkldnn::algorithm::eltwise_clip_v2_use_dst_for_bwd> {
  public:
   ~MklRelu6GradOp() {}
 
   explicit MklRelu6GradOp(OpKernelConstruction* context)
-      : MklReluGradOpBase<Device, T, dnnl::algorithm::eltwise_bounded_relu>(
-            context, RELU6_UPPER_BOUND, 0.0f) {}
+      : MklReluGradOpBase<Device, T,
+                          mkldnn::algorithm::eltwise_clip_v2_use_dst_for_bwd>(
+            context, 0.0, RELU6_UPPER_BOUND) {}
+
+  virtual int GetTypeOfInputTensorFromFwdOp() const { return MKLDNN_ARG_DST; }
 
   virtual void Compute_Scalar(OpKernelContext* context) {
     const size_t diff_dst_index = 0;  // index of diff_dst input tensor

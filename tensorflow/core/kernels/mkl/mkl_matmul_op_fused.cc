@@ -282,7 +282,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
       if (post_op == "Relu") {
         params.post_op_params.push_back({"relu", {1.0, 0.0, 0.0}});
       } else if (post_op == "Relu6") {
-        params.post_op_params.push_back({"relu6", {1.0, 6.0, 0.0}});
+        params.post_op_params.push_back({"relu6", {1.0, 0.0, 6.0}});
       } else if (post_op == "Elu") {
         params.post_op_params.push_back({"elu", {1.0, 1.0, 0.0}});
       } else if (post_op == "GeluApproximate") {

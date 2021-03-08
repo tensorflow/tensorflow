@@ -245,7 +245,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
           float op_alpha = post_op_param.param[1];
           float op_beta = post_op_param.param[2];
           post_ops.append_eltwise(op_scale,
-                                  dnnl::algorithm::eltwise_bounded_relu,
+                                  mkldnn::algorithm::eltwise_clip_v2,
                                   op_alpha, op_beta);
         } else if (post_op_param.name == "elu") {
           DCHECK_EQ(post_op_param.param.size(), 3);

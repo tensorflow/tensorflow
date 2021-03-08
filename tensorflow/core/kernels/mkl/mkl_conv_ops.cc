@@ -989,13 +989,16 @@ class MklConvOp : public OpKernel {
 
  protected:
   void set_fuse_biasadd(bool fuse_biasadd) { fuse_biasadd_ = fuse_biasadd; }
-  void set_fuse_activation(bool fuse_activation, dnnl::algorithm activation_alg,
-                           float alpha_or_upbound = 0.0) {
+  void set_fuse_activation(bool fuse_activation,
+                           mkldnn::algorithm activation_alg,
+                           float alpha = 0.0,
+                           float beta = 0.0) {
     fuse_activation_ = fuse_activation;
     activation_alg_ = activation_alg;
     // This variable is used for alpha in leakyrelu or upper bound in relu6
     // depending on the context
-    alpha_or_upbound_ = alpha_or_upbound;
+    alpha_ = alpha;
+    beta_ = beta;
   }
   void set_fuse_pad(bool fuse_pad) {
     fuse_pad_ = fuse_pad;
@@ -1049,7 +1052,7 @@ class MklConvOp : public OpKernel {
     }
     if (fuse_activation_) {
       params.post_op_params.push_back(
-          {"activation", activation_alg_, {1.0, alpha_or_upbound_, 0.0}, ""});
+          {"activation", activation_alg_, {1.0, alpha_, beta_}, ""});
     }
   }
 
@@ -1172,10 +1175,11 @@ class MklConvOp : public OpKernel {
   bool fuse_bn_ = false;
   float epsilon_ = 0.0001;
 
-  // This variable is used for alpha in leakyrelu or upper bound in relu6
+  // This variable is used for alpha in leakyrelu or alpha and beta in relu6
   // depending on the context
-  float alpha_or_upbound_ = 0.0;
-  dnnl::algorithm activation_alg_ = dnnl::algorithm::undef;
+  float alpha_ = 0.0;
+  float beta_ = 0.0;
+  mkldnn::algorithm activation_alg_ = mkldnn::algorithm::undef;
 
   int input_index_pad_ = 2;
 
@@ -1363,8 +1367,8 @@ class MklFusedConvOp
     } else if (fused_ops == std::vector<string>{"Relu"}) {
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_relu);
     } else if (fused_ops == std::vector<string>{"Relu6"}) {
-      this->set_fuse_activation(true, dnnl::algorithm::eltwise_bounded_relu,
-                                6.0);
+      this->set_fuse_activation(true, mkldnn::algorithm::eltwise_clip_v2,
+                                0.0, 6.0);
     } else if (fused_ops == std::vector<string>{"Elu"}) {
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_elu, 1.0);
     } else if (fused_ops == std::vector<string>{"LeakyRelu"}) {
@@ -1389,8 +1393,8 @@ class MklFusedConvOp
                       "Fused Conv2D must have one extra argument: bias."));
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu6"}) {
       this->set_fuse_biasadd(true);
-      this->set_fuse_activation(true, dnnl::algorithm::eltwise_bounded_relu,
-                                6.0);
+      this->set_fuse_activation(true, mkldnn::algorithm::eltwise_clip_v2,
+                                0.0, 6.0);
       OP_REQUIRES(context, num_args == 1,
                   errors::InvalidArgument(
                       "Fused Conv2D must have one extra argument: bias."));
@@ -1469,8 +1473,8 @@ class MklFusedConvOp
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu6"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_add(true);
-      this->set_fuse_activation(true, dnnl::algorithm::eltwise_bounded_relu,
-                                6.0);
+      this->set_fuse_activation(true, mkldnn::algorithm::eltwise_clip_v2,
+                                0.0, 6.0);
       OP_REQUIRES(
           context, num_args == 2,
           errors::InvalidArgument(
@@ -1556,8 +1560,8 @@ class MklFusedDepthwiseConvOp
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_relu);
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu6"}) {
       this->set_fuse_biasadd(true);
-      this->set_fuse_activation(true, dnnl::algorithm::eltwise_bounded_relu,
-                                6.0);
+      this->set_fuse_activation(true, mkldnn::algorithm::eltwise_clip_v2,
+                                0.0, 6.0);
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Elu"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_elu, 1.0);
