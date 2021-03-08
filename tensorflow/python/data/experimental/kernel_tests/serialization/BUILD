@@ -413,26 +413,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "stats_dataset_serialization_test",
-    size = "medium",
-    srcs = ["stats_dataset_serialization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python/data/experimental/ops:stats_aggregator",
-        "//tensorflow/python/data/experimental/ops:stats_ops",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-    ],
-)
-
-tf_py_test(
     name = "take_while_dataset_serialization_test",
     size = "medium",
     srcs = ["take_while_dataset_serialization_test.py"],
