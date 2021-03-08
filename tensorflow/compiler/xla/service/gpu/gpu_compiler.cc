@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
+#include "tensorflow/compiler/xla/service/collectives_schedule_linearizer.h"
 #include "tensorflow/compiler/xla/service/comparison_expander.h"
 #include "tensorflow/compiler/xla/service/conditional_canonicalizer.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
@@ -52,6 +53,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/dynamic_padder.h"
+#include "tensorflow/compiler/xla/service/eigh_expander.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/gpu/alias_passthrough_params.h"
@@ -191,8 +193,10 @@ Status GpuCompiler::OptimizeHloModule(
     pipeline.AddPass<ZeroSizedHloElimination>();
 
     pipeline.AddPass<GpuScatterExpander>();
-    // TODO(phawkins): replace QR decompositions with calls to cuSOLVER.
+    // TODO(phawkins): replace QR and Eigh decompositions with calls to
+    // cuSOLVER.
     pipeline.AddPass<QrExpander>();
+    pipeline.AddPass<EighExpander>();
 
     pipeline.AddPass<DynamicIndexSplitter>();
 
@@ -373,6 +377,13 @@ Status GpuCompiler::OptimizeHloModule(
         /*combine_threshold_count=*/256);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
+
+  {
+    HloPassPipeline pipeline("collectives_schedule_linearizer");
+    pipeline.AddPass<CollectivesScheduleLinearizer>();
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
+
   {
     // Now we allow to replace any transposes outside of fusions with bitcasts.
     HloPassPipeline pipeline("final_algebraic_simplifier");

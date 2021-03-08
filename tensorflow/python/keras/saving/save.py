@@ -132,6 +132,11 @@ def save_model(model,
 
   filepath = path_to_string(filepath)
 
+  # If the user has not already called fit or built the underlying metrics, we
+  # should do that before saving to ensure the metric names have all
+  # appropriate name transformations applied.
+  saving_utils.try_build_compiled_arguments(model)
+
   if (save_format == 'h5' or
       (h5py is not None and isinstance(filepath, h5py.File)) or
       saving_utils.is_hdf5_filepath(filepath)):

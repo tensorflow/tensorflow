@@ -27,8 +27,8 @@ export TF_NEED_GCP=1
 export TF_NEED_HDFS=1
 export TF_NEED_S3=1
 export TF_NEED_CUDA=1
-export TF_CUDA_VERSION=11
-export TF_CUDNN_VERSION=8
+export TF_CUDA_VERSION=11.2
+export TF_CUDNN_VERSION=8.1
 export TF_NEED_TENSORRT=1
 export TENSORRT_INSTALL_PATH=/usr/local/tensorrt
 export CC_OPT_FLAGS='-mavx -march=native'
@@ -42,7 +42,7 @@ yes "" | "$PYTHON_BIN_PATH" configure.py
 ## Build GPU pip package
 ########################
 bazel build --config=opt \
-  --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda11:toolchain \
+  --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda11.2:toolchain \
   tensorflow/tools/pip_package:build_pip_package
 
 # Set TF nightly flag so we get the proper version of estimator

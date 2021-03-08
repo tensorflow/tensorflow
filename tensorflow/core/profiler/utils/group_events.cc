@@ -71,13 +71,6 @@ int64 GetEventType(bool is_host_plane, const EventNode& event) {
     // KernelExecute event types.
     return *kernel_event_type;
   } else {
-    absl::string_view name = event.GetEventVisitor().Name();
-    // Legacy event names appended with arguments.
-    if (absl::StartsWith(name, "BatchingSessionRun")) {
-      return HostEventType::kBatchingSessionRun;
-    } else if (absl::StartsWith(name, "ProcessBatch")) {
-      return HostEventType::kProcessBatch;
-    }
     return HostEventType::kUnknownHostEventType;
   }
 }

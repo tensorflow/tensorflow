@@ -349,9 +349,6 @@ cc_library(
         "//conditions:default": ["-DTFLITE_HAVE_CPUINFO"],
     }),
     deps = [
-        # TODO(b/168923364): Remove deprecated_backends after it is added to all
-        # necessary targets.
-        ":deprecated_backends",
         ":tflite_with_ruy",
         ":op_macros",
         # For now this unconditionally depends on both ruy and gemmlowp.
@@ -661,6 +658,7 @@ BUILTIN_KERNEL_DEPS = [
     "//tensorflow/lite:framework_lib",
     "//tensorflow/lite:minimal_logging",
     "//tensorflow/lite:string_util",
+    "//tensorflow/lite:util",
     "//tensorflow/lite/c:common",
     "//tensorflow/lite/kernels/internal:audio_utils",
     "//tensorflow/lite/kernels/internal:common",
@@ -743,6 +741,7 @@ cc_library(
         "random_uniform.cc",
     ],
     hdrs = ["custom_ops_register.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":kernel_util",
@@ -1085,6 +1084,27 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "conv_mem_test",
+    srcs = ["conv_mem_test.cc"],
+    data = [
+        "//tensorflow/lite:testdata/conv_huge_im2col.bin",
+    ],
+    tags = [
+        "tflite_not_portable_android",
+        "tflite_not_portable_ios",
+        "tflite_smoke_test",
+    ],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/profiling:memory_info",
+        "//tensorflow/lite/tools:logging",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

@@ -112,9 +112,9 @@ class DistributedIteratorTestBase(test.TestCase):
     if input_type == "dataset":
       if tf2.enabled():
         return input_lib.DistributedDataset(
-            dataset,
             input_workers,
             strategy,
+            dataset,
             num_replicas_in_sync=num_replicas_in_sync,
             input_context=input_context)
       else:

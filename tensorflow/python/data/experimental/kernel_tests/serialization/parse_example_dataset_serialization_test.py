@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the ParseExampleDataset serialization."""
+"""Tests for checkpointing the ParseExampleDataset."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -20,16 +20,15 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
-from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
-class ParseExampleDatasetSerializationTest(
+class ParseExampleDatasetCheckpointTest(
     reader_dataset_ops_test_base.MakeBatchedFeaturesDatasetTestBase,
-    dataset_serialization_test_base.DatasetSerializationTestBase,
-    parameterized.TestCase):
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
 
   def _parse_example_dataset(self, num_repeat, batch_size):
     return self.make_batch_feature(
@@ -40,7 +39,7 @@ class ParseExampleDatasetSerializationTest(
         parser_num_threads=10)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testSerializationCore(self):
+  def testCheckpointCore(self):
     num_repeat = 5
     batch_size = 2
     num_outputs = self._num_records * self._num_files * num_repeat // batch_size

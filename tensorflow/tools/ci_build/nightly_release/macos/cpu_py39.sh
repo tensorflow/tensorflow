@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-# Warning: as of Jan 20, 2020, MacOS(_EXTERNAL) images do not support Python3.9.
 set -e
 set -x
 
@@ -26,15 +24,7 @@ export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
 sudo xcode-select -s "${DEVELOPER_DIR}"
 
 # Set up py39 via pyenv and check it worked
-git clone --branch v1.2.21 https://github.com/pyenv/pyenv.git
-PYENV_ROOT="$(pwd)/pyenv"
-export PYENV_ROOT
-export PATH="$PYENV_ROOT/bin:$PATH"
-eval "$(pyenv init -)"
-PY_VERSION=3.9.1
-pyenv install -s "${PY_VERSION}"
-pyenv local "${PY_VERSION}"
-python --version
+setup_python_from_pyenv_macos
 
 # Set up and install MacOS pip dependencies.
 install_macos_pip_deps
@@ -46,7 +36,7 @@ export PATH=$PATH:/usr/local/bin
 
 # Run configure.
 export CC_OPT_FLAGS='-mavx'
-export PYTHON_BIN_PATH=$(which python3.9)
+export PYTHON_BIN_PATH=$(which python)
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
 # Build the pip package

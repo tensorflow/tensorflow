@@ -170,6 +170,21 @@ tf_python_pybind_extension(
 )
 
 tf_python_pybind_extension(
+    name = "_pywrap_transform_graph",
+    srcs = ["transform_graph_wrapper.cc"],
+    hdrs = ["//tensorflow/tools/graph_transforms:transform_graph_hdrs"],
+    module_name = "_pywrap_transform_graph",
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/python/lib/core:pybind11_status",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
+tf_python_pybind_extension(
     name = "_pywrap_checkpoint_reader",
     srcs = ["py_checkpoint_reader_wrapper.cc"],
     hdrs = [

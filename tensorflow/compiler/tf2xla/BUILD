@@ -485,6 +485,7 @@ cc_library(
         ":xla_resource",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client",
+        "//tensorflow/compiler/xla/client:value_inference",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

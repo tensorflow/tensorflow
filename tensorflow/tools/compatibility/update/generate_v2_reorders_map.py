@@ -21,18 +21,19 @@ To update reorders_v2.py, run:
 """
 # pylint: enable=line-too-long
 
+from absl import app
 import tensorflow as tf
 
-# This import is needed so that TensorFlow python modules are in sys.modules.
 from tensorflow import python as tf_python  # pylint: disable=unused-import
 from tensorflow.python.lib.io import file_io
-from tensorflow.python.platform import app
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_export
 from tensorflow.python.util import tf_inspect
 from tensorflow.tools.common import public_api
 from tensorflow.tools.common import traverse
 from tensorflow.tools.compatibility import tf_upgrade_v2
+
+# This import is needed so that TensorFlow python modules are in sys.modules.
 
 
 _OUTPUT_FILE_PATH = 'third_party/tensorflow/tools/compatibility/reorders_v2.py'

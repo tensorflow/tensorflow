@@ -19,13 +19,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/tpu/kernels/tpu_ordinal_selector.h"
 
 namespace tensorflow {
 namespace {
-
-// A reserved ID for deferred core selection. Intentionally set at a number
-// that is more than the number of cores available in a future system.
-constexpr int32 kDeferredCoreSelectionReserved = -8193;
 
 // TPUOrdinalSelectorOp is a no-op for backward compatibility. The core
 // selection algorithm happens inside TPUPartitionedCall.
@@ -37,7 +34,7 @@ class TPUOrdinalSelectorOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     Tensor output(DT_INT32, TensorShape({}));
-    output.flat<int>().setValues({kDeferredCoreSelectionReserved});
+    output.flat<int>().setValues({tpu::kDeferredCoreSelectionReserved});
     ctx->set_output(0, output);
     ctx->SetStatus(Status::OK());
   }
