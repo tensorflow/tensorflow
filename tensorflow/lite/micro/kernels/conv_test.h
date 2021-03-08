@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_MICRO_KERNELS_CONV_H_
-#define TENSORFLOW_LITE_MICRO_KERNELS_CONV_H_
+#ifndef TENSORFLOW_LITE_MICRO_KERNELS_CONV_TEST_H_
+#define TENSORFLOW_LITE_MICRO_KERNELS_CONV_TEST_H_
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
