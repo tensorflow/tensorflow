@@ -158,8 +158,11 @@ tensorflow::Status InitGraphPlugin(void* dso_handle) {
 
   // Step 1: Load symbol for `TF_InitPlugin`
   void* dso_symbol;
-  TF_RETURN_IF_ERROR(
-      env->GetSymbolFromLibrary(dso_handle, "TF_InitGraph", &dso_symbol));
+  Status s = env->GetSymbolFromLibrary(dso_handle, "TF_InitGraph", &dso_symbol);
+  if (errors::IsNotFound(s)) {
+    // It is allowed if pluggable graph optimizer is not registered.
+    return Status::OK();
+  }
 
   // Step 2: Call `TF_InitPlugin`
   auto init_fn = reinterpret_cast<TFInitGraphPluginFn>(dso_symbol);

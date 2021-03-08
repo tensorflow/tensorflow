@@ -165,10 +165,26 @@ bool MemoryOptimizerEnabled(
   return mem_opt_type != RewriterConfig::NO_MEM_OPT;
 }
 
+Status GetGraphDevice(const GraphDef& g_def, std::set<std::string>& devices) {
+  for (auto node : g_def.node()) {
+    DeviceNameUtils::ParsedName parsed_name;
+    if (!DeviceNameUtils::ParseFullName(node.device(), &parsed_name)) {
+      return errors::InvalidArgument("Unable to parse ", node.device(),
+                                     " as a device name");
+    }
+    devices.insert(parsed_name.type);
+  }
+  return Status::OK();
+}
+
 }  // namespace
 
-#define MK_OPT(NAME, VALUE) \
-  if (optimizer == NAME) return std::unique_ptr<GraphOptimizer>(VALUE)
+#define MK_OPT(NAME, CONFIG, VALUE)                                     \
+  if (optimizer == NAME) {                                              \
+    if (plugin_configs.toggle_config[#CONFIG] != RewriterConfig::OFF) { \
+      return std::unique_ptr<GraphOptimizer>(VALUE);                    \
+    }                                                                   \
+  }
 
 bool MetaOptimizer::LowerControlFlow() const {
   if (config_proto_.experimental().executor_type() ==
@@ -181,37 +197,46 @@ bool MetaOptimizer::LowerControlFlow() const {
 }
 
 std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
-    const string& optimizer) const {
-  MK_OPT("pruning", new ModelPruner());
-  MK_OPT("function",
+    const string& optimizer, const std::set<string>& device_types) const {
+  ConfigList plugin_configs = PluginGraphOptimizerRegistry::GetPluginConfigs(
+      cfg_.use_plugin_optimizers() != RewriterConfig::OFF, device_types);
+  if (optimizer == "pruning" && !plugin_configs.disable_model_pruning)
+    return std::unique_ptr<GraphOptimizer>(new ModelPruner());
+  MK_OPT("function", function_optimization,
          new FunctionOptimizer(cfg_.function_optimization(),
                                /*lower_control_flow=*/LowerControlFlow()));
-  MK_OPT("constfold",
+  MK_OPT("constfold", constant_folding,
          new ConstantFolding(
              cpu_device_,
              cfg_.experimental_disable_compressed_tensor_optimization(),
              !cfg_.experimental_disable_folding_quantization_emulation()));
-  MK_OPT("shape", new ShapeOptimizer());
-  MK_OPT("remap", new Remapper(cfg_.remapping()));
-  MK_OPT("layout", new GenericLayoutOptimizer(
-                       /*optimization level*/ cfg_.layout_optimizer(),
-                       /*CPU layout conversion*/ cfg_.cpu_layout_conversion()));
-  MK_OPT("auto_mixed_precision",
+  MK_OPT("shape", shape_optimization, new ShapeOptimizer());
+  MK_OPT("remap", remapping, new Remapper(cfg_.remapping()));
+  MK_OPT("layout", layout_optimizer,
+         new GenericLayoutOptimizer(
+             /*optimization level*/ cfg_.layout_optimizer(),
+             /*CPU layout conversion*/ cfg_.cpu_layout_conversion()));
+  MK_OPT("auto_mixed_precision", auto_mixed_precision,
          new AutoMixedPrecision(AutoMixedPrecisionMode::CUDA));
-  MK_OPT("auto_mixed_precision_mkl",
+  MK_OPT("auto_mixed_precision_mkl", auto_mixed_precision_mkl,
          new AutoMixedPrecision(AutoMixedPrecisionMode::MKL));
-  MK_OPT("memory", new MemoryOptimizer(RewriterConfig::MANUAL));
-  MK_OPT("common_subgraph_elimination",
+  MK_OPT("memory", memory_optimization,
+         new MemoryOptimizer(RewriterConfig::MANUAL));
+  MK_OPT("common_subgraph_elimination", common_subgraph_elimination,
          new CommonSubgraphElimination(cfg_.common_subgraph_elimination()));
-  MK_OPT("arithmetic", new ArithmeticOptimizer(cfg_.arithmetic_optimization()));
-  MK_OPT("autoparallel", new AutoParallel(cfg_.auto_parallel().num_replicas()));
-  MK_OPT("loop", new LoopOptimizer(cfg_.loop_optimization(), cpu_device_));
-  MK_OPT("dependency", new DependencyOptimizer(cfg_.dependency_optimization()));
-  MK_OPT("debug_stripper", new DebugStripper());
-  MK_OPT("scoped_allocator",
+  MK_OPT("arithmetic", arithmetic_optimization,
+         new ArithmeticOptimizer(cfg_.arithmetic_optimization()));
+  MK_OPT("autoparallel", auto_parallel,
+         new AutoParallel(cfg_.auto_parallel().num_replicas()));
+  MK_OPT("loop", loop_optimization,
+         new LoopOptimizer(cfg_.loop_optimization(), cpu_device_));
+  MK_OPT("dependency", dependency_optimization,
+         new DependencyOptimizer(cfg_.dependency_optimization()));
+  MK_OPT("debug_stripper", debug_stripper, new DebugStripper());
+  MK_OPT("scoped_allocator", scoped_allocator_optimization,
          new ScopedAllocatorOptimizer(cfg_.scoped_allocator_optimization(),
                                       cfg_.scoped_allocator_opts()));
-  MK_OPT("pin_to_host",
+  MK_OPT("pin_to_host", pin_to_host_optimization,
          new PinToHostOptimizer(cfg_.pin_to_host_optimization()));
 
   return std::unique_ptr<GraphOptimizer>();
@@ -228,72 +253,104 @@ MetaOptimizer::MetaOptimizer(DeviceBase* cpu_device, const ConfigProto& cfg)
 }
 
 Status MetaOptimizer::InitializeOptimizers(
-    std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
+    std::vector<std::unique_ptr<GraphOptimizer>>* optimizers,
+    const std::set<string>& device_types) const {
   if (cfg_.disable_meta_optimizer()) {
     return Status::OK();
   }
-  if (!cfg_.disable_model_pruning()) {
+
+  ConfigList plugin_configs = PluginGraphOptimizerRegistry::GetPluginConfigs(
+      cfg_.use_plugin_optimizers() != RewriterConfig::OFF, device_types);
+  if (!cfg_.disable_model_pruning() && !plugin_configs.disable_model_pruning) {
     optimizers->push_back(MakeUnique<ModelPruner>());
   }
-  if (cfg_.implementation_selector() != RewriterConfig::OFF) {
+  if (cfg_.implementation_selector() != RewriterConfig::OFF &&
+      plugin_configs.toggle_config["implementation_selector"] !=
+          RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<ImplementationSelector>());
   }
-  if (cfg_.function_optimization() != RewriterConfig::OFF) {
+  if (cfg_.function_optimization() != RewriterConfig::OFF &&
+      plugin_configs.toggle_config["function_optimization"] !=
+          RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<FunctionOptimizer>(
         cfg_.function_optimization(),
         /*lower_control_flow=*/LowerControlFlow()));
   }
   if (cfg_.common_subgraph_elimination() != RewriterConfig::OFF &&
-      cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
+      cfg_.arithmetic_optimization() != RewriterConfig::OFF &&
+      plugin_configs.toggle_config["common_subgraph_elimination"] !=
+          RewriterConfig::OFF &&
+      plugin_configs.toggle_config["arithmetic_optimization"] !=
+          RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<CommonSubgraphElimination>(
         cfg_.common_subgraph_elimination()));
   }
-  if (cfg_.debug_stripper() == RewriterConfig::ON) {
+  if (cfg_.debug_stripper() == RewriterConfig::ON &&
+      plugin_configs.toggle_config["debug_stripper"] == RewriterConfig::ON) {
     optimizers->push_back(MakeUnique<DebugStripper>());
   }
-  if (cfg_.constant_folding() != RewriterConfig::OFF) {
+  if (cfg_.constant_folding() != RewriterConfig::OFF &&
+      plugin_configs.toggle_config["constant_folding"] != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<ConstantFolding>(
         cfg_.constant_folding(), cpu_device_,
         cfg_.experimental_disable_compressed_tensor_optimization(),
         !cfg_.experimental_disable_folding_quantization_emulation()));
   }
-  if (cfg_.shape_optimization() != RewriterConfig::OFF) {
+  if (cfg_.shape_optimization() != RewriterConfig::OFF &&
+      plugin_configs.toggle_config["shape_optimization"] !=
+          RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<ShapeOptimizer>());
   }
-  if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision())) {
+  if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision()) &&
+      AutoMixedPrecisionEnabled(
+          plugin_configs.toggle_config["auto_mixed_precision"])) {
     optimizers->push_back(
         MakeUnique<AutoMixedPrecision>(AutoMixedPrecisionMode::CUDA));
   }
-  if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_mkl())) {
+  if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_mkl()) &&
+      AutoMixedPrecisionEnabled(
+          plugin_configs.toggle_config["auto_mixed_precision_mkl"])) {
     optimizers->push_back(
         MakeUnique<AutoMixedPrecision>(AutoMixedPrecisionMode::MKL));
   }
-  if (cfg_.pin_to_host_optimization() == RewriterConfig::ON) {
+  if (cfg_.pin_to_host_optimization() == RewriterConfig::ON &&
+      plugin_configs.toggle_config["pin_to_host_optimization"] ==
+          RewriterConfig::ON) {
     optimizers->push_back(MakeUnique<PinToHostOptimizer>());
   }
-  if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
+  if (cfg_.arithmetic_optimization() != RewriterConfig::OFF &&
+      plugin_configs.toggle_config["arithmetic_optimization"] !=
+          RewriterConfig::OFF) {
     optimizers->push_back(
         MakeUnique<ArithmeticOptimizer>(cfg_.arithmetic_optimization()));
   }
-  if (cfg_.layout_optimizer() != RewriterConfig::OFF) {
+  if (cfg_.layout_optimizer() != RewriterConfig::OFF &&
+      plugin_configs.toggle_config["layout_optimizer"] != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<GenericLayoutOptimizer>(
         /*optimization level*/ cfg_.layout_optimizer(),
         /*CPU layout conversion*/ cfg_.cpu_layout_conversion()));
   }
-  if (cfg_.remapping() != RewriterConfig::OFF) {
+  if (cfg_.remapping() != RewriterConfig::OFF &&
+      plugin_configs.toggle_config["remapping"] != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
   }
-  if (cfg_.loop_optimization() != RewriterConfig::OFF) {
+  if (cfg_.loop_optimization() != RewriterConfig::OFF &&
+      plugin_configs.toggle_config["loop_optimization"] !=
+          RewriterConfig::OFF) {
     optimizers->push_back(
         MakeUnique<LoopOptimizer>(cfg_.loop_optimization(), cpu_device_));
   }
-  if (cfg_.dependency_optimization() != RewriterConfig::OFF) {
+  if (cfg_.dependency_optimization() != RewriterConfig::OFF &&
+      plugin_configs.toggle_config["dependency_optimization"] !=
+          RewriterConfig::OFF) {
     optimizers->push_back(
         MakeUnique<DependencyOptimizer>(cfg_.dependency_optimization()));
   }
   auto global_jit_level =
       config_proto_.graph_options().optimizer_options().global_jit_level();
-  if (MemoryOptimizerEnabled(cfg_.memory_optimization(), global_jit_level)) {
+  if (MemoryOptimizerEnabled(cfg_.memory_optimization(), global_jit_level) &&
+      plugin_configs.toggle_config["memory_optimization"] !=
+          RewriterConfig::OFF) {
     if (cfg_.memory_optimizer_target_node_name_scope().empty()) {
       optimizers->push_back(
           // Use the default target node name prefix "gradients/"
@@ -304,22 +361,26 @@ Status MetaOptimizer::InitializeOptimizers(
           cfg_.memory_optimizer_target_node_name_scope()));
     }
   }
-  if (cfg_.auto_parallel().enable()) {
+  if (cfg_.auto_parallel().enable() &&
+      plugin_configs.toggle_config["auto_parallel"] != RewriterConfig::OFF) {
     optimizers->push_back(
         MakeUnique<AutoParallel>(cfg_.auto_parallel().num_replicas()));
   }
-  if (cfg_.scoped_allocator_optimization()) {
+  if (cfg_.scoped_allocator_optimization() &&
+      plugin_configs.toggle_config["scoped_allocator_optimization"]) {
     optimizers->push_back(MakeUnique<ScopedAllocatorOptimizer>(
         cfg_.scoped_allocator_optimization(), cfg_.scoped_allocator_opts()));
   }
-  return InitializeCustomGraphOptimizers(std::set<string>(), optimizers);
+  return InitializeCustomGraphOptimizers(std::set<string>(), optimizers,
+                                         device_types);
 }
 
 Status MetaOptimizer::InitializeOptimizersByName(
-    std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
+    std::vector<std::unique_ptr<GraphOptimizer>>* optimizers,
+    const std::set<string>& device_types) const {
   std::set<string> initialized_custom_optimizers;
   for (const string& optimizer_name : cfg_.optimizers()) {
-    auto optimizer = MakeNewOptimizer(optimizer_name);
+    auto optimizer = MakeNewOptimizer(optimizer_name, device_types);
     if (optimizer) {
       VLOG(2) << "Registered default graph optimizer: " << optimizer_name;
       optimizers->push_back(std::move(optimizer));
@@ -340,12 +401,13 @@ Status MetaOptimizer::InitializeOptimizersByName(
     }
   }
   return InitializeCustomGraphOptimizers(initialized_custom_optimizers,
-                                         optimizers);
+                                         optimizers, device_types);
 }
 
 Status MetaOptimizer::InitializeCustomGraphOptimizers(
     const std::set<string>& pre_initialized_optimizers,
-    std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
+    std::vector<std::unique_ptr<GraphOptimizer>>* optimizers,
+    const std::set<string>& device_types) const {
   for (const auto& optimizer_config : cfg_.custom_optimizers()) {
     if (pre_initialized_optimizers.find(optimizer_config.name()) !=
         pre_initialized_optimizers.end()) {
@@ -365,7 +427,7 @@ Status MetaOptimizer::InitializeCustomGraphOptimizers(
       // If there are no custom optimizers with given name, try to initialize a
       // default optimizer. This way, custom configurable optimizers can be
       // mixed with default optimizers in any order.
-      auto optimizer = MakeNewOptimizer(optimizer_config.name());
+      auto optimizer = MakeNewOptimizer(optimizer_config.name(), device_types);
       if (optimizer) {
         VLOG(2) << "Registered default graph optimizer: "
                 << optimizer_config.name();
@@ -375,6 +437,18 @@ Status MetaOptimizer::InitializeCustomGraphOptimizers(
       VLOG(2) << "Can't register an optimizer by name: "
               << optimizer_config.name();
     }
+  }
+  return InitializePluginGraphOptimizers(optimizers, device_types);
+}
+
+Status MetaOptimizer::InitializePluginGraphOptimizers(
+    std::vector<std::unique_ptr<GraphOptimizer>>* optimizers,
+    const std::set<string>& device_types) const {
+  if (cfg_.use_plugin_optimizers() == RewriterConfig::OFF) return Status::OK();
+  auto plugin_optimizers =
+      PluginGraphOptimizerRegistry::CreateOptimizers(device_types);
+  for (auto& plugin_optimizer : plugin_optimizers) {
+    optimizers->push_back(std::move(plugin_optimizer));
   }
   return Status::OK();
 }
@@ -403,6 +477,148 @@ void MetaOptimizer::InitializeVerifiers(
   }
 }
 
+void MetaOptimizer::PrintUserAndPluginConfigs(
+    const std::set<string>& device_types) const {
+  if (cfg_.use_plugin_optimizers() == RewriterConfig::OFF) return;
+  ConfigList plugin_cfg = PluginGraphOptimizerRegistry::GetPluginConfigs(
+      cfg_.use_plugin_optimizers() != RewriterConfig::OFF, device_types);
+  PluginGraphOptimizerRegistry::PrintPluginConfigsIfConflict(device_types);
+
+  ConfigList user_cfg;
+  // Print user's and plugin's config.
+  if (cfg_.optimizers().empty()) {
+    if (cfg_.disable_meta_optimizer()) {
+      return;
+    }
+    user_cfg.disable_model_pruning = cfg_.disable_model_pruning();
+    user_cfg.toggle_config["implementation_selector"] =
+        cfg_.implementation_selector();
+    user_cfg.toggle_config["function_optimization"] =
+        cfg_.function_optimization();
+    user_cfg.toggle_config["common_subgraph_elimination"] =
+        cfg_.common_subgraph_elimination();
+    user_cfg.toggle_config["arithmetic_optimization"] =
+        cfg_.arithmetic_optimization();
+    user_cfg.toggle_config["debug_stripper"] = cfg_.debug_stripper();
+    user_cfg.toggle_config["constant_folding"] = cfg_.constant_folding();
+    user_cfg.toggle_config["shape_optimization"] = cfg_.shape_optimization();
+    user_cfg.toggle_config["auto_mixed_precision"] =
+        AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision())
+            ? RewriterConfig::ON
+            : RewriterConfig::OFF;
+    user_cfg.toggle_config["auto_mixed_precision_mkl"] =
+        AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_mkl())
+            ? RewriterConfig::ON
+            : RewriterConfig::OFF;
+    user_cfg.toggle_config["pin_to_host_optimization"] =
+        cfg_.pin_to_host_optimization();
+    user_cfg.toggle_config["layout_optimizer"] = cfg_.layout_optimizer();
+    user_cfg.toggle_config["remapping"] = cfg_.remapping();
+    user_cfg.toggle_config["loop_optimization"] = cfg_.loop_optimization();
+    user_cfg.toggle_config["dependency_optimization"] =
+        cfg_.dependency_optimization();
+    user_cfg.toggle_config["memory_optimization"] =
+        MemoryOptimizerEnabled(cfg_.memory_optimization(),
+                               config_proto_.graph_options()
+                                   .optimizer_options()
+                                   .global_jit_level())
+            ? RewriterConfig::ON
+            : RewriterConfig::OFF;
+    user_cfg.toggle_config["auto_parallel"] = cfg_.auto_parallel().enable()
+                                                  ? RewriterConfig::ON
+                                                  : RewriterConfig::OFF;
+    user_cfg.toggle_config["scoped_allocator_optimization"] =
+        cfg_.scoped_allocator_optimization();
+  } else {
+    for (const string& optimizer_name : cfg_.optimizers()) {
+      if (optimizer_name == "pruning") user_cfg.disable_model_pruning = true;
+      if (optimizer_name == "implementation_selector")
+        user_cfg.toggle_config["implementation_selector"] = RewriterConfig::ON;
+      if (optimizer_name == "function")
+        user_cfg.toggle_config["function_optimization"] = RewriterConfig::ON;
+      if (optimizer_name == "common_subgraph_elimination")
+        user_cfg.toggle_config["common_subgraph_elimination"] =
+            RewriterConfig::ON;
+      if (optimizer_name == "arithmetic")
+        user_cfg.toggle_config["arithmetic_optimization"] = RewriterConfig::ON;
+      if (optimizer_name == "debug_stripper")
+        user_cfg.toggle_config["debug_stripper"] = RewriterConfig::ON;
+      if (optimizer_name == "constfold")
+        user_cfg.toggle_config["constant_folding"] = RewriterConfig::ON;
+      if (optimizer_name == "shape")
+        user_cfg.toggle_config["shape_optimization"] = RewriterConfig::ON;
+      if (optimizer_name == "auto_mixed_precision")
+        user_cfg.toggle_config["auto_mixed_precision"] = RewriterConfig::ON;
+      if (optimizer_name == "auto_mixed_precision_mkl")
+        user_cfg.toggle_config["auto_mixed_precision_mkl"] = RewriterConfig::ON;
+      if (optimizer_name == "pin_to_host")
+        user_cfg.toggle_config["pin_to_host_optimization"] = RewriterConfig::ON;
+      if (optimizer_name == "layout")
+        user_cfg.toggle_config["layout_optimizer"] = RewriterConfig::ON;
+      if (optimizer_name == "remap")
+        user_cfg.toggle_config["remapping"] = RewriterConfig::ON;
+      if (optimizer_name == "loop")
+        user_cfg.toggle_config["loop_optimization"] = RewriterConfig::ON;
+      if (optimizer_name == "dependency")
+        user_cfg.toggle_config["dependency_optimization"] = RewriterConfig::ON;
+      if (optimizer_name == "memory")
+        user_cfg.toggle_config["memory_optimization"] = RewriterConfig::ON;
+      if (optimizer_name == "autoparallel")
+        user_cfg.toggle_config["auto_parallel"] = RewriterConfig::ON;
+      if (optimizer_name == "scoped_allocator")
+        user_cfg.toggle_config["scoped_allocator_optimization"] =
+            RewriterConfig::ON;
+    }
+  }
+
+  // Print logs only when plugin config has conflict with user config.
+  if (!PluginGraphOptimizerRegistry::IsConfigsConflict(user_cfg, plugin_cfg))
+    return;
+
+  ConfigList final_cfg = user_cfg;
+  // If plugin turns on `disable_model_pruning`, then `disable_model_pruning`
+  // should be true;
+  if (plugin_cfg.disable_model_pruning == true)
+    final_cfg.disable_model_pruning = true;
+  // If plugin turns off a certain optimizer, then the optimizer should be
+  // turned off;
+  for (auto& pair : plugin_cfg.toggle_config) {
+    if (plugin_cfg.toggle_config[pair.first] == RewriterConfig::OFF)
+      final_cfg.toggle_config[pair.first] = RewriterConfig::OFF;
+  }
+
+  string logs =
+      "\nConfig of optimizers\t\tUser's config\tPlugin's config\tFinal "
+      "config(User & Plugin)\n";
+  strings::StrAppend(&logs, "disable_model_pruning\t\t",
+                     user_cfg.disable_model_pruning, "\t\t",
+                     plugin_cfg.disable_model_pruning, "\t\t",
+                     final_cfg.disable_model_pruning, "\n");
+  for (auto& pair : user_cfg.toggle_config) {
+    if (pair.first == "debug_stripper" ||
+        pair.first == "auto_mixed_precision" ||
+        pair.first == "auto_mixed_precision_mkl" ||
+        pair.first == "pin_to_host_optimization" ||
+        pair.first == "scoped_allocator_optimization") {
+      // These optimziers are turned off by default
+      strings::StrAppend(
+          &logs, pair.first, string(32 - pair.first.size(), ' '),
+          (pair.second == RewriterConfig::ON), "\t\t",
+          (plugin_cfg.toggle_config[pair.first] == RewriterConfig::ON), "\t\t",
+          (final_cfg.toggle_config[pair.first] == RewriterConfig::ON), "\n");
+    } else {
+      // These optimziers are turned on by default
+      strings::StrAppend(
+          &logs, pair.first, string(32 - pair.first.size(), ' '),
+          (pair.second != RewriterConfig::OFF), "\t\t",
+          (plugin_cfg.toggle_config[pair.first] != RewriterConfig::OFF), "\t\t",
+          (final_cfg.toggle_config[pair.first] != RewriterConfig::OFF), "\n");
+    }
+  }
+  LOG(WARNING) << "User's config has been changed based on plugin's config.";
+  LOG(WARNING) << logs;
+}
+
 Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
                                     GraphDef* optimized_graph) {
   int min_graph_nodes = cfg_.min_graph_nodes() == 0 ? kDefaultMinGraphNodes
@@ -417,11 +633,14 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
   const uint64 start_us = Env::Default()->NowMicros();
 
   std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
+  std::set<std::string> device_types;
+  TF_RETURN_IF_ERROR(GetGraphDevice(item.graph, device_types));
   if (cfg_.optimizers().empty()) {
-    TF_RETURN_IF_ERROR(InitializeOptimizers(&optimizers));
+    TF_RETURN_IF_ERROR(InitializeOptimizers(&optimizers, device_types));
   } else {
-    TF_RETURN_IF_ERROR(InitializeOptimizersByName(&optimizers));
+    TF_RETURN_IF_ERROR(InitializeOptimizersByName(&optimizers, device_types));
   }
+  PrintUserAndPluginConfigs(device_types);
 
   // Initialize the configured verifiers.
   std::vector<std::unique_ptr<GraphVerifier>> inter_optimizer_verifiers;
