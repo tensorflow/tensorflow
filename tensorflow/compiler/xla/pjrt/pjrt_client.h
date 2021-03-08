@@ -268,6 +268,11 @@ class PjRtClient {
   virtual StatusOr<ChannelHandle> CreateChannelHandle() = 0;
   virtual StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() = 0;
   virtual StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() = 0;
+
+  // TODO(zhangqiaorjc): Experimental API to be removed.
+  // Defragment device memory.
+  virtual Status Defragment(absl::Span<PjRtBuffer* const> buffers,
+                            absl::Span<PjRtExecutable* const> executables) = 0;
 };
 
 // Holds a reference from Python to a tuple of device buffers. A PjRtBuffer

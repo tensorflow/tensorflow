@@ -111,6 +111,9 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
 
   std::vector<ClientAndPtr<PyBuffer>> LiveBuffers();
 
+  // TODO(zhangqiaorjc): Remove when we have transparent defragmentation.
+  Status Defragment();
+
   StatusOr<std::vector<std::vector<ClientAndPtr<PjRtDevice>>>>
   GetDefaultDeviceAssignment(int num_replicas, int num_partitions);
 

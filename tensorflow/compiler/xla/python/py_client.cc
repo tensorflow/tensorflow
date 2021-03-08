@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
@@ -64,6 +65,21 @@ std::vector<ClientAndPtr<PyBuffer>> PyClient::LiveBuffers() {
     }
   }
   return buffers;
+}
+
+Status PyClient::Defragment() {
+  CHECK(PyGILState_Check());
+  std::vector<PjRtBuffer*> buffers;
+  for (PyBuffer* buffer = buffers_; buffer; buffer = buffer->next_) {
+    if (!buffer->is_deleted()) {
+      buffers.push_back(buffer->buffer());
+    }
+  }
+  std::vector<PjRtExecutable*> execs;
+  for (PyExecutable* exec = executables_; exec; exec = exec->next_) {
+    execs.push_back(exec->mutable_pjrt_executable());
+  }
+  return pjrt_client_->Defragment(buffers, execs);
 }
 
 StatusOr<std::vector<std::vector<ClientAndPtr<PjRtDevice>>>>
