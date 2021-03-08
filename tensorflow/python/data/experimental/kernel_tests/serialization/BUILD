@@ -467,23 +467,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "unique_dataset_serialization_test",
-    size = "small",
-    srcs = ["unique_dataset_serialization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/data/experimental/ops:unique",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-    ],
-)
-
-tf_py_test(
     name = "zip_dataset_serialization_test",
     size = "medium",
     srcs = ["zip_dataset_serialization_test.py"],
