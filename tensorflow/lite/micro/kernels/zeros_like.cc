@@ -58,6 +58,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt32:
       resetZeros(tflite::micro::GetTensorData<int32_t>(output), flat_size);
       break;
+    case kTfLiteInt8:
+      resetZeros(tflite::micro::GetTensorData<int8_t>(output), flat_size);
+      break;
     case kTfLiteFloat32:
       resetZeros(tflite::micro::GetTensorData<float>(output), flat_size);
       break;

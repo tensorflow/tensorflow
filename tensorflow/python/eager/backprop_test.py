@@ -157,6 +157,21 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose([2., 3., 3., 3., 3.], f(constant_op.constant(10.)))
 
+  def testResourceHandleOutputWithoutHandleData(self):
+    # This is a bit of a weird thing to test since we try to maintain handle
+    # data. But users do create their own resources, and those often do not have
+    # any handle data.
+    h = resource_variable_ops.var_handle_op(
+        shape=[], dtype=dtypes.float32, shared_name='abc')
+
+    with backprop.GradientTape() as tape:
+      x = constant_op.constant(1.)
+      tape.watch(x)
+      tape.watch(h)
+      y, h = array_ops.identity_n([x, h])
+
+    self.assertAllClose(1., tape.gradient(y, x))
+
   def testGradientInsideLoop(self):
     with ops.Graph().as_default():
       v = resource_variable_ops.ResourceVariable(1.0)

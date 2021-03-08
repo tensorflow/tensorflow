@@ -6,9 +6,19 @@ package(
 )
 
 cc_binary(
-    name = "generate_flexbuffers_data",
+    name = "generate_detection_postprocess_flexbuffers_data",
     srcs = [
-        "generate_flexbuffers_data.cc",
+        "generate_detection_postprocess_flexbuffers_data.cc",
+    ],
+    deps = [
+        "@flatbuffers",
+    ],
+)
+
+cc_binary(
+    name = "generate_circular_buffer_flexbuffers_data",
+    srcs = [
+        "generate_circular_buffer_flexbuffers_data.cc",
     ],
     deps = [
         "@flatbuffers",
@@ -17,5 +27,8 @@ cc_binary(
 
 build_test(
     name = "build_test",
-    targets = [":generate_flexbuffers_data"],
+    targets = [
+        ":generate_circular_buffer_flexbuffers_data",
+        ":generate_detection_postprocess_flexbuffers_data",
+    ],
 )

@@ -276,6 +276,16 @@ func @fourdim_space_to_batch_nd(%input: tensor<3x5x7x10xf32>, %block_shape: tens
   return %0 : tensor<?x?x?x10xf32>
 }
 
+// Verify SpaceToBatchND with input tensor of element type f16. This test case is derived from 'fourdim_space_to_batch_nd'. It checks the output
+// tensor shape and element type in a few lines in the resulting lowering.
+// CHECK-LABEL: space_to_batch_nd_element_type_f16
+func @space_to_batch_nd_element_type_f16(%input: tensor<3x5x7x10xf16>, %block_shape: tensor<2xi64>, %paddings: tensor<2x2xi64>) -> tensor<?x?x?x10xf16> {
+  // CHECK-DAG: "tf.PadV2"(%arg0, [[FULL_PADDINGS]], [[PAD_DEFAULT]]) {{.*}} -> tensor<3x?x?x10xf16>
+  // CHECK-DAG: return {{.*}}: tensor<?x?x?x10xf16>
+  %0 = "tf.SpaceToBatchND"(%input, %block_shape, %paddings) : (tensor<3x5x7x10xf16>, tensor<2xi64>, tensor<2x2xi64>) -> tensor<?x?x?x10xf16>
+  return %0 : tensor<?x?x?x10xf16>
+}
+
 // Verify the result shape for the tf.PadV2 op.
 // CHECK-LABEL: const_paddings_space_to_batch_nd
 func @const_paddings_space_to_batch_nd(%arg0: tensor<1x8x2xf32>) -> (tensor<3x5x2xf32>) {

@@ -696,7 +696,7 @@ class KerasObjectLoader(object):
       model.__init__(inputs, outputs, name=config['name'])
       functional_lib.connect_ancillary_layers(model, created_layers)
 
-    # Set model dtype and trainable status.
+    # Set model dtype.
     _set_network_attributes_from_metadata(model)
 
     # Unblock models that are dependent on this model.
@@ -810,6 +810,8 @@ def _finalize_saved_model_layers(layers):
 
       if hasattr(_get_keras_attr(layer), 'call_and_return_conditional_losses'):
         call_fn = _get_keras_attr(layer).call_and_return_conditional_losses
+        if not call_fn.concrete_functions:
+          continue
         if call_fn.input_signature is None:
           inputs = infer_inputs_from_restored_call_function(call_fn)
         else:
@@ -1107,8 +1109,8 @@ def infer_inputs_from_restored_call_function(fn):
   """Returns TensorSpec of inputs from a restored call function.
 
   Args:
-    fn: Restored layer call function. It is assumed that the inputs are entirely
-      in the first argument.
+    fn: Restored layer call function. It is assumed that `fn` has at least
+        one concrete function and that the inputs are in the first argument.
 
   Returns:
     TensorSpec of call function inputs.
@@ -1161,7 +1163,7 @@ def _set_network_attributes_from_metadata(revived_obj):
     metadata = revived_obj._serialized_attributes['metadata']
     if metadata.get('dtype') is not None:
       revived_obj._set_dtype_policy(metadata['dtype'])
-    revived_obj.trainable = metadata['trainable']
+    revived_obj._trainable = metadata['trainable']
     # pylint:enable=protected-access
 
 

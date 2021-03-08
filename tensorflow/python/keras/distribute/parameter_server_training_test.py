@@ -31,6 +31,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
+from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
 from tensorflow.python.eager import backprop
@@ -71,10 +72,11 @@ def make_cluster(num_workers, num_ps):
   return SimpleClusterResolver(ClusterSpec(cluster_def), rpc_layer="grpc")
 
 
-def make_coordinator(num_workers, num_ps):
+def make_coordinator(num_workers, num_ps, variable_partitioner=None):
   return coordinator_lib.ClusterCoordinator(
       parameter_server_strategy_v2.ParameterServerStrategyV2(
-          make_cluster(num_workers, num_ps)))
+          make_cluster(num_workers, num_ps),
+          variable_partitioner=variable_partitioner))
 
 
 # TODO(yuefengz): move this to keras/integration_tests.
@@ -243,7 +245,10 @@ class KPLTest(test.TestCase, parameterized.TestCase):
 
 class ModelFitTest(test.TestCase, parameterized.TestCase):
 
-  def _model_compile(self, steps_per_execution=1, run_eagerly=False):
+  def _model_compile(self,
+                     steps_per_execution=1,
+                     run_eagerly=False,
+                     with_normalization_layer=False):
 
     class ResultAssertingCallback(callbacks_lib.Callback):
 
@@ -260,9 +265,15 @@ class ModelFitTest(test.TestCase, parameterized.TestCase):
           raise RuntimeError("loss is supposed to be in the logs and float.")
 
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
-        make_cluster(3, 2))
+        make_cluster(3, 2),
+        variable_partitioner=sharded_variable.FixedShardsPartitioner(2))
     with strategy.scope():
       model = sequential.Sequential([core_layers.Dense(10)])
+      if with_normalization_layer:
+        norm = keras.layers.BatchNormalization(
+            axis=-1, input_shape=(4, 4, 3), momentum=0.8)
+        model.add(norm)
+
     model.compile(
         gradient_descent.SGD(),
         loss="mse",
@@ -275,8 +286,10 @@ class ModelFitTest(test.TestCase, parameterized.TestCase):
                  validation_data=None,
                  x=None,
                  steps_per_epoch=10,
-                 run_eagerly=False):
-    model, callbacks = self._model_compile(steps_per_execution, run_eagerly)
+                 run_eagerly=False,
+                 with_normalization_layer=False):
+    model, callbacks = self._model_compile(steps_per_execution, run_eagerly,
+                                           with_normalization_layer)
 
     def dataset_fn(input_context):
       del input_context
@@ -299,6 +312,12 @@ class ModelFitTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=["eager"]))
   def testModelFit(self):
     model = self._model_fit()
+    self.assertEqual(model.optimizer.iterations, 100)
+    return model
+
+  @combinations.generate(combinations.combine(mode=["eager"]))
+  def testModelFitWithNormalizationLayer(self):
+    model = self._model_fit(with_normalization_layer=True)
     self.assertEqual(model.optimizer.iterations, 100)
 
   @combinations.generate(combinations.combine(mode=["eager"]))

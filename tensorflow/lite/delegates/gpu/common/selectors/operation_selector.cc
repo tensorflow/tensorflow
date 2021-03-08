@@ -95,15 +95,17 @@ absl::Status WinogradFromNode(const GpuInfo& gpu_info,
   const BHWC shape_0{input_shape.b, 36, tiles_x * tiles_y, input_shape.c};
   const BHWC shape_1{input_shape.b, 36, tiles_x * tiles_y, output_shape.c};
   TensorDescriptor td_0;
-  td_0.storage_type = SelectBestStorageType(
+  RETURN_IF_ERROR(SelectBestStorageType(
       gpu_info, shape_0, op_def.src_tensors[0].storage_type,
-      op_def.src_tensors[0].data_type, op_def.src_tensors[0].layout);
+      op_def.src_tensors[0].data_type, op_def.src_tensors[0].layout,
+      &td_0.storage_type));
   td_0.data_type = op_def.src_tensors[0].data_type;
   td_0.layout = op_def.src_tensors[0].layout;
   TensorDescriptor td_1;
-  td_1.storage_type = SelectBestStorageType(
+  RETURN_IF_ERROR(SelectBestStorageType(
       gpu_info, shape_1, op_def.src_tensors[0].storage_type,
-      op_def.src_tensors[0].data_type, op_def.src_tensors[0].layout);
+      op_def.src_tensors[0].data_type, op_def.src_tensors[0].layout,
+      &td_1.storage_type));
   td_1.data_type = op_def.src_tensors[0].data_type;
   td_1.layout = op_def.src_tensors[0].layout;
   gpu_subgraph->new_tensors = {{shape_0, td_0}, {shape_1, td_1}};
@@ -210,9 +212,10 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
       TensorDescriptor transposed_desc = {op_def.src_tensors[1].data_type,
                                           op_def.src_tensors[1].storage_type,
                                           Layout::BHWC};
-      transposed_desc.storage_type = SelectBestStorageType(
+      RETURN_IF_ERROR(SelectBestStorageType(
           gpu_info, weights_shape, transposed_desc.storage_type,
-          transposed_desc.data_type, transposed_desc.layout);
+          transposed_desc.data_type, transposed_desc.layout,
+          &transposed_desc.storage_type));
       TensorDescriptor weights_desc = {op_def.src_tensors[1].data_type,
                                        TensorStorageType::BUFFER, Layout::BHWC};
       gpu_subgraph->operations.clear();

@@ -1154,11 +1154,43 @@ class CollectiveAllReduce(CrossDeviceOps):
         ((dense_results, dense_indices), (sparse_results, sparse_indices)))
     return nest.pack_sequence_as(value, flat_results)
 
+  def _all_reduce_per_replica_values(self, reduce_op, per_replica_values,
+                                     options):
+    """All reduce a list of per_replica_value."""
+    values_by_device = [[] for _ in self._devices]
+    num_devices = len(self._devices)
+    for per_replica in per_replica_values:
+      for i in range(num_devices):
+        values_by_device[i].append(per_replica.values[i])
+
+    if context.executing_eagerly():
+
+      def thread_fn(device_id):
+        with context.eager_mode():
+          return self._all_reduce(reduce_op, values_by_device[device_id],
+                                  device_id, options)
+
+      with self._lock:
+        outputs_by_device = self._pool.map(thread_fn, list(range(num_devices)))
+    else:
+      outputs_by_device = []
+      with self._lock:
+        for i in range(num_devices):
+          outputs_by_device.append(
+              self._all_reduce(reduce_op, values_by_device[i], i, options))
+
+    result = []
+    for values in zip(*outputs_by_device):
+      result.append(
+          distribute_utils.regroup(values, wrap_class=value_lib.Mirrored))
+    return result
+
   def reduce_implementation(self, reduce_op, per_replica_value, destinations,
                             options):
     values_util.mark_as_unsaveable()
-    all_reduced = self._batch_all_reduce(reduce_op, [per_replica_value],
-                                         options)[0]
+    all_reduced = self._all_reduce_per_replica_values(reduce_op,
+                                                      [per_replica_value],
+                                                      options)[0]
     devices = get_devices_from(destinations)
 
     if _devices_match(per_replica_value, destinations):
@@ -1191,9 +1223,8 @@ class CollectiveAllReduce(CrossDeviceOps):
     values_util.mark_as_unsaveable()
     all_devices_match = _all_devices_match(value_destination_pairs)
     if all_devices_match:
-      return self._batch_all_reduce(reduce_op,
-                                    [v[0] for v in value_destination_pairs],
-                                    options)
+      return self._all_reduce_per_replica_values(
+          reduce_op, [v[0] for v in value_destination_pairs], options)
     else:
       if not all_devices_match:
         logging.log_first_n(
@@ -1204,128 +1235,6 @@ class CollectiveAllReduce(CrossDeviceOps):
           self.reduce_implementation(reduce_op, value, dest, options)
           for value, dest in value_destination_pairs
       ]
-
-  def _batch_all_reduce(self, reduce_op, per_replica_values, options):
-    """All reduce algorithm in a batch."""
-    dense_values, dense_indices, sparse_values, sparse_indices = (
-        cross_device_utils.split_by_sparsity(per_replica_values))
-    if dense_values:
-      dense_results = self._do_batch_all_reduce_dense(reduce_op, dense_values,
-                                                      options)
-    else:
-      dense_results = []
-    if sparse_values:
-      sparse_results = self._do_batch_all_reduce_sparse(reduce_op,
-                                                        sparse_values, options)
-    else:
-      sparse_results = []
-    return cross_device_utils.stitch_values(
-        ((dense_results, dense_indices), (sparse_results, sparse_indices)))
-
-  def _do_batch_all_reduce_dense(self, reduce_op, per_replica_values, options):
-    """All-reduce across all workers in a batch."""
-
-    batch_size = len(per_replica_values)
-    implementation = options.implementation.value
-    # For now, we use NCCL only when batch_size > 1 since we don't have a way to
-    # order NCCL launches. We're hoping that there's only one batched
-    # all-reduce, which is the gradients.
-    # TODO(b/132575814): switch to NCCL for all collectives when communication
-    # is NCCL if and only if we can order collectives deterministically.
-    if (self._limited_nccl and
-        options.implementation == CommunicationImplementation.NCCL and
-        batch_size == 1):
-      implementation = CommunicationImplementation.AUTO.value
-
-    # Reverse the lists so that there's better chance that values follows
-    # the order in which they are calculated (e.g. when they're gradients), so
-    # as to overlap calculation with communication. However, this may not be
-    # optimal for cases like gradients of complicated non-sequential models.
-    #
-    # Note that we reverse the list before packing so that the first pack won't
-    # be too small, since it's more likely for first few packs to have long
-    # queuing time due to concurrent intense computation.
-    #
-    # TODO(b/147393503): explore solutions for optimal ordering.
-    values_by_device = [[] for _ in range(len(self._devices))]
-    for per_replica in reversed(per_replica_values):
-      for i in range(len(self._devices)):
-        values_by_device[i].append(per_replica.values[i])
-
-    if context.executing_eagerly():
-      def thread_fn(device_id):
-        with context.eager_mode():
-          packs = cross_device_utils.group_by_size(values_by_device[device_id],
-                                                   options.bytes_per_pack)
-          return self._launchers[device_id].batch_all_reduce(
-              packs, implementation, options.timeout_seconds)
-
-      num_devices = len(self._devices)
-      with self._lock:
-        outputs_by_device = self._pool.map(thread_fn, list(range(num_devices)))
-    else:
-      outputs_by_device = []
-      with self._lock:
-        for i in range(len(self._devices)):
-          packs = cross_device_utils.group_by_size(
-              values_by_device[i], options.bytes_per_pack)
-          if i == 0:
-            logging.info(
-                "Collective batch_all_reduce: %d all-reduces, num_devices = %d,"
-                " group_size = %d, implementation = %s, num_packs = %d",
-                batch_size, len(self._launchers), self._group_size,
-                implementation, len(packs))
-          outputs_by_device.append(self._launchers[i].batch_all_reduce(
-              packs, implementation, options.timeout_seconds))
-
-    mirrored = []
-    for values in zip(*outputs_by_device):
-      if reduce_op == reduce_util.ReduceOp.MEAN:
-        values = list(values)
-        for i, v in enumerate(values):
-          with ops.device(v.device):
-            values[i] = v / self._group_size
-      mirrored.append(
-          distribute_utils.regroup(values, wrap_class=value_lib.Mirrored))
-    # Reverse the order of reduced value to recover the order in the input.
-    return list(reversed(mirrored))
-
-  def _do_batch_all_reduce_sparse(self, reduce_op, per_replica_values, options):
-    """All-reduce IndexedSlices across all workers in a batch."""
-
-    logging.log_first_n(
-        logging.INFO, "Collective batch_all_reduce for IndexedSlices: "
-        "%d all-reduces, group_size = %d" %
-        (len(per_replica_values), self._group_size), 10)
-
-    implementation = options.implementation.value
-    # For now, we use NCCL only when batch_size > 1.
-    # TODO(b/132575814): switch to NCCL for all collectives when implementation
-    # is NCCL.
-    if (self._limited_nccl and
-        options.implementation == CommunicationImplementation.NCCL and
-        len(per_replica_values) == 1):
-      implementation = CommunicationImplementation.AUTO.value
-
-    gathered_values = []
-    with self._lock:
-      for per_replica in per_replica_values:
-        outputs = []
-        for i in range(len(self._devices)):
-          outputs.append(self._launchers[i].all_reduce_indexed_slices(
-              per_replica.values[i], implementation, options.timeout_seconds))
-        gathered_values.append(outputs)
-
-    mirrored = []
-    for value in gathered_values:
-      if reduce_op == reduce_util.ReduceOp.MEAN:
-        # Assume each worker has the same number of replicas.
-        for i, v in enumerate(value):
-          with ops.device(v.device):
-            value[i].values = value[i].values / self._group_size
-      mirrored.append(
-          distribute_utils.regroup(value, wrap_class=value_lib.Mirrored))
-    return mirrored
 
   def _gather_implementation(self, per_replica_value, destinations, axis,
                              options):

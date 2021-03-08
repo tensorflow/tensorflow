@@ -41,6 +41,7 @@ AllOpsResolver::AllOpsResolver() {
   AddGreaterEqual();
   AddHardSwish();
   AddL2Normalization();
+  AddLeakyRelu();
   AddLess();
   AddLessEqual();
   AddLog();
@@ -72,6 +73,7 @@ AllOpsResolver::AllOpsResolver() {
   AddSoftmax();
   AddSplit();
   AddSplitV();
+  AddSqueeze();
   AddSqrt();
   AddSquare();
   AddStridedSlice();

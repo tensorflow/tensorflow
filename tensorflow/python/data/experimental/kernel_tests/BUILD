@@ -177,6 +177,7 @@ tf_py_test(
 tf_py_test(
     name = "data_service_ops_ft_test",
     srcs = ["data_service_ops_ft_test.py"],
+    shard_count = 10,
     srcs_version = "PY3",
     deps = [
         ":data_service_test_base",
@@ -393,6 +394,7 @@ tf_py_test(
         "//tensorflow/python:script_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/experimental/ops:batching",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",

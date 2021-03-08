@@ -111,14 +111,18 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
                      threading_options.ThreadingOptions())
 
   @combinations.generate(test_base.default_test_combinations())
-  def testMutableOptions(self):
+  def testMutatingOptionsRaiseValueError(self):
     ds = dataset_ops.Dataset.range(0)
-    ds.options().experimental_optimization.autotune = True
-    self.assertTrue(ds.options().experimental_optimization.autotune)
-    options = dataset_ops.Options()
-    ds = ds.with_options(options)
-    ds.options().experimental_deterministic = True
-    self.assertTrue(ds.options().experimental_deterministic)
+    options1 = dataset_ops.Options()
+    options1.experimental_slack = True
+    options2 = dataset_ops.Options()
+    options2.experimental_optimization.autotune = True
+    ds = ds.with_options(options1)
+    ds = ds.map(lambda x: 2 * x)
+    ds = ds.with_options(options2)
+    with self.assertRaises(ValueError):
+      dataset_options = ds.options()
+      dataset_options.experimental_deterministic = True
 
   @combinations.generate(test_base.eager_only_combinations())
   def testNestedDataset(self):

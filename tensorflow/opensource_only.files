@@ -61,7 +61,6 @@ tensorflow/third_party/curl.BUILD
 tensorflow/third_party/cython.BUILD
 tensorflow/third_party/dill.BUILD
 tensorflow/third_party/double_conversion.BUILD
-tensorflow/third_party/eigen.BUILD
 tensorflow/third_party/eigen3/BUILD
 tensorflow/third_party/eigen3/Eigen/Cholesky
 tensorflow/third_party/eigen3/Eigen/Core
@@ -73,6 +72,7 @@ tensorflow/third_party/eigen3/Eigen/SVD
 tensorflow/third_party/eigen3/Eigen/SparseCholesky
 tensorflow/third_party/eigen3/Eigen/SparseCore
 tensorflow/third_party/eigen3/LICENSE
+tensorflow/third_party/eigen3/eigen_archive.BUILD
 tensorflow/third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint
 tensorflow/third_party/eigen3/unsupported/Eigen/CXX11/Tensor
 tensorflow/third_party/eigen3/unsupported/Eigen/CXX11/ThreadPool
@@ -226,11 +226,6 @@ tensorflow/third_party/tflite_mobilenet_quant.BUILD
 tensorflow/third_party/tflite_ovic_testdata.BUILD
 tensorflow/third_party/tflite_smartreply.BUILD
 tensorflow/third_party/toolchains/BUILD
-tensorflow/third_party/toolchains/clang6/BUILD
-tensorflow/third_party/toolchains/clang6/CROSSTOOL.tpl
-tensorflow/third_party/toolchains/clang6/README.md
-tensorflow/third_party/toolchains/clang6/clang.BUILD
-tensorflow/third_party/toolchains/clang6/repo.bzl
 tensorflow/third_party/toolchains/cpus/arm/BUILD
 tensorflow/third_party/toolchains/cpus/arm/arm_compiler_configure.bzl
 tensorflow/third_party/toolchains/cpus/arm/cc_config.bzl.tpl
@@ -259,6 +254,8 @@ tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.0/cc_toolchain_config.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1/cc_toolchain_config.bzl
+tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda11.2/BUILD
+tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda11.2/cc_toolchain_config.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda11/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda11/cc_toolchain_config.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010/BUILD
@@ -273,11 +270,6 @@ tensorflow/third_party/toolchains/preconfig/win_1803/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py36/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py37/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py38/BUILD
-tensorflow/third_party/toolchains/remote/BUILD
-tensorflow/third_party/toolchains/remote/BUILD.tpl
-tensorflow/third_party/toolchains/remote/configure.bzl
-tensorflow/third_party/toolchains/remote/execution.bzl.tpl
-tensorflow/third_party/toolchains/remote_config/configs.bzl
 tensorflow/third_party/typing_extensions.BUILD
 tensorflow/third_party/wrapt.BUILD
 tensorflow/third_party/zlib.BUILD

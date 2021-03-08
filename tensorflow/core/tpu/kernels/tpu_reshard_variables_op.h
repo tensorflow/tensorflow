@@ -43,8 +43,6 @@ class TPUReshardVariablesOpKernel : public AsyncOpKernel {
                       tpu::CompilationCacheFetchTarget fetch_target);
 
   int64 num_vars_;
-
-  DISALLOW_COPY_AND_ASSIGN(TPUReshardVariablesOpKernel);
 };
 
 }  // namespace tensorflow

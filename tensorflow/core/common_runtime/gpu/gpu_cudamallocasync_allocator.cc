@@ -42,12 +42,12 @@ static std::string GetCudaErrorMessage(CUresult result) {
 #endif  // GOOGLE_CUDA
 
 GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
-    PlatformGpuId platform_gpu_id, size_t pool_size, bool reserve_memory,
+    PlatformDeviceId platform_device_id, size_t pool_size, bool reserve_memory,
     bool compute_stats)
-    : name_(absl::StrCat("gpu_async_", platform_gpu_id.value())) {
+    : name_(absl::StrCat("gpu_async_", platform_device_id.value())) {
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
   stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
-                                                           platform_gpu_id)
+                                                           platform_device_id)
                      .ValueOrDie();
   // Initialized here as it only exist if compiled with a recent
   // enough CUDA.
@@ -56,7 +56,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   // WAR an CUDA 11.2 driver bug for multiple-GPU. It currently
   // request that the context on GPU 0 is initialized. Which isn't the
   // case for TF+horovod.
-  if (platform_gpu_id.value() > 0) {
+  if (platform_device_id.value() > 0) {
     CUcontext pctx;  // We loose track of it. But this is fine.
     if (auto result = cuDevicePrimaryCtxRetain(&pctx, 0))
       LOG(FATAL)  // Crash OK.
@@ -65,9 +65,10 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
 
   se::cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
   int cuda_malloc_async_supported;
-  if (auto status = cuDeviceGetAttribute(
-          &cuda_malloc_async_supported,
-          CU_DEVICE_ATTRIBUTE_MEMORY_POOLS_SUPPORTED, platform_gpu_id.value()))
+  if (auto status =
+          cuDeviceGetAttribute(&cuda_malloc_async_supported,
+                               CU_DEVICE_ATTRIBUTE_MEMORY_POOLS_SUPPORTED,
+                               platform_device_id.value()))
     LOG(FATAL) <<  // Crash OK.
         "Failed to get device attribute: " << GetCudaErrorMessage(status);
   if (!cuda_malloc_async_supported)
@@ -79,12 +80,13 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
     LOG(FATAL)  // Crash OK.
         << "Failed to create CUDA stream: " << GetCudaErrorMessage(status);
 
-  if (auto status = cuDeviceGetDefaultMemPool(&pool_, platform_gpu_id.value()))
+  if (auto status =
+          cuDeviceGetDefaultMemPool(&pool_, platform_device_id.value()))
     LOG(FATAL) <<  // Crash OK.
         "Failed to get default CUDA pool: " << GetCudaErrorMessage(status);
 
   VLOG(1) << Name() << " CudaMallocAsync initialized on platform: "
-          << platform_gpu_id.value() << " with pool size of: " << pool_size
+          << platform_device_id.value() << " with pool size of: " << pool_size
           << " this ptr: " << this;
   uint64_t pool_size_64 = pool_size;
   if (auto status = cuMemPoolSetAttribute(

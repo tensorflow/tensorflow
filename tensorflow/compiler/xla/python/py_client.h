@@ -97,6 +97,9 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   absl::string_view platform_name() const {
     return pjrt_client_->platform_name();
   }
+  absl::string_view platform_version() const {
+    return pjrt_client_->platform_version();
+  }
   int addressable_device_count() const {
     return pjrt_client_->addressable_device_count();
   }
@@ -125,10 +128,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
     return pjrt_client_->CreateHostToDeviceChannelHandle();
   }
 
-  StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBufferFromPyval(
-      pybind11::handle argument, PjRtDevice* device, bool force_copy,
-      PjRtClient::HostBufferSemantics host_buffer_semantics);
-  StatusOr<std::unique_ptr<PyBuffer>> BufferFromPyval(
+  StatusOr<pybind11::object> BufferFromPyval(
       pybind11::handle argument, PjRtDevice* device, bool force_copy,
       PjRtClient::HostBufferSemantics host_buffer_semantics);
 

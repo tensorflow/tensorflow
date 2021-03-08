@@ -45,23 +45,31 @@ struct LoggedTensor {
   ~LoggedTensor() { TFE_DeleteTensorHandle(tensor); }
 };
 
-void LoggedTensorDeallocator(void* data, size_t len, void* arg) {
+int64_t LoggedTensorDim(void* data, int dim_index, TF_Status* status) {
+  return TFE_TensorHandleDim(reinterpret_cast<LoggedTensor*>(data)->tensor,
+                             dim_index, status);
+}
+
+int LoggedTensorNumDims(void* data, TF_Status* status) {
+  return TFE_TensorHandleNumDims(reinterpret_cast<LoggedTensor*>(data)->tensor,
+                                 status);
+}
+
+void LoggedTensorDeallocator(void* data) {
   delete reinterpret_cast<LoggedTensor*>(data);
 }
 
 TFE_TensorHandle* MakeLoggedTensorHandle(
     TFE_Context* context, const tensorflow::string& logging_device_name,
     std::unique_ptr<LoggedTensor> t, TF_Status* status) {
-  std::vector<int64_t> shape(TFE_TensorHandleNumDims(t->tensor, status));
-  if (TF_GetCode(status) != TF_OK) return nullptr;
-  for (int i = 0; i < shape.size(); ++i) {
-    shape[i] = TFE_TensorHandleDim(t->tensor, i, status);
-    if (TF_GetCode(status) != TF_OK) return nullptr;
-  }
   auto dtype = TFE_TensorHandleDataType(t->tensor);
-  return TFE_NewTensorHandleFromDeviceMemory(
-      context, logging_device_name.c_str(), dtype, shape.data(), shape.size(),
-      t.release(), 1, &LoggedTensorDeallocator, nullptr, status);
+  TFE_CustomDeviceTensorHandleMethods handle_methods;
+  handle_methods.num_dims = &LoggedTensorNumDims;
+  handle_methods.dim = &LoggedTensorDim;
+  handle_methods.deallocator = &LoggedTensorDeallocator;
+  return TFE_NewCustomDeviceTensorHandle(context, logging_device_name.c_str(),
+                                         dtype, t.release(), handle_methods,
+                                         status);
 }
 
 TFE_TensorHandle* CopyToLoggingDevice(TFE_Context* context,

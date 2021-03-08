@@ -36,6 +36,7 @@ Linux      | [![Status](https://storage.googleapis.com/tensorflow-kokoro-build-b
 ## Community Supported Builds
 Build Type | Status      | Artifacts
 ---------- | ----------- | ---------
+Arduino    | [![Status](https://github.com/antmicro/tensorflow-arduino-examples/actions/workflows/test_examples.yml/badge.svg)](https://github.com/antmicro/tensorflow-arduino-examples/actions/workflows/test_examples.yml) |
 Xtensa     | [![Status](https://github.com/advaitjain/tensorflow/blob/local-continuous-builds/tensorflow/lite/micro/docs/local_continuous_builds/xtensa-build-status.svg)](https://github.com/advaitjain/tensorflow/tree/local-continuous-builds/tensorflow/lite/micro/docs/local_continuous_builds/xtensa.md) |
 
 

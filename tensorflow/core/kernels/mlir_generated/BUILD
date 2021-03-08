@@ -102,7 +102,15 @@ filegroup(
 filegroup(
     name = "enabled_binary_gpu_kernel_srcs",
     srcs = [
+        "gpu_op_add.cc",
+        "gpu_op_bitwise_and.cc",
+        "gpu_op_bitwise_or.cc",
+        "gpu_op_bitwise_xor.cc",
         "gpu_op_complex.cc",
+        "gpu_op_logical_and.cc",
+        "gpu_op_logical_or.cc",
+        "gpu_op_maximum.cc",
+        "gpu_op_minimum.cc",
     ],
     compatible_with = get_compatible_with_cloud(),
 )
@@ -110,11 +118,7 @@ filegroup(
 filegroup(
     name = "experimental_binary_gpu_kernel_srcs",
     srcs = [
-        "gpu_op_add.cc",
         "gpu_op_atan2.cc",
-        "gpu_op_bitwise_and.cc",
-        "gpu_op_bitwise_or.cc",
-        "gpu_op_bitwise_xor.cc",
         "gpu_op_div.cc",
         "gpu_op_equal.cc",
         "gpu_op_floor_div.cc",
@@ -123,10 +127,6 @@ filegroup(
         "gpu_op_left_shift.cc",
         "gpu_op_less.cc",
         "gpu_op_less_equal.cc",
-        "gpu_op_logical_and.cc",
-        "gpu_op_logical_or.cc",
-        "gpu_op_maximum.cc",
-        "gpu_op_minimum.cc",
         "gpu_op_mul.cc",
         "gpu_op_not_equal.cc",
         "gpu_op_pow.cc",
@@ -234,6 +234,7 @@ tf_kernel_library(
     name = "cpu_cwise_unary_op",
     srcs = [
         "cpu_op_abs.cc",
+        "cpu_op_rsqrt.cc",
         "cpu_op_sqrt.cc",
     ],
     tags = ["manual"],
@@ -245,6 +246,7 @@ tf_kernel_library(
     deps = [
         ":base_cpu_op",
         ":cpu_abs_kernels",
+        ":cpu_rsqrt_kernels",
         ":cpu_sqrt_kernels",
         "//third_party/eigen3",
     ],
@@ -1063,6 +1065,18 @@ cpu_kernel_library(
         "i16",
         "i32",
         "i64",
+    ],
+    unroll_factors = "4",
+)
+
+cpu_kernel_library(
+    name = "cpu_rsqrt_lib",
+    op = "rsqrt",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
     ],
     unroll_factors = "4",
 )

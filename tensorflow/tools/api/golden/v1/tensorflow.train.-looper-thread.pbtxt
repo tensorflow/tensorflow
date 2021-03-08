@@ -23,10 +23,6 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "isAlive"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "isDaemon"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }

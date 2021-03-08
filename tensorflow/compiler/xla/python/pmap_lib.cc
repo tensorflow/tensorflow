@@ -74,11 +74,10 @@ struct PmapCacheEntry {
 class PmapFunction {
  public:
   PmapFunction(py::function fun, py::function cache_miss,
-               py::function get_jax_enable_x64, std::vector<int> static_argnums)
+               std::vector<int> static_argnums)
       : fun_(std::move(fun)),
         cache_miss_(std::move(cache_miss)),
-        static_argnums_(std::move(static_argnums)),
-        get_jax_enable_x64_(get_jax_enable_x64) {
+        static_argnums_(std::move(static_argnums)) {
     std::sort(static_argnums_.begin(), static_argnums_.end());
   }
 
@@ -123,9 +122,6 @@ class PmapFunction {
   // We need a `unique_ptr` here to ensure value pointer stability.
   absl::flat_hash_map<CallSignature, std::unique_ptr<PmapCacheEntry>>
       executables_;
-
-  const py::function get_jax_enable_x64_;
-  absl::optional<bool> jax_enable_x64_ = absl::nullopt;
 
   // A vector of size `num_outputs`, specifying the sharding of each output
   std::vector<ShardingSpec> sharding_specs_;
@@ -198,10 +194,6 @@ py::object PmapFunction::Call(py::args args, py::kwargs kwargs) {
   if (always_fallback_to_python_) {
     return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
   }
-  // Delayed values are retrieved on the first call to `Call`.
-  if (jax_enable_x64_ == absl::nullopt) {
-    jax_enable_x64_ = py::cast<bool>(get_jax_enable_x64_());
-  }
 
   ParsedArgumentsAsBuffers arguments;
   if (!ParseArguments(args, kwargs, static_argnums_, arguments).ok()) {
@@ -210,7 +202,7 @@ py::object PmapFunction::Call(py::args args, py::kwargs kwargs) {
 
   // Get dynamic argument signatures.
   for (py::handle arg : arguments.flat_dynamic_args) {
-    auto signature_or_error = ArgSignatureOfValue(arg, jax_enable_x64_.value());
+    auto signature_or_error = ArgSignatureOfValue(arg, GetEnableX64());
     if (!signature_or_error.ok()) {
       return py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0];
     }
@@ -367,11 +359,9 @@ void BuildPmapSubmodule(pybind11::module& m) {
   pmap_lib.def(
       "pmap",
       [](py::function fun, py::function cache_miss,
-         py::function get_jax_enable_x64,
          std::vector<int> static_argnums) -> std::unique_ptr<PmapFunction> {
         return std::make_unique<PmapFunction>(
-            std::move(fun), std::move(cache_miss),
-            std::move(get_jax_enable_x64), std::move(static_argnums));
+            std::move(fun), std::move(cache_miss), std::move(static_argnums));
       });
 }
 

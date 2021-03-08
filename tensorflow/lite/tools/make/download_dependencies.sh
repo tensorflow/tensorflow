@@ -20,7 +20,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/../../../.."
 
 DOWNLOADS_DIR=tensorflow/lite/tools/make/downloads
-BZL_FILE_PATH=tensorflow/workspace.bzl
+BZL_FILE_PATH=tensorflow/tensorflow.bzl
 
 if [[ "${OSTYPE}" == "darwin"* ]]; then
   function sha256sum() { shasum -a 256 "$@" ; }
@@ -33,14 +33,16 @@ if [ ! -f $BZL_FILE_PATH ]; then
   exit 1;
 fi
 
-EIGEN_URL="$(grep -o 'https.*gitlab.com/libeigen/eigen/-/archive/.*tar\.gz' "${BZL_FILE_PATH}" | grep -v mirror.tensorflow | head -n1)"
-EIGEN_SHA="$(eval echo $(grep '# SHARED_EIGEN_SHA' "${BZL_FILE_PATH}" | grep -o '\".*\"'))"
+EIGEN_WORKSPACE_BZL_PATH="third_party/eigen3/workspace.bzl"
+EIGEN_COMMIT="$(grep -oP 'EIGEN_COMMIT = "\K[0-9a-f]{40}' "${EIGEN_WORKSPACE_BZL_PATH}")"
+EIGEN_URL="https://gitlab.com/libeigen/eigen/-/archive/"${EIGEN_COMMIT}"/eigen-"${EIGEN_COMMIT}".tar.gz"
+EIGEN_SHA="$(grep -oP 'EIGEN_SHA256 = "\K[0-9a-f]{64}' "${EIGEN_WORKSPACE_BZL_PATH}")"
 GEMMLOWP_WORKSPACE_BZL_PATH="third_party/gemmlowp/workspace.bzl"
 GEMMLOWP_COMMIT="$(grep -oP 'GEMMLOWP_COMMIT = "\K[0-9a-f]{40}' "${GEMMLOWP_WORKSPACE_BZL_PATH}")"
 GEMMLOWP_URL="https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/gemmlowp/archive/"${GEMMLOWP_COMMIT}".zip"
 GEMMLOWP_SHA="$(grep -oP 'GEMMLOWP_SHA256 = "\K[0-9a-f]{64}' "${GEMMLOWP_WORKSPACE_BZL_PATH}")"
-RUY_URL="https://github.com/google/ruy/archive/4790797d11a81f96baf24f3731fd3ca44c2c5f8b.zip"
-RUY_SHA="28331222625e677be004e96da5e9a1cc9d65187d04d70d1ab2ca58445461ecbc"
+RUY_URL="https://github.com/google/ruy/archive/54774a7a2cf85963777289193629d4bd42de4a59.zip"
+RUY_SHA="da5ec0cc07472bdb21589b0b51c8f3d7f75d2ed6230b794912adf213838d289a"
 GOOGLETEST_URL="https://github.com/google/googletest/archive/release-1.8.0.tar.gz"
 GOOGLETEST_SHA="58a6f4277ca2bc8565222b3bbd58a177609e9c488e8a72649359ba51450db7d8"
 ABSL_WORKSPACE_BZL_PATH="third_party/absl/workspace.bzl"
