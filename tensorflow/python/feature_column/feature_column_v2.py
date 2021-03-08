@@ -1915,6 +1915,8 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
       keys=tuple(keys), hash_bucket_size=hash_bucket_size, hash_key=hash_key)
 
 
+# TODO(b/181853833): Add a tf.type for instance type checking.
+@tf_export('__internal__.feature_column.FeatureColumn', v1=[])
 @six.add_metaclass(abc.ABCMeta)
 class FeatureColumn(object):
   """Represents a feature column abstraction.
