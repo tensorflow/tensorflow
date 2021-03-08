@@ -487,9 +487,7 @@ func @same_predicate_3_ifregions_reorder() {
 
 // CHECK-LABEL: func @same_predicate_3_ifregions_intermediate_dep
 func @same_predicate_3_ifregions_intermediate_dep() {
-  // CHECK:        "tf.IfRegion"
-  // CHECK         "tf.IfRegion"
-  // CHECK         "tf.IfRegion"
+  // CHECK-COUNT-3:        "tf.IfRegion"
   "tf_device.cluster"() ( {
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     %8 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
@@ -517,4 +515,39 @@ func @same_predicate_3_ifregions_intermediate_dep() {
   }) {cluster_attr = "cluster_attr"} : () -> ()
   return
 }
+
+// Check that 3 IfRegions where 1st and 3rd IfRegions
+// can't be merged due to an intermediate side effecting IfRegion.
+
+// CHECK-LABEL: func @same_predicate_3_ifregions_intermediate_side_effect
+func @same_predicate_3_ifregions_intermediate_side_effect() {
+  // CHECK-COUNT-3:   "tf.IfRegion"
+  "tf_device.cluster"() ( {
+    %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+    %8 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+    %1 = "tf.IfRegion"(%0) ( {
+      %2 = "tf.A"() : () -> (tensor<f32>)
+      "tf.Yield"(%2) : (tensor<f32>) -> ()
+      }, {
+      %2 = "tf.C"() : () -> (tensor<f32>)
+      "tf.Yield"(%2) : (tensor<f32>) -> ()
+    }) { is_stateless = false } : (tensor<i1>) -> (tensor<f32>)
+    %9 = "tf.IfRegion"(%8) ( {
+      %4 = "tf.E"() : () -> (tensor<f32>)
+      "tf.Yield"(%4) : (tensor<f32>) -> ()
+      }, {
+      %4 = "tf.F"() : () -> (tensor<f32>)
+      "tf.Yield"(%4) : (tensor<f32>) -> ()
+    }) { is_stateless = false } : (tensor<i1>) -> (tensor<f32>)
+    "tf.IfRegion"(%0) ( {
+      %5 = "tf.G"(%1) : (tensor<f32>) -> (tensor<f32>)
+      "tf.Yield"() : () -> ()
+      }, {
+      "tf.Yield"() : () -> ()
+    }) { is_stateless = false} : (tensor<i1>) -> ()
+    tf_device.return
+  }) {cluster_attr = "cluster_attr"} : () -> ()
+  return
+}
+
 
