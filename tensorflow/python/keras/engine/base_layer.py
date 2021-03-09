@@ -1869,8 +1869,12 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           (self.name, len(weights), expected_num_weights, str(weights)[:50]))
 
     for index, item in enumerate(weights):
-      if(str(type(item))=="<class 'tensorflow.python.ops.resource_variable_ops.ResourceVariable'>"):
-          weights[index] = np.array(item)
+        if not (isinstance(item, np.ndarray)):
+            raise TypeError(
+              'You called `set_weights(weights)` on layer "%s" '
+              'with a weight list of type %s, but the method was '
+              'expecting a list of Numpy arrays.' %
+              (self.name, type(weights[index])))
 
     weight_index = 0
     weight_value_tuples = []
