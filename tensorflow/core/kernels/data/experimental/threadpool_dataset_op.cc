@@ -416,8 +416,7 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
               {{"num_threads", strings::Printf("%lld", static_cast<long long>(
                                                            num_threads_))}}) {
       thread_pool_ = absl::make_unique<thread::ThreadPool>(
-          ctx->env(), ThreadOptions{}, "data_private_threadpool", num_threads_,
-          /*low_latency_hint=*/false);
+          ctx->env(), ThreadOptions{}, "data_private_threadpool", num_threads_);
       input_->Ref();
     }
 
