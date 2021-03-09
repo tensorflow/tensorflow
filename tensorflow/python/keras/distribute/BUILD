@@ -374,7 +374,6 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
-        "noasan",  # TODO(b/170902997)
         "noguitar",  # TODO(b/172354344)
         "notsan",
     ],
