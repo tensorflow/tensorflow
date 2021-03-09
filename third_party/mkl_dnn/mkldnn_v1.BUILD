@@ -39,23 +39,13 @@ _DNNL_RUNTIME_THREADPOOL = {
     "#cmakedefine DNNL_SYCL_CUDA": "#undef DNNL_SYCL_CUDA",
 }
 
-_DNNL_RUNTIME_SEQ = {
-    "#cmakedefine DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_${DNNL_CPU_THREADING_RUNTIME}": "#define DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_SEQ",
-    "#cmakedefine DNNL_CPU_RUNTIME DNNL_RUNTIME_${DNNL_CPU_RUNTIME}": "#define DNNL_CPU_RUNTIME DNNL_RUNTIME_SEQ",
-    "#cmakedefine DNNL_GPU_RUNTIME DNNL_RUNTIME_${DNNL_GPU_RUNTIME}": "#define DNNL_GPU_RUNTIME DNNL_RUNTIME_NONE",
-    "#cmakedefine DNNL_WITH_SYCL": "#undef DNNL_WITH_SYCL",
-    "#cmakedefine DNNL_WITH_LEVEL_ZERO": "#undef DNNL_WITH_LEVEL_ZERO",
-    "#cmakedefine DNNL_SYCL_CUDA": "#undef DNNL_SYCL_CUDA",
-}
-
 template_rule(
     name = "dnnl_config_h",
     src = "include/oneapi/dnnl/dnnl_config.h.in",
     out = "include/oneapi/dnnl/dnnl_config.h",
     substitutions = select({
         "@org_tensorflow//third_party/mkl_dnn:build_with_mkldnn_openmp": _DNNL_RUNTIME_OMP,
-        "@org_tensorflow//third_party/mkl:build_with_mkl": _DNNL_RUNTIME_THREADPOOL,
-        "//conditions:default": _DNNL_RUNTIME_SEQ,
+        "//conditions:default": _DNNL_RUNTIME_THREADPOOL,
     }),
 )
 
@@ -100,7 +90,10 @@ cc_library(
     hdrs = glob(["include/*"]),
     copts = select({
         "@org_tensorflow//tensorflow:windows": [],
-        "//conditions:default": ["-fexceptions"],
+        "//conditions:default": [
+            "-fexceptions",
+            "-DDNNL_ENABLE_MAX_CPU_ISA",
+        ],
     }) + [
         "-UUSE_MKL",
         "-UUSE_CBLAS",
@@ -119,51 +112,6 @@ cc_library(
         ["@org_tensorflow//third_party/mkl:intel_binary_blob"],
         [],
     ),
-)
-
-cc_library(
-    name = "dnnl_single_threaded",
-    srcs = glob([
-        "src/common/*.cpp",
-        "src/cpu/*.cpp",
-        "src/cpu/gemm/**/*.cpp",
-        "src/cpu/matmul/**/*.cpp",
-        "src/cpu/reorder/*.cpp",
-        "src/cpu/rnn/**/*.cpp",
-        "src/cpu/x64/**/*.cpp",
-        "src/cpu/x64/jit_utils/jitprofiling/*.c",
-    ]) + [
-        ":dnnl_config_h",
-        ":dnnl_version_h",
-    ],
-    copts = [
-        "-fexceptions",
-        "-DDNNL_ENABLE_MAX_CPU_ISA",
-    ],
-    includes = [
-        "include",
-        "src",
-        "src/common",
-        "src/cpu",
-        "src/cpu/gemm",
-        "src/cpu/gemm/f32",
-        "src/cpu/gemm/s8x8s32",
-        "src/cpu/matmul",
-        "src/cpu/rnn",
-        "src/cpu/x64",
-        "src/cpu/x64/jit_utils",
-        "src/cpu/x64/jit_utils/jitprofiling",
-        "src/cpu/x64/xbyak",
-    ],
-    textual_hdrs = glob([
-        "include/**/*",
-        "src/common/*.hpp",
-        "src/cpu/*.hpp",
-        "src/cpu/**/*.hpp",
-        "src/cpu/x64/jit_utils/jitprofiling/*.h",
-        "src/cpu/x64/xbyak/*.h",
-    ]),
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
