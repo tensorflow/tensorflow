@@ -52,10 +52,7 @@ bool HasFastFP16Support(const DeviceProperties &props) {
   absl::flat_hash_set<std::string> FP16SupportedDevices = {{"gfx906"}, {"gfx908"}};
   std::string gcnArchName = props.environment().at("architecture");
   std::vector<std::string> gpu_arch = absl::StrSplit(gcnArchName, ":");
-  if(gpu_arch.size()>0) {
-    return FP16SupportedDevices.contains(gpu_arch[0]); 
-  }
-  else return false;
+  return !gpu_arch.empty() && FP16SupportedDevices.contains(gpu_arch[0]);
 }
 #endif
 
