@@ -36,6 +36,7 @@ PLATFORM_FLAGS = \
   -DTF_LITE_USE_CTIME \
   --xtensa-core=$(XTENSA_CORE) \
   -mcoproc \
+  -stdlib=libc++ \
   -DMAX_RFFT_PWR=9 \
   -DMIN_RFFT_PWR=MAX_RFFT_PWR \
   $(TARGET_ARCH_DEFINES)
@@ -51,9 +52,6 @@ CC_TOOL := clang
 
 CXXFLAGS += $(PLATFORM_FLAGS)
 CCFLAGS += $(PLATFORM_FLAGS)
-
-# TODO(b/150240249): Do not remove -fno-rtti once that works for the Xtensa toolchain.
-CXXFLAGS := $(filter-out -fno-rtti, $(CXXFLAGS))
 
 TEST_SCRIPT := tensorflow/lite/micro/testing/test_xtensa_binary.sh
 
