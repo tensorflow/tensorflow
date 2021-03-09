@@ -100,6 +100,11 @@ void NotEqualOp::build(OpBuilder &builder, OperationState &result, Value x,
   return build(builder, result, result_type, x, y, incompatible_shape_error);
 }
 
+void NotEqualOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                             MLIRContext *context) {
+  results.insert<NotEqualTransDistr>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // OneHotOp
 //===----------------------------------------------------------------------===//
@@ -595,7 +600,8 @@ OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
 
 void RealDivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
-  results.insert<RealDivWithSqrtDivisor, RealDivWithConstDivisor>(context);
+  results.insert<RealDivWithSqrtDivisor, RealDivWithConstDivisor, 
+                 RealDivTransDistr>(context);
 }
 
 OpFoldResult RealDivOp::fold(ArrayRef<Attribute> operands) {
@@ -762,6 +768,15 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
   }
 
   return {};
+}
+
+//===----------------------------------------------------------------------===//
+// RightShiftOp
+//===----------------------------------------------------------------------===//
+
+void RightShiftOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<RightShiftTransDistr>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1549,6 +1564,15 @@ static LogicalResult Verify(SplitVOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// SquaredDifferenceOp
+//===----------------------------------------------------------------------===//
+
+void SquaredDifferenceOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<SquaredDifferenceTransDistr>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // SquareOp
 //===----------------------------------------------------------------------===//
 
@@ -1563,7 +1587,7 @@ void SquareOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 void SubOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
-  results.insert<SubOfNeg>(context);
+  results.insert<SubOfNeg, SubTransDistr>(context);
 }
 
 OpFoldResult SubOp::fold(ArrayRef<Attribute> operands) {
@@ -2572,7 +2596,7 @@ OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
 
 void TruncateDivOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<TruncateDivWithSqrtDivisor>(context);
+  results.insert<TruncateDivWithSqrtDivisor, TruncateDivTransDistr>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3122,7 +3146,7 @@ void WhileRegionOp::getCanonicalizationPatterns(
 
 void XdivyOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
-  results.insert<XdivyWithSqrtDivisor>(context);
+  results.insert<XdivyWithSqrtDivisor, XdivyTransDistr>(context);
 }
 
 //===----------------------------------------------------------------------===//

@@ -104,7 +104,7 @@ OpFoldResult AddNOp::fold(ArrayRef<Attribute> operands) {
 
 void AddV2Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
-  results.insert<AddV2OfNegLeft, AddV2OfNegRight>(context);
+  results.insert<AddV2OfNegLeft, AddV2OfNegRight, AddV2TransDistr>(context);
 }
 
 OpFoldResult AddV2Op::fold(ArrayRef<Attribute> operands) {
@@ -546,6 +546,24 @@ void BiasAddV1Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
 void BitcastOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
   results.insert<BitcastSameType, BitcastNested>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// BitwiseAndOp
+//===----------------------------------------------------------------------===//
+
+void BitwiseAndOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<BitwiseAndTransDistr>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// BitwiseOrOp
+//===----------------------------------------------------------------------===//
+
+void BitwiseOrOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                              MLIRContext *context) {
+  results.insert<BitwiseOrTransDistr>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1928,7 +1946,7 @@ static LogicalResult Verify(DataFormatVecPermuteOp op) {
 
 void DivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
-  results.insert<DivWithSqrtDivisor>(context);
+  results.insert<DivWithSqrtDivisor, DivTransDistr>(context);
 }
 
 OpFoldResult DivOp::fold(ArrayRef<Attribute> operands) {
@@ -2131,6 +2149,11 @@ void EqualOp::build(OpBuilder &builder, OperationState &result, Value x,
   return build(builder, result, result_type, x, y, incompatible_shape_error);
 }
 
+void EqualOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context) {
+  results.insert<EqualTransDistr>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // ExpandDimsOp
 //===----------------------------------------------------------------------===//
@@ -2307,6 +2330,24 @@ OpFoldResult FillOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// FloorDivOp
+//===----------------------------------------------------------------------===//
+
+void FloorDivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                             MLIRContext *context) {
+  results.insert<FloorDivTransDistr>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// FloorModOp
+//===----------------------------------------------------------------------===//
+
+void FloorModOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                             MLIRContext *context) {
+  results.insert<FloorModTransDistr>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // FusedBatchNormGradOp
 //===----------------------------------------------------------------------===//
 
@@ -2459,6 +2500,24 @@ static LogicalResult Verify(GatherV2Op op) {
     }
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// GreaterEqualOp
+//===----------------------------------------------------------------------===//
+
+void GreaterEqualOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<GreaterEqualTransDistr>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// GreaterOp
+//===----------------------------------------------------------------------===//
+
+void GreaterOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                            MLIRContext *context) {
+  results.insert<GreaterTransDistr>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2648,12 +2707,57 @@ OpFoldResult LeakyReluOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// LeftShiftOp
+//===----------------------------------------------------------------------===//
+
+void LeftShiftOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                              MLIRContext *context) {
+  results.insert<LeftShiftTransDistr>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// LessEqualOp
+//===----------------------------------------------------------------------===//
+
+void LessEqualOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                              MLIRContext *context) {
+  results.insert<LessEqualTransDistr>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// LessOp
+//===----------------------------------------------------------------------===//
+
+void LessOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                         MLIRContext *context) {
+  results.insert<LessTransDistr>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // LogOp
 //===----------------------------------------------------------------------===//
 
 void LogOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
   results.insert<LogOfSoftmax, LogToLog1p>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// LogicalAndOp
+//===----------------------------------------------------------------------===//
+
+void LogicalAndOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<LogicalAndTransDistr>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// LogicalOrOp
+//===----------------------------------------------------------------------===//
+
+void LogicalOrOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                              MLIRContext *context) {
+  results.insert<LogicalOrTransDistr>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2698,6 +2802,16 @@ void MatrixSetDiagOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.insert<MatrixSetDiagToV3>(context);
 }
+
+//===----------------------------------------------------------------------===//
+// MaximumOp
+//===----------------------------------------------------------------------===//
+
+void MaximumOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                            MLIRContext *context) {
+  results.insert<MaximumTransDistr>(context);
+}
+
 
 //===----------------------------------------------------------------------===//
 // MatrixSetDiagV2Op
@@ -2806,8 +2920,31 @@ LogicalResult MeanOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
 }
 
 //===----------------------------------------------------------------------===//
+// MinimumOp
+//===----------------------------------------------------------------------===//
+
+void MinimumOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                            MLIRContext *context) {
+  results.insert<MinimumTransDistr>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// MulNoNanOp
+//===----------------------------------------------------------------------===//
+
+void MulNoNanOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                             MLIRContext *context) {
+  results.insert<MulNoNanTransDistr>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // MulOp
 //===----------------------------------------------------------------------===//
+
+void MulOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                        MLIRContext *context) {
+  results.insert<MulTransDistr>(context);
+}
 
 OpFoldResult MulOp::fold(ArrayRef<Attribute> operands) {
   return IdentityArithmeticOpFolder<MulOp>(*this, operands);
