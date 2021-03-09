@@ -86,31 +86,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "flat_map_dataset_serialization_test",
-    size = "medium",
-    srcs = ["flat_map_dataset_serialization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:function",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:random_ops",
-        "//tensorflow/python:sparse_ops",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-    ],
-)
-
-tf_py_test(
     name = "interleave_dataset_serialization_test",
     size = "medium",
     srcs = ["interleave_dataset_serialization_test.py"],
