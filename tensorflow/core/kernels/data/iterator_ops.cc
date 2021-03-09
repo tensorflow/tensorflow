@@ -617,16 +617,28 @@ Status DeleteIteratorOp::DoCompute(OpKernelContext* ctx) {
 
 namespace {
 
-class ToSingleElementOp : public HybridAsyncOpKernel {
+class ToSingleElementOp : public AsyncOpKernel {
  public:
   explicit ToSingleElementOp(OpKernelConstruction* ctx)
-      : HybridAsyncOpKernel(ctx, "tf_data_to_single_element") {
+      : AsyncOpKernel(ctx),
+        unbounded_threadpool_(ctx->env(), "tf_data_to_single_element") {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }
 
- protected:
-  Status DoCompute(OpKernelContext* ctx) override {
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
+    unbounded_threadpool_.Schedule([this, ctx, done = std::move(done)]() {
+      ctx->SetStatus(DoCompute(ctx));
+      done();
+    });
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    ctx->SetStatus(DoCompute(ctx));
+  }
+
+ private:
+  Status DoCompute(OpKernelContext* ctx) {
     profiler::TraceMe traceme(
         [&] {
           return profiler::TraceMeEncode("ToSingleElementOp::DoCompute",
@@ -676,7 +688,7 @@ class ToSingleElementOp : public HybridAsyncOpKernel {
     return Status::OK();
   }
 
- private:
+  UnboundedThreadPool unbounded_threadpool_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
 };
