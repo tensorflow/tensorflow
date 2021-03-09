@@ -78,7 +78,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
     bool remove_redundant_cast = true;
     bool remove_redundant_reshape = true;
     bool reorder_cast_like_and_value_preserving = true;
-    bool reorder_redundant_reshape_around_unary = true;
+    bool reorder_reshape_around_unary = true;
     bool replace_mul_with_tile = true;
     bool replace_mul_with_square = true;
     bool replace_pack_with_tile_reshape = true;
