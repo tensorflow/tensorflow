@@ -317,12 +317,10 @@ class SerializeKerasObjectTest(test.TestCase):
         bias_initializer=keras.initializers.zeros)
     config = keras.layers.serialize(layer)
     self.assertEqual(
-        config['config']['bias_initializer'],
-        {'class_name': 'Zeros', 'config': {}}
+        config['config']['bias_initializer']['class_name'], 'Zeros'
     )
     self.assertEqual(
-        config['config']['kernel_initializer'],
-        {'class_name': 'Ones', 'config': {}}
+        config['config']['kernel_initializer']['class_name'], 'Ones'
     )
 
   def test_serializable_with_old_config(self):
