@@ -37,6 +37,7 @@ tf_py_test(
     size = "medium",
     srcs = ["batch_test.py"],
     deps = [
+        ":checkpoint_test_base"
         ":test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -44,6 +45,7 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/data/experimental/ops:batching",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/ops/ragged",
         "//third_party/py/numpy",
