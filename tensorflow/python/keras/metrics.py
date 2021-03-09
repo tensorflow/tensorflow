@@ -3343,7 +3343,7 @@ def categorical_accuracy(y_true, y_pred):
     Categorical accuracy values.
   """
   # assert if predicted and true labels Tensors have the same shape
-  assert array_ops.shape_v2(y_true)==array_ops.shape_v2(y_pred),"Both `y_true` and `y_pred` Tensors must have same shapes and must be one-hot encoded. Use tf.one_hot() to one hot encode the inputs."
+  check_ops.assert_equal_v2(array_ops.shape_v2(y_pred), array_ops.shape_v2(y_pred))
   
   return math_ops.cast(
       math_ops.equal(
