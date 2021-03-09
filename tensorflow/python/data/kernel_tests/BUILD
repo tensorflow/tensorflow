@@ -708,6 +708,7 @@ tf_py_test(
     size = "medium",
     srcs = ["shuffle_test.py"],
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
