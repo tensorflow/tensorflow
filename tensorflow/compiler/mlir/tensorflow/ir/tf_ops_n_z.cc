@@ -775,6 +775,15 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// RiscAdd
+//===----------------------------------------------------------------------===//
+
+void RiscAddOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<RiscAddTransDistr>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // RightShiftOp
 //===----------------------------------------------------------------------===//
 
@@ -861,6 +870,11 @@ static LogicalResult Verify(SelectOp op) {
 //===----------------------------------------------------------------------===//
 // SelectV2Op
 //===----------------------------------------------------------------------===//
+
+void SelectV2Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                           MLIRContext *context) {
+  results.insert<SelectV2TransDistr>(context);
+}
 
 static Type InferSelectV2OpType(Value condition, Value e, Value t) {
   Type element_ty = e.getType().cast<TensorType>().getElementType();

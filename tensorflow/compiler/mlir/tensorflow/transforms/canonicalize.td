@@ -67,6 +67,16 @@ def AddV2TransDistr : Pat<(TF_AddV2Op (TF_TransposeOp $tensor0, $perm0),
                           [(PermutationsAreEqual $perm0, $perm1)]>;
 
 //===----------------------------------------------------------------------===//
+// ApproximateEqualOp op patterns.
+//===----------------------------------------------------------------------===//
+
+def ApproximateEqualTransDistr : Pat<(TF_ApproximateEqualOp (TF_TransposeOp $tensor0, $perm0),
+                                      (TF_ApproximateEqualOp $tensor1, $perm1)),
+                          (TF_TransposeOp (TF_ApproximateEqualOp $tensor0, $tensor1),
+                                          $perm0),
+                          [(PermutationsAreEqual $perm0, $perm1)]>;
+
+//===----------------------------------------------------------------------===//
 // BatchMatMul op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -230,6 +240,16 @@ def BitwiseOrTransDistr : Pat<(TF_BitwiseOrOp (TF_TransposeOp $tensor0, $perm0),
                           [(PermutationsAreEqual $perm0, $perm1)]>;
 
 //===----------------------------------------------------------------------===//
+// BitwiseXor op patterns.
+//===----------------------------------------------------------------------===//
+
+def BitwiseXorTransDistr : Pat<(TF_BitwiseXorOp (TF_TransposeOp $tensor0, $perm0),
+                                      (TF_TransposeOp $tensor1, $perm1)),
+                          (TF_TransposeOp (TF_BitwiseXorOp $tensor0, $tensor1),
+                                          $perm0),
+                          [(PermutationsAreEqual $perm0, $perm1)]>;
+
+//===----------------------------------------------------------------------===//
 // LeftShift op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -357,6 +377,17 @@ def SelectToSelectV2 : Pat<
                    StaticShapeTensorOf<[AnyType]>:$t,
                    StaticShapeTensorOf<[AnyType]>:$e),
   (TF_SelectV2Op (ReshapeSelectPredIfNecessary $op, $cond, $t), $t, $e)>;
+
+//===----------------------------------------------------------------------===//
+// SelectV2 op patterns.
+//===----------------------------------------------------------------------===//
+
+def SelectV2TransDistr : Pat<(TF_SelectV2Op (TF_TransposeOp $cond, $perm0), 
+                                            (TF_TransposeOp $tensor0, $perm1),
+                                            (TF_TransposeOp $tensor1, $perm2)),
+                          (TF_TransposeOp (TF_SelectV2 $cond, $tensor0, $tensor1),
+                                          $perm0),
+                          [(PermutationsAreEqual $perm0, $perm1)]>;
 
 //===----------------------------------------------------------------------===//
 // Square op patterns.
@@ -506,5 +537,25 @@ def LessEqualTransDistr : Pat<(TF_LessEqualOp (TF_TransposeOp $tensor0, $perm0),
 def LessTransDistr : Pat<(TF_LessOp (TF_TransposeOp $tensor0, $perm0),
                                       (TF_TransposeOp $tensor1, $perm1)),
                           (TF_TransposeOp (TF_LessOp $tensor0, $tensor1),
+                                          $perm0),
+                          [(PermutationsAreEqual $perm0, $perm1)]>;
+
+//===----------------------------------------------------------------------===//
+// Mod op patterns.
+//===----------------------------------------------------------------------===//
+
+def ModTransDistr : Pat<(TF_ModOp (TF_TransposeOp $tensor0, $perm0),
+                                      (TF_TransposeOp $tensor1, $perm1)),
+                          (TF_TransposeOp (TF_ModOp $tensor0, $tensor1),
+                                          $perm0),
+                          [(PermutationsAreEqual $perm0, $perm1)]>;
+
+//===----------------------------------------------------------------------===//
+// RiscAdd op patterns.
+//===----------------------------------------------------------------------===//
+
+def RiscAddTransDistr : Pat<(TF_RiscAddOp (TF_TransposeOp $tensor0, $perm0),
+                                      (TF_TransposeOp $tensor1, $perm1)),
+                          (TF_TransposeOp (TF_RiscAddOp $tensor0, $tensor1),
                                           $perm0),
                           [(PermutationsAreEqual $perm0, $perm1)]>;

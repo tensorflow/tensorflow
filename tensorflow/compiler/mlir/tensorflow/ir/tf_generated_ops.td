@@ -437,6 +437,8 @@ def TF_ApproximateEqualOp : TF_Op<"ApproximateEqual", [Commutative, NoSideEffect
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_ArgMaxOp : TF_Op<"ArgMax", [NoSideEffect]> {
@@ -733,6 +735,8 @@ where \(r = \sqrt(x^2 + y^2) \).
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_AtanhOp : TF_Op<"Atanh", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
@@ -1563,6 +1567,8 @@ for dtype in dtype_list:
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_BoostedTreesBucketizeOp : TF_Op<"BoostedTreesBucketize", [NoSideEffect, SameVariadicOperandSize]> {
@@ -8404,6 +8410,8 @@ def TF_MinimumOp : TF_Op<"Minimum", [NoSideEffect, ResultsBroadcastableShape, TF
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_MirrorPadOp : TF_Op<"MirrorPad", [NoSideEffect, TF_OperandHasRank<1, 2>]> {
@@ -8585,6 +8593,8 @@ the result here is consistent with a truncating divide. E.g.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_ModelDatasetOp : TF_Op<"ModelDataset", [NoSideEffect]> {
@@ -12694,6 +12704,8 @@ Both input and output have a range `(-inf, inf)`.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_RiscDotOp : TF_Op<"RiscDot", [NoSideEffect]> {
@@ -13329,6 +13341,8 @@ def TF_SelectV2Op : TF_Op<"SelectV2", [NoSideEffect, ResultsBroadcastableShape]>
   let builders = [
     OpBuilder<(ins "Value":$condition, "Value":$e, "Value":$t)>
   ];
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_SelfAdjointEigV2Op : TF_Op<"SelfAdjointEigV2", [NoSideEffect]> {

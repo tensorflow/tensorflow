@@ -130,6 +130,15 @@ static LogicalResult Verify(AnyOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// ApproximateEqualOp
+//===----------------------------------------------------------------------===//
+
+void ApproximateEqualOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<ApproximateEqualOpTransDistr>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // AssertOp
 //===----------------------------------------------------------------------===//
 
@@ -564,6 +573,15 @@ void BitwiseAndOp::getCanonicalizationPatterns(
 void BitwiseOrOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                               MLIRContext *context) {
   results.insert<BitwiseOrTransDistr>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// BitwiseXorOp
+//===----------------------------------------------------------------------===//
+
+void BitwiseXorOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                              MLIRContext *context) {
+  results.insert<BitwiseXorTransDistr>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2926,6 +2944,15 @@ LogicalResult MeanOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
 void MinimumOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
   results.insert<MinimumTransDistr>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// ModOp
+//===----------------------------------------------------------------------===//
+
+void ModOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                            MLIRContext *context) {
+  results.insert<ModOpTransDistr>(context);
 }
 
 //===----------------------------------------------------------------------===//
