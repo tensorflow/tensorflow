@@ -222,62 +222,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "group_by_reducer_serialization_test",
-    size = "medium",
-    srcs = ["group_by_reducer_serialization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/data/experimental/ops:grouping",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
-    name = "group_by_window_serialization_test",
-    size = "medium",
-    srcs = ["group_by_window_serialization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/data/experimental/ops:grouping",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
-    name = "ignore_errors_serialization_test",
-    size = "small",
-    srcs = ["ignore_errors_serialization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-        "noasan",  # TODO(b/337374867) fails with -fsanitize=null
-    ],
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/data/experimental/ops:error_ops",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
     name = "interleave_dataset_serialization_test",
     size = "medium",
     srcs = ["interleave_dataset_serialization_test.py"],
@@ -294,39 +238,6 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "matching_files_dataset_serialization_test",
-    size = "small",
-    srcs = ["matching_files_dataset_serialization_test.py"],
-    tags = [
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/data/experimental/ops:matching_files",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
-    name = "optimize_dataset_serialization_test",
-    size = "medium",
-    srcs = ["optimize_dataset_serialization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/data/experimental/ops:optimization",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
 
@@ -367,26 +278,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "parallel_interleave_dataset_serialization_test",
-    size = "medium",
-    srcs = ["parallel_interleave_dataset_serialization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:sparse_ops",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python/data/experimental/ops:interleave_ops",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
     name = "parallel_map_dataset_serialization_test",
     size = "medium",
     srcs = ["parallel_map_dataset_serialization_test.py"],
@@ -407,22 +298,6 @@ tf_py_test(
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
-    name = "parse_example_dataset_serialization_test",
-    size = "medium",
-    srcs = ["parse_example_dataset_serialization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/data/experimental/kernel_tests:reader_dataset_ops_test_base",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
     ],
 )
 
