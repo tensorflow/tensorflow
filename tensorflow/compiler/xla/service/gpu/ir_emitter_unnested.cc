@@ -1916,7 +1916,13 @@ Status IrEmitterUnnested::EmitFusionFromMlir(MlirEmitterInput mlir_input) {
     // In the case of root tuple, it can be either reduce or slice input
     // fusion.
     if (IsInputFusibleSlices(mlir_input.op, /*verify_no_strides=*/true)) {
-      return EmitInputFusibleNonStridedSlices(mlir_input);
+      // The emitter doesn't support all cases. If it's not supported, fallback
+      // to ElementalIrEmitter.
+      auto status = EmitInputFusibleNonStridedSlices(mlir_input);
+      if (status.code() == tensorflow::error::FAILED_PRECONDITION) {
+        return EmitLoopFusionFromMlir(mlir_input);
+      }
+      return status;
     }
 
     const bool is_parallel_reduce =

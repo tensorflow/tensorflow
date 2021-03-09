@@ -87,6 +87,13 @@ typedef struct XLA_TpuNodeContext XLA_TpuNodeContext;
 
 typedef struct TfTpu_OrdinalSelector TfTpuOrdinalSelector;
 
+struct TpuPartitionedCall_Params {
+  bool input_shape_opt;
+  bool group_tensors_for_packing;
+  int32_t minimum_input_tensors_packing;
+  int32_t minimum_output_tensors_packing;
+};
+
 // Compiles Mlir or TF function computation by lowering into HLO IR and returns
 // `count` number of TPU programs ready for execution.
 // The API allocates the `XLA_TpuProgram*[]` array `tpu_programs` and creates
@@ -167,6 +174,9 @@ TFTPU_CAPI_EXPORT void TfTpuOrdinalSelector_GetOrdinal(
 TFTPU_CAPI_EXPORT void TfTpuOrdinalSelector_DequeueFromCoreSelector(
     TfTpuOrdinalSelector* ordinal_selector, int32_t device_ordinal,
     int64_t req_id);
+
+TFTPU_CAPI_EXPORT void TfTpu_GetTpuPartitionedCallParams(
+    TpuPartitionedCall_Params* params);
 
 typedef struct TpuExecutable_LoadProgramAndEnqueueToStream_Params {
   int32_t struct_size;
@@ -522,6 +532,7 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TfTpuOrdinalSelector_Destroy);
   TFTPU_ADD_FN_IN_STRUCT(TfTpuOrdinalSelector_GetOrdinal);
   TFTPU_ADD_FN_IN_STRUCT(TfTpuOrdinalSelector_DequeueFromCoreSelector);
+  TFTPU_ADD_FN_IN_STRUCT(TfTpu_GetTpuPartitionedCallParams);
 };
 
 }  // extern "C"

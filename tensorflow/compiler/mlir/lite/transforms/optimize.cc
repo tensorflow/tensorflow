@@ -441,7 +441,7 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
     }
 
     auto fc = rewriter.create<TFL::FullyConnectedOp>(
-        FusedLoc::get({fc_op.getLoc(), add_op.getLoc()}, fc_op.getContext()),
+        FusedLoc::get(fc_op.getContext(), {fc_op.getLoc(), add_op.getLoc()}),
         add_op.getType(),
         /*input=*/fc_op.input(),
         /*filter=*/filter,
@@ -501,7 +501,7 @@ struct FuseAddAndFullyConnected
 
     // Create the updated FC.
     auto new_fc = rewriter.create<TFL::FullyConnectedOp>(
-        FusedLoc::get({add_op.getLoc(), fc_op.getLoc()}, add_op.getContext()),
+        FusedLoc::get(add_op.getContext(), {add_op.getLoc(), fc_op.getLoc()}),
         fc_op.output().getTypes(),
         /*input=*/add_op.lhs(),
         /*filter=*/fc_op.filter(),
@@ -535,8 +535,8 @@ struct FuseFullyConnectedAndReluX : public OpRewritePattern<ReluXOp> {
     auto new_keep_num_dims =
         rewriter.getBoolAttr(fully_connected_op.keep_num_dims());
     auto fc = rewriter.create<FullyConnectedOp>(
-        FusedLoc::get({fully_connected_op.getLoc(), relu_op.getLoc()},
-                      relu_op.getContext()),
+        FusedLoc::get(relu_op.getContext(),
+                      {fully_connected_op.getLoc(), relu_op.getLoc()}),
         relu_op.getType(), fully_connected_op.input(),
         fully_connected_op.filter(), fully_connected_op.bias(),
         new_activation_func, new_weights_format, new_keep_num_dims);
@@ -609,7 +609,7 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
     }
 
     auto fc = rewriter.create<TFL::FullyConnectedOp>(
-        FusedLoc::get({fc_op.getLoc(), mul_op.getLoc()}, fc_op.getContext()),
+        FusedLoc::get(fc_op.getContext(), {fc_op.getLoc(), mul_op.getLoc()}),
         mul_op.getType(),
         /*input=*/fc_op.input(),
         /*filter=*/new_filter,

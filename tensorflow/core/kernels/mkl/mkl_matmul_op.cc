@@ -155,7 +155,7 @@ class MklMatMulOp : public OpKernel {
     char char_transa = transa ? 'T' : 'N';
     char char_transb = transb ? 'T' : 'N';
     VLOG(2) << "MKL DNN SGEMM called";
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#ifndef ENABLE_ONEDNN_OPENMP
     MklDnnThreadPool eigen_tp(ctx);
     // With threadpool , the runtime overhead is comparable to the kernel
     // execution for small kernel sizes. For such sizes, it may be better to run
@@ -171,11 +171,10 @@ class MklMatMulOp : public OpKernel {
       dnnl::threadpool_interop::sgemm(char_transa, char_transb, m, n, k, alpha,
                                       a, lda, b, ldb, beta, c, ldc, nullptr);
     }
-
 #else
     dnnl_sgemm(char_transa, char_transb, m, n, k, alpha, a, lda, b, ldb, beta,
                c, ldc);
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
   }
 
   void MklBlasGemm(OpKernelContext* ctx, bool transa, bool transb, const int m,

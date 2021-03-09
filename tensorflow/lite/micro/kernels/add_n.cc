@@ -22,8 +22,9 @@ limitations under the License.
 
 namespace tflite {
 namespace ops {
-namespace builtin {
+namespace micro {
 namespace add_n {
+namespace {
 
 constexpr int kInputTensor1 = 0;
 constexpr int kOutputTensor = 0;
@@ -49,11 +50,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_TYPES_EQ(context, input1->type, input->type);
   }
 
-  // Use the first input node's dimension to be the dimension of the output
-  // node.
-  TfLiteIntArray* input1_dims = input1->dims;
-  TfLiteIntArray* output_dims = TfLiteIntArrayCopy(input1_dims);
-  return context->ResizeTensor(context, output, output_dims);
+  return kTfLiteError;
 }
 
 template <typename T>
@@ -88,14 +85,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
+}  // namespace
 }  // namespace add_n
 
-TfLiteRegistration* Register_ADD_N() {
-  static TfLiteRegistration r = {/*init*/ nullptr, /*free*/ nullptr,
-                                 add_n::Prepare, add_n::Eval};
-  return &r;
-}
+TfLiteRegistration* Register_ADD_N() { return nullptr; }
 
-}  // namespace builtin
+}  // namespace micro
 }  // namespace ops
 }  // namespace tflite

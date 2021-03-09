@@ -148,6 +148,10 @@ class DatasetTestBase(test.TestCase):
   def getDatasetOutput(self, dataset, requires_initialization=False):
     get_next = self.getNext(
         dataset, requires_initialization=requires_initialization)
+    return self.getIteratorOutput(get_next)
+
+  def getIteratorOutput(self, get_next):
+    """Evaluates `get_next` until end of input, returning the results."""
     results = []
     while True:
       try:

@@ -255,7 +255,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // are required, `reuse_rendezvous_for_functions_` can be set to true so that
   // function executions and eager executions use the same rendezvous instance,
   // instead of creating new instance per function calls.
-  void SetReuseRendezvousForFunctions(bool reuse_rendezvous_for_functions) {
+  void SetReuseRendezvousForFunctions(
+      bool reuse_rendezvous_for_functions) override {
     reuse_rendezvous_for_functions_ = reuse_rendezvous_for_functions;
   }
   bool GetReuseRendezvousForFunctions() const {

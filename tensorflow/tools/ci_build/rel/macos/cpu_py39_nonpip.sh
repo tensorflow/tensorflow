@@ -25,15 +25,7 @@ export MACOSX_DEPLOYMENT_TARGET=10.10
 sudo xcode-select -s "${DEVELOPER_DIR}"
 
 # Set up py39 via pyenv and check it worked
-git clone --branch v1.2.21 https://github.com/pyenv/pyenv.git
-PYENV_ROOT="$(pwd)/pyenv"
-export PYENV_ROOT
-export PATH="$PYENV_ROOT/bin:$PATH"
-eval "$(pyenv init -)"
-PY_VERSION=3.9.0
-pyenv install -s "${PY_VERSION}"
-pyenv local "${PY_VERSION}"
-python --version
+setup_python_from_pyenv_macos
 
 # Set up and install MacOS pip dependencies.
 install_macos_pip_deps
@@ -42,7 +34,7 @@ install_macos_pip_deps
 export TF_NEED_CUDA=0
 export CC_OPT_FLAGS='-mavx'
 export TF2_BEHAVIOR=1
-export PYTHON_BIN_PATH=$(which python3.9)
+export PYTHON_BIN_PATH=$(which python)
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
 tag_filters="-no_oss,-oss_serial,-nomac,-no_mac$(maybe_skip_v1),-gpu,-tpu,-benchmark-test"

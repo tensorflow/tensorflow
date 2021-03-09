@@ -22,6 +22,8 @@ import ctypes
 import io
 import sys
 
+from unittest import mock
+
 import numpy as np
 import six
 
@@ -37,6 +39,12 @@ from tensorflow.lite.python.testdata import _pywrap_test_registerer as test_regi
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
+try:
+  from tensorflow.lite.python import metrics_portable
+  metrics = metrics_portable
+except ImportError:
+  from tensorflow.lite.python import metrics_nonportable
+  metrics = metrics_nonportable
 # pylint: enable=g-import-not-at-top
 
 
@@ -283,6 +291,14 @@ class InterpreterTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(s_params['dim_metadata'][1]['array_segments'],
                         [0, 2, 3])
     self.assertAllEqual(s_params['dim_metadata'][1]['array_indices'], [0, 1, 1])
+
+  @mock.patch.object(metrics.TFLiteMetrics,
+                     'increase_counter_interpreter_creation')
+  def testCreationCounter(self, increase_call):
+    interpreter_wrapper.Interpreter(
+        model_path=resource_loader.get_path_to_datafile(
+            'testdata/permute_float.tflite'))
+    increase_call.assert_called_once()
 
 
 class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):

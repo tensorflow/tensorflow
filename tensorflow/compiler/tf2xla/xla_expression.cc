@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -136,18 +137,15 @@ xla::StatusOr<Tensor> XlaExpression::ResolveDynamism(
   if (!client)
     return errors::InvalidArgument("client is required to resolve constant");
 
-  TF_ASSIGN_OR_RETURN(xla::XlaComputation constant_graph,
-                      handle().builder()->BuildDynamicInferenceGraph(handle()));
-
   TF_ASSIGN_OR_RETURN(TensorShape shape, GetShape());
 
   // The XLA layout is specified minor to major, and TensorFlow uses a major to
   // minor order.
   std::vector<int64> layout_indices(shape.dims());
   std::iota(layout_indices.rbegin(), layout_indices.rend(), 0);
-  xla::Layout layout = xla::LayoutUtil::MakeLayout(layout_indices);
-  TF_ASSIGN_OR_RETURN(xla::Literal literal,
-                      client->ComputeConstant(constant_graph, &layout));
+  xla::ValueInference value_inference(handle().builder());
+  TF_ASSIGN_OR_RETURN(xla::LiteralSlice literal,
+                      value_inference.AnalyzeIsDynamic(handle()));
   Tensor tensor(DT_BOOL);
   TF_RETURN_IF_ERROR(LiteralToHostTensor(literal, DT_BOOL, &tensor));
   return tensor;

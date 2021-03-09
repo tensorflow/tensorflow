@@ -2528,6 +2528,21 @@ TEST_F(VirtualSchedulerTest, MemoryUsage) {
             cpu_state.max_memory_usage);
   ValidateMemoryUsageSnapshot(expected_names, 0 /* port_num_expected */,
                               cpu_state.mem_usage_snapshot_at_peak);
+
+  // Total 10 nodes: Four const, x, y, z, w, add, out.
+  ASSERT_EQ(cpu_state.temporary_memory_usage_trace.size(), 10);
+  const std::pair<std::string, int64_t>& x_usage =
+      cpu_state.temporary_memory_usage_trace.at(4);
+  EXPECT_EQ(x_usage.first, "x");
+  EXPECT_EQ(x_usage.second, one_input_node_size);
+  const std::pair<std::string, int64_t>& add_usage =
+      cpu_state.temporary_memory_usage_trace.at(8);
+  EXPECT_EQ(add_usage.first, "add");
+  EXPECT_EQ(add_usage.second, 5 * one_input_node_size);
+  const std::pair<std::string, int64_t>& out_usage =
+      cpu_state.temporary_memory_usage_trace.at(9);
+  EXPECT_EQ(out_usage.first, "out");
+  EXPECT_EQ(out_usage.second, one_input_node_size);
   ExpectUnorderedMapEq(
       {std::make_pair("/job:localhost/replica:0/task:0/cpu:0", 64)},
       scheduler_->GetPersistentMemoryUsage());
