@@ -226,7 +226,7 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
 
     llvm::SmallVector<int64_t, 8> slice_stride(slice_end.size(), 1);
     llvm::SmallVector<int64_t, 8> slice_shape(slice_end.size());
-    for (int64_t i = 0; i < slice_end.size(); ++i) {
+    for (size_t i = 0; i < slice_end.size(); ++i) {
       slice_shape[i] = slice_end[i] - slice_start[i];
     }
     Type element_type = gather.getType().cast<TensorType>().getElementType();
@@ -242,7 +242,7 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
           dnums.collapsed_slice_dims().getIntValues(),
           [](const llvm::APInt& i) { return i.getSExtValue(); }));
       llvm::SmallVector<int64_t, 8> reshape_shape;
-      for (int64_t i = 0; i < slice_shape.size(); ++i) {
+      for (size_t i = 0; i < slice_shape.size(); ++i) {
         if (llvm::count(collapsed_slice_dims, i) == 0) {
           reshape_shape.push_back(slice_shape[i]);
         }
@@ -740,6 +740,12 @@ static LogicalResult Verify(BroadcastOp op) {
 
 static LogicalResult Verify(BroadcastInDimOp op) {
   auto operandType = op.operand().getType().dyn_cast<RankedTensorType>();
+  if (!operandType) {
+    // The following verification checks all depend on knowing the rank of
+    // the operand. Bail out now if we don't know the rank of the operand.
+    return success();
+  }
+
   auto operandRank = operandType.getRank();
   if (!op.broadcast_dimensions()) {
     if (operandRank == 0) {
@@ -783,13 +789,15 @@ static LogicalResult Verify(BroadcastInDimOp op) {
                         dimIndex, resultRank));
     }
 
-    auto dimSize = operandType.getDimSize(i);
-    auto resultDimSize = resultType.getDimSize(dimIndex);
-    if (dimSize != 1 && dimSize != resultDimSize) {
-      return op.emitOpError(
-          llvm::formatv("size of operand dimension {0} ({1}) is not equal to "
-                        "1 or size of result dimension {2} ({3})",
-                        i, dimSize, dimIndex, resultDimSize));
+    if (!operandType.isDynamicDim(i)) {
+      auto dimSize = operandType.getDimSize(i);
+      auto resultDimSize = resultType.getDimSize(dimIndex);
+      if (dimSize != 1 && dimSize != resultDimSize) {
+        return op.emitOpError(
+            llvm::formatv("size of operand dimension {0} ({1}) is not equal to "
+                          "1 or size of result dimension {2} ({3})",
+                          i, dimSize, dimIndex, resultDimSize));
+      }
     }
   }
 

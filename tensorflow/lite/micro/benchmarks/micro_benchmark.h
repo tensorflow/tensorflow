@@ -43,7 +43,7 @@ class MicroBenchmarkRunner {
   void RunSingleIteration() {
     // Run the model on this input and make sure it succeeds.
     TfLiteStatus invoke_status = interpreter_.Invoke();
-    if (invoke_status != kTfLiteOk) {
+    if (invoke_status == kTfLiteError) {
       MicroPrintf("Invoke failed.");
     }
   }

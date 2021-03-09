@@ -37,15 +37,15 @@ class UnaryOpsTestBase : public OpsTestBase {
 
   template <typename T, typename OutT>
   void SetOpKernel(const std::string& op_name, const TensorShape& shape,
-                   const absl::InlinedVector<T, 10>& input, bool add_t,
-                   bool add_tout) {
+                   const absl::InlinedVector<T, 10>& input,
+                   const test::OpsTestConfig& config) {
     NodeDefBuilder builder("some_name", op_name);
     builder.Input(FakeInput(DataTypeToEnum<T>::v()));
-    if (add_t) {
-      builder.Attr("T", DataTypeToEnum<T>::v());
+    if (config.add_t) {
+      builder.Attr(config.input_attribute, DataTypeToEnum<T>::v());
     }
-    if (add_tout) {
-      builder.Attr("Tout", DataTypeToEnum<OutT>::v());
+    if (config.add_tout) {
+      builder.Attr(config.output_attribute, DataTypeToEnum<OutT>::v());
     }
     TF_ASSERT_OK(builder.Finalize(node_def()));
 
@@ -58,7 +58,7 @@ class UnaryOpsTestBase : public OpsTestBase {
                           const absl::InlinedVector<T, 10>& input,
                           const absl::InlinedVector<OutT, 10>& expected_output,
                           const test::OpsTestConfig& config) {
-    SetOpKernel<T, OutT>(op_name, shape, input, config.add_t, config.add_tout);
+    SetOpKernel<T, OutT>(op_name, shape, input, config);
     TF_ASSERT_OK(RunOpKernel());
 
     // Assert buffer reuse if expected.
@@ -80,21 +80,53 @@ class UnaryOpsTestBase : public OpsTestBase {
   }
 
   template <typename T, typename BaselineT, typename OutT,
-            typename BaselineOutT>
-  void Test(const std::string& op_name, const TensorShape& shape,
-            const absl::InlinedVector<T, 10>& input,
-            BaselineOutT (*baseline_callback)(BaselineT),
-            const test::OpsTestConfig& config) {
+            typename BaselineCallback>
+  void TestImpl(const std::string& op_name, const TensorShape& shape,
+                const absl::InlinedVector<T, 10>& input,
+                const BaselineCallback& baseline_callback,
+                const test::OpsTestConfig& config) {
     // Prepare inputs and compute expected results.
     CHECK(input.size() <= shape.num_elements());
     auto repeated_input =
         test::RepeatInputToMatchShape(input, shape.num_elements());
     absl::InlinedVector<OutT, 10> expected_output =
-        ComputeExpectedOutput<T, BaselineT, OutT, BaselineOutT>(
-            repeated_input, baseline_callback);
+        ComputeExpectedOutput<T, BaselineT, OutT>(repeated_input,
+                                                  baseline_callback);
 
     RunAndExpectResult<T, OutT>(op_name, shape, repeated_input, expected_output,
                                 config);
+  }
+
+  template <typename T, typename BaselineT, typename OutT,
+            typename BaselineCallback>
+  void Test(const std::string& op_name, const TensorShape& shape,
+            const absl::InlinedVector<T, 10>& input,
+            const BaselineCallback& baseline_callback,
+            const test::OpsTestConfig& config) {
+    TestImpl<T, BaselineT, OutT>(op_name, shape, input, baseline_callback,
+                                 config);
+  }
+
+  // Allow deduction of overloaded function with const ref input.
+  template <typename T, typename BaselineT, typename OutT,
+            typename BaselineOutT>
+  void Test(const std::string& op_name, const TensorShape& shape,
+            const absl::InlinedVector<T, 10>& input,
+            BaselineOutT (*baseline_callback)(const BaselineT&),
+            const test::OpsTestConfig& config) {
+    TestImpl<T, BaselineT, OutT>(op_name, shape, input, baseline_callback,
+                                 config);
+  }
+
+  // Allow deduction of overloaded function with value input.
+  template <typename T, typename BaselineT, typename OutT,
+            typename BaselineOutT>
+  void Test(const std::string& op_name, const TensorShape& shape,
+            const absl::InlinedVector<T, 10>& input,
+            BaselineOutT (*baseline_callback)(BaselineT),
+            const test::OpsTestConfig& config) {
+    TestImpl<T, BaselineT, OutT>(op_name, shape, input, baseline_callback,
+                                 config);
   }
 
   template <typename T, typename OutT>
@@ -112,10 +144,10 @@ class UnaryOpsTestBase : public OpsTestBase {
   constexpr static double kRelativeTolerance = 0.001;
 
   template <typename T, typename BaselineT, typename OutT,
-            typename BaselineOutT>
+            typename BaselineCallback>
   absl::InlinedVector<OutT, 10> ComputeExpectedOutput(
       absl::InlinedVector<T, 10> input,
-      BaselineOutT (*baseline_callback)(BaselineT)) {
+      const BaselineCallback& baseline_callback) {
     absl::InlinedVector<OutT, 10> expected_output;
     for (int i = 0; i < input.size(); i++) {
       auto arg = static_cast<BaselineT>(input[i]);
@@ -147,7 +179,7 @@ class UnaryOpsTestBase : public OpsTestBase {
 #define GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(                   \
     op_name, InT, BaselineT, OutT, BaselineOutT, input_values,                \
     baseline_callback, config)                                                \
-  TEST_F(UnaryOpsTest, op_name##InT) {                                        \
+  TEST_F(UnaryOpsTest, op_name##InT##OutT) {                                  \
     using NativeT = EnumToDataType<InT>::Type;                                \
     using NativeBaselineT = EnumToDataType<BaselineT>::Type;                  \
     using NativeOutT = EnumToDataType<OutT>::Type;                            \
@@ -156,7 +188,7 @@ class UnaryOpsTestBase : public OpsTestBase {
         #op_name, test::DefaultInputShape(), input_values, baseline_callback, \
         config);                                                              \
   }                                                                           \
-  TEST_F(UnaryOpsTest, op_name##InT##EmptyShape) {                            \
+  TEST_F(UnaryOpsTest, op_name##InT##OutT##EmptyShape) {                      \
     using NativeT = EnumToDataType<InT>::Type;                                \
     using NativeOutT = EnumToDataType<OutT>::Type;                            \
     TestEmptyShape<NativeT, NativeOutT>(#op_name, config);                    \

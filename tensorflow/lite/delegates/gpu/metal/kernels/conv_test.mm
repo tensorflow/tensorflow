@@ -55,7 +55,7 @@ absl::Status ConvolutionO2H2W1I1Stride1x1Dilation1x1Test(TestExecutionEnvironmen
   attr.padding.appended = HW(1, 0);
   attr.strides = HW(1, 1);
 
-  for (auto storage : {TensorStorageType::BUFFER, TensorStorageType::IMAGE_BUFFER}) {
+  for (auto storage : env->GetSupportedStorages()) {
     for (auto precision : env->GetSupportedPrecisions()) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
@@ -91,7 +91,7 @@ absl::Status ConvolutionO1H2W2I1Stride1x1Dilation2x2Test(TestExecutionEnvironmen
   attr.padding.appended = HW(0, 0);
   attr.strides = HW(1, 1);
 
-  for (auto storage : {TensorStorageType::BUFFER, TensorStorageType::IMAGE_BUFFER}) {
+  for (auto storage : env->GetSupportedStorages()) {
     for (auto precision : env->GetSupportedPrecisions()) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
@@ -127,7 +127,7 @@ absl::Status ConvolutionO1H3W3I1Stride1x1Dilation1x1Test(TestExecutionEnvironmen
   attr.padding.appended = HW(0, 0);
   attr.strides = HW(1, 1);
 
-  for (auto storage : {TensorStorageType::BUFFER, TensorStorageType::IMAGE_BUFFER}) {
+  for (auto storage : env->GetSupportedStorages()) {
     for (auto precision : env->GetSupportedPrecisions()) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
@@ -163,7 +163,7 @@ absl::Status ConvolutionO2H1W1I2Stride1x1Dilation1x1Test(TestExecutionEnvironmen
   attr.padding.appended = HW(0, 0);
   attr.strides = HW(1, 1);
 
-  for (auto storage : {TensorStorageType::BUFFER, TensorStorageType::IMAGE_BUFFER}) {
+  for (auto storage : env->GetSupportedStorages()) {
     for (auto precision : env->GetSupportedPrecisions()) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
@@ -199,7 +199,7 @@ absl::Status ConvolutionO1H1W1I1Stride2x2Dilation1x1Test(TestExecutionEnvironmen
   attr.padding.appended = HW(0, 0);
   attr.strides = HW(2, 2);
 
-  for (auto storage : {TensorStorageType::BUFFER, TensorStorageType::IMAGE_BUFFER}) {
+  for (auto storage : env->GetSupportedStorages()) {
     for (auto precision : env->GetSupportedPrecisions()) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;

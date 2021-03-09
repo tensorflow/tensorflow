@@ -94,6 +94,7 @@ add_mlir_library(MhloToLhloConversion
   LmhloDialect
   MLIRIR
   MLIRPass
+  MLIRMath
 )
 
 add_mlir_library(MhloToStandard

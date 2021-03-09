@@ -49,7 +49,10 @@ namespace jax {
 // The 3 following structs define how to shard one dimension of an ndarry.
 //
 // `NoSharding` (`None` in Python) means no sharding.
-struct NoSharding {};
+struct NoSharding {
+  bool operator==(const NoSharding& other) const { return true; }
+  bool operator!=(const NoSharding& other) const { return false; }
+};
 
 // `Chunked` means that the dimension is split into np.prod(chunks) chunks
 // and the split dimension itself is preserved inside the map.
@@ -124,6 +127,12 @@ class ShardingSpec {
   const std::vector<MeshDimAssignment>& GetMeshMapping() const {
     return mesh_mapping_;
   }
+
+  bool operator==(const ShardingSpec& other) const {
+    return sharding_ == other.sharding_ && mesh_mapping_ == other.mesh_mapping_;
+  }
+
+  bool operator!=(const ShardingSpec& other) const { return !(*this == other); }
 
  private:
   //  `sharding` specifies how the array is supposed to get partitioned into

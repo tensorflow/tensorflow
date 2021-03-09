@@ -10,7 +10,7 @@ func @element_wise(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32, %[[RESULT_OUT:.*]]: f32):
-// CHECK-NEXT:   %[[RESULT:.*]] = powf %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = math.powf %[[LHS_IN]], %[[RHS_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -115,7 +115,7 @@ func @exp(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[RESULT:.*]] = exp %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = math.exp %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -127,7 +127,7 @@ func @log(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[RESULT:.*]] = log %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = math.log %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -419,6 +419,18 @@ func @convert_i1_to_f32(%input: memref<2x2xi1>, %result: memref<2x2xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @convert_i1_to_i32
+func @convert_i1_to_i32(%input: memref<2x2xi1>, %result: memref<2x2xi32>) {
+  "lmhlo.convert"(%input, %result) : (memref<2x2xi1>, memref<2x2xi32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i1, %[[RESULT_OUT:.*]]: i32):
+// CHECK-NEXT:   %[[RESULT:.*]] = zexti %[[OPERAND_IN]] : i1 to i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
+
+// -----
+
 // CHECK-LABEL: func @convert_i32_to_f32
 func @convert_i32_to_f32(%input: memref<2x2xi32>, %result: memref<2x2xf32>) {
   "lmhlo.convert"(%input, %result) : (memref<2x2xi32>, memref<2x2xf32>) -> ()
@@ -439,7 +451,7 @@ func @convert_i16_to_i32(%input: memref<2x2xi16>,
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i16, %[[RESULT_OUT:.*]]: i32):
-// CHECK-NEXT:   %[[RESULT:.*]] = zexti %[[OPERAND_IN]] : i16 to i32
+// CHECK-NEXT:   %[[RESULT:.*]] = sexti %[[OPERAND_IN]] : i16 to i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
 
 // -----
@@ -502,6 +514,34 @@ func @convert_f32_to_f32(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @convert_i32_to_i1
+func @convert_i32_to_i1(%input: memref<2x2xi32>, %result: memref<2x2xi1>) {
+  "lmhlo.convert"(%input, %result)
+      : (memref<2x2xi32>, memref<2x2xi1>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %[[RESULT_OUT:.*]]: i1):
+// CHECK-NEXT:   %[[ZERO:.*]] = constant 0 : i32
+// CHECK-NEXT:   %[[RESULT:.*]] = cmpi ne, %[[OPERAND_IN]], %[[ZERO]] : i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// -----
+
+// CHECK-LABEL: func @convert_f32_to_i1
+func @convert_f32_to_i1(%input: memref<2x2xf32>, %result: memref<2x2xi1>) {
+  "lmhlo.convert"(%input, %result)
+      : (memref<2x2xf32>, memref<2x2xi1>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]: i1):
+// CHECK-NEXT:   %[[ZERO:.*]] = constant 0.000000e+00 : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = cmpf une, %[[OPERAND_IN]], %[[ZERO]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// -----
+
 // CHECK-LABEL: func @convert_f32_to_i32
 func @convert_f32_to_i32(%input: memref<2x2xf32>, %result: memref<2x2xi32>) {
   "lmhlo.convert"(%input, %result)
@@ -522,7 +562,7 @@ func @cos(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[RESULT:.*]] = cos %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = math.cos %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -536,7 +576,7 @@ func @sin(%input: memref<2x2xf32>,
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[RESULT:.*]] = sin %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = math.sin %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -612,7 +652,7 @@ func @rsqrt(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[RESULT:.*]] = rsqrt %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = math.rsqrt %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -676,7 +716,7 @@ func @sqrt(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[RESULT:.*]] = sqrt %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = math.sqrt %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----
@@ -688,7 +728,7 @@ func @tanh(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[RESULT:.*]] = tanh %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = math.tanh %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----

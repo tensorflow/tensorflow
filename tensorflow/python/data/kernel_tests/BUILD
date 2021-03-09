@@ -8,9 +8,33 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+py_library(
+    name = "checkpoint_test_base",
+    srcs = [
+        "checkpoint_test_base.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/experimental/ops:iterator_ops",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:iterator_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
 tf_py_test(
     name = "batch_test",
-    size = "small",
+    size = "medium",
     srcs = ["batch_test.py"],
     deps = [
         ":test_base",
@@ -315,6 +339,7 @@ tf_py_test(
     tags = [
         "no_oss",  # Test flaky due to port collisions.
         "no_windows",
+        "nomsan",  # b/180655981
     ],
     deps = [
         ":test_base",
@@ -413,6 +438,7 @@ tf_py_test(
     srcs = ["map_test.py"],
     shard_count = 4,
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",

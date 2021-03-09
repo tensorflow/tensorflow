@@ -318,6 +318,7 @@ BROADCAST_BINARY_OP_DEFS(BroadcastMaxOp);
 BROADCAST_BINARY_OP_DEFS(BroadcastMinOp);
 BROADCAST_BINARY_OP_DEFS(BroadcastMulOp);
 BROADCAST_BINARY_OP_DEFS(BroadcastOrOp);
+BROADCAST_BINARY_OP_DEFS(BroadcastPolygammaOp);
 BROADCAST_BINARY_OP_DEFS(BroadcastPowOp);
 BROADCAST_BINARY_OP_DEFS(BroadcastRemOp);
 BROADCAST_BINARY_OP_DEFS(BroadcastShiftLeftOp);
@@ -333,6 +334,26 @@ BROADCAST_BINARY_OP_DEFS(BroadcastZetaOp);
 static LogicalResult Verify(ConstantLikeOp op) {
   if (op.value().getType() != op.getType().cast<ShapedType>().getElementType())
     return op.emitOpError() << "value's type doesn't match element return type";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// MinimumBroadcastShapesOp
+//===----------------------------------------------------------------------===//
+static LogicalResult Verify(MinimumBroadcastShapesOp op) {
+  // Check that the number of operands matches the number of outputs.
+  unsigned result_shapes_count = op.results().size();
+  unsigned operand_shapes_count = op.shapes().size();
+  if (operand_shapes_count != result_shapes_count) {
+    return op.emitOpError()
+           << "number of operand shapes (" << operand_shapes_count
+           << ") does not match number of result shapes ("
+           << result_shapes_count << ")";
+  }
+  if (operand_shapes_count < 2) {
+    return op.emitOpError() << "number of operand shapes ("
+                            << operand_shapes_count << ") should be >= 2";
+  }
   return success();
 }
 
@@ -370,6 +391,31 @@ struct ConstantLikeToConstant : public OpRewritePattern<ConstantLikeOp> {
 void ConstantLikeOp::getCanonicalizationPatterns(
     OwningRewritePatternList& results, MLIRContext* context) {
   results.insert<ConstantLikeToConstant>(context);
+}
+
+LogicalResult BroadcastSelectOp::inferReturnTypeComponents(
+    MLIRContext*, Optional<Location> location, ValueRange operands,
+    DictionaryAttr, RegionRange,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  BroadcastSelectOp::Adaptor op(operands);
+  auto pred_type = op.pred().getType().dyn_cast<ShapedType>();
+  auto on_true_type = op.on_true().getType().dyn_cast<ShapedType>();
+  auto on_false_type = op.on_false().getType().dyn_cast<ShapedType>();
+
+  if (!pred_type || !on_true_type || !on_false_type ||
+      on_true_type.getElementType() != on_false_type.getElementType()) {
+    return emitOptionalError(location, "mismatched operand types");
+  }
+
+  Type element_type = on_true_type.getElementType();
+
+  // Compute the result shape as two binary broadcasts.
+  Type other =
+      GetBroadcastType(on_true_type, on_false_type, element_type, nullptr);
+  Type output = GetBroadcastType(other, pred_type, element_type, nullptr);
+
+  inferredReturnShapes.push_back(output);
+  return success();
 }
 
 }  // namespace chlo

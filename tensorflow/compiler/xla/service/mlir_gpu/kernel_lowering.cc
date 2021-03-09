@@ -215,7 +215,9 @@ class LowerToROCDLPass
     {
       ::mlir::OwningRewritePatternList patterns;
       ::mlir::populateGpuRewritePatterns(m.getContext(), patterns);
-      ::mlir::applyPatternsAndFoldGreedily(m, std::move(patterns));
+      if (failed(mlir::applyPatternsAndFoldGreedily(m, std::move(patterns)))) {
+        signalPassFailure();
+      }
     }
 
     ::mlir::OwningRewritePatternList patterns;

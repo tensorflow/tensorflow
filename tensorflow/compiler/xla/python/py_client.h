@@ -97,6 +97,9 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   absl::string_view platform_name() const {
     return pjrt_client_->platform_name();
   }
+  absl::string_view platform_version() const {
+    return pjrt_client_->platform_version();
+  }
   int addressable_device_count() const {
     return pjrt_client_->addressable_device_count();
   }

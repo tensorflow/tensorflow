@@ -109,6 +109,10 @@ void TrtShapeOptimizationProfile::InitProfiles(
       VLOG(1) << "Creating profiles with ImplicitBatchModeCompatible strategy";
       ImplicitBatchModeCompatibleStrategy();
       break;
+    // Treat all other strategies the same as kOptimal for now. Implementing
+    // those is outlined in the dynamic shape support implementation plan.
+    case ProfileStrategy::kRange:
+    case ProfileStrategy::kRangeOptimal:
     case ProfileStrategy::kOptimal:
       VLOG(1) << "Creating profiles with Optimal strategy";
       OptimalStrategy();

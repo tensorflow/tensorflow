@@ -43,7 +43,7 @@ bool IsCpuGpuCompile(const Graph* graph) {
   for (Node* n : graph->nodes()) {
     string name;
     // Only consider nodes being compiled.
-    if (!GetNodeAttr(n->attrs(), kXlaClusterIdAttr, &name).ok()) continue;
+    if (!TryGetNodeAttr(n->attrs(), kXlaClusterIdAttr, &name)) continue;
     // Early return for any node with a device that is not a CPU or GPU.
     DeviceNameUtils::ParsedName parsed;
     if (DeviceNameUtils::ParseFullName(n->requested_device(), &parsed)) {
@@ -58,8 +58,8 @@ bool IsCpuGpuCompile(const Graph* graph) {
 // Checks if a graph node is marked to be a guaranteed constant.
 bool is_guaranteed_constant(const Node& n) {
   bool guaranteed_constant = false;
-  if (!GetNodeAttr(n.attrs(), "_is_guaranteed_constant", &guaranteed_constant)
-           .ok()) {
+  if (!TryGetNodeAttr(n.attrs(), "_is_guaranteed_constant",
+                      &guaranteed_constant)) {
     return false;
   }
   return guaranteed_constant;

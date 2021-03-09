@@ -184,7 +184,7 @@ Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
 
   // TODO(b/153507667): Pass the session object when importing logic is removed.
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(
-      toco_flags, std::move(module), pass_config, tags, result,
+      model_flags, toco_flags, std::move(module), pass_config, tags, result,
       /*session=*/llvm::None);
   return status;
 }

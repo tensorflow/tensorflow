@@ -21,6 +21,7 @@ from __future__ import print_function
 import sys
 import time
 
+from absl import app
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
@@ -35,13 +36,12 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
-from tensorflow.python.platform import app
 from tensorflow.python.platform import test
 
 
 def _maybe_complex(x):
   if x.dtype.kind == "c":  # complex
-    return (x + 1j * x) / 2
+    return x + 1j * x
   return x
 
 
@@ -53,20 +53,20 @@ class SparseTensorDenseMatMulTest(test.TestCase):
                   adjoint_a=False,
                   adjoint_b=False,
                   indices_dtype=np.int64):
-    x_mat = np.matrix(x)
+    x_mat = np.array(x)
     if adjoint_a:
-      x_mat = x_mat.H
-    y_mat = np.matrix(y)
+      x_mat = x_mat.T.conj()
+    y_mat = np.array(y)
     if adjoint_b:
-      y_mat = y_mat.H
+      y_mat = y_mat.T.conj()
 
-    np_ans = x_mat * y_mat
+    np_ans = x_mat.dot(y_mat)
 
     x_indices = np.vstack(np.where(x)).astype(indices_dtype).T
     x_values = x[np.where(x)]
     x_shape = x.shape
 
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       sp_x_value = sparse_tensor.SparseTensorValue(
           indices=x_indices, values=x_values, dense_shape=x_shape)
       tf_value_ans = sparse_ops.sparse_tensor_dense_matmul(
@@ -137,31 +137,43 @@ class SparseTensorDenseMatMulTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes(use_gpu=False)
   def testInvalidIndicesForSparseTensorDenseMatmul(self):
     # TODO(b/169813429): Make GPU kernel return nice errors too.
-    indices = np.matrix([[1, 10]]).astype(np.int64)
+    indices = np.array([[1, 10]]).astype(np.int64)
     values = np.array([10]).astype(np.float32)
     shape = [3, 2]
     sparse_t = sparse_tensor.SparseTensor(indices, values, shape)
 
     # Test multiplying by both a small and large dense matrix, to hit
     # both cases in the kernel.
-    dense_t = np.matrix([[1] * 5, [2] * 5], dtype=np.float32)
+    dense_t = np.array([[1] * 5, [2] * 5], dtype=np.float32)
     with self.assertRaisesOpError("k .10. from index.0,1. out of bounds .>=2."):
       self.evaluate(sparse_ops.sparse_tensor_dense_matmul(sparse_t, dense_t))
-    dense_t = np.matrix([[1] * 500, [2] * 500], dtype=np.float32)
+    dense_t = np.array([[1] * 500, [2] * 500], dtype=np.float32)
     with self.assertRaisesOpError("k .10. from index.0,1. out of bounds .>=2."):
       self.evaluate(sparse_ops.sparse_tensor_dense_matmul(sparse_t, dense_t))
 
     # Repeat with adjoint_a, to get a different error.
-    dense_t = np.matrix([[1] * 5, [2] * 5, [3] * 5], dtype=np.float32)
+    dense_t = np.array([[1] * 5, [2] * 5, [3] * 5], dtype=np.float32)
     with self.assertRaisesOpError("m .10. from index.0,1. out of bounds .>=2."):
       self.evaluate(
           sparse_ops.sparse_tensor_dense_matmul(
               sparse_t, dense_t, adjoint_a=True))
-    dense_t = np.matrix([[1] * 500, [2] * 500, [3] * 500], dtype=np.float32)
+    dense_t = np.array([[1] * 500, [2] * 500, [3] * 500], dtype=np.float32)
     with self.assertRaisesOpError("m .10. from index.0,1. out of bounds .>=2."):
       self.evaluate(
           sparse_ops.sparse_tensor_dense_matmul(
               sparse_t, dense_t, adjoint_a=True))
+
+  def testUnorderedIndicesForSparseTensorDenseMatmul(self):
+    indices = np.array([(2, 1), (0, 0)]).astype(np.int64)
+    values = np.array([10, 11]).astype(np.float32)
+    shape = [3, 2]
+    sparse_t = sparse_tensor.SparseTensor(indices, values, shape)
+
+    dense_t = np.array([[1] * 500, [2] * 500], dtype=np.float32)
+    expected_t = np.array([[11] * 500, [0] * 500, [20] * 500], dtype=np.float32)
+
+    self.assertAllClose(
+        expected_t, sparse_ops.sparse_tensor_dense_matmul(sparse_t, dense_t))
 
   @test_util.run_gpu_only
   def testInvalidIndicesForSparseTensorDenseMatmulOnGPU(self):
@@ -172,11 +184,11 @@ class SparseTensorDenseMatMulTest(test.TestCase):
 
     # Test multiplying by both a small and large dense matrix, to hit
     # both cases in the kernel.
-    dense_t = np.matrix([[1] * 5, [2] * 5], dtype=np.float32)
+    dense_t = np.array([[1] * 5, [2] * 5], dtype=np.float32)
     expected_t = np.array([[0] * 5, [np.nan] * 5, [0] * 5], dtype=np.float32)
     self.assertAllClose(
         expected_t, sparse_ops.sparse_tensor_dense_matmul(sparse_t, dense_t))
-    dense_t = np.matrix([[1] * 500, [2] * 500], dtype=np.float32)
+    dense_t = np.array([[1] * 500, [2] * 500], dtype=np.float32)
     expected_t = np.array([[0] * 500, [np.nan] * 500, [0] * 500],
                           dtype=np.float32)
     self.assertAllClose(
@@ -186,21 +198,20 @@ class SparseTensorDenseMatMulTest(test.TestCase):
     # is OOO w.r.t. the output.  The GPU kernel can't do much here,
     # so it just doesn't accumulate.
 
-    dense_t = np.matrix([[1] * 5, [2] * 5, [3] * 5], dtype=np.float32)
+    dense_t = np.array([[1] * 5, [2] * 5, [3] * 5], dtype=np.float32)
     expected_t = np.array([[0] * 5, [0] * 5], dtype=np.float32)
     self.assertAllClose(
         expected_t,
         sparse_ops.sparse_tensor_dense_matmul(
             sparse_t, dense_t, adjoint_a=True))
 
-    dense_t = np.matrix([[1] * 500, [2] * 500, [3] * 500], dtype=np.float32)
+    dense_t = np.array([[1] * 500, [2] * 500, [3] * 500], dtype=np.float32)
     expected_t = np.array([[0] * 500, [0] * 500], dtype=np.float32)
     self.assertAllClose(
         expected_t,
         sparse_ops.sparse_tensor_dense_matmul(
             sparse_t, dense_t, adjoint_a=True))
 
-  # Tests setting one dimension to be a high value.
   def _testLarge(self, np_dtype):
     r1 = np.random.randint(6000, 20000)
     r2 = np.random.randint(1, 10)
@@ -220,6 +231,8 @@ class SparseTensorDenseMatMulTest(test.TestCase):
       self._testMatmul(
           x.transpose(), y.transpose(), adjoint_a=True, adjoint_b=True)
 
+  # Tests setting one dimension to be a high value.
+  def testLarge(self):
     np.random.seed(127)  # Repeatable results
     self._testLarge(np.float32)
     self._testLarge(np.float64)

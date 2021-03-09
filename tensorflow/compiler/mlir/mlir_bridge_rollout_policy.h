@@ -50,8 +50,9 @@ enum class MlirBridgeRolloutPolicy {
 // to decide whether to emit metrics on unsupported features of the graph.
 MlirBridgeRolloutPolicy GetMlirBridgeRolloutPolicy(
     const tensorflow::Graph& graph,
+    const FunctionLibraryDefinition* function_library,
     absl::optional<tensorflow::ConfigProto> config_proto,
-    bool record_stats = false);
+    bool uses_uninitialized_resource_args, bool record_stats = false);
 
 }  // namespace tensorflow
 

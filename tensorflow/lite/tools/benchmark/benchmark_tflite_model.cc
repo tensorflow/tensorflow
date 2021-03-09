@@ -485,6 +485,12 @@ BenchmarkTfLiteModel::CreateRandomTensorData(const TfLiteTensor& t,
       return CreateInputTensorData<int32_t>(
           num_elements, std::uniform_int_distribution<int32_t>(low, high));
     }
+    case kTfLiteUInt32: {
+      int low = has_value_range ? low_range : 0;
+      int high = has_value_range ? high_range : 99;
+      return CreateInputTensorData<uint32_t>(
+          num_elements, std::uniform_int_distribution<uint32_t>(low, high));
+    }
     case kTfLiteInt16: {
       int low = has_value_range ? low_range : 0;
       int high = has_value_range ? high_range : 99;

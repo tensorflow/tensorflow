@@ -213,6 +213,10 @@ TfLiteStatus ParseLogistic(const Operator* op, ErrorReporter* error_reporter,
                            BuiltinDataAllocator* allocator,
                            void** builtin_data);
 
+TfLiteStatus ParseLogSoftmax(const Operator* op, ErrorReporter* error_reporter,
+                             BuiltinDataAllocator* allocator,
+                             void** builtin_data);
+
 TfLiteStatus ParseMaximum(const Operator* op, ErrorReporter* error_reporter,
                           BuiltinDataAllocator* allocator, void** builtin_data);
 
@@ -304,6 +308,9 @@ TfLiteStatus ParseSplit(const Operator* op, ErrorReporter* error_reporter,
 TfLiteStatus ParseSplitV(const Operator* op, ErrorReporter* error_reporter,
                          BuiltinDataAllocator* allocator, void** builtin_data);
 
+TfLiteStatus ParseSqueeze(const Operator* op, ErrorReporter* error_reporter,
+                          BuiltinDataAllocator* allocator, void** builtin_data);
+
 TfLiteStatus ParseSqrt(const Operator* op, ErrorReporter* error_reporter,
                        BuiltinDataAllocator* allocator, void** builtin_data);
 
@@ -323,6 +330,10 @@ TfLiteStatus ParseSvdf(const Operator* op, ErrorReporter* error_reporter,
 
 TfLiteStatus ParseTanh(const Operator* op, ErrorReporter* error_reporter,
                        BuiltinDataAllocator* allocator, void** builtin_data);
+
+TfLiteStatus ParseTranspose(const Operator* op, ErrorReporter* error_reporter,
+                            BuiltinDataAllocator* allocator,
+                            void** builtin_data);
 
 TfLiteStatus ParseTransposeConv(const Operator* op,
                                 ErrorReporter* error_reporter,

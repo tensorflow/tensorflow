@@ -137,6 +137,10 @@ TF_LITE_MICRO_TEST(TestTypeSizeOf) {
   TF_LITE_MICRO_EXPECT_EQ(sizeof(int32_t), size);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
+                          tflite::TfLiteTypeSizeOf(kTfLiteUInt32, &size));
+  TF_LITE_MICRO_EXPECT_EQ(sizeof(uint32_t), size);
+
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
                           tflite::TfLiteTypeSizeOf(kTfLiteUInt8, &size));
   TF_LITE_MICRO_EXPECT_EQ(sizeof(uint8_t), size);
 

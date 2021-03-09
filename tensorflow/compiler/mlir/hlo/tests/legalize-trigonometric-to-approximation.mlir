@@ -1,7 +1,7 @@
 // RUN: mlir-hlo-opt --mhlo-legalize-trigonometric-to-approximation --split-input-file %s | FileCheck %s
 
 func @tanh_f64(%arg0 : f64) -> f64 {
-  %res = tanh %arg0 : f64
+  %res = math.tanh %arg0 : f64
   return %res : f64
 }
 
@@ -11,7 +11,7 @@ func @tanh_f64(%arg0 : f64) -> f64 {
 // -----
 
 func @tanh_f32(%arg0 : f32) -> f32 {
-  %res = tanh %arg0 : f32
+  %res = math.tanh %arg0 : f32
   return %res : f32
 }
 
@@ -66,7 +66,7 @@ func @tanh_f32(%arg0 : f32) -> f32 {
 // -----
 
 func @tanh_f16(%arg0 : f16) -> f16 {
-  %res = tanh %arg0 : f16
+  %res = math.tanh %arg0 : f16
   return %res : f16
 }
 
@@ -125,7 +125,7 @@ func @tanh_f16(%arg0 : f16) -> f16 {
 // CHECK-LABEL: @atan2_f64
 func @atan2_f64(%arg0 : f64, %arg1 : f64) -> f64 {
   // CHECK: atan2
-  %res = atan2 %arg0, %arg1 : f64
+  %res = math.atan2 %arg0, %arg1 : f64
   return %res : f64
 }
 
@@ -134,6 +134,6 @@ func @atan2_f64(%arg0 : f64, %arg1 : f64) -> f64 {
 // CHECK-LABEL: @atan_f64
 func @atan_f64(%arg : f64) -> f64 {
   // CHECK: atan
-  %res = atan %arg : f64
+  %res = math.atan %arg : f64
   return %res : f64
 }

@@ -24,6 +24,7 @@ import uuid
 
 import six
 
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -45,7 +46,7 @@ from tensorflow.python.training.saver import BaseSaverBuilder
 # pylint: enable=wildcard-import
 from tensorflow.python.training.tracking import base as trackable_base
 from tensorflow.python.training.tracking import tracking as trackable
-from tensorflow.python.util import compat
+from tensorflow.python.util import compat as compat_util
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
@@ -659,7 +660,7 @@ class TextFileInitializer(TableInitializerBase):
     - TextFileIndex.LINE_NUMBER means use the line number starting from zero,
       expects data type int64.
     - TextFileIndex.WHOLE_LINE means use the whole line content, expects data
-      type string.
+      type string or int64.
     - A value >=0 means use the index (starting at zero) of the split line based
       on `delimiter`.
 
@@ -712,9 +713,11 @@ class TextFileInitializer(TableInitializerBase):
     if value_index == TextFileIndex.LINE_NUMBER and value_dtype != dtypes.int64:
       raise ValueError("Signature mismatch. Values must be dtype %s, got %s." %
                        (dtypes.int64, value_dtype))
-    if value_index == TextFileIndex.WHOLE_LINE and value_dtype != dtypes.string:
-      raise ValueError("Signature mismatch. Values must be dtype %s, got %s." %
-                       (dtypes.string, value_dtype))
+    if ((value_index == TextFileIndex.WHOLE_LINE) and
+        (not value_dtype.is_integer) and (value_dtype != dtypes.string)):
+      raise ValueError(
+          "Signature mismatch. Values must be integer or string, got %s." %
+          (value_dtype))
 
     if (vocab_size is not None) and (vocab_size <= 0):
       raise ValueError("Invalid vocab_size %s." % vocab_size)
@@ -747,10 +750,16 @@ class TextFileInitializer(TableInitializerBase):
     with ops.name_scope(self._name, "text_file_init", (table.resource_handle,)):
       filename = ops.convert_to_tensor(
           self._filename, dtypes.string, name="asset_filepath")
-      init_op = gen_lookup_ops.initialize_table_from_text_file_v2(
-          table.resource_handle, filename, self._key_index, self._value_index,
-          -1 if self._vocab_size is None else self._vocab_size, self._delimiter,
-          self._offset)
+      if self._offset != 0 or compat.forward_compatible(2021, 3, 18):
+        init_op = gen_lookup_ops.initialize_table_from_text_file_v2(
+            table.resource_handle, filename, self._key_index, self._value_index,
+            -1 if self._vocab_size is None else self._vocab_size,
+            self._delimiter, self._offset)
+      else:
+        init_op = gen_lookup_ops.initialize_table_from_text_file_v2(
+            table.resource_handle, filename, self._key_index, self._value_index,
+            -1 if self._vocab_size is None else self._vocab_size,
+            self._delimiter)
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     # If the filename tensor is anything other than a string constant (e.g.,
     # if it is a placeholder) then it does not make sense to track it as an
@@ -795,7 +804,7 @@ class TextFileStringTableInitializer(TextFileInitializer):
     - TextFileIndex.LINE_NUMBER means use the line number starting from zero,
       expects data type int64.
     - TextFileIndex.WHOLE_LINE means use the whole line content, expects data
-      type string.
+      type string or int64.
     - A value >=0 means use the index (starting at zero) of the split line based
       on `delimiter`.
 
@@ -913,8 +922,8 @@ class StrongHashSpec(HasherSpec):
     if len(key) != 2:
       raise ValueError("key must have size 2, got %s." % len(key))
 
-    if not isinstance(key[0], compat.integral_types) or not isinstance(
-        key[1], compat.integral_types):
+    if not isinstance(key[0], compat_util.integral_types) or not isinstance(
+        key[1], compat_util.integral_types):
       raise TypeError("Invalid key %s. Must be unsigned integer values." % key)
 
     return super(cls, StrongHashSpec).__new__(cls, "stronghash", key)

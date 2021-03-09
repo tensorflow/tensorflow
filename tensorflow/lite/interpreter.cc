@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/stderr_reporter.h"
+#include "tensorflow/lite/util.h"
 
 // TODO(b/139446230): Move to portable platform header.
 #if defined(__ANDROID__)
@@ -386,6 +387,9 @@ bool Interpreter::IsCancelled() { return primary_subgraph().IsCancelled(); }
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   TfLiteStatus status = kTfLiteOk;
   for (auto& subgraph : subgraphs_) {
+    if (IsValidationSubgraph(subgraph->GetName().c_str())) {
+      continue;
+    }
     status = subgraph->ModifyGraphWithDelegate(delegate);
     if (status != kTfLiteOk) {
       break;

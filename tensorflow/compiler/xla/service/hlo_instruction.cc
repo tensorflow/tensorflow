@@ -328,7 +328,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         instruction = CreateConstant(std::move(literal));
         // Literal's shape may have no/different tiling info.
         TF_RET_CHECK(Shape::Equal().MinorToMajorOnlyInLayout()(
-            instruction->shape(), shape));
+            instruction->shape(), shape))
+            << instruction->shape().ToString(true) << " vs "
+            << shape.ToString(true);
         *instruction->mutable_shape() = shape;
       } else {
         instruction = absl::make_unique<HloConstantInstruction>(shape);
@@ -577,6 +579,12 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           Cast<HloCustomCallInstruction>(instruction.get());
       if (proto.has_window()) {
         custom_call_instr->set_window(proto.window());
+      }
+      if (proto.has_literal()) {
+        TF_ASSIGN_OR_RETURN(
+            auto literal,
+            Literal::CreateFromProto(proto.literal(), prohibit_empty_literal));
+        custom_call_instr->set_literal(std::move(literal));
       }
       if (proto.has_convolution_dimension_numbers()) {
         custom_call_instr->set_convolution_dimension_numbers(

@@ -37,6 +37,53 @@ cc_library(
 )
 
 cc_library(
+    name = "circular_buffer_flexbuffers_generated_data",
+    srcs = [
+        "circular_buffer_flexbuffers_generated_data.cc",
+    ],
+    hdrs = [
+        "circular_buffer_flexbuffers_generated_data.h",
+    ],
+)
+
+cc_library(
+    name = "conv",
+    srcs = [
+        "conv_common.cc",
+    ] + select({
+        "//conditions:default": [
+            "conv.cc",
+        ],
+        ":xtensa_hifimini": [
+            "xtensa/conv.cc",
+        ],
+    }),
+    hdrs = ["conv.h"],
+    copts = micro_copts(),
+    visibility = [
+        # Kernel variants need to be visible to the examples and benchmarks.
+        ":micro",
+    ],
+    deps = [
+        ":fixedpoint_utils",
+        ":kernel_util",
+        ":xtensa",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:common",
+        "//tensorflow/lite/kernels/internal:quantization_util",
+        "//tensorflow/lite/kernels/internal:reference_base",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels:padding",
+    ] + select({
+        "//conditions:default": [],
+        ":xtensa_hifimini": [
+            #"//third_party/xtensa/cstub64s:hifi_mini",
+        ],
+    }),
+)
+
+cc_library(
     name = "conv_test_common",
     srcs = [
         "conv_test_common.cc",
@@ -51,6 +98,44 @@ cc_library(
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
+)
+
+cc_library(
+    name = "depthwise_conv",
+    srcs = [
+        "depthwise_conv_common.cc",
+    ] + select({
+        "//conditions:default": [
+            "depthwise_conv.cc",
+        ],
+        ":xtensa_hifimini": [
+            "xtensa/depthwise_conv.cc",
+        ],
+    }),
+    hdrs = ["depthwise_conv.h"],
+    copts = micro_copts(),
+    visibility = [
+        # Kernel variants need to be visible to the examples and benchmarks.
+        ":micro",
+    ],
+    deps = [
+        ":conv",
+        ":fixedpoint_utils",
+        ":kernel_util",
+        ":xtensa",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:common",
+        "//tensorflow/lite/kernels/internal:quantization_util",
+        "//tensorflow/lite/kernels/internal:reference_base",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels:padding",
+    ] + select({
+        "//conditions:default": [],
+        ":xtensa_hifimini": [
+            #"//third_party/xtensa/cstub64s:hifi_mini",
+        ],
+    }),
 )
 
 cc_library(
@@ -91,12 +176,12 @@ cc_library(
 )
 
 cc_library(
-    name = "flexbuffers_generated_data",
+    name = "detection_postprocess_flexbuffers_generated_data",
     srcs = [
-        "flexbuffers_generated_data.cc",
+        "detection_postprocess_flexbuffers_generated_data.cc",
     ],
     hdrs = [
-        "flexbuffers_generated_data.h",
+        "detection_postprocess_flexbuffers_generated_data.h",
     ],
 )
 
@@ -142,6 +227,9 @@ cc_library(
         "kernel_runner.cc",
     ],
     hdrs = ["kernel_runner.h"],
+    visibility = [
+        "//learning/brain/contrib/micro/tflite:__pkg__",
+    ],
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -181,9 +269,12 @@ cc_library(
         "detection_postprocess.cc",
         "div.cc",
         "elementwise.cc",
+        "elu.cc",
         "exp.cc",
+        "fill.cc",
         "floor.cc",
         "l2norm.cc",
+        "leaky_relu.cc",
         "logical.cc",
         "logistic.cc",
         "maximum_minimum.cc",
@@ -203,6 +294,7 @@ cc_library(
         "space_to_batch_nd.cc",
         "split.cc",
         "split_v.cc",
+        "squeeze.cc",
         "strided_slice.cc",
         "sub.cc",
         "svdf_common.cc",
@@ -212,15 +304,11 @@ cc_library(
         "zeros_like.cc",
     ] + select({
         "//conditions:default": [
-            "conv.cc",
-            "depthwise_conv.cc",
             "quantize.cc",
             "softmax.cc",
             "svdf.cc",
         ],
         ":xtensa_hifimini": [
-            "xtensa/conv.cc",
-            "xtensa/depthwise_conv.cc",
             "xtensa/quantize.cc",
             "xtensa/softmax.cc",
             "xtensa/svdf.cc",
@@ -381,6 +469,7 @@ cc_test(
         "circular_buffer_test.cc",
     ],
     deps = [
+        "circular_buffer_flexbuffers_generated_data",
         ":kernel_runner",
         ":micro_ops",
         "//tensorflow/lite/c:common",
@@ -464,7 +553,7 @@ cc_test(
         "detection_postprocess_test.cc",
     ],
     deps = [
-        ":flexbuffers_generated_data",
+        ":detection_postprocess_flexbuffers_generated_data",
         ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:tensor",
@@ -501,12 +590,41 @@ cc_test(
 )
 
 cc_test(
+    name = "elu_test",
+    srcs = [
+        "elu_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
     name = "exp_test",
     srcs = ["exp_test.cc"],
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "fill_test",
+    srcs = [
+        "fill_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -562,6 +680,21 @@ cc_test(
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "leaky_relu_test",
+    srcs = [
+        "leaky_relu_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -658,8 +791,8 @@ cc_test(
     ],
     tags = [
         "noasan",
-        "nomsan",
-    ],  # TODO(b/175133159): currently failing with asan and msan
+        "nomsan",  # TODO(b/175133159): currently failing with asan and msan
+    ],
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
@@ -849,6 +982,18 @@ cc_test(
 )
 
 cc_test(
+    name = "squeeze_test",
+    srcs = ["squeeze_test.cc"],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
     name = "strided_slice_test",
     srcs = [
         "strided_slice_test.cc",
@@ -909,6 +1054,7 @@ cc_test(
         ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_utils",
+        "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],

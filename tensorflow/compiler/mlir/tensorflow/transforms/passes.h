@@ -43,6 +43,11 @@ namespace TF {
 // ops.
 std::unique_ptr<OperationPass<FuncOp>> CreateDropWhileShapeInvariantPass();
 
+// Creates a pass that drops `shape_invariant` attribute from While/WhileRegion
+// ops within device cluster.
+std::unique_ptr<OperationPass<FuncOp>>
+CreateDropWhileShapeInvariantInDeviceClusterPass();
+
 // Transforms functional control flow operations in the TensorFlow dialect to
 // MLIR Control Flow Graph (CFG) form.
 std::unique_ptr<OperationPass<FuncOp>> CreateTFFunctionalControlFlowToCFG();
@@ -179,12 +184,6 @@ void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList* patterns,
 // future these fusions may be codegen'd automatically.
 std::unique_ptr<OperationPass<FuncOp>> CreateFusedKernelMatcherPass();
 
-// Fuses operations defining `ContractionFusableInterface` interface into the
-// contraction operations (MatMul, Conv2D, etc...). This is a more general
-// version of `CreateFusedKernelMatcherPass` that relies on codegen to compose
-// contraction fusions together.
-std::unique_ptr<OperationPass<FuncOp>> CreateContractionFusionPass();
-
 // Creates function pass to select device index/fold tf.DeviceIndex.
 std::unique_ptr<OperationPass<FuncOp>> CreateDeviceIndexSelectorPass();
 
@@ -208,6 +207,15 @@ std::unique_ptr<OperationPass<mlir::ModuleOp>> CreateCrossHostTransferPass();
 // a tf.Const op is read by operations placed on multiple devices, then the pass
 // will replicate the tf.Const op once for each device.
 std::unique_ptr<OperationPass<ModuleOp>> CreateConstantOpDeviceAssignmentPass();
+
+// Populates the supplied passmanager with the passes required to export
+// to TensorFlow Graph.
+void AddGraphExportLoweringPasses(OpPassManager& pm);
+
+// Returns pass that verifies whether all functions in module are of single
+// tf_executor.graph and each tf_executor.island in tf_executor.graph only has a
+// single op.
+std::unique_ptr<OperationPass<ModuleOp>> CreateVerifySuitableForExportPass();
 
 }  // namespace TF
 
@@ -253,6 +261,8 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateClusterOutliningPass();
 // Creates a pass that clusters ops into tf_device::ClusterOp regions
 // according to a policy specified by the pass options.
 std::unique_ptr<FunctionPass> CreateClusterOpsByPolicyPass();
+std::unique_ptr<FunctionPass> CreateClusterOpsByPolicyPass(
+    ArrayRef<std::string> oplist, const std::string& policy_name);
 
 // A pass that decomposes composite resource operations into primitive ones like
 // ReadVariableOp, AssignVariableOp and other computations to facilitate

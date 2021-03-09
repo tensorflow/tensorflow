@@ -1,26 +1,22 @@
 // RUN: tf-opt %s -inline='default-pipeline=''' | FileCheck %s
 
-// Test that simple TF operations can be inlined.
-
-func private @inline_simple_callee() -> tensor<2xi32>  {
+func private @simple_callee() -> tensor<2xi32>  {
   %cst = "tf.Const"() { value = dense<2> : tensor<2xi32> } : () -> tensor<2xi32>
   return %cst : tensor<2xi32>
 }
+
+// Test that simple TF operations can be inlined.
 
 // CHECK-LABEL: func @inline_simple(
 func @inline_simple() -> tensor<2xi32> {
   // CHECK-NEXT: %[[CST:.*]] = "tf.Const"
   // CHECK-NEXT: return %[[CST]]
-  %result = "tf.StatefulPartitionedCall"() {config = "", config_proto = "", executor_type = "", f = @inline_simple_callee} : () -> tensor<2xi32>
+  %result = "tf.StatefulPartitionedCall"() {config = "", config_proto = "", executor_type = "", f = @simple_callee} : () -> tensor<2xi32>
   return %result : tensor<2xi32>
 }
 
 // Test that TPUParitionedCallOp is not inlined.
 
-func private @simple_callee() -> tensor<2xi32>  {
-  %cst = "tf.Const"() { value = dense<2> : tensor<2xi32> } : () -> tensor<2xi32>
-  return %cst : tensor<2xi32>
-}
 
 // CHECK-LABEL: func @dont_inline_tpu_partitioned_call(
 func @dont_inline_tpu_partitioned_call() -> tensor<2xi32> {
@@ -49,12 +45,22 @@ func @inline_shape_cast(%arg: tensor<2xi32>) -> tensor<2xi32> {
   return %result : tensor<2xi32>
 }
 
-// Check that functions can be inlined into islands.
+// Test that functions can be inlined into tf_device regions.
 
-func private @inline_simple_callee1() -> tensor<2xi32>  {
-  %cst = "tf.Const"() { value = dense<2> : tensor<2xi32> } : () -> tensor<2xi32>
-  return %cst : tensor<2xi32>
+// CHECK-LABEL: func @inline_simple_tf_device_region(
+func @inline_simple_tf_device_region() -> tensor<2xi32> {
+  // CHECK-NEXT: "tf_device.cluster"()
+  // CHECK-NEXT: %[[CST:.*]] = "tf.Const"
+  // CHECK-NEXT: tf_device.return %[[CST]]
+  %cluster_result = "tf_device.cluster"() ( {
+    %result = "tf.StatefulPartitionedCall"() {config = "", config_proto = "", executor_type = "", f = @simple_callee} : () -> tensor<2xi32>
+    tf_device.return %result : tensor<2xi32>
+  }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> (tensor<2xi32>)
+  return %cluster_result : tensor<2xi32>
 }
+
+
+// Check that functions can be inlined into islands.
 
 func private @inline_into_island_multi_block_callee() -> tensor<2xi32>  {
   br ^bb1
@@ -70,7 +76,7 @@ func @inline_into_island() -> (tensor<2xi32>, tensor<2xi32>) {
     %1:3 = tf_executor.island {
       // Single block regions may be inlined.
       // CHECK: %[[CST:.*]] = "tf.Const"
-      %result = "tf.StatefulPartitionedCall"() {config = "", config_proto = "", executor_type = "", f = @inline_simple_callee1} : () -> tensor<2xi32>
+      %result = "tf.StatefulPartitionedCall"() {config = "", config_proto = "", executor_type = "", f = @simple_callee} : () -> tensor<2xi32>
 
       // Multi block regions may not.
       // CHECK-NEXT: %[[CALL:.*]] = "tf.StatefulPartitionedCall"

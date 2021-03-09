@@ -31,6 +31,7 @@ cc_library(
 tf_fuzz_target(
     name = "identity_fuzz",
     srcs = ["identity_fuzz.cc"],
+    tags = ["no_oss"],  # b/175698644
     deps = [
         ":fuzz_session",
         "//tensorflow/cc:cc_ops",

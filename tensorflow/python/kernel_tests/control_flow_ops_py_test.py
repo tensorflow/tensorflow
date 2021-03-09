@@ -557,7 +557,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_v1_only("b/120545219")
   def testCondColocation(self):
-    with self.session(use_gpu=True):
+    with self.session():
       with ops.device("/cpu:0"):
         v = variables.Variable(7.0)
 
@@ -1224,7 +1224,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
   def testCondGradMultiDevice(self):
     config = config_pb2.ConfigProto(device_count={"CPU": 2},
                                     allow_soft_placement=True)
-    with self.cached_session(use_gpu=True, config=config) as sess:
+    with self.cached_session(config=config) as sess:
       pred = array_ops.placeholder(dtypes.bool, [])
       x = array_ops.placeholder(dtypes.float32)
       y = array_ops.placeholder(dtypes.float32)
@@ -2621,7 +2621,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
   def testWhileCondGradMultiDevice(self):
     config = config_pb2.ConfigProto(device_count={"CPU": 2},
                                     allow_soft_placement=True)
-    with self.cached_session(use_gpu=True, config=config) as sess:
+    with self.cached_session(config=config) as sess:
       pred = array_ops.placeholder(dtypes.bool, [])
       x_init = constant_op.constant(1.0)
 
@@ -4911,7 +4911,7 @@ class AssertTest(test.TestCase):
     if test_util.is_gpu_available():
       self.skipTest("b/128646478 fails in opensource")
 
-    with self.session(use_gpu=True) as sess:
+    with self.session() as sess:
       with ops.device(test.gpu_device_name()):
         value = constant_op.constant(1.0)
       with ops.device("/cpu:0"):

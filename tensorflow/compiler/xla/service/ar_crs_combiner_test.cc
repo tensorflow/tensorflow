@@ -1809,7 +1809,8 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[]) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
-      ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
+      ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2,
+                                   /*num_partitions=*/4));
   ArCrsCombiner combiner(/*num_spatial_partitions=*/4, /*num_replicas=*/2,
                          /*spmd_partition=*/true);
   auto changed = combiner.Run(module.get()).ValueOrDie();

@@ -1,5 +1,6 @@
+load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable", "if_portable")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -22,8 +23,10 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        ":metrics",
         "//tensorflow/lite/python/interpreter_wrapper:_pywrap_tensorflow_interpreter_wrapper",
         "//tensorflow/python:util",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
 )
@@ -62,6 +65,7 @@ py_binary(
     deps = [
         ":tflite_convert_main_lib",
         "//tensorflow:tensorflow_py",
+        "@absl_py//absl:app",
         "@six_archive//:six",
     ],
 )
@@ -74,6 +78,7 @@ py_library(
     deps = [
         ":tflite_convert_lib",
         "//tensorflow:tensorflow_py",
+        "@absl_py//absl:app",
         "@six_archive//:six",
     ],
 )
@@ -88,6 +93,7 @@ py_library(
         "//tensorflow/lite/toco/logging:gen_html",
         "//tensorflow/lite/toco/logging:toco_conversion_log_proto_py",
         "//tensorflow/python:util",
+        "@absl_py//absl:app",
         "@six_archive//:six",
     ],
 )
@@ -221,7 +227,6 @@ py_test(
         ":lite",
         ":lite_v2_test_util",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/lite/kernels/hashtable:pywrap_hashtable_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "@six_archive//:six",
@@ -293,7 +298,6 @@ py_test(
         "no_windows",
     ],
     deps = [
-        ":lite_constants",
         ":util",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:array_ops",
@@ -360,6 +364,9 @@ py_library(
         "//tensorflow/lite/toco/python:toco_from_protos",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:platform",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
 )
@@ -457,4 +464,58 @@ py_library(
     deps = [
         "//tensorflow/python:util",
     ],
+)
+
+pytype_strict_library(
+    name = "metrics_nonportable",
+    srcs = ["metrics_nonportable.py"],
+    srcs_version = "PY3",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/python/eager:monitoring",
+    ],
+)
+
+py_test(
+    name = "metrics_nonportable_test",
+    srcs = ["metrics_nonportable_test.py"],
+    python_version = "PY3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":metrics_nonportable",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+pytype_strict_library(
+    name = "metrics_portable",
+    srcs = ["metrics_portable.py"],
+    compatible_with = get_compatible_with_portable(),
+    srcs_version = "PY3",
+    visibility = ["//visibility:private"],
+    deps = [],
+)
+
+py_test(
+    name = "metrics_portable_test",
+    srcs = ["metrics_portable_test.py"],
+    python_version = "PY3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":metrics_portable",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+pytype_strict_library(
+    name = "metrics",
+    compatible_with = get_compatible_with_portable(),
+    srcs_version = "PY3",
+    visibility = ["//tensorflow/lite:__subpackages__"],
+    deps = if_portable(
+        if_false = [":metrics_nonportable"],
+        if_true = [":metrics_portable"],
+    ),
 )

@@ -155,11 +155,13 @@ class RNNSavedModelSaver(LayerSavedModelSaver):
         super(RNNSavedModelSaver, self)._get_serialized_attributes_internal(
             serialization_cache))
     states = data_structures.wrap_or_unwrap(self.obj.states)
-    # Force the tuple into TupleWrapper which is a trackable object. The
-    # save/load code requires all the objects to be trackable.
-    # Tuple is not converted to TupleWrapper by data_structures.wrap_or_unwrap()
-    # if it doesn't contains any trackable objects.
+    # SaveModel require all the objects to be Trackable when saving.
+    # If the states is still a tuple after wrap_or_unwrap, it means it doesn't
+    # contain any trackable item within it, eg empty tuple or (None, None) for
+    # stateless ConvLSTM2D. We convert them to list so that wrap_or_unwrap can
+    # make it a Trackable again for saving. When loaded, ConvLSTM2D is
+    # able to handle the tuple/list conversion.
     if isinstance(states, tuple):
-      states = data_structures._TupleWrapper(states)  # pylint: disable=protected-access
+      states = data_structures.wrap_or_unwrap(list(states))
     objects['states'] = states
     return objects, functions

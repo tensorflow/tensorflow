@@ -1081,6 +1081,42 @@ class TextVectorizationOutputTest(
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 
+  def test_bag_output_hard_maximum_multiple_adapts(self):
+    input_array = np.array([["earth", "wind", "and", "earth"],
+                            ["ohio", "and", "earth", "michigan"]])
+    adapt_data = ["earth", "earth", "earth", "earth", "wind", "wind", "wind"]
+    first_expected_output = [
+        [1, 1, 1, 0, 0],
+        [1, 1, 0, 0, 0],
+    ]
+    second_adapt_data = [
+        "earth", "earth", "earth", "earth", "wind", "wind", "wind", "and",
+        "and", "fire"
+    ]
+    second_expected_output = [
+        [0, 1, 1, 1, 0],
+        [1, 1, 0, 1, 0],
+    ]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=5,
+        standardize=None,
+        split=None,
+        output_mode=text_vectorization.BINARY,
+        pad_to_max_tokens=True)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+
+    # Test the first adapt
+    layer.adapt(adapt_data)
+    first_output = model.predict(input_array)
+    # Test the second adapt
+    layer.adapt(second_adapt_data)
+    second_output = model.predict(input_array)
+    self.assertAllEqual(first_expected_output, first_output)
+    self.assertAllEqual(second_expected_output, second_output)
+
   def test_bag_output_soft_maximum_set_state_after_build(self):
     vocab_data = ["earth", "wind", "and", "fire"]
     input_array = np.array([["earth", "wind", "and", "earth"],
@@ -1431,7 +1467,7 @@ class TextVectorizationErrorTest(keras_parameterized.TestCase,
         split=None,
         output_mode=text_vectorization.TFIDF)
     with self.assertRaisesRegex(
-        ValueError, "idf_weights must be set if output_mode is TFIDF"):
+        ValueError, "`idf_weights` must be set if output_mode is TFIDF"):
       layer.set_vocabulary(vocab_data)
 
   def test_idf_weights_length_mismatch_fails(self):
@@ -1443,7 +1479,7 @@ class TextVectorizationErrorTest(keras_parameterized.TestCase,
         split=None,
         output_mode=text_vectorization.TFIDF)
     with self.assertRaisesRegex(
-        ValueError, "idf_weights must be the same length as vocab.*"):
+        ValueError, "`idf_weights` must be the same length as vocab"):
       layer.set_vocabulary(vocab_data, idf_weights)
 
   def test_set_tfidf_in_non_tfidf_fails(self):
@@ -1455,50 +1491,50 @@ class TextVectorizationErrorTest(keras_parameterized.TestCase,
         split=None,
         output_mode=text_vectorization.BINARY)
     with self.assertRaisesRegex(ValueError,
-                                ".*idf_weights should only be set if.*"):
+                                "`idf_weights` should only be set if"):
       layer.set_vocabulary(vocab_data, idf_weights)
 
   def test_zero_max_tokens_fails(self):
-    with self.assertRaisesRegex(ValueError, ".*max_tokens.*"):
+    with self.assertRaisesRegex(ValueError, "max_tokens.*"):
       _ = get_layer_class()(max_tokens=0)
 
   def test_non_string_dtype_fails(self):
-    with self.assertRaisesRegex(ValueError, ".*dtype of string.*"):
+    with self.assertRaisesRegex(ValueError, "dtype of string.*"):
       _ = get_layer_class()(dtype=dtypes.int64)
 
   def test_unknown_standardize_arg_fails(self):
     with self.assertRaisesRegex(ValueError,
-                                ".*standardize arg.*unsupported_value.*"):
+                                "standardize arg.*unsupported_value"):
       _ = get_layer_class()(standardize="unsupported_value")
 
   def test_unknown_split_arg_fails(self):
-    with self.assertRaisesRegex(ValueError, ".*split arg.*unsupported_value.*"):
+    with self.assertRaisesRegex(ValueError, "split arg.*unsupported_value"):
       _ = get_layer_class()(split="unsupported_value")
 
   def test_unknown_output_mode_arg_fails(self):
     with self.assertRaisesRegex(ValueError,
-                                ".*output_mode arg.*unsupported_value.*"):
+                                "output_mode arg.*unsupported_value"):
       _ = get_layer_class()(output_mode="unsupported_value")
 
   def test_unknown_ngrams_arg_fails(self):
-    with self.assertRaisesRegex(ValueError, ".*ngrams.*unsupported_value.*"):
+    with self.assertRaisesRegex(ValueError, "ngrams.*unsupported_value"):
       _ = get_layer_class()(ngrams="unsupported_value")
 
   def test_float_ngrams_arg_fails(self):
-    with self.assertRaisesRegex(ValueError, ".*ngrams.*2.9.*"):
+    with self.assertRaisesRegex(ValueError, "ngrams.*2.9"):
       _ = get_layer_class()(ngrams=2.9)
 
   def test_float_tuple_ngrams_arg_fails(self):
-    with self.assertRaisesRegex(ValueError, ".*ngrams.*(1.3, 2.9).*"):
+    with self.assertRaisesRegex(ValueError, "ngrams.*(1.3, 2.9)"):
       _ = get_layer_class()(ngrams=(1.3, 2.9))
 
   def test_non_int_output_sequence_length_dtype_fails(self):
-    with self.assertRaisesRegex(ValueError, ".*output_sequence_length.*2.0.*"):
+    with self.assertRaisesRegex(ValueError, "output_sequence_length.*2.0"):
       _ = get_layer_class()(output_mode="int", output_sequence_length=2.0)
 
   def test_non_none_output_sequence_length_fails_if_output_type_not_int(self):
     with self.assertRaisesRegex(ValueError,
-                                ".*`output_sequence_length` must not be set.*"):
+                                "`output_sequence_length` must not be set"):
       _ = get_layer_class()(output_mode="count", output_sequence_length=2)
 
 

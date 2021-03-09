@@ -15,8 +15,7 @@ limitations under the License.
 
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/Target/NVVMIR.h"  // from @llvm-project
-#include "mlir/Target/ROCDLIR.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
@@ -90,9 +89,9 @@ class GpuKernelToBlobPass
     }
 
     llvm::LLVMContext llvmContext;
+    auto llvmModule = mlir::translateModuleToLLVMIR(gpu_module, llvmContext);
 
 #if TENSORFLOW_USE_ROCM
-    auto llvmModule = mlir::translateModuleToROCDLIR(gpu_module, llvmContext);
     if (!llvmModule) {
       return InternalError("Could not translate MLIR module to ROCDL IR");
     }
@@ -143,7 +142,6 @@ class GpuKernelToBlobPass
     return tensorflow::se::BundleGpuAsm(images, tensorflow::RocmRoot());
 
 #elif GOOGLE_CUDA
-    auto llvmModule = mlir::translateModuleToNVVMIR(gpu_module, llvmContext);
     if (!llvmModule) {
       return InternalError("Could not translate MLIR module to NVVM");
     }
@@ -154,6 +152,8 @@ class GpuKernelToBlobPass
     xla::HloModuleConfig config;
     xla::DebugOptions options = xla::GetDebugOptionsFromFlags();
     options.set_xla_gpu_ftz(enable_ftz_);
+    // Make sure we use full precision division operations.
+    (*options.mutable_xla_backend_extra_options())["-nvptx-prec-divf32"] = "2";
     config.set_debug_options(options);
 
     auto enable_fusion = [](llvm::TargetMachine* target) {

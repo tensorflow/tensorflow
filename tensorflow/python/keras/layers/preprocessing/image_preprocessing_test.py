@@ -412,7 +412,7 @@ class RandomFlipTest(keras_parameterized.TestCase):
       mock_random = np.reshape(mock_random, [2, 1, 1, 1])
       with test.mock.patch.object(
           random_ops, 'random_uniform', return_value=mock_random):
-        with self.cached_session(use_gpu=True):
+        with self.cached_session():
           layer = image_preprocessing.RandomFlip()
           actual_output = layer(input_images, training=1)
           self.assertAllClose(expected_output, actual_output)
@@ -698,7 +698,7 @@ class RandomTransformTest(keras_parameterized.TestCase):
                                       fill_value=0.0,
                                       interpolation='bilinear'):
     inp = np.arange(15).reshape((1, 5, 3, 1)).astype(np.float32)
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
       output = image_preprocessing.transform(
           inp,
           transform_matrix,

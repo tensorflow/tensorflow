@@ -336,6 +336,8 @@ REGISTER_OP("ParallelBatchDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    // "true", "false", or "default".
+    .Attr("deterministic: string = 'default'")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // batch_size should be a scalar.

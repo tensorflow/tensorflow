@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import enum  # pylint: disable=g-bad-import-order
 
-import numpy as np
 import six
 
 from tensorflow.python.compat import compat
@@ -35,6 +34,7 @@ from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training.tracking import tracking
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -42,9 +42,10 @@ from tensorflow.python.util.tf_export import tf_export
 # bits, all of which will be sent to the C++ code. The actual C++
 # implementation of some algorithms may only use a lower part of the bits.
 
-MAX_INT64 = 2**63 - 1
-MIN_INT64 = -(2**63)
-UINT64_SPAN = 2**64
+UINT64_HALF_SPAN = 2**63
+MAX_INT64 = UINT64_HALF_SPAN - 1
+MIN_INT64 = -UINT64_HALF_SPAN
+UINT64_SPAN = UINT64_HALF_SPAN * 2
 # 'Variable' doesn't support uint32 or uint64 yet (due to reasons explained in
 # b/111604096 and cl/171681867), so I use signed int here. I choose int64
 # instead of int32 here because `VarHandleOp` doesn't support int32 on GPU.
@@ -92,7 +93,7 @@ def non_deterministic_ints(shape, dtype=dtypes.int64):
 
 
 def _uint_to_int(n):
-  if n > SEED_MAX:
+  if isinstance(n, int) and n > SEED_MAX:
     n = n - SEED_UINT_SPAN
   return n
 
@@ -114,12 +115,10 @@ def _make_1d_state(state_size, seed):
       ls.append(seed & SEED_BIT_MASK)
       seed >>= SEED_TYPE_BITS
     seed = ls
-  # to avoid overflow error from np.asarray
-  seed = list(map(_uint_to_int, seed))
-  seed = np.asarray(seed, dtype=STATE_TYPE)
-  if len(seed.shape) != 1:
-    raise ValueError(
-        "seed should only have one dimension; got shape: %s" % seed.shape)
+  # to avoid overflow error from ops.convert_to_tensor
+  seed = nest.map_structure(_uint_to_int, seed)
+  seed = math_ops.cast(seed, STATE_TYPE)
+  seed = array_ops.reshape(seed, [-1])
   seed = seed[0:state_size]
   # Padding with zeros on the *left* if too short. Padding on the right would
   # cause a small seed to be used as the "counter" while the "key" is always
@@ -127,12 +126,13 @@ def _make_1d_state(state_size, seed):
   # layout counter is stored before key. In such a situation two RNGs with
   # two different small seeds may generate overlapping outputs.
   seed_size = seed.shape[0]
-  if seed_size < state_size:
-    seed = np.pad(
-        seed, [(state_size - seed_size, 0)],
-        mode="constant",
-        constant_values=0)
-  assert seed.shape == (state_size,), "Wrong seed.shape: %s" % seed.shape
+  if seed_size is None:
+    seed_size = array_ops.shape(seed)[0]
+  padding_size = math_ops.maximum(state_size - seed_size, 0)
+  padding = array_ops.zeros([padding_size], seed.dtype)
+  # can't use `pad` because it doesn't support integer dtypes on GPU
+  seed = array_ops.concat([padding, seed], axis=0)
+  seed.set_shape([state_size])
   return seed
 
 
@@ -200,10 +200,10 @@ def create_rng_state(seed, alg):
 
   >>> tf.random.create_rng_state(
   ...     1234, "philox")
-  array([1234,    0,    0])
+  <tf.Tensor: shape=(3,), dtype=int64, numpy=array([1234,    0,    0])>
   >>> tf.random.create_rng_state(
   ...     [12, 34], "threefry")
-  array([12, 34])
+  <tf.Tensor: shape=(2,), dtype=int64, numpy=array([12, 34])>
 
   Args:
     seed: an integer or 1-D numpy array.
@@ -226,10 +226,9 @@ def _shape_tensor(shape):
 
 
 def _convert_to_state_tensor(t):
-  if isinstance(t, list):
-    # to avoid out-of-range error from ops.convert_to_tensor
-    t = list(map(_uint_to_int, t))
-  return ops.convert_to_tensor(t, dtype=STATE_TYPE)
+  # to avoid out-of-range error from ops.convert_to_tensor
+  t = nest.map_structure(_uint_to_int, t)
+  return math_ops.cast(t, STATE_TYPE)
 
 
 def get_replica_id():
@@ -977,7 +976,7 @@ class Generator(tracking.AutoTrackable):
     if alg == RNG_ALG_PHILOX or alg == RNG_ALG_THREEFRY:
       keys = self._make_int64_keys(shape=[count])
       return [Generator(state=_key_to_state(alg, key), alg=alg)
-              for key in keys.numpy()]
+              for key in array_ops.unstack(keys, num=count)]
     else:
       raise ValueError("Unsupported algorithm id: %s" % alg)
 

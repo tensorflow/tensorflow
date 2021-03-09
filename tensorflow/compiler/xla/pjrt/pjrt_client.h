@@ -173,6 +173,8 @@ class PjRtClient {
   // Returns a string that identifies the platform (CPU/GPU/TPU).
   virtual absl::string_view platform_name() const = 0;
 
+  virtual absl::string_view platform_version() const = 0;
+
   // Return a device-specific default device assignment, e.g., GPU and TPU may
   // be different.
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
@@ -244,6 +246,10 @@ class PjRtClient {
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtDevice* device,
       std::function<void()> on_delete_callback) = 0;
+
+  // Returns platform-dependent address for the given buffer that is often but
+  // not guaranteed to be the physical/device address.
+  virtual StatusOr<std::uintptr_t> UnsafeBufferPointer(PjRtBuffer* buffer);
 
   // Asynchronously makes a vector of PjRtBuffers that can be used to receive
   // cross host transfers using `client` on `device'. `shapes` must be the exact
@@ -457,6 +463,7 @@ class PjRtExecutable {
   // Executes on devices addressable by the client. Requires executable has a
   // device_assignment and all devices in the device_assignment are addressable
   // by the client.
+  // `argument_handles` is `[num_devices, num_args]`.
   virtual StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
   Execute(absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
           const ExecuteOptions& options) = 0;

@@ -188,7 +188,6 @@ py_library(
         ":subscribe",
         ":summary",
         ":tensor_array_ops",
-        ":tensor_forest_ops",
         ":test_ops",  # TODO: Break testing code out into separate rule.
         ":tf_cluster",
         ":tf_item",
@@ -237,6 +236,7 @@ py_library(
         "//tensorflow/python/util",
         "//tensorflow/python/util:_pywrap_checkpoint_reader",
         "//tensorflow/python/util:_pywrap_kernel_registry",
+        "//tensorflow/python/util:_pywrap_nest",
         "//tensorflow/python/util:_pywrap_stat_summarizer",
         "//tensorflow/python/util:_pywrap_tfprof",
         "//tensorflow/python/util:_pywrap_transform_graph",
@@ -751,6 +751,7 @@ py_library(
     deps = [
         ":_pywrap_debug_events_writer",
         ":_pywrap_events_writer",
+        "//tensorflow/python/util:_pywrap_nest",
         "//tensorflow/python/util:_pywrap_kernel_registry",
         ":_pywrap_py_exception_registry",
         "//tensorflow/python/lib/core:_pywrap_py_func",  # TODO(b/142001480): remove once the bug is fixed.
@@ -766,6 +767,7 @@ py_library(
         "//tensorflow/python/util:_pywrap_transform_graph",
         "//tensorflow/python/util:_pywrap_util_port",
         ":_pywrap_utils",
+        ":_errors_test_helper",
         ":composite_tensor",
         ":config",
         ":convert_to_constants",
@@ -1925,6 +1927,7 @@ tf_py_test(
     main = "framework/errors_test.py",
     python_version = "PY3",
     deps = [
+        ":_errors_test_helper",
         ":client_testlib",
         ":errors",
         "//tensorflow/core:protos_all_py",
@@ -2508,14 +2511,6 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
-    name = "tensor_forest_ops_gen",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/core:tensor_forest_ops_op_lib",
-    ],
-)
-
-tf_gen_op_wrapper_private_py(
     name = "summary_ops_gen",
     visibility = ["//tensorflow:__subpackages__"],
     deps = ["//tensorflow/core:summary_ops_op_lib"],
@@ -2929,19 +2924,6 @@ py_library(
         ":boosted_trees_ops_gen",
         ":framework",
         ":ops",
-        ":training",
-        "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_py",
-    ],
-)
-
-py_library(
-    name = "tensor_forest_ops",
-    srcs = ["ops/tensor_forest_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":framework",
-        ":ops",
-        ":tensor_forest_ops_gen",
         ":training",
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_py",
     ],
@@ -4646,6 +4628,22 @@ py_test(
 )
 
 cuda_py_test(
+    name = "embedding_ops_test",
+    srcs = ["ops/embedding_ops_test.py"],
+    python_version = "PY3",
+    tags = ["no_windows_gpu"],
+    deps = [
+        ":embedding_ops",
+        ":framework_for_generated_wrappers",
+        ":framework_test_lib",
+        ":gradients",
+        ":resource_variable_ops",
+        "//tensorflow/python/eager:def_function",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
     name = "gradient_checker_v2_test",
     size = "medium",
     srcs = ["ops/gradient_checker_v2_test.py"],
@@ -5125,6 +5123,17 @@ tf_python_pybind_extension(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "_errors_test_helper",
+    srcs = ["framework/errors_test_helper.cc"],
+    module_name = "_errors_test_helper",
+    deps = [
+        "//tensorflow/core/platform:status",
+        "//tensorflow/python/lib/core:pybind11_status",
+        "@pybind11",
+    ],
+)
+
 cuda_py_tests(
     name = "device_lib_test",
     size = "small",
@@ -5212,6 +5221,7 @@ pywrap_tensorflow_macro(
         ":model_analyzer_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
+        "//tensorflow/python/util:cpp_nest",
         "//tensorflow/python/util:cpp_python_util",
         "//tensorflow/python/util:function_parameter_canonicalizer",
         "//tensorflow/python/util:kernel_registry",
@@ -5243,7 +5253,6 @@ pywrap_tensorflow_macro(
         "//tensorflow/c/experimental/ops",
         "//tensorflow/c/experimental/gradients",
         "//tensorflow/c/experimental/gradients/tape",
-        "//tensorflow/c/eager:mnist_gradients_testutil",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core/data/service:server_lib",
         "//tensorflow/core/grappler:grappler_item",
@@ -5289,6 +5298,7 @@ filegroup(
     srcs = [
         ":bfloat16_lib",  # bfloat16
         ":cost_analyzer_lib",  # cost_analyzer
+        "//tensorflow/python/util:cpp_nest",
         "//tensorflow/python/util:cpp_python_util",
         "//tensorflow/python/util:kernel_registry",
         ":model_analyzer_lib",  # model_analyzer

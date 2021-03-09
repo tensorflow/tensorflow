@@ -22,6 +22,9 @@ tensorflow::swig::RegisterType
 tensorflow::swig::IsEagerTensorSlow
 tensorflow::swig::GetRegisteredPyObject
 
+[//tensorflow/python/util:cpp_nest] # nest
+tensorflow::FlattenDictItems
+
 [//tensorflow/core/util:port] # util_port
 tensorflow::IsGoogleCudaEnabled
 tensorflow::IsBuiltWithROCm

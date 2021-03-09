@@ -486,13 +486,6 @@ static LogicalResult Verify(BiasAddOp op) {
   return success();
 }
 
-Optional<ContractionFusion> BiasAddOp::GetContractionFusion() {
-  // Only NHWC in f32 is supported for fusion.
-  if (data_format() != "NHWC" || !T().isF32()) return None;
-
-  return ContractionFusion("BiasAdd", /*additional_arguments=*/{1});
-}
-
 LogicalResult BiasAddOp::UpdateDataFormat(StringRef data_format) {
   return ::mlir::TF::UpdateDataFormat(data_format, this);
 }
@@ -768,7 +761,8 @@ static LogicalResult VerifyCaseOpBase(Operation *op, Value branch_index) {
 }
 
 static LogicalResult VerifyCaseOrIfOpBranchFunctions(
-    Operation *op, ArrayRef<Attribute> branches,
+    SymbolTableCollection &symbol_table, Operation *op,
+    ArrayRef<Attribute> branches,
     llvm::function_ref<std::string(unsigned branch_index)> branch_name) {
   SmallVector<FunctionType, 2> branch_types;
   branch_types.reserve(branches.size());
@@ -779,7 +773,7 @@ static LogicalResult VerifyCaseOrIfOpBranchFunctions(
   TypeRangeWithDesc result{op->getResultTypes(), "result"};
 
   for (auto branch : llvm::enumerate(branches)) {
-    auto branch_func = SymbolTable::lookupNearestSymbolFrom<FuncOp>(
+    auto branch_func = symbol_table.lookupNearestSymbolFrom<FuncOp>(
         op, branch.value().cast<SymbolRefAttr>());
     if (!branch_func)
       return op->emitOpError()
@@ -823,12 +817,17 @@ static LogicalResult VerifyCaseOrIfOpBranchFunctions(
 }
 
 static LogicalResult Verify(CaseOp op) {
-  if (failed(VerifyCaseOpBase(op, op.branch_index()))) return failure();
+  return VerifyCaseOpBase(op, op.branch_index());
+}
+
+LogicalResult CaseOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
   auto branch_name = [](unsigned index) {
     return llvm::formatv("branch #{0}", index).str();
   };
-  return VerifyCaseOrIfOpBranchFunctions(op, op.branches().getValue(),
-                                         branch_name);
+  // TODO(jpienaar): Remove.
+  if (failed(CaseOpAdaptor(*this).verify(getLoc()))) return failure();
+  return VerifyCaseOrIfOpBranchFunctions(symbol_table, *this,
+                                         branches().getValue(), branch_name);
 }
 
 //===----------------------------------------------------------------------===//
@@ -895,7 +894,7 @@ class CaseOrIfRegionEliminatePassThrough
 
     // Create new case/if region op.
     auto new_op = rewriter.create<CaseOrIfRegionOp>(
-        op.getLoc(), new_result_types, op.getOperand(), op.getAttrs(),
+        op.getLoc(), new_result_types, op.getOperand(), op->getAttrs(),
         op.getNumRegions());
 
     int next_index = 0;
@@ -1628,43 +1627,47 @@ static LogicalResult inferConvReturnTypes(
     return failure();
   }
 
-  // For operands having dynamic shape.
+  // Output always have `num_dims` rank. All dimensions are initialized to
+  // dynamic size and can be partially inferred.
   SmallVector<int64_t, 4> return_shape(num_dims, ShapedType::kDynamicSize);
-  if (!input_ty.hasStaticShape() || !filter_ty.hasStaticShape()) {
-    inferredReturnTypes.assign(
-        {RankedTensorType::get(return_shape, input_ty.getElementType())});
-    return success();
-  }
-
-  // Checks the size of each of the output dimension.
-  for (auto i : llvm::seq<int>(0, num_spatial_dims)) {
-    const int64_t dim = GetTensorSpatialDimIndex(num_dims, format, i);
-    int64_t stride = get_int(strides[dim]);
-    tensorflow::int64 expected_output_size;
-    tensorflow::int64 pad_low;
-    tensorflow::int64 pad_high;
-    // Retrieve padding, if defined explicitly.
-    if (padding == tensorflow::Padding::EXPLICIT) {
-      pad_low = get_int(explicit_padding[2 * dim]);
-      pad_high = get_int(explicit_padding[2 * dim + 1]);
-    }
-    // Calculate the expected_output_size.
-    tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
-        input_ty.getDimSize(dim), filter_ty.getDimSize(i),
-        get_int(dilations[dim]), stride, padding, &expected_output_size,
-        &pad_low, &pad_high);
-    // Return failure if expected_output_size could not be calculated.
-    if (!status.ok()) return failure();
-    return_shape[dim] = expected_output_size;
-  }
-
-  // The remaining dimensions can be obtained using utilities from
+  // Output batch and channel dimension can be obtained using utilities from
   // tensorflow/core/util/tensor_format.h.
-  return_shape[GetTensorBatchDimIndex(num_dims, format)] =
-      input_ty.getShape()[GetTensorBatchDimIndex(num_dims, format)];
-  return_shape[GetTensorFeatureDimIndex(num_dims, format)] =
-      filter_ty.getShape()[GetFilterTensorOutputChannelsDimIndex(
-          num_dims, tensorflow::FORMAT_HWIO)];
+  if (input_ty.hasRank()) {
+    return_shape[GetTensorBatchDimIndex(num_dims, format)] =
+        input_ty.getDimSize(GetTensorBatchDimIndex(num_dims, format));
+  }
+  if (filter_ty.hasRank()) {
+    return_shape[GetTensorFeatureDimIndex(num_dims, format)] =
+        filter_ty.getDimSize(GetFilterTensorOutputChannelsDimIndex(
+            num_dims, tensorflow::FORMAT_HWIO));
+  }
+  // Spatial dimensions can be inferred only when both input and filter are
+  // ranked because we need to get their spatial dimensions.
+  if (input_ty.hasRank() && filter_ty.hasRank()) {
+    // Checks the size of each of the output spatial dimensions.
+    for (auto i : llvm::seq<int>(0, num_spatial_dims)) {
+      const int64_t dim = GetTensorSpatialDimIndex(num_dims, format, i);
+      int64_t stride = get_int(strides[dim]);
+      tensorflow::int64 expected_output_size;
+      tensorflow::int64 pad_low;
+      tensorflow::int64 pad_high;
+      // Retrieve padding, if defined explicitly.
+      if (padding == tensorflow::Padding::EXPLICIT) {
+        pad_low = get_int(explicit_padding[2 * dim]);
+        pad_high = get_int(explicit_padding[2 * dim + 1]);
+      }
+      // Skip if input or filter size is dynamic.
+      if (input_ty.isDynamicDim(dim) || filter_ty.isDynamicDim(i)) continue;
+      // Calculate the expected_output_size.
+      tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
+          input_ty.getDimSize(dim), filter_ty.getDimSize(i),
+          get_int(dilations[dim]), stride, padding, &expected_output_size,
+          &pad_low, &pad_high);
+      // Return failure if expected_output_size could not be calculated.
+      if (!status.ok()) return failure();
+      return_shape[dim] = expected_output_size;
+    }
+  }
 
   inferredReturnTypes.assign(
       {RankedTensorType::get(return_shape, input_ty.getElementType())});
@@ -2096,6 +2099,19 @@ static LogicalResult Verify(EmptyTensorListOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// EnsureShapeOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult EnsureShapeOp::fold(llvm::ArrayRef<mlir::Attribute>) {
+  ShapedType type = input().getType().dyn_cast<ShapedType>();
+  if (!type || !type.hasRank()) return {};
+  // If shape attribute equals input operand's type's shape, fold it to input.
+  if (type.getShape() == shape()) return input();
+  // Else retain to enable failing dynamically.
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // EqualOp
 //===----------------------------------------------------------------------===//
 
@@ -2449,12 +2465,14 @@ static LogicalResult Verify(GatherV2Op op) {
 // IfOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(IfOp op) {
+LogicalResult IfOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
   auto branch_name = [](unsigned index) -> std::string {
     return index == 0 ? "'then_branch'" : "'else_branch'";
   };
+  // TODO(jpienaar): Remove.
+  if (failed(IfOpAdaptor(*this).verify(getLoc()))) return failure();
   return VerifyCaseOrIfOpBranchFunctions(
-      op, {op.then_branchAttr(), op.else_branchAttr()}, branch_name);
+      symbol_table, *this, {then_branchAttr(), else_branchAttr()}, branch_name);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2627,15 +2645,6 @@ OpFoldResult LeakyReluOp::fold(ArrayRef<Attribute> operands) {
       return DenseElementsAttr::get(arg.getType(), calculate(elementAttr));
   }
   return {};
-}
-
-Optional<ContractionFusion> LeakyReluOp::GetContractionFusion() {
-  // Only f32 is supported for fusion.
-  if (!T().isF32()) return None;
-
-  NamedAttribute alpha(Identifier::get("alpha", getContext()), alphaAttr());
-  return ContractionFusion("LeakyRelu", /*additional_arguments=*/{},
-                           /*additional_attributes=*/{alpha});
 }
 
 //===----------------------------------------------------------------------===//

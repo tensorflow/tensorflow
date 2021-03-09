@@ -4791,8 +4791,9 @@ def polyval(coeffs, x, name=None):
 
   evaluated using Horner's method, i.e.
 
-  `p(x) = coeffs[n-1] + x * (coeffs[n-2] + ... + x * (coeffs[1]
-          + x * coeffs[0]))`
+  ```python
+  p(x) = coeffs[n-1] + x * (coeffs[n-2] + ... + x * (coeffs[1] + x * coeffs[0]))
+  ```
 
   Usage Example:
 

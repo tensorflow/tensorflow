@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
 
+#include "llvm/ADT/STLExtras.h"
+
 namespace tensorflow {
 
 bool XlaArgument::operator==(const XlaArgument& other) const {
@@ -48,6 +50,12 @@ bool XlaArgument::operator==(const XlaArgument& other) const {
     return false;
   }
   return constant_value.tensor_data() == other.constant_value.tensor_data();
+}
+
+bool AnyUninitializedResourceArg(absl::Span<const XlaArgument> args) {
+  return llvm::any_of(args, [](const XlaArgument& arg) {
+    return arg.kind == XlaArgument::kResource && arg.type == DT_INVALID;
+  });
 }
 
 }  // end namespace tensorflow

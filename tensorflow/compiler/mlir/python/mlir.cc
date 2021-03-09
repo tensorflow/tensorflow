@@ -162,18 +162,21 @@ std::string ExperimentalConvertSavedModelToMlir(
 }
 
 std::string ExperimentalConvertSavedModelV1ToMlirLite(
-    const std::string &saved_model_path, const std::string &tags,
-    bool upgrade_legacy, bool show_debug_info, TF_Status *status) {
+    const std::string &saved_model_path, const std::string &exported_names_str,
+    const std::string &tags, bool upgrade_legacy, bool show_debug_info,
+    TF_Status *status) {
   std::unordered_set<string> tag_set =
       absl::StrSplit(tags, ',', absl::SkipEmpty());
 
+  std::vector<string> exported_names =
+      absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
   mlir::MLIRContext context;
 
   tensorflow::MLIRImportOptions import_options;
   import_options.upgrade_legacy = upgrade_legacy;
   auto module_or = SavedModelSignatureDefsToMlirImportLite(
-      saved_model_path, tag_set, /*exported_names=*/{}, &context,
-      import_options);
+      saved_model_path, tag_set, absl::Span<std::string>(exported_names),
+      &context, import_options);
   if (!module_or.status().ok()) {
     Set_TF_Status_from_Status(status, module_or.status());
     return "// error";
@@ -183,9 +186,9 @@ std::string ExperimentalConvertSavedModelV1ToMlirLite(
 }
 
 std::string ExperimentalConvertSavedModelV1ToMlir(
-    const std::string &saved_model_path, const std::string &tags,
-    bool lift_variables, bool upgrade_legacy, bool show_debug_info,
-    TF_Status *status) {
+    const std::string &saved_model_path, const std::string &exported_names_str,
+    const std::string &tags, bool lift_variables, bool upgrade_legacy,
+    bool show_debug_info, TF_Status *status) {
   // Load the saved model into a SavedModelBundle.
 
   std::unordered_set<string> tag_set =
@@ -200,12 +203,14 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
   }
 
   // Convert the SavedModelBundle to an MLIR module.
-
+  std::vector<string> exported_names =
+      absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
   mlir::MLIRContext context;
   tensorflow::MLIRImportOptions import_options;
   import_options.upgrade_legacy = upgrade_legacy;
   auto module_or =
-      ConvertSavedModelV1ToMlir(bundle, {}, &context, import_options);
+      ConvertSavedModelV1ToMlir(bundle, absl::Span<std::string>(exported_names),
+                                &context, import_options);
   if (!module_or.status().ok()) {
     Set_TF_Status_from_Status(status, module_or.status());
     return "// error";

@@ -22,9 +22,6 @@ SF_BSPS_URL := "http://mirror.tensorflow.org/github.com/sparkfun/SparkFun_Apollo
 SF_BSPS_MD5 := "34199f7e754735661d1c8a70a40ca7a3"
 SF_BSPS_DEST := boards_sfe
 
-STM32_BARE_LIB_URL := "http://mirror.tensorflow.org/github.com/google/stm32_bare_lib/archive/c07d611fb0af58450c5a3e0ab4d52b47f99bc82d.zip"
-STM32_BARE_LIB_MD5 := "282bff40d4d0b92278fd123a3b6e3123"
-
 ifeq ($(HOST_OS),osx)
   RISCV_TOOLCHAIN_URL := "http://mirror.tensorflow.org/static.dev.sifive.com/dev-tools/riscv64-unknown-elf-gcc-8.1.0-2019.01.0-x86_64-apple-darwin.tar.gz"
   RISCV_TOOLCHAIN_MD5 := "2ac2fa00618b9ab7fa0c7d0ec173de94"
@@ -39,8 +36,8 @@ SIFIVE_FE310_LIB_MD5 := "06ee24c4956f8e21670ab3395861fe64"
 KISSFFT_URL="http://mirror.tensorflow.org/github.com/mborgerding/kissfft/archive/v130.zip"
 KISSFFT_MD5="438ba1fef5783cc5f5f201395cc477ca"
 
-RUY_URL="https://github.com/google/ruy/archive/4790797d11a81f96baf24f3731fd3ca44c2c5f8b.zip"
-RUY_MD5="72527053ff51ba0ac36c8ce4444d903d"
+RUY_URL="https://github.com/google/ruy/archive/54774a7a2cf85963777289193629d4bd42de4a59.zip"
+RUY_MD5="c9cb85bf99dab7a49d78758470890b31"
 
 CIFAR10_DATASET_URL="http://mirror.tensorflow.org/www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz"
 CIFAR10_DATASET_MD5="c32a1d4ab5d03f1284b67883e8d87530"

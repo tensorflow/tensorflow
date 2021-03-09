@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-# Warning: as of Jan 20, 2020, MacOS(_EXTERNAL) images do not support Python3.9.
 set -e
 set -x
 
@@ -25,8 +23,11 @@ install_bazelisk
 export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
 sudo xcode-select -s "${DEVELOPER_DIR}"
 
+# Set up py39 via pyenv and check it worked
+setup_python_from_pyenv_macos
+
 # Set up and install MacOS pip dependencies.
-setup_venv_macos python3.9
+install_macos_pip_deps
 
 # For python3 path on Mac
 export PATH=$PATH:/usr/local/bin
@@ -35,7 +36,7 @@ export PATH=$PATH:/usr/local/bin
 
 # Run configure.
 export CC_OPT_FLAGS='-mavx'
-export PYTHON_BIN_PATH=$(which python3.9)
+export PYTHON_BIN_PATH=$(which python)
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
 # Build the pip package

@@ -614,6 +614,20 @@ LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(DotGeneralOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp lhs, rhs;
+  if (failed(GetXlaOp(op.lhs(), value_map, &lhs, op))) return mlir::failure();
+  if (failed(GetXlaOp(op.rhs(), value_map, &rhs, op))) return mlir::failure();
+  xla::PrimitiveType preferred_element_type =
+      xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
+  value_map[op] = xla::DotGeneral(
+      lhs, rhs, Convert_dot_dimension_numbers(op.dot_dimension_numbers()),
+      Unwrap(Convert_precision_config(op.precision_config())),
+      preferred_element_type);
+  return mlir::success();
+}
+
 LogicalResult ExportXlaOp(DynamicBroadcastInDimOp op, OpLoweringContext ctx) {
   // This op has no expression in the legacy export format.
   return failure();
@@ -717,6 +731,8 @@ LogicalResult ExportXlaOp(mlir::mhlo::ConvOp op, OpLoweringContext ctx) {
   xla::XlaOp lhs, rhs;
   if (failed(GetXlaOp(op.lhs(), value_map, &lhs, op))) return mlir::failure();
   if (failed(GetXlaOp(op.rhs(), value_map, &rhs, op))) return mlir::failure();
+  xla::PrimitiveType preferred_element_type =
+      xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
   xla::XlaOp xla_result = xla::ConvGeneralDilated(
       lhs, rhs, Convert_window_strides(op.window_strides()),
       Convert_padding(op.padding()), Convert_lhs_dilation(op.lhs_dilation()),
@@ -724,7 +740,8 @@ LogicalResult ExportXlaOp(mlir::mhlo::ConvOp op, OpLoweringContext ctx) {
       Convert_dimension_numbers(op.dimension_numbers()),
       Convertuint64_t(op.feature_group_count()),
       Convertuint64_t(op.batch_group_count()),
-      Unwrap(Convert_precision_config(op.precision_config())));
+      Unwrap(Convert_precision_config(op.precision_config())),
+      preferred_element_type);
   value_map[op] = xla_result;
   return mlir::success();
 }

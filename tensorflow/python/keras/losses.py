@@ -1361,6 +1361,14 @@ def mean_absolute_percentage_error(y_true, y_pred):
   return 100. * K.mean(diff, axis=-1)
 
 
+@dispatch.dispatch_for_types(mean_absolute_percentage_error,
+                             ragged_tensor.RaggedTensor)
+def _ragged_tensor_mape(y_true, y_pred):
+  """ Support RaggedTensors."""
+  return _ragged_tensor_apply_loss(mean_absolute_percentage_error, y_true,
+                                   y_pred)
+
+
 @keras_export('keras.metrics.mean_squared_logarithmic_error',
               'keras.metrics.msle', 'keras.metrics.MSLE',
               'keras.losses.mean_squared_logarithmic_error',
@@ -1396,6 +1404,14 @@ def mean_squared_logarithmic_error(y_true, y_pred):
   first_log = math_ops.log(K.maximum(y_pred, K.epsilon()) + 1.)
   second_log = math_ops.log(K.maximum(y_true, K.epsilon()) + 1.)
   return K.mean(math_ops.squared_difference(first_log, second_log), axis=-1)
+
+
+@dispatch.dispatch_for_types(mean_squared_logarithmic_error,
+                             ragged_tensor.RaggedTensor)
+def _ragged_tensor_msle(y_true, y_pred):
+  """ Implements support for handling RaggedTensors."""
+  return _ragged_tensor_apply_loss(mean_squared_logarithmic_error, y_true,
+                                   y_pred)
 
 
 def _maybe_convert_labels(y_true):
@@ -1522,7 +1538,7 @@ def huber(y_true, y_pred, delta=1.0):
 
   ```
   loss = 0.5 * x^2                  if |x| <= d
-  loss = 0.5 * d^2 + d * (|x| - d)  if |x| > d
+  loss = d * |x| - 0.5 * d^2        if |x| > d
   ```
   where d is `delta`. See: https://en.wikipedia.org/wiki/Huber_loss
 
@@ -1542,9 +1558,8 @@ def huber(y_true, y_pred, delta=1.0):
   abs_error = math_ops.abs(error)
   half = ops.convert_to_tensor_v2_with_dispatch(0.5, dtype=abs_error.dtype)
   return K.mean(
-      array_ops.where_v2(
-          abs_error <= delta, half * math_ops.pow(error, 2),
-          half * math_ops.pow(delta, 2) + delta * (abs_error - delta)),
+      array_ops.where_v2(abs_error <= delta, half * math_ops.square(error),
+                         delta * abs_error - half * math_ops.square(delta)),
       axis=-1)
 
 
@@ -1727,6 +1742,28 @@ def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0):
                                  lambda: y_true)
   return K.mean(
       K.binary_crossentropy(y_true, y_pred, from_logits=from_logits), axis=-1)
+
+
+@dispatch.dispatch_for_types(binary_crossentropy, ragged_tensor.RaggedTensor)
+def _ragged_tensor_binary_crossentropy(y_true,
+                                       y_pred,
+                                       from_logits=False,
+                                       label_smoothing=0):
+  """ Implements support for handling RaggedTensors.
+
+      Expected shape: (batch, sequence_len) with sequence_len being variable
+      per batch.
+      Return shape: (batch,); returns the per batch mean of the loss values.
+
+      When used by BinaryCrossentropy() with the default reduction
+      (SUM_OVER_BATCH_SIZE), the reduction averages the per batch losses over
+      the number of batches.
+  """
+  fn = functools.partial(
+      binary_crossentropy,
+      from_logits=from_logits,
+      label_smoothing=label_smoothing)
+  return _ragged_tensor_apply_loss(fn, y_true, y_pred)
 
 
 @keras_export('keras.metrics.kl_divergence',

@@ -36,13 +36,17 @@ TfLiteRegistration Register_CAST();
 TfLiteRegistration Register_CONV_2D();
 TfLiteRegistration Register_DEPTHWISE_CONV_2D();
 TfLiteRegistration Register_DIV();
+TfLiteRegistration Register_ELU();
 TfLiteRegistration Register_EXP();
+TfLiteRegistration Register_LEAKY_RELU();
+TfLiteRegistration Register_FILL();
 TfLiteRegistration Register_QUANTIZE();
 TfLiteRegistration Register_SHAPE();
 TfLiteRegistration Register_SOFTMAX();
 TfLiteRegistration Register_SPACE_TO_BATCH_ND();
+TfLiteRegistration Register_SQUEEZE();
 TfLiteRegistration Register_SVDF();
-TfLiteRegistration Register_TRANSPOSE_CONV_2D();
+TfLiteRegistration Register_TRANSPOSE_CONV();
 TfLiteRegistration Register_ZEROS_LIKE();
 
 namespace ops {

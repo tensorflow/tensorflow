@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #define DEBUG_TYPE "tf-tpu-merge-variables-with-execute"
@@ -135,16 +136,15 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
   // consider resource accesses in other islands since they ordering is enforced
   // by inter-island dependencies.
   Operation* first_read = nullptr;
-  Operation& execute = execute_launch.GetBody().front();
+  auto execute = cast<TF::TPUExecuteOp>(execute_launch.GetBody().front());
   auto parallel_execute = llvm::dyn_cast<tf_device::ParallelExecuteOp>(
       execute_launch->getParentOp());
   Operation* execute_parent =
       parallel_execute ? parallel_execute.getOperation() : execute_launch;
   // Find inputs that are variable reads.
-  for (auto operand : llvm::enumerate(execute.getOpOperands())) {
+  for (auto operand : llvm::enumerate(execute->getOpOperands())) {
     infos.new_operand_values.push_back(operand.value().get());
-    if (!operand.value().get().getDefiningOp()) continue;
-    auto read_op = llvm::dyn_cast<TF::ReadVariableOp>(
+    auto read_op = llvm::dyn_cast_or_null<TF::ReadVariableOp>(
         operand.value().get().getDefiningOp());
     if (!read_op) continue;
     if (check_same_region &&
@@ -527,11 +527,9 @@ LogicalResult MergeForOneTPUExecute(tf_device::LaunchOp execute_launch,
     Type type = it.value().getType();
     if (type.isa<TensorType>() &&
         type.cast<TensorType>().getElementType().isa<TF::ResourceType>()) {
-      if (llvm::find(device_var_reads_indices, it.index()) ==
-              device_var_reads_indices.end() &&
-          llvm::find(device_var_updates_indices, it.index()) ==
-              device_var_updates_indices.end()) {
-        return execute_launch.emitError("operand #")
+      if (!llvm::is_contained(device_var_reads_indices, it.index()) &&
+          !llvm::is_contained(device_var_updates_indices, it.index())) {
+        return execute_launch.GetBody().front().emitError("operand #")
                << it.index()
                << " is a resource that was neither read nor written to; this "
                   "resource potentially failed to be hoisted";

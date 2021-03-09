@@ -71,7 +71,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       context, params->activation, input->type, input, filter, bias, output,
       &(data->reference_op_data)));
 
-  if (input->type == kTfLiteInt8 && nullptr != GetTensorData<int32_t>(bias)) {
+  if (input->type == kTfLiteInt8) {
     RuntimeShape filter_shape = GetTensorShape(filter);
     RuntimeShape output_shape = GetTensorShape(output);
 
@@ -102,82 +102,68 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
                                const TfLiteEvalTensor* filter,
                                const TfLiteEvalTensor* bias,
                                TfLiteEvalTensor* output) {
-  // The 'if' condition can be removed when null handling of bias is added to
-  // arm_fully_connected_s8
-  if (nullptr != tflite::micro::GetTensorData<int32_t>(bias)) {
-    const RuntimeShape output_shape = tflite::micro::GetTensorShape(output);
-    TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 2);
-    const int batches = output_shape.Dims(0);
-    const int output_depth = output_shape.Dims(1);
-    const RuntimeShape filter_shape = tflite::micro::GetTensorShape(filter);
-    const int filter_dim_count = filter_shape.DimensionsCount();
-    const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
-    const RuntimeShape input_shape = tflite::micro::GetTensorShape(input);
+  const RuntimeShape output_shape = tflite::micro::GetTensorShape(output);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 2);
+  const int batches = output_shape.Dims(0);
+  const int output_depth = output_shape.Dims(1);
+  const RuntimeShape filter_shape = tflite::micro::GetTensorShape(filter);
+  const int filter_dim_count = filter_shape.DimensionsCount();
+  const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
+  const RuntimeShape input_shape = tflite::micro::GetTensorShape(input);
 
-    cmsis_nn_fc_params fc_params;
-    fc_params.input_offset = -data.reference_op_data.input_zero_point;
-    fc_params.output_offset = data.reference_op_data.output_zero_point;
-    fc_params.filter_offset = -data.reference_op_data.filter_zero_point;
-    fc_params.activation.min = data.reference_op_data.output_activation_min;
-    fc_params.activation.max = data.reference_op_data.output_activation_max;
+  cmsis_nn_fc_params fc_params;
+  fc_params.input_offset = -data.reference_op_data.input_zero_point;
+  fc_params.output_offset = data.reference_op_data.output_zero_point;
+  fc_params.filter_offset = -data.reference_op_data.filter_zero_point;
+  fc_params.activation.min = data.reference_op_data.output_activation_min;
+  fc_params.activation.max = data.reference_op_data.output_activation_max;
 
-    cmsis_nn_per_tensor_quant_params quant_params;
-    quant_params.multiplier = data.reference_op_data.output_multiplier;
-    quant_params.shift = data.reference_op_data.output_shift;
+  cmsis_nn_per_tensor_quant_params quant_params;
+  quant_params.multiplier = data.reference_op_data.output_multiplier;
+  quant_params.shift = data.reference_op_data.output_shift;
 
-    cmsis_nn_dims input_dims;
-    input_dims.n = batches;
-    input_dims.h = 1;
-    input_dims.w = 1;
-    input_dims.c = accum_depth;
+  cmsis_nn_dims input_dims;
+  input_dims.n = batches;
+  input_dims.h = 1;
+  input_dims.w = 1;
+  input_dims.c = accum_depth;
 
-    cmsis_nn_dims filter_dims;
-    filter_dims.n = accum_depth;
-    filter_dims.h = 1;
-    filter_dims.w = 1;
-    filter_dims.c = output_depth;
+  cmsis_nn_dims filter_dims;
+  filter_dims.n = accum_depth;
+  filter_dims.h = 1;
+  filter_dims.w = 1;
+  filter_dims.c = output_depth;
 
-    cmsis_nn_dims bias_dims;
-    bias_dims.n = 1;
-    bias_dims.h = 1;
-    bias_dims.w = 1;
-    bias_dims.c = output_depth;
+  cmsis_nn_dims bias_dims;
+  bias_dims.n = 1;
+  bias_dims.h = 1;
+  bias_dims.w = 1;
+  bias_dims.c = output_depth;
 
-    cmsis_nn_dims output_dims;
-    output_dims.n = batches;
-    output_dims.h = 1;
-    output_dims.w = 1;
-    output_dims.c = output_depth;
+  cmsis_nn_dims output_dims;
+  output_dims.n = batches;
+  output_dims.h = 1;
+  output_dims.w = 1;
+  output_dims.c = output_depth;
 
-    cmsis_nn_context ctx;
-    ctx.buf = nullptr;
-    ctx.size = 0;
+  cmsis_nn_context ctx;
+  ctx.buf = nullptr;
+  ctx.size = 0;
 
-    if (data.buffer_idx > -1) {
-      ctx.buf = context->GetScratchBuffer(context, data.buffer_idx);
-    }
-
-    TF_LITE_ENSURE_EQ(
-        context,
-        arm_fully_connected_s8(
-            &ctx, &fc_params, &quant_params, &input_dims,
-            tflite::micro::GetTensorData<int8_t>(input), &filter_dims,
-            tflite::micro::GetTensorData<int8_t>(filter), &bias_dims,
-            tflite::micro::GetTensorData<int32_t>(bias), &output_dims,
-            tflite::micro::GetTensorData<int8_t>(output)),
-        ARM_MATH_SUCCESS);
-  } else {
-    tflite::reference_integer_ops::FullyConnected(
-        FullyConnectedParamsQuantized(data.reference_op_data),
-        tflite::micro::GetTensorShape(input),
-        tflite::micro::GetTensorData<int8_t>(input),
-        tflite::micro::GetTensorShape(filter),
-        tflite::micro::GetTensorData<int8_t>(filter),
-        tflite::micro::GetTensorShape(bias),
-        tflite::micro::GetTensorData<int32_t>(bias),
-        tflite::micro::GetTensorShape(output),
-        tflite::micro::GetTensorData<int8_t>(output));
+  if (data.buffer_idx > -1) {
+    ctx.buf = context->GetScratchBuffer(context, data.buffer_idx);
   }
+
+  TF_LITE_ENSURE_EQ(
+      context,
+      arm_fully_connected_s8(
+          &ctx, &fc_params, &quant_params, &input_dims,
+          tflite::micro::GetTensorData<int8_t>(input), &filter_dims,
+          tflite::micro::GetTensorData<int8_t>(filter), &bias_dims,
+          tflite::micro::GetTensorData<int32_t>(bias), &output_dims,
+          tflite::micro::GetTensorData<int8_t>(output)),
+      ARM_MATH_SUCCESS);
+
   return kTfLiteOk;
 }
 

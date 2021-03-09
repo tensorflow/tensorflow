@@ -94,9 +94,17 @@ class LiteralBase {
   // element Literals.
   string ToString() const;
 
+  // Similar to ToString, but return the result in a compact
+  // one-line form.
+  string ToStringOneline() const;
+
   // Returns a string representation of the literal value which does *not*
   // include the shape string.
   string ToStringWithoutShape() const;
+
+  // Similar to ToStringWithoutShape, but return the result in a compact
+  // one-line form.
+  string ToStringWithoutShapeOneline() const;
 
   // Returns a string representation of the literal value which includes the
   // shape string with its layout.does *not* include the shape string.
@@ -602,6 +610,11 @@ class MutableLiteralBase : public LiteralBase {
   // Unhide const method from parent class.
   using LiteralBase::untyped_data;
 
+  template <typename NativeT>
+  void MutableEachCell(
+      std::function<NativeT(absl::Span<const int64> indices, NativeT value)>
+          per_cell);
+
   // Copy values from 'src_literal' rooted at 'src_shape_index' into this
   // literal rooted at 'dest_shape_index'. The subshape of this literal rooted
   // at 'dest_shape_index' must be compatible with the subshape of 'src_literal'
@@ -978,6 +991,24 @@ void LiteralBase::EachCell(
   }
   do {
     per_cell(indices, Get<NativeT>(indices));
+  } while (IndexUtil::BumpIndices(shape_dynamic, absl::MakeSpan(indices)));
+}
+
+template <typename NativeT>
+void MutableLiteralBase::MutableEachCell(
+    std::function<NativeT(absl::Span<const int64> indices, NativeT value)>
+        per_cell) {
+  if (ShapeUtil::IsZeroElementArray(shape())) {
+    return;
+  }
+  std::vector<int64> indices(shape().rank(), 0);
+
+  Shape shape_dynamic = shape();
+  for (int64 i = 0; i < shape_dynamic.rank(); ++i) {
+    shape_dynamic.set_dimensions(i, GetDynamicSize(i));
+  }
+  do {
+    Set<NativeT>(indices, per_cell(indices, Get<NativeT>(indices)));
   } while (IndexUtil::BumpIndices(shape_dynamic, absl::MakeSpan(indices)));
 }
 

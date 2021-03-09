@@ -212,7 +212,6 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           autotune_(params.dataset->num_parallel_calls_ == model::kAutotune) {}
 
     ~Iterator() override {
-      cancellation_manager_->StartCancel();
       CancelThreads(/*wait=*/true);
       input_impl_.reset();
       if (deregister_fn_) deregister_fn_();
@@ -223,13 +222,12 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       if (num_parallel_calls_->value == model::kAutotune) {
         num_parallel_calls_->value = ctx->runner_threadpool_size();
       }
-      cancellation_manager_ =
-          absl::make_unique<CancellationManager>(ctx->cancellation_manager());
-      IteratorContext::Params params(ctx);
-      params.cancellation_manager = cancellation_manager_.get();
+      cancellation_manager_ = absl::make_unique<CancellationManager>();
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(),
           [this]() { CancelThreads(/*wait=*/false); }, &deregister_fn_));
+      IteratorContext::Params params(ctx);
+      params.cancellation_manager = cancellation_manager_.get();
       TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
           IteratorContext(params), this, prefix(), &input_impl_));
       return dataset()->captured_func_->Instantiate(
@@ -366,7 +364,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           std::make_pair("deterministic", deterministic_ ? "true" : "false"));
       result.push_back(std::make_pair(
           "parallelism",
-          strings::Printf("%lld", static_cast<long long>(parallelism))));
+          parallelism == -1
+              ? kTraceInfoUnavailable
+              : strings::Printf("%lld", static_cast<long long>(parallelism))));
       return result;
     }
 
@@ -382,6 +382,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     };
 
     void CancelThreads(bool wait) TF_LOCKS_EXCLUDED(mu_) {
+      cancellation_manager_->StartCancel();
       mutex_lock l(*mu_);
       cancelled_ = true;
       cond_var_->notify_all();
@@ -547,7 +548,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         return false;
       }
       if (!deterministic_) {
-        // Iterate through in-flight results and returns the first one that is
+        // Iterate through in-flight results and return the first one that is
         // found to be available and not end-of-input. If the first result (in
         // order) is end-of-input, we know that all earlier iterations have
         // already been completed, so it is safe to return that result for the
@@ -643,9 +644,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     const bool autotune_;
     // Counts the number of outstanding calls.
     int64 num_calls_ TF_GUARDED_BY(*mu_) = 0;
-    // Controls cancellation of `input_impl_`.
-    // Must be ordered before `input_impl_` so that `input_impl_` is destroyed
-    // first.
+    // Controls cancellation of `input_impl_`. Must be ordered before
+    // `input_impl_` so that `input_impl_` is destroyed first.
     std::unique_ptr<CancellationManager> cancellation_manager_;
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     // Must be ordered after `cancellation_manager_` so that `input_impl_` is

@@ -143,13 +143,12 @@ void GenerateTrivialMean(const NodeShader::GenerationContext& ctx,
       {"input_data_0_h", static_cast<int>(ctx.input_shapes[0][1])},
       {"input_data_0_w", static_cast<int>(ctx.input_shapes[0][2])}};
 
+  // Shaders may be compiled with a precision hint mediump, which means that
+  // GLSL compiler may drop the size of float data type from 32 to 16 bits.
+  // If "sum" and "size" variables are 16bit floats, their values range
+  // become not enough for providing a good results accuracy. That is why
+  // their precision is forced to be 32bit by using highp qualifier.
   std::string source = R"(
-    // Shaders may be compiled with a precision hint mediump, which means that
-    // GLSL compiler may drop the size of float data type from 32 to 16 bits.
-    // If "sum" and "size" variables are 16bit floats, their values range
-    // become not enough for providing a good results accuracy. That is why
-    // their precision is forced to be 32bit by using highp qualifier.
-
     highp vec4 sum = vec4(0.0);
     highp float size = float($input_data_0_w$ * $input_data_0_h$);
     for (int w = 0; w < $input_data_0_w$; w++) {

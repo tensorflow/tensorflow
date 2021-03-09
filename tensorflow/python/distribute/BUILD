@@ -450,7 +450,8 @@ cuda_py_test(
     ],
     python_version = "PY3",
     tags = [
-        "notap",  # TODO(b/171355671)
+        "noasan",  # TODO(b/180630068)
+        "nomsan",  # TODO(b/180630068)
         "notsan",  # TODO(b/151841995)
     ],
     deps = [
@@ -1540,16 +1541,26 @@ cuda_py_test(
         ":collective_all_reduce_strategy",
         ":combinations",
         ":distribute_lib",
+        ":distribute_utils",
         ":strategy_combinations",
         ":values",
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:config",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:func_graph",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:rnn_cell",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/training/tracking:util",
     ],
 )
 
@@ -1729,7 +1740,6 @@ py_test(
     tags = [
         "noasan",
         "nomsan",
-        "notsan",
     ],  # b/175904958
     deps = [
         ":multi_process_runner",
@@ -1907,9 +1917,9 @@ tf_py_test(
     name = "parameter_server_strategy_v2_test",
     srcs = ["parameter_server_strategy_v2_test.py"],
     python_version = "PY3",
+    shard_count = 5,
     tags = [
-        "no_windows",  # TODO(171349346)
-        "notsan",  # TODO(b/168675975)
+        "no_pip",  # TODO(b/171349346, b/181878817)
     ],
     deps = [
         ":multi_worker_test_base",

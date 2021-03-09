@@ -23,13 +23,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_format.h"
-#if GOOGLE_CUDA
-#include "third_party/nccl/nccl.h"
-#elif TENSORFLOW_USE_ROCM
-#include "rocm/include/rccl/rccl.h"
-#endif
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/service/gpu/nccl_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -38,10 +33,12 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-static NcclAllToAllConfig GetNcclAllToAllConfig(mlir::lmhlo::AllToAllOp op,
-                                                int64 replica_count) {
+/*static*/ NcclAllToAllConfig NcclAllToAllThunk::GetNcclAllToAllConfig(
+    mlir::lmhlo::AllToAllOp op) {
   NcclAllToAllConfig config;
-  config.config = GetNcclCollectiveConfigForMlir(op, replica_count);
+  // FIXME(b/180174349): LMHLO AllToAll incorrectly has use_global_device_ids
+  // attribute and it should be removed.
+  config.config = GetNcclCollectiveConfigForMlir(op, absl::nullopt);
   config.has_split_dimension = op.split_dimension().hasValue();
   return config;
 }
@@ -51,22 +48,23 @@ static NcclAllToAllConfig GetNcclAllToAllConfig(mlir::lmhlo::AllToAllOp op,
       absl::c_all_of(op.operands(), [](mlir::Value operand) {
         Shape shape = TypeToShape(operand.getType());
         return LayoutUtil::IsDenseArray(shape) &&
-               ToNcclDataType(shape.element_type()).ok();
+               IsTypeSupportedByNccl(shape.element_type());
       });
   return op.split_dimension().getValueOr(0) == 0 && operands_are_supported;
 }
 
 NcclAllToAllThunk::NcclAllToAllThunk(
-    ThunkInfo thunk_info, mlir::lmhlo::AllToAllOp op, int64 replica_count,
+    ThunkInfo thunk_info, mlir::lmhlo::AllToAllOp op,
     std::vector<NcclAllToAllThunk::Buffer> buffers)
     : NcclCollectiveThunk(Thunk::kNcclAllToAll, thunk_info),
-      config_(GetNcclAllToAllConfig(op, replica_count)),
+      config_(GetNcclAllToAllConfig(op)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());
 }
 
 Status NcclAllToAllThunk::RunNcclCollective(const ExecuteParams& params,
                                             ncclComm_t comm) {
+#if XLA_ENABLE_XCCL
   int device_ordinal = params.stream->parent()->device_ordinal();
   VLOG(3) << "Performing all-to-all from device ordinal: " << device_ordinal;
 
@@ -139,10 +137,11 @@ Status NcclAllToAllThunk::RunNcclCollective(const ExecuteParams& params,
 
   VLOG(3) << "Done performing all-to-all for ordinal: " << device_ordinal;
   return Status::OK();
-}
-
-const NcclCollectiveConfig& NcclAllToAllThunk::config() const {
-  return config_.config;
+#else   // XLA_ENABLE_XCCL
+  return Unimplemented(
+      "NCCL support is not available: this binary was not built with a CUDA "
+      "compiler, which is necessary to build the NCCL source library.");
+#endif  // XLA_ENABLE_XCCL
 }
 
 }  // namespace gpu
