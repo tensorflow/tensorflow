@@ -627,6 +627,12 @@ class ToSingleElementOp : public HybridAsyncOpKernel {
 
  protected:
   Status DoCompute(OpKernelContext* ctx) override {
+    profiler::TraceMe traceme(
+        [&] {
+          return profiler::TraceMeEncode("ToSingleElementOp::DoCompute",
+                                         {{"id", ctx->step_id()}});
+        },
+        profiler::kInfo);
     tensorflow::ResourceTagger tag(kTFDataResourceTag,
                                    ctx->op_kernel().type_string());
     DatasetBase* dataset;
@@ -691,6 +697,12 @@ class ReduceDatasetOp : public HybridAsyncOpKernel {
 
  protected:
   Status DoCompute(OpKernelContext* ctx) override {
+    profiler::TraceMe traceme(
+        [&] {
+          return profiler::TraceMeEncode("ReduceDatasetOp::DoCompute",
+                                         {{"id", ctx->step_id()}});
+        },
+        profiler::kInfo);
     tensorflow::ResourceTagger tag(kTFDataResourceTag,
                                    ctx->op_kernel().type_string());
     DatasetBase* dataset;

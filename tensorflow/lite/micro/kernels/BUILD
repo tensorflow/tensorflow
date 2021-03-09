@@ -928,7 +928,6 @@ cc_test(
         "space_to_batch_nd_test.cc",
     ],
     deps = [
-        ":conv_test_common",
         ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_utils",

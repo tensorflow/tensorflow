@@ -1,0 +1,74 @@
+// RUN: hlo_to_llvm_ir --ptx --sm=50 %s | FileCheck %s
+
+// CHECK-LABEL: .entry reduce_exp
+// CHECK-NOT: ld.global.nc.v2.f32
+// CHECK-COUNT-8: ld.global.nc.f32
+
+HloModule Exp
+
+%add_float {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add.17 = f32[] add(f32[] %x, f32[] %y)
+}
+
+ENTRY %main {
+  %arg0.1 = f32[5,131072] parameter(0)
+  %exp = f32[5,131072] exponential(f32[5,131072] %arg0.1)
+  %constant.0 = f32[] constant(0)
+  ROOT %reduce.exp = f32[5] reduce(f32[5,131072] %exp, f32[] %constant.0), dimensions={1}, to_apply=%add_float
+}
+
+// -----
+
+HloModule ReduceTileFit
+
+// CHECK-LABEL: .entry reduce_tile_fit
+// CHECK-NOT: ld.global.nc.v2.f32
+// CHECK: ld.global.nc.f32
+// CHECK: ld.global.nc.f32
+// CHECK: ld.global.nc.f32
+// CHECK: ld.global.nc.f32
+// CHECK: ld.global.nc.f32
+// CHECK: ld.global.nc.f32
+// CHECK: ld.global.nc.f32
+// CHECK: ld.global.nc.f32
+
+%max_ {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %maximum.7 = f32[] maximum(f32[] %x, f32[] %y)
+}
+
+ENTRY %main {
+  %param_0 = f32[5,122880] parameter(0)
+  %constant.3 = f32[] constant(0)
+  ROOT %reduce.tile_fit = f32[5] reduce(f32[5,122880] %param_0, f32[] %constant.3), dimensions={1}, to_apply=%max_
+}
+
+// -----
+
+HloModule ReducePower2
+
+// CHECK-LABEL: .entry reduce_pow_2
+// CHECK-NOT: ld.global.nc.v2.f32
+// CHECK: ld.global.nc.f32
+// CHECK: ld.global.nc.f32
+// CHECK: ld.global.nc.f32
+// CHECK: ld.global.nc.f32
+// CHECK: ld.global.nc.f32
+// CHECK: ld.global.nc.f32
+// CHECK: ld.global.nc.f32
+// CHECK: ld.global.nc.f32
+
+%max_ {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %maximum.7 = f32[] maximum(f32[] %x, f32[] %y)
+}
+
+ENTRY %main {
+  %param_0 = f32[5,131072] parameter(0)
+  %constant.3 = f32[] constant(0)
+  ROOT %reduce.pow_2 = f32[5] reduce(f32[5,131072] %param_0, f32[] %constant.3), dimensions={1}, to_apply=%max_
+}

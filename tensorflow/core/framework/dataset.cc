@@ -425,6 +425,12 @@ Status DatasetBase::MakeIterator(
     IteratorContext* ctx, const IteratorBase* parent,
     const string& output_prefix,
     std::unique_ptr<IteratorBase>* iterator) const {
+  profiler::TraceMe traceme(
+      [&] {
+        return profiler::TraceMeEncode(
+            strings::StrCat("MakeIterator::", type_string()), {});
+      },
+      profiler::TraceMeLevel::kInfo);
   *iterator = MakeIteratorInternal(output_prefix);
   Status s = (*iterator)->InitializeBase(ctx, parent);
   if (s.ok()) {
