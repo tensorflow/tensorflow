@@ -399,6 +399,14 @@ void DumpExecutionOptions(const ExecutionOptions& execution_options,
   CanonicalDebugOptions opts(debug_options);
   tensorflow::Env* env = tensorflow::Env::Default();
   const string& dir = opts.dump_to;
+  if (!env->IsDirectory(dir).ok()) {
+    auto status = env->RecursivelyCreateDir(dir);
+    if (!status.ok()) {
+      LOG(ERROR) << "Could not create directory " << dir
+                 << " for dumping XLA execution options: " << status;
+      return;
+    }
+  }
   if (env->IsDirectory(dir).ok()) {
     string filename = tensorflow::io::JoinPath(dir, "execution_options");
     Status status;
