@@ -1644,8 +1644,8 @@ mlir::Location ImporterBase::GetLocation(const Node& node) {
       for (const StackFrame& frame : llvm::reverse(frames)) {
         auto file_name = mlir::Identifier::get(frame.file_name, context_);
         // Use col 1 as there is no column info in StackTrace.
-        auto file_line_loc = mlir::FileLineColLoc::get(
-            file_name, frame.line_number, 1, context_);
+        auto file_line_loc =
+            mlir::FileLineColLoc::get(file_name, frame.line_number, 1);
         locations.push_back(file_line_loc);
       }
     } else {
@@ -1660,7 +1660,7 @@ mlir::Location ImporterBase::GetLocation(const Node& node) {
           const auto& file = debug_info_.files(location.file_index());
           auto file_name = mlir::Identifier::get(file, context_);
           auto file_line_loc = mlir::FileLineColLoc::get(
-              file_name, location.line(), location.col(), context_);
+              file_name, location.line(), location.col());
           locations.push_back(file_line_loc);
         }
       }
@@ -1716,7 +1716,7 @@ mlir::Location ImporterBase::GetLocation(const Node& node) {
     // store the name of the node_def
     node_locations.push_back(
         create_location(node.name(), function_name_for_debug_info_));
-    return mlir::FusedLoc::get(node_locations, context_);
+    return mlir::FusedLoc::get(context_, node_locations);
   }
 }
 
