@@ -3343,7 +3343,8 @@ def categorical_accuracy(y_true, y_pred):
     Categorical accuracy values.
   """
   # assert if predicted and true labels Tensors have the same shape
-  check_ops.assert_equal_v2(array_ops.shape_v2(y_pred), array_ops.shape_v2(y_true))
+  check_ops.assert_equal_v2(array_ops.shape_v2(y_pred),
+                            array_ops.shape_v2(y_true))
   
   return math_ops.cast(
       math_ops.equal(
