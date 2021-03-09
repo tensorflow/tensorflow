@@ -49,7 +49,7 @@ bool IsSupportedGPU()
 #ifdef GOOGLE_CUDA
     return GetCudaVersion(*virtual_cluster_.get()) >= 9010;
 #else
-    return True;
+    return true;
 #endif
 }
 
