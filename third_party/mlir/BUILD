@@ -1714,6 +1714,24 @@ gentbl(
     deps = [":LLVMOpsTdFiles"],
 )
 
+gentbl(
+    name = "LLVMDialectAttributesIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "--gen-attrdef-decls",
+            "include/mlir/Dialect/LLVMIR/LLVMOpsAttrDefs.h.inc",
+        ),
+        (
+            "--gen-attrdef-defs",
+            "include/mlir/Dialect/LLVMIR/LLVMOpsAttrDefs.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/LLVMIR/LLVMAttrDefs.td",
+    deps = [":LLVMOpsTdFiles"],
+)
+
 cc_library(
     name = "LLVMDialect",
     srcs = glob(
@@ -1745,6 +1763,7 @@ cc_library(
     deps = [
         ":ControlFlowInterfaces",
         ":IR",
+        ":LLVMDialectAttributesIncGen",
         ":LLVMDialectInterfaceIncGen",
         ":LLVMOpsIncGen",
         ":SideEffectInterfaces",
@@ -3770,7 +3789,7 @@ cc_library(
     srcs = [
         "lib/Target/LLVMIR/ConvertFromLLVMIR.cpp",
     ],
-    hdrs = ["include/mlir/Target/LLVMIR.h"],
+    hdrs = ["include/mlir/Target/LLVMIR/Import.h"],
     includes = ["include"],
     deps = [
         ":IR",
