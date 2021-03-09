@@ -1868,8 +1868,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           'expecting %s weights. Provided weights: %s...' %
           (self.name, len(weights), expected_num_weights, str(weights)[:50]))
 
-    weights = [np.array(item) for item in weights]
-    
+    for index, item in enumerate(weights):
+      if(str(type(item))=="<class 'tensorflow.python.ops.resource_variable_ops.ResourceVariable'>"):
+          weights[index] = np.array(item)
+
     weight_index = 0
     weight_value_tuples = []
     for param in params:
