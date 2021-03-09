@@ -114,6 +114,7 @@ filegroup(
     name = "enabled_binary_gpu_kernel_srcs",
     srcs = [
         "gpu_op_add.cc",
+        "gpu_op_atan2.cc",
         "gpu_op_bitwise_and.cc",
         "gpu_op_bitwise_or.cc",
         "gpu_op_bitwise_xor.cc",
@@ -131,8 +132,10 @@ filegroup(
         "gpu_op_minimum.cc",
         "gpu_op_mul.cc",
         "gpu_op_not_equal.cc",
+        "gpu_op_pow.cc",
         "gpu_op_right_shift.cc",
         "gpu_op_sub.cc",
+        "gpu_op_zeta.cc",
     ],
     compatible_with = get_compatible_with_cloud(),
 )
@@ -140,11 +143,8 @@ filegroup(
 filegroup(
     name = "experimental_binary_gpu_kernel_srcs",
     srcs = [
-        "gpu_op_atan2.cc",
         "gpu_op_floor_div.cc",
-        "gpu_op_pow.cc",
         "gpu_op_squared_difference.cc",
-        "gpu_op_zeta.cc",
     ],
     compatible_with = get_compatible_with_cloud(),
 )
