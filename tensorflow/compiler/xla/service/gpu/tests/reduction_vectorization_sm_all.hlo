@@ -1,6 +1,7 @@
 // RUN: hlo_to_llvm_ir --ptx %s | FileCheck %s
 // RUN: hlo_to_llvm_ir --ptx --sm=50 %s | FileCheck %s --check-prefix=CHECK-SM50
 // RUN: hlo_to_llvm_ir --ptx --sm=60 %s | FileCheck %s --check-prefix=CHECK-SM60
+// RUN: hlo_to_llvm_ir --ptx --sm=70 %s | FileCheck %s --check-prefix=CHECK-SM70
 
 // CHECK-LABEL: .entry reduce_odd_row
 // CHECK-NOT: ld.global.nc.v2.f32
@@ -124,6 +125,12 @@ HloModule ReducePower2
 // CHECK-SM60: ld.global.nc.v2.f32
 // CHECK-SM60: ld.global.nc.v2.f32
 // CHECK-SM60: ld.global.nc.v2.f32
+
+// CHECK-SM70-LABEL: .entry reduce_pow_2
+// CHECK-SM70: ld.global.nc.v2.f32
+// CHECK-SM70: ld.global.nc.v2.f32
+// CHECK-SM70: ld.global.nc.v2.f32
+// CHECK-SM70: ld.global.nc.v2.f32
 
 %max_ {
   %x = f32[] parameter(0)
