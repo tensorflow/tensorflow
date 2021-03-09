@@ -127,22 +127,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "prefetch_dataset_serialization_test",
-    size = "small",
-    srcs = ["prefetch_dataset_serialization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-    ],
-)
-
-tf_py_test(
     name = "range_dataset_serialization_test",
     size = "small",
     srcs = ["range_dataset_serialization_test.py"],

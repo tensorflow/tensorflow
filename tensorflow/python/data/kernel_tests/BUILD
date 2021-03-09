@@ -623,6 +623,7 @@ tf_py_test(
     size = "small",
     srcs = ["prefetch_test.py"],
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
