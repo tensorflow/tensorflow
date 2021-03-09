@@ -70,6 +70,10 @@
     *   `tf.function(experimental_compile=True)` has become a stable API,
         renamed `tf.function(jit_compile=True)`.
 
+*   `tf.distribute`:
+    *   Rename `experimental_prefetch_to_device` in `tf.distribute.InputOptions`
+        to `experimental_fetch_to_device` to better reflect the purpose.
+
 *   `tf.lite`:
     *   class `tflite::Subgraph`:
         *   Removed the `tensors()` method and the non-const overload of the

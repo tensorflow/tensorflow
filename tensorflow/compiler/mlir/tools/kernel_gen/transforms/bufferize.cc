@@ -154,43 +154,55 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
     // backward, because the broadcasting semantics mean that the last
     // dimensions of each shape (the least significant ones) are matched
     // together.
-    Value running_product = one;
-    Value current_dimension_offset = zero;
     Value two = lb.create<ConstantIndexOp>(2);
     Value max_rank_plus_two = lb.create<AddIOp>(loc, max_rank, two);
+    Value constant_false =
+        lb.create<ConstantOp>(lb.getI1Type(), lb.getBoolAttr(false));
+    SmallVector<Value> init_values;
+    init_values.reserve(k + 3);
+    // Initially, all values are marked as not broadcasted.
+    for (int i = 0; i < k; ++i) {
+      init_values.push_back(constant_false);
+    }
+    // The running product is initially 1.
+    init_values.push_back(one);
+    // The current dimension offset is initially 0.
+    init_values.push_back(zero);
+    // Whether the broadcasting is invalid.
+    init_values.push_back(constant_false);
 
     // Iterate from 1 to max_rank + 1 (inclusive). This iteration variable is
     // used as an offset from the end of each shape vector. We iterate until
     // max_rank + 1 to handle the case that we have a running_product > 1 left
     // when we have processed all dimensions of the largest shape.
-    lb.create<scf::ForOp>(
-        one, max_rank_plus_two, one,
-        ValueRange{running_product, current_dimension_offset},
+    auto main_loop = lb.create<scf::ForOp>(
+        one, max_rank_plus_two, one, init_values,
         [&](OpBuilder &b, Location l, Value v, ValueRange vr) {
-          Value constant_false =
-              b.create<ConstantOp>(l, b.getI1Type(), b.getBoolAttr(false));
-          Value just_out_of_bounds = constant_false;
-          Value different_sizes = constant_false;
-          Value minus_one = b.create<ConstantIndexOp>(l, -1);
-
-          // Initialize 'same_size' to a size that we don't expect to see.
-          Value same_size = minus_one;
+          // 'same_size' should track what the size of the dimension is to which
+          // the 1-sized dimensions are broadcasted. If all of the dimensions
+          // are 1, it will stay 1.
+          Value same_size = one;
           // 'result_dimensions' stores the current dimension with an offset of
           // 'leading_ones' to make it easier to check whether we are in-bounds
           // with respect to the "real" shape with leading 1's removed.
           SmallVector<Value> result_dimensions;
-          SmallVector<Value> sizes;
           result_dimensions.reserve(k);
-          sizes.reserve(k);
+          // 'no_broadcasting' stores boolean flags that encode whether the
+          // corresponding shape does not need broadcasting at the current
+          // position.
+          SmallVector<Value> no_broadcasting;
+          no_broadcasting.reserve(k + 3);
+          // The first k loop carried values are the previous broadcasting
+          // state.
+          auto prev_no_broadcasting = vr.take_front(k);
 
-          // This loop checks whether we have at least two shapes with different
-          // sizes at the current dimension, and whether we just ran out of
-          // bounds in at least one shape.
+          // This loop checks which shapes need broadcasting at the current
+          // dimension. A shape needs broadcasting if it is indexed out of
+          // bounds, or its current dimension size is 1.
+          Value current_dimension_has_invalid_broadcast = constant_false;
           for (size_t i = 0; i < k; ++i) {
-            // Determine the size of the dimension. If the dimension is out of
-            // bounds, we choose the value 'same_size', because then the shape
-            // should not affect the check anymore whether there are two shapes
-            // with different sizes at the current dimension.
+            // Determine the size of the current dimension. If the dimension is
+            // out of bounds, we choose the value 'one'.
             Value is_out_of_bounds =
                 b.create<CmpIOp>(l, CmpIPredicate::ult, real_ranks[i], v);
             Value dimension = b.create<SubIOp>(l, ranks[i], v);
@@ -201,7 +213,7 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
                 b.create<scf::IfOp>(
                      l, TypeRange{b.getIndexType()}, is_out_of_bounds,
                      [&](OpBuilder &b, Location l) {
-                       b.create<scf::YieldOp>(l, same_size);
+                       b.create<scf::YieldOp>(l, one);
                      },
                      [&](OpBuilder &b, Location l) {
                        // Using IfOp instead of SelectOp makes sure that we
@@ -210,37 +222,66 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
                        b.create<scf::YieldOp>(l, size);
                      })
                     .getResult(0);
-            sizes.push_back(current_size);
-            Value is_initialized =
-                b.create<CmpIOp>(l, CmpIPredicate::ne, same_size, minus_one);
-            same_size =
-                b.create<SelectOp>(l, is_initialized, same_size, current_size);
-            Value is_different_size =
-                b.create<CmpIOp>(l, CmpIPredicate::ne, current_size, same_size);
-            same_size = b.create<SelectOp>(l, is_different_size, current_size,
-                                           same_size);
-            different_sizes =
-                b.create<OrOp>(l, different_sizes, is_different_size);
-            Value is_one_out_of_bounds = b.create<CmpIOp>(
-                l, CmpIPredicate::eq, result_dimension, minus_one);
-            just_out_of_bounds =
-                b.create<OrOp>(l, just_out_of_bounds, is_one_out_of_bounds);
+            // Compute whether the current dimension does require broadcasting.
+            Value current_size_is_not_one =
+                b.create<CmpIOp>(l, CmpIPredicate::ne, current_size, one);
+            no_broadcasting.push_back(current_size_is_not_one);
+            Value new_same_size = b.create<SelectOp>(l, current_size_is_not_one,
+                                                     current_size, same_size);
+            Value same_size_was_not_one =
+                b.create<CmpIOp>(l, CmpIPredicate::ne, same_size, one);
+            Value is_different_size = b.create<CmpIOp>(
+                l, CmpIPredicate::ne, same_size, new_same_size);
+            // The broadcast is invalid if the size of the current dimension
+            // is not equal to the expected size, unless the expected size was
+            // still the initial value 1.
+            Value is_invalid =
+                b.create<AndOp>(l, same_size_was_not_one, is_different_size);
+            current_dimension_has_invalid_broadcast = b.create<OrOp>(
+                l, current_dimension_has_invalid_broadcast, is_invalid);
+            same_size = new_same_size;
           }
-          Value running_product = vr.front();
-          Value current_dimension_offset = vr.back();
 
-          // We need to stop combining dimensions if we just ran out of bounds
-          // in one shape, or there are at least two shapes with different sizes
-          // at the current dimension.
+          // Check whether we have at least one shape that has a different
+          // status regarding whether it needs broadcasting at the current
+          // dimension versus whether it needs broadcasting at the previous
+          // dimension.
+          Value same_size_is_one =
+              b.create<CmpIOp>(l, CmpIPredicate::eq, same_size, one);
+          Value different_broadcasting_set = constant_false;
+          for (size_t i = 0; i < k; ++i) {
+            // If all dimensions are 1, we preserve the status whether a shape
+            // needs broadcasting or not, because in that case the dimension can
+            // just be ignored.
+            no_broadcasting[i] =
+                b.create<SelectOp>(l, same_size_is_one, prev_no_broadcasting[i],
+                                   no_broadcasting[i]);
+            // Compare whether the current shape changes its status regarding
+            // whether it needs broadcasting at the current dimension.
+            Value broadcasting_is_different =
+                b.create<CmpIOp>(l, CmpIPredicate::ne, prev_no_broadcasting[i],
+                                 no_broadcasting[i]);
+            different_broadcasting_set = b.create<OrOp>(
+                l, different_broadcasting_set, broadcasting_is_different);
+          }
+          Value running_product = vr[k];
+          Value current_dimension_offset = vr[k + 1];
+
+          // We need to stop combining dimensions if the set of shapes which
+          // need broadcasting at the current dimension changes compared to the
+          // set of shapes needing broadcasting at the previous dimension.
+          Value is_last_iteration =
+              b.create<CmpIOp>(l, CmpIPredicate::sgt, v, max_rank);
           Value stop_combining_dimensions =
-              b.create<OrOp>(l, different_sizes, just_out_of_bounds);
+              b.create<OrOp>(l, is_last_iteration, different_broadcasting_set);
           auto if_stop_combining_dimensions = b.create<scf::IfOp>(
               l, TypeRange{b.getIndexType(), b.getIndexType()},
               stop_combining_dimensions,
               [&](OpBuilder &b, Location l) {
                 // If the running product is not 1, add one dimension of size
-                // 'running_product' to each shape that is still indexed
-                // in-bounds or has just gone out of bounds.
+                // 'running_product' to each shape that didn't need
+                // broadcasting, otherwise add a 1 dimension if it was
+                // previously indexed in-bounds.
                 Value running_product_not_one = b.create<CmpIOp>(
                     l, CmpIPredicate::ne, running_product, one);
                 Value new_dimension_offset =
@@ -250,16 +291,25 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
                          [&](OpBuilder &b, Location l) {
                            Value new_dimension_offset = b.create<AddIOp>(
                                l, current_dimension_offset, one);
+                           Value minus_one = lb.create<ConstantIndexOp>(-1);
                            for (size_t i = 0; i < k; ++i) {
                              Value was_in_bounds = b.create<CmpIOp>(
                                  l, CmpIPredicate::sge, result_dimensions[i],
                                  minus_one);
+                             Value should_store_dimension = b.create<OrOp>(
+                                 l, was_in_bounds, prev_no_broadcasting[i]);
                              b.create<scf::IfOp>(
-                                 l, was_in_bounds,
+                                 l, should_store_dimension,
                                  [&](OpBuilder &b, Location l) {
                                    Value output_dimension = b.create<SubIOp>(
                                        l, real_ranks[i], new_dimension_offset);
-                                   b.create<StoreOp>(l, running_product,
+                                   // If the shape needed broadcasting at the
+                                   // previous dimension, we set the output size
+                                   // to 1, otherwise to 'running_product'.
+                                   Value output_size = b.create<SelectOp>(
+                                       l, prev_no_broadcasting[i],
+                                       running_product, one);
+                                   b.create<StoreOp>(l, output_size,
                                                      result_shapes[i],
                                                      output_dimension);
                                    b.create<scf::YieldOp>(l, llvm::None);
@@ -271,36 +321,8 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
                            b.create<scf::YieldOp>(l, current_dimension_offset);
                          })
                         .getResult(0);
-
-                // If there are at least two different sizes, copy the dimension
-                // size from the input to the output shapes for all shapes that
-                // are still indexed in-bounds.
-                auto if_different_sizes = b.create<scf::IfOp>(
-                    l, TypeRange{b.getIndexType(), b.getIndexType()},
-                    different_sizes,
-                    [&](OpBuilder &b, Location l) {
-                      Value dimension_offset =
-                          b.create<AddIOp>(l, new_dimension_offset, one);
-                      for (size_t i = 0; i < k; ++i) {
-                        Value is_in_bounds = b.create<CmpIOp>(
-                            l, CmpIPredicate::sge, result_dimensions[i], zero);
-                        b.create<scf::IfOp>(
-                            l, is_in_bounds, [&](OpBuilder &b, Location l) {
-                              Value output_dimension = b.create<SubIOp>(
-                                  l, real_ranks[i], dimension_offset);
-                              b.create<StoreOp>(l, sizes[i], result_shapes[i],
-                                                output_dimension);
-                              b.create<scf::YieldOp>(l, llvm::None);
-                            });
-                      }
-                      b.create<scf::YieldOp>(l,
-                                             ValueRange{one, dimension_offset});
-                    },
-                    [&](OpBuilder &b, Location l) {
-                      b.create<scf::YieldOp>(
-                          l, ValueRange{same_size, new_dimension_offset});
-                    });
-                b.create<scf::YieldOp>(l, if_different_sizes.getResults());
+                b.create<scf::YieldOp>(
+                    l, ValueRange{same_size, new_dimension_offset});
               },
               [&](OpBuilder &b, Location l) {
                 Value new_running_product =
@@ -308,11 +330,21 @@ class BufferizeAndConvertMinimumBroadcastShapesOp
                 b.create<scf::YieldOp>(l, ValueRange{new_running_product,
                                                      current_dimension_offset});
               });
-          b.create<scf::YieldOp>(l, if_stop_combining_dimensions.getResults());
+          // Add the remaining results.
+          no_broadcasting.push_back(if_stop_combining_dimensions.getResult(0));
+          no_broadcasting.push_back(if_stop_combining_dimensions.getResult(1));
+          Value is_invalid = vr.back();
+          is_invalid = b.create<OrOp>(l, is_invalid,
+                                      current_dimension_has_invalid_broadcast);
+          no_broadcasting.push_back(is_invalid);
+          b.create<scf::YieldOp>(l, no_broadcasting);
         });
+    Value is_invalid = main_loop.getResults().back();
     for (size_t i = 0; i < k; ++i) {
       result_shapes[i] =
           RemoveLeadingOnesFrom1DMemref(lb, result_shapes[i], real_ranks[i]);
+      result_shapes[i] =
+          lb.create<SelectOp>(is_invalid, shapes[i], result_shapes[i]);
     }
     rewriter.replaceOp(broadcast_shapes_op, result_shapes);
     return success();

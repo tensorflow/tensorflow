@@ -3100,6 +3100,12 @@ class TensorFlowTestCase(googletest.TestCase):
     return self.assertRaisesWithPredicateMatch(errors.OpError,
                                                expected_err_re_or_predicate)
 
+  def assertRaisesIncompatibleShapesError(
+      self, exception_type=errors.InvalidArgumentError):
+    return self.assertRaisesWithPredicateMatch(
+        exception_type, r"Incompatible shapes|Dimensions must be equal|"
+        r"required broadcastable shapes")
+
   def assertShapeEqual(self, np_array, tf_tensor, msg=None):
     """Asserts that a Numpy ndarray and a TensorFlow tensor have the same shape.
 

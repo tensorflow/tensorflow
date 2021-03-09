@@ -31,6 +31,7 @@ from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.experimental.ops import unique
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
@@ -41,6 +42,7 @@ from tensorflow.python.lib.io import python_io
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
+from tensorflow.python.util import compat
 
 
 def chunk(l, n):
@@ -671,6 +673,39 @@ class AutoShardWithRebatchDatasetTest(
         worker_c_dataset, 3, 2, num_replicas=3)
     expected = [[], []]
     self.assertDatasetProduces(worker_c_dataset, expected)
+
+
+class AutoShardDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                     parameterized.TestCase):
+
+  def _record(self, f, r):
+    return compat.as_bytes("Record %d of file %d" % (r, f))
+
+  def _createFiles(self):
+    filenames = []
+    for i in range(10):
+      fn = os.path.join(self.get_temp_dir(), "tf_record.%d.txt" % i)
+      filenames.append(fn)
+      writer = python_io.TFRecordWriter(fn)
+      for j in range(10):
+        writer.write(self._record(i, j))
+      writer.close()
+    return filenames
+
+  def setUp(self):
+    self._filenames = self._createFiles()
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCore(self):
+
+    def build_dataset():
+      dataset = dataset_ops.Dataset.list_files(self._filenames, shuffle=False)
+      dataset = dataset.apply(
+          interleave_ops.parallel_interleave(core_readers.TFRecordDataset, 10))
+      dataset = distribute._AutoShardDataset(dataset, 5, 3)
+      return dataset
+
+    self.run_core_tests(build_dataset, 20)
 
 
 if __name__ == "__main__":

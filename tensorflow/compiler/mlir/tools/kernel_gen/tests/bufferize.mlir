@@ -1,4 +1,4 @@
-// RUN: kernel-gen-opt %s --func-bufferize --final-bufferize | FileCheck %s  --check-prefixes=CHECK,ALLOC
+// RUN: kernel-gen-opt %s --func-bufferize --final-bufferize | FileCheck %s --check-prefixes=CHECK,ALLOC
 // RUN: kernel-gen-opt %s --func-bufferize --final-bufferize --promote-buffers-to-stack | FileCheck %s  --check-prefixes=CHECK,ALLOCA
 
 
@@ -127,75 +127,99 @@ func @minimum_broadcast_shapes(%lhs: tensor<?xindex>, %rhs: tensor<?xindex>) -> 
   // CHECK-NEXT: }
   // CHECK-NEXT: %[[REDUCED_RANK_LHS:.*]] = subi %[[RANK_LHS]], %[[FOR_0]]#1 : index
   // CHECK-NEXT: %[[RANK_RHS:.*]] = dim %[[RHS]], %[[C0]] : memref<?xindex>
-  //      CHECK: %[[REDUCED_RANK_RHS:.*]] = subi %[[RANK_RHS]], %[[LEADING_ONES:.*]]#1 : index
+  //      CHECK: %[[REDUCED_RANK_RHS:.*]] = subi %[[RANK_RHS]], %[[FOR_1:.*]]#1 : index
   // CHECK-NEXT: %[[IS_GREATER_RANK:.*]] = cmpi ugt, %[[REDUCED_RANK_RHS]], %[[REDUCED_RANK_LHS]] : index
   // CHECK-NEXT: %[[MAX_RANK:.*]] = select %[[IS_GREATER_RANK]], %[[REDUCED_RANK_RHS]], %[[REDUCED_RANK_LHS]] : index
   // CHECK-NEXT: %[[C1_1:.*]] = constant 1 : index
   // CHECK-NEXT: %[[RESULT_LHS:.*]] = alloca(%[[REDUCED_RANK_LHS]]) : memref<?xindex>
-  // CHECK-NEXT: scf.for %[[IV:.*]] = %[[C0]] to %[[REDUCED_RANK_LHS]] step %[[C1_1]] {
-  // CHECK-NEXT:   store %[[C1_1]], %[[RESULT_LHS]][%[[IV]]] : memref<?xindex>
+  // CHECK-NEXT: scf.for %[[IV_LHS:.*]] = %[[C0]] to %[[REDUCED_RANK_LHS]] step %[[C1_1]] {
+  // CHECK-NEXT:   store %[[C1_1]], %[[RESULT_LHS]][%[[IV_LHS]]] : memref<?xindex>
   // CHECK-NEXT: }
   // CHECK-NEXT: %[[RESULT_RHS:.*]] = alloca(%[[REDUCED_RANK_RHS]]) : memref<?xindex>
-  //      CHECK: %[[C2:.*]] = constant 2 : index
+  // CHECK-NEXT: scf.for %[[IV_RHS:.*]] = %[[C0]] to %[[REDUCED_RANK_RHS]] step %[[C1_1]] {
+  // CHECK-NEXT:   store %[[C1_1]], %[[RESULT_RHS]][%[[IV_RHS]]] : memref<?xindex>
+  // CHECK-NEXT:  }
+  // CHECK-NEXT: %[[C2:.*]] = constant 2 : index
   // CHECK-NEXT: %[[UPPER_BOUND:.*]] = addi %[[MAX_RANK]], %[[C2]] : index
-  // CHECK-NEXT: %[[MAIN_FOR:.*]]:2 = scf.for %[[IV:.*]] = %[[C1_1]] to %[[UPPER_BOUND]] step %[[C1_1]] iter_args(%[[RUNNING_PRODUCT:.*]] = %[[C1_1]], %[[OFFSET:.*]] = %[[C0]]) -> (index, index) {
-  // CHECK-NEXT:   %[[FALSE:.*]] = constant false
-  // CHECK-NEXT:   %[[MINUS_ONE:.*]] = constant -1 : index
+  // CHECK-NEXT: %[[FALSE:.*]] = constant false
+  // CHECK-NEXT: %[[MAIN_FOR:.*]]:5 = scf.for %[[IV:.*]] = %[[C1_1]] to %[[UPPER_BOUND]] step %[[C1_1]]
+  // CHECK-SAME:     iter_args(%[[BC0:.*]] = %[[FALSE]], %[[BC1:.*]] = %[[FALSE]], %[[RUNNING_PRODUCT:.*]] = %[[C1_1]], %[[OFFSET:.*]] = %[[C0]], %[[INVALID:.*]] = %[[FALSE]]) -> (i1, i1, index, index, i1) {
+
+  // First shape.
   // CHECK-NEXT:   %[[IS_OUT_OF_BOUNDS:.*]] = cmpi ult, %[[REDUCED_RANK_LHS]], %[[IV]] : index
   // CHECK-NEXT:   %[[DIMENSION:.*]] = subi %[[RANK_LHS]], %[[IV]] : index
-  // CHECK-NEXT:   %[[RESULT_DIMENSION:.*]] = subi %[[DIMENSION]], %[[FOR_0]]#1 : index
+  // CHECK-NEXT:   %[[RESULT_DIMENSION0:.*]] = subi %[[DIMENSION]], %[[FOR_0]]#1 : index
   // CHECK-NEXT:   %[[CURRENT_SIZE:.*]] = scf.if %[[IS_OUT_OF_BOUNDS]] -> (index) {
-  // CHECK-NEXT:     scf.yield %[[MINUS_ONE]] : index
+  // CHECK-NEXT:     scf.yield %[[C1_1]] : index
   // CHECK-NEXT:   } else {
   // CHECK-NEXT:     %[[SIZE:.*]] = load %[[LHS]][%[[DIMENSION]]] : memref<?xindex>
   // CHECK-NEXT:     scf.yield %[[SIZE]] : index
   // CHECK-NEXT:   }
-  // CHECK-NEXT:   %[[IS_INITIALIZED:.*]] = cmpi ne, %[[MINUS_ONE]], %[[MINUS_ONE]] : index
-  // CHECK-NEXT:   %[[SAME_SIZE:.*]] = select %[[IS_INITIALIZED]], %[[MINUS_ONE]], %[[CURRENT_SIZE]] : index
-  // CHECK-NEXT:   %[[IS_DIFFERENT_SIZE:.*]] = cmpi ne, %[[CURRENT_SIZE]], %[[SAME_SIZE]] : index
-  // CHECK-NEXT:   %[[NEW_SAME_SIZE:.*]] = select %[[IS_DIFFERENT_SIZE]], %[[CURRENT_SIZE]], %[[SAME_SIZE]] : index
-  // CHECK-NEXT:   %[[DIFFERENT_SIZES:.*]] = or %[[FALSE]], %[[IS_DIFFERENT_SIZE]] : i1
-  // CHECK-NEXT:   %[[IS_ONE_OUT_OF_BOUNDS:.*]] = cmpi eq, %[[RESULT_DIMENSION]], %[[MINUS_ONE]] : index
-  // CHECK-NEXT:   %[[JUST_OUT_OF_BOUNDS:.*]] = or %[[FALSE]], %[[IS_ONE_OUT_OF_BOUNDS]] : i1
-  //      CHECK:   %[[IS_INITIALIZED:.*]] = cmpi ne, %[[NEW_SAME_SIZE]], %[[MINUS_ONE]] : index
-  // CHECK-NEXT:   %[[SAME_SIZE:.*]] = select %[[IS_INITIALIZED]], %[[NEW_SAME_SIZE]], %[[CURRENT_SIZE_1:.*]] : index
-  // CHECK-NEXT:   %[[IS_DIFFERENT_SIZE:.*]] = cmpi ne, %[[CURRENT_SIZE_1]], %[[SAME_SIZE]] : index
-  // CHECK-NEXT:   %[[FINAL_SAME_SIZE:.*]] = select %[[IS_DIFFERENT_SIZE]], %[[CURRENT_SIZE_1]], %[[SAME_SIZE]] : index
-  //      CHECK:   %[[FINAL_DIFFERENT_SIZES:.*]] = or %[[DIFFERENT_SIZES]], %[[IS_DIFFERENT_SIZE:.*]] : i1
-  //      CHECK:   %[[FINAL_JUST_OUT_OF_BOUNDS:.*]] = or %[[JUST_OUT_OF_BOUNDS]], %[[IS_ONE_OUT_OF_BOUNDS:.*]] : i1
-  // CHECK-NEXT:   %[[STOP_COMBINING_DIMENSIONS:.*]] = or %[[FINAL_DIFFERENT_SIZES]], %[[FINAL_JUST_OUT_OF_BOUNDS]] : i1
-  // CHECK-NEXT:   %[[IF_STOP_COMBINING_DIMENSIONS:.*]]:2 = scf.if %[[STOP_COMBINING_DIMENSIONS]] -> (index, index) {
-  // CHECK-NEXT:     %[[IS_RUNNING_PRODUCT_NOT_ONE:.*]] = cmpi ne, %[[RUNNING_PRODUCT]], %[[C1_1]] : index
-  // CHECK-NEXT:     %[[NEW_OFFSET_1:.*]] = scf.if %[[IS_RUNNING_PRODUCT_NOT_ONE]] -> (index) {
-  // CHECK-NEXT:       %[[NEW_OFFSET_0:.*]] = addi %[[OFFSET]], %[[C1_1]] : index
-  // CHECK-NEXT:       %[[WAS_IN_BOUNDS:.*]] = cmpi sge, %[[RESULT_DIMENSION]], %[[MINUS_ONE]] : index
-  // CHECK-NEXT:       scf.if %[[WAS_IN_BOUNDS]] {
-  // CHECK-NEXT:         %[[CURRENT_DIMENSION:.*]] = subi %[[REDUCED_RANK_LHS]], %[[NEW_OFFSET_0]] : index
-  // CHECK-NEXT:         store %[[RUNNING_PRODUCT]], %[[RESULT_LHS]][%[[CURRENT_DIMENSION]]] : memref<?xindex>
+  // CHECK-NEXT:   %[[CURRENT_SIZE_NOT_ONE0:.*]] = cmpi ne, %[[CURRENT_SIZE]], %[[C1_1]] : index
+  // CHECK-NEXT:   %[[NEW_SAME_SIZE:.*]] = select %[[CURRENT_SIZE_NOT_ONE0]], %[[CURRENT_SIZE]], %[[C1_1]] : index
+  // CHECK-NEXT:   %[[SAME_SIZE_WAS_NOT_ONE:.*]] = cmpi ne, %[[C1_1]], %[[C1_1]] : index
+  // CHECK-NEXT:   %[[IS_DIFFERENT_SIZE:.*]] = cmpi ne, %[[C1_1]], %[[NEW_SAME_SIZE]] : index
+  // CHECK-NEXT:   %[[IS_INVALID:.*]] = and %[[SAME_SIZE_WAS_NOT_ONE]], %[[IS_DIFFERENT_SIZE]] : i1
+  // CHECK-NEXT:   %[[HAS_INVALID_BROADCAST:.*]] = or %[[FALSE]], %[[IS_INVALID]] : i1
+
+  // Second shape.
+  // CHECK-NEXT:   %[[IS_OUT_OF_BOUNDS:.*]] = cmpi ult, %[[REDUCED_RANK_RHS]], %[[IV]] : index
+  // CHECK-NEXT:   %[[DIMENSION:.*]] = subi %[[RANK_RHS]], %[[IV]] : index
+  // CHECK-NEXT:   %[[RESULT_DIMENSION1:.*]] = subi %[[DIMENSION]], %[[FOR_1]]#1 : index
+  // CHECK-NEXT:   %[[CURRENT_SIZE:.*]] = scf.if %[[IS_OUT_OF_BOUNDS]] -> (index) {
+  // CHECK-NEXT:     scf.yield %[[C1_1]] : index
+  // CHECK-NEXT:   } else {
+  // CHECK-NEXT:     %[[SIZE:.*]] = load %[[RHS]][%[[DIMENSION]]] : memref<?xindex>
+  // CHECK-NEXT:     scf.yield %[[SIZE]] : index
+  // CHECK-NEXT:   }
+  // CHECK-NEXT:   %[[CURRENT_SIZE_NOT_ONE1:.*]] = cmpi ne, %[[CURRENT_SIZE]], %[[C1_1]] : index
+  // CHECK-NEXT:   %[[NEW_NEW_SAME_SIZE:.*]] = select %[[CURRENT_SIZE_NOT_ONE1]], %[[CURRENT_SIZE]], %[[NEW_SAME_SIZE]] : index
+  // CHECK-NEXT:   %[[SAME_SIZE_WAS_NOT_ONE:.*]] = cmpi ne, %[[NEW_SAME_SIZE]], %[[C1_1]] : index
+  // CHECK-NEXT:   %[[IS_DIFFERENT_SIZE:.*]] = cmpi ne, %[[NEW_SAME_SIZE]], %[[NEW_NEW_SAME_SIZE]] : index
+  // CHECK-NEXT:   %[[IS_INVALID:.*]] = and %[[SAME_SIZE_WAS_NOT_ONE]], %[[IS_DIFFERENT_SIZE]] : i1
+  // CHECK-NEXT:   %[[NEW_HAS_INVALID_BROADCAST:.*]] = or %[[HAS_INVALID_BROADCAST]], %[[IS_INVALID]] : i1
+
+  // CHECK-NEXT:   %[[SAME_SIZE_IS_ONE:.*]] = cmpi eq, %[[NEW_NEW_SAME_SIZE]], %[[C1_1]] : index
+  // CHECK-NEXT:   %[[NO_BROADCASTING_0:.*]] = select %[[SAME_SIZE_IS_ONE]], %[[BC0]], %[[CURRENT_SIZE_NOT_ONE0]] : i1
+  // CHECK-NEXT:   %[[BCASTING_IS_DIFFERENT0:.*]] = cmpi ne, %[[BC0]], %[[NO_BROADCASTING_0]] : i1
+  // CHECK-NEXT:   %[[DIFFERENT_SET0:.*]] = or %[[FALSE]], %[[BCASTING_IS_DIFFERENT0]] : i1
+  // CHECK-NEXT:   %[[NO_BROADCASTING_1:.*]] = select %[[SAME_SIZE_IS_ONE]], %[[BC1]], %[[CURRENT_SIZE_NOT_ONE1]] : i1
+  // CHECK-NEXT:   %[[BCASTING_IS_DIFFERENT1:.*]] = cmpi ne, %[[BC1]], %[[NO_BROADCASTING_1]] : i1
+  // CHECK-NEXT:   %[[DIFFERENT_SET1:.*]] = or %[[DIFFERENT_SET0]], %[[BCASTING_IS_DIFFERENT1]] : i1
+
+  // CHECK-NEXT:   %[[LAST_ITERATION:.*]] = cmpi sgt, %[[IV]], %[[MAX_RANK]] : index
+  // CHECK-NEXT:   %[[STOP_COMBINING:.*]] = or %[[LAST_ITERATION]], %[[DIFFERENT_SET1]] : i1
+  // CHECK-NEXT:   %[[IF_STOP_COMBINING:.*]]:2 = scf.if %[[STOP_COMBINING]] -> (index, index) {
+  // CHECK-NEXT:     %[[RUNNING_PRODUCT_NOT_ONE:.*]] = cmpi ne, %[[RUNNING_PRODUCT]], %[[C1_1]] : index
+  // CHECK-NEXT:     %[[NEW_DIMENSION_OFFSET:.*]] = scf.if %[[RUNNING_PRODUCT_NOT_ONE]] -> (index) {
+  // CHECK-NEXT:       %[[NEW_DIM_OFFSET:.*]] = addi %[[OFFSET]], %[[C1_1]] : index
+  // CHECK-NEXT:       %[[MINUS_ONE:.*]] = constant -1 : index
+  // CHECK-NEXT:       %[[WAS_IN_BOUNDS0:.*]] = cmpi sge, %[[RESULT_DIMENSION0]], %[[MINUS_ONE]] : index
+  // CHECK-NEXT:       %[[SHOULD_STORE_DIM:.*]] = or %[[WAS_IN_BOUNDS0]], %[[BC0]] : i1
+  // CHECK-NEXT:       scf.if %[[SHOULD_STORE_DIM]] {
+  // CHECK-NEXT:         %[[OUTPUT_DIM:.*]] = subi %[[REDUCED_RANK_LHS]], %[[NEW_DIM_OFFSET]] : index
+  // CHECK-NEXT:         %[[OUTPUT_SIZE:.*]] = select %[[BC0]], %[[RUNNING_PRODUCT]], %[[C1_1]] : index
+  // CHECK-NEXT:         store %[[OUTPUT_SIZE]], %[[RESULT_LHS]][%[[OUTPUT_DIM]]] : memref<?xindex>
   // CHECK-NEXT:       }
-  //      CHECK:       scf.yield %[[NEW_OFFSET_0]] : index
+  // CHECK-NEXT:       %[[WAS_IN_BOUNDS1:.*]] = cmpi sge, %[[RESULT_DIMENSION1]], %[[MINUS_ONE]] : index
+  // CHECK-NEXT:       %[[SHOULD_STORE_DIM:.*]] = or %[[WAS_IN_BOUNDS1]], %[[BC1]] : i1
+  // CHECK-NEXT:       scf.if %[[SHOULD_STORE_DIM]] {
+  // CHECK-NEXT:         %[[OUTPUT_DIM:.*]] = subi %[[REDUCED_RANK_RHS]], %[[NEW_DIM_OFFSET]] : index
+  // CHECK-NEXT:         %[[OUTPUT_SIZE:.*]] = select %[[BC1]], %[[RUNNING_PRODUCT]], %[[C1_1]] : index
+  // CHECK-NEXT:         store %[[OUTPUT_SIZE]], %[[RESULT_RHS]][%[[OUTPUT_DIM]]] : memref<?xindex>
+  // CHECK-NEXT:       }
+  // CHECK-NEXT:       scf.yield %[[NEW_DIM_OFFSET]] : index
   // CHECK-NEXT:     } else {
   // CHECK-NEXT:       scf.yield %[[OFFSET]] : index
   // CHECK-NEXT:     }
-  // CHECK-NEXT:     %[[IF_DIFFERENT_SIZES:.*]]:2 = scf.if %[[FINAL_DIFFERENT_SIZES]] -> (index, index) {
-  // CHECK-NEXT:       %[[NEW_OFFSET_2:.*]] = addi %[[NEW_OFFSET_1]], %[[C1_1]] : index
-  // CHECK-NEXT:       %[[IS_IN_BOUNDS:.*]] = cmpi sge, %[[RESULT_DIMENSION]], %[[C0]] : index
-  // CHECK-NEXT:       scf.if %[[IS_IN_BOUNDS]] {
-  // CHECK-NEXT:         %[[CURRENT_DIMENSION:.*]] = subi %[[REDUCED_RANK_LHS]], %[[NEW_OFFSET_2]] : index
-  // CHECK-NEXT:         store %[[CURRENT_SIZE]], %[[RESULT_LHS]][%[[CURRENT_DIMENSION]]] : memref<?xindex>
-  // CHECK-NEXT:       }
-  //      CHECK:       scf.yield %[[C1_1]], %[[NEW_OFFSET_2]] : index, index
-  // CHECK-NEXT:     } else {
-  // CHECK-NEXT:       scf.yield %[[FINAL_SAME_SIZE]], %[[NEW_OFFSET_1]] : index, index
-  // CHECK-NEXT:     }
-  // CHECK-NEXT:     scf.yield %[[IF_DIFFERENT_SIZES]]#0, %[[IF_DIFFERENT_SIZES]]#1 : index, index
+  // CHECK-NEXT:     scf.yield %[[NEW_NEW_SAME_SIZE]], %[[NEW_DIMENSION_OFFSET]] : index, index
   // CHECK-NEXT:   } else {
-  // CHECK-NEXT:     %[[NEW_RUNNING_PRODUCT:.*]] = muli %[[RUNNING_PRODUCT]], %[[FINAL_SAME_SIZE]] : index
-  // CHECK-NEXT:     scf.yield %[[NEW_RUNNING_PRODUCT]], %[[OFFSET]] : index, index
+  // CHECK-NEXT:     %[[NEW_PRODUCT:.*]] = muli %[[RUNNING_PRODUCT]], %[[NEW_NEW_SAME_SIZE]] : index
+  // CHECK-NEXT:     scf.yield %[[NEW_PRODUCT]], %[[OFFSET]] : index, index
   // CHECK-NEXT:   }
-  // CHECK-NEXT:   scf.yield %[[IF_STOP_COMBINING_DIMENSIONS]]#0, %[[IF_STOP_COMBINING_DIMENSIONS]]#1 : index, index
+  // CHECK-NEXT:   %[[NEW_INVALID:.*]] = or %[[INVALID]], %[[NEW_HAS_INVALID_BROADCAST]] : i1
+  // CHECK-NEXT:   scf.yield %[[NO_BROADCASTING_0]], %[[NO_BROADCASTING_1]], %[[IF_STOP_COMBINING]]#0, %[[IF_STOP_COMBINING]]#1, %[[NEW_INVALID]] : i1, i1, index, index, i1
   // CHECK-NEXT: }
-  //      CHECK: return %[[SUBVIEW_LHS:.*]], %[[SUBVIEW_RHS:.*]] : memref<?xindex>, memref<?xindex>
   %0, %1 = chlo.minimum_broadcast_shapes %lhs, %rhs :
       tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>, tensor<?xindex>
   return %0, %1 : tensor<?xindex>, tensor<?xindex>

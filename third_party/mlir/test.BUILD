@@ -20,7 +20,6 @@ cc_library(
 cc_library(
     name = "TestAnalysis",
     srcs = glob(["lib/Analysis/*.cpp"]),
-    defines = ["MLIR_CUDA_CONVERSIONS_ENABLED"],
     includes = ["lib/Dialect/Test"],
     deps = [
         ":TestDialect",
@@ -220,6 +219,7 @@ cc_library(
         "lib/IR/TestSlicing.cpp",
         "lib/IR/TestSymbolUses.cpp",
         "lib/IR/TestTypes.cpp",
+        "lib/IR/TestVisitors.cpp",
     ],
     deps = [
         ":TestDialect",

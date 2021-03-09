@@ -20,6 +20,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import cardinality
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -82,6 +83,19 @@ class AssertCardinalityTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaisesRegex(errors.FailedPreconditionError, expected_error):
       while True:
         self.evaluate(get_next())
+
+
+class AssertCardinalityDatasetCheckpointTest(
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCardinality(self):
+
+    def build_dataset(num_elements):
+      return dataset_ops.Dataset.range(num_elements).apply(
+          cardinality.assert_cardinality(num_elements))
+
+    self.run_core_tests(lambda: build_dataset(200), 200)
 
 
 if __name__ == "__main__":

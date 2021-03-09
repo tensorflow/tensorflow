@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import random
 import tempfile
+
 from absl import logging
 from absl.testing import parameterized
 import numpy as np
@@ -40,6 +41,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import callbacks as callbacks_lib
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.layers import core as core_layers
 from tensorflow.python.keras.layers.preprocessing import string_lookup
@@ -51,6 +53,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.training.server_lib import ClusterSpec
 
@@ -376,6 +379,74 @@ class ModelFitTest(test.TestCase, parameterized.TestCase):
     strategy = model.distribute_strategy
     self.assertIs(strategy._cluster_coordinator,
                   coordinator_lib.ClusterCoordinator(strategy))
+
+
+class ShardedVariableTest(test.TestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    cls.strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        make_cluster(3, 2),
+        variable_partitioner=sharded_variable.FixedShardsPartitioner(2))
+
+  def test_keras_layer_setattr(self):
+
+    class Layer(base_layer.Layer):
+
+      def __init__(self):
+        super().__init__()
+        self.w = variables_lib.Variable([0, 1])
+        self.b = variables_lib.Variable([2, 3], trainable=False)
+
+    with self.strategy.scope():
+      layer = Layer()
+
+    self.assertLen(layer.trainable_weights, 2)
+    self.assertEqual(layer.trainable_weights[0], [0])
+    self.assertEqual(layer.trainable_weights[1], [1])
+    self.assertLen(layer.non_trainable_weights, 2)
+    self.assertEqual(layer.non_trainable_weights[0], [2])
+    self.assertEqual(layer.non_trainable_weights[1], [3])
+    self.assertAllEqual(layer.weights,
+                        layer.trainable_weights + layer.non_trainable_weights)
+    self.assertAllEqual(layer.trainable_weights, layer.trainable_variables)
+    self.assertAllEqual(layer.weights, layer.variables)
+
+    checkpoint_deps = set(dep.ref for dep in layer._checkpoint_dependencies)
+    self.assertEqual(checkpoint_deps, set([layer.w, layer.b]))
+
+  def test_keras_layer_add_weight(self):
+
+    class Layer(base_layer.Layer):
+
+      def __init__(self):
+        super().__init__()
+        self.w = self.add_weight(
+            shape=(2,),
+            initializer=lambda shape, dtype: constant_op.constant([0., 1.],),
+            trainable=True)
+        self.b = self.add_weight(
+            shape=(2,),
+            initializer=lambda shape, dtype: constant_op.constant([2., 3.]),
+            trainable=False)
+
+    with self.strategy.scope():
+      layer = Layer()
+
+    self.assertLen(layer.trainable_weights, 2)
+    self.assertEqual(layer.trainable_weights[0], [0.])
+    self.assertEqual(layer.trainable_weights[1], [1.])
+    self.assertLen(layer.non_trainable_weights, 2)
+    self.assertEqual(layer.non_trainable_weights[0], [2.])
+    self.assertEqual(layer.non_trainable_weights[1], [3.])
+    self.assertAllEqual(layer.weights,
+                        layer.trainable_weights + layer.non_trainable_weights)
+    self.assertAllEqual(layer.trainable_weights, layer.trainable_variables)
+    self.assertAllEqual(layer.weights, layer.variables)
+
+    checkpoint_deps = set(dep.ref for dep in layer._checkpoint_dependencies)
+    self.assertEqual(checkpoint_deps, set([layer.w, layer.b]))
 
 
 if __name__ == "__main__":

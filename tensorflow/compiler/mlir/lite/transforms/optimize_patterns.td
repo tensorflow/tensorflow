@@ -615,9 +615,23 @@ def MatchLeakyRelu : Pat<
   [(ConstDoubleValueLessThan<"1"> $alpha),
    (HasOneUse $mul_out)]>;
 
+// Returns True if all users of this operation are in TF/TFL and don't need
+// shape exact matching. This prevents from removing cast on return values which
+// can break the verifier on function type mismatch.
+def AllUsersInTF : Constraint<CPred<
+  "llvm::all_of($0.getUsers(), [&](Operation *user) { "
+  "  auto name = user->getName().getDialectNamespace();"
+  "  return name == \"tf\" || name == \"tfl\";"
+  "})">>;
+
+def RemoveShapeOnlyCast : Pat<(TFL_CastOp:$output $input),
+                            (replaceWithValue $input),
+                            [(SameElementType $input, $output),
+                             (AllUsersInTF $output)]>;
+
 def RemoveTrivialCast : Pat<(TFL_CastOp:$output $input),
                             (replaceWithValue $input),
-                            [(SameElementType $input, $output)]>;
+                            [(TypeEqual $input, $output)]>;
 
 // Checks if the operand0's rank is one less than operand1's rank.
 def PReluAlphaRankCheck : Constraint<

@@ -28,6 +28,32 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
+// OptionaLiteralSlice is an augmented literal class which returns optional
+// values for each index (the value can be either valid or invalid). Underneath
+// it keeps two literals, a value literal, holding both the valid and garabage
+// value, and a masking litearl representing if a value is valid or garbage.
+class OptionaLiteralSlice {
+ public:
+  explicit OptionaLiteralSlice(LiteralSlice value, LiteralSlice mask)
+      : value_(value), mask_(mask) {}
+
+  template <typename NativeT>
+  absl::optional<NativeT> Get(absl::Span<const int64> multi_index) const {
+    if (mask_.Get<bool>(multi_index)) {
+      return absl::nullopt;
+    } else {
+      return value_.Get<NativeT>(multi_index);
+    }
+  }
+
+  // Returns true if all values in this literal slice are value.
+  bool AllValid() { return mask_.IsAll(0); }
+
+ private:
+  LiteralSlice value_;
+  LiteralSlice mask_;
+};
+
 class ValueInference {
  public:
   // ValueInference analyzes values in XlaOp answers following questions:
@@ -45,13 +71,17 @@ class ValueInference {
   StatusOr<LiteralSlice> AnalyzeIsDynamic(XlaOp op) {
     return AnalyzeIsDynamic(op.handle());
   }
-  StatusOr<LiteralSlice> AnalyzeConstant(XlaOp op) {
-    return AnalyzeConstant(op.handle());
+
+  // Returns a OptionalConstant, the value is nullopt it's dynamic, otherwise a
+  // concrete constant value.
+  StatusOr<OptionaLiteralSlice> AnalyzeOptionalConstant(XlaOp op) {
+    return AnalyzeOptionalConstant(op.handle());
   }
 
  private:
   StatusOr<LiteralSlice> AnalyzeIsDynamic(int64 handle);
   StatusOr<LiteralSlice> AnalyzeConstant(int64 handle);
+  StatusOr<OptionaLiteralSlice> AnalyzeOptionalConstant(int64 handle);
 
   StatusOr<Literal> AnalyzeIsDynamicLiteral(int64 handle);
   StatusOr<Literal> AnalyzeConstantLiteral(int64 handle);

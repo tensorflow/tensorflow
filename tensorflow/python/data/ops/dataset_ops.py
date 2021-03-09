@@ -187,6 +187,8 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
   >>> e = Point(1, 2) # Named tuple # doctest: +SKIP
   >>> f = tf.data.Dataset.range(10) # Dataset element
 
+  For more information,
+  read [this guide](https://www.tensorflow.org/guide/data).
   """
 
   def __init__(self, variant_tensor):
@@ -465,8 +467,11 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     >>> dataset.element_spec
     TensorSpec(shape=(), dtype=tf.int32, name=None)
 
+    For more information,
+    read [this guide](https://www.tensorflow.org/guide/data#dataset_structure).
+
     Returns:
-      A nested structure of `tf.TypeSpec` objects matching the structure of an
+      A (nested) structure of `tf.TypeSpec` objects matching the structure of an
       element of this dataset and specifying the type of individual components.
     """
     raise NotImplementedError("Dataset.element_spec")
@@ -608,7 +613,8 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     guide](https://tensorflow.org/guide/data#consuming_numpy_arrays).
 
     Args:
-      tensors: A dataset element.
+      tensors: A dataset "element". Supported values are documented
+        [here](https://www.tensorflow.org/guide/data#dataset_structure).
 
     Returns:
       Dataset: A `Dataset`.
@@ -685,8 +691,9 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     https://tensorflow.org/guide/data#consuming_numpy_arrays).
 
     Args:
-      tensors: A dataset element, with each component having the same size in
-        the first dimension.
+      tensors: A dataset element, whose components have the same first
+        dimension. Supported values are documented
+        [here](https://www.tensorflow.org/guide/data#dataset_structure).
 
     Returns:
       Dataset: A `Dataset`.
@@ -793,14 +800,16 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         `iter()` protocol. If `args` is not specified, `generator` must take no
         arguments; otherwise it must take as many arguments as there are values
         in `args`.
-      output_types: (Optional.) A nested structure of `tf.DType` objects
+      output_types: (Optional.) A (nested) structure of `tf.DType` objects
         corresponding to each component of an element yielded by `generator`.
-      output_shapes: (Optional.) A nested structure of `tf.TensorShape` objects
-        corresponding to each component of an element yielded by `generator`.
+      output_shapes: (Optional.) A (nested) structure of `tf.TensorShape`
+        objects corresponding to each component of an element yielded by
+        `generator`.
       args: (Optional.) A tuple of `tf.Tensor` objects that will be evaluated
         and passed to `generator` as NumPy-array arguments.
-      output_signature: (Optional.) A nested structure of `tf.TypeSpec` objects
-        corresponding to each component of an element yielded by `generator`.
+      output_signature: (Optional.) A (nested) structure of `tf.TypeSpec`
+        objects corresponding to each component of an element yielded by
+        `generator`.
 
     Returns:
       Dataset: A `Dataset`.
@@ -1072,7 +1081,9 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
 
     This method has similar semantics to the built-in `zip()` function
     in Python, with the main difference being that the `datasets`
-    argument can be an arbitrary nested structure of `Dataset` objects.
+    argument can be a (nested) structure of `Dataset` objects. The supported
+    nesting mechanisms are documented
+    [here] (https://www.tensorflow.org/guide/data#dataset_structure).
 
     >>> # The nested structure of the `datasets` argument determines the
     >>> # structure of elements in the resulting dataset.
@@ -1104,7 +1115,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     [(1, 13), (2, 14)]
 
     Args:
-      datasets: A nested structure of datasets.
+      datasets: A (nested) structure of datasets.
 
     Returns:
       Dataset: A `Dataset`.
@@ -1119,8 +1130,8 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     >>> ds = a.concatenate(b)
     >>> list(ds.as_numpy_iterator())
     [1, 2, 3, 4, 5, 6, 7]
-    >>> # The input dataset and dataset to be concatenated should have the same
-    >>> # nested structures and output types.
+    >>> # The input dataset and dataset to be concatenated should have
+    >>> # compatible element specs.
     >>> c = tf.data.Dataset.zip((a, b))
     >>> a.concatenate(c)
     Traceback (most recent call last):
@@ -1271,8 +1282,8 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     (6, 2)
     (7, 3)
 
-    >>> # The nested structure of the input dataset determines the structure of
-    >>> # elements in the resulting dataset.
+    >>> # The (nested) structure of the input dataset determines the
+    >>> # structure of elements in the resulting dataset.
     >>> dataset = tf.data.Dataset.from_tensor_slices([(7, 8), (9, 10)])
     >>> dataset = dataset.enumerate()
     >>> for element in dataset.as_numpy_iterator():
@@ -1650,19 +1661,19 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     Args:
       batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
         consecutive elements of this dataset to combine in a single batch.
-      padded_shapes: (Optional.) A nested structure of `tf.TensorShape` or
+      padded_shapes: (Optional.) A (nested) structure of `tf.TensorShape` or
         `tf.int64` vector tensor-like objects representing the shape to which
         the respective component of each input element should be padded prior
         to batching. Any unknown dimensions will be padded to the maximum size
         of that dimension in each batch. If unset, all dimensions of all
         components are padded to the maximum size in the batch. `padded_shapes`
         must be set if any component has an unknown rank.
-      padding_values: (Optional.) A nested structure of scalar-shaped
+      padding_values: (Optional.) A (nested) structure of scalar-shaped
         `tf.Tensor`, representing the padding values to use for the respective
-        components. None represents that the nested structure should be padded
+        components. None represents that the (nested) structure should be padded
         with default values.  Defaults are `0` for numeric types and the empty
-        string for string types. The `padding_values` should have the
-        same structure as the input dataset. If `padding_values` is a single
+        string for string types. The `padding_values` should have the same
+        (nested) structure as the input dataset. If `padding_values` is a single
         element and the input dataset has multiple components, then the same
         `padding_values` will be used to pad every component of the dataset.
         If `padding_values` is a scalar, then its value will be broadcasted
@@ -1696,8 +1707,12 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     This transformation applies `map_func` to each element of this dataset, and
     returns a new dataset containing the transformed elements, in the same
     order as they appeared in the input. `map_func` can be used to change both
-    the values and the structure of a dataset's elements. For example, adding 1
-    to each element, or projecting a subset of element components.
+    the values and the structure of a dataset's elements. Supported structure
+    constructs are documented
+    [here](https://www.tensorflow.org/guide/data#dataset_structure).
+
+    For example, `map` can be used for adding 1 to each element, or projecting a
+    subset of element components.
 
     >>> dataset = Dataset.range(1, 6)  # ==> [ 1, 2, 3, 4, 5 ]
     >>> dataset = dataset.map(lambda x: x + 1)
@@ -2522,7 +2537,7 @@ class DatasetV1(DatasetV2):
     """Returns the class of each component of an element of this dataset.
 
     Returns:
-      A nested structure of Python `type` objects corresponding to each
+      A (nested) structure of Python `type` objects corresponding to each
       component of an element of this dataset.
     """
     return nest.map_structure(
@@ -2536,7 +2551,7 @@ class DatasetV1(DatasetV2):
     """Returns the shape of each component of an element of this dataset.
 
     Returns:
-      A nested structure of `tf.TensorShape` objects corresponding to each
+      A (nested) structure of `tf.TensorShape` objects corresponding to each
       component of an element of this dataset.
     """
     return nest.map_structure(
@@ -2550,7 +2565,7 @@ class DatasetV1(DatasetV2):
     """Returns the type of each component of an element of this dataset.
 
     Returns:
-      A nested structure of `tf.DType` objects corresponding to each component
+      A (nested) structure of `tf.DType` objects corresponding to each component
       of an element of this dataset.
     """
     return nest.map_structure(
@@ -2692,9 +2707,9 @@ class DatasetV1(DatasetV2):
     should migrate to `map` as this method will be removed in V2.
 
     Args:
-      map_func: A function mapping a nested structure of tensors (having shapes
-        and types defined by `self.output_shapes` and `self.output_types`) to
-        another nested structure of tensors.
+      map_func: A function mapping a (nested) structure of tensors (having
+        shapes and types defined by `self.output_shapes` and
+        `self.output_types`) to another (nested) structure of tensors.
       num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
         representing the number elements to process asynchronously in parallel.
         If not specified, elements will be processed sequentially. If the value
@@ -2758,9 +2773,9 @@ class DatasetV1(DatasetV2):
     should migrate to `filter` as this method will be removed in V2.
 
     Args:
-      predicate: A function mapping a nested structure of tensors (having shapes
-        and types defined by `self.output_shapes` and `self.output_types`) to a
-        scalar `tf.bool` tensor.
+      predicate: A function mapping a (nested) structure of tensors (having
+        shapes and types defined by `self.output_shapes` and
+        `self.output_types`) to a scalar `tf.bool` tensor.
 
     Returns:
       Dataset: The `Dataset` containing the elements of this dataset for which
@@ -2910,7 +2925,7 @@ def get_structure(dataset_or_iterator):
     dataset_or_iterator: A `tf.data.Dataset` or an `tf.data.Iterator`.
 
   Returns:
-    A nested structure of `tf.TypeSpec` objects matching the structure of an
+    A (nested) structure of `tf.TypeSpec` objects matching the structure of an
     element of `dataset_or_iterator` and specifying the type of individual
     components.
 
@@ -2934,7 +2949,7 @@ def get_legacy_output_classes(dataset_or_iterator):
     dataset_or_iterator: A `tf.data.Dataset` or `tf.data.Iterator`.
 
   Returns:
-    A nested structure of Python `type` objects matching the structure of the
+    A (nested) structure of Python `type` objects matching the structure of the
     dataset / iterator elements and specifying the class of the individual
     components.
   """
@@ -2951,7 +2966,7 @@ def get_legacy_output_shapes(dataset_or_iterator):
     dataset_or_iterator: A `tf.data.Dataset` or `tf.data.Iterator`.
 
   Returns:
-    A nested structure of `tf.TensorShape` objects matching the structure of
+    A (nested) structure of `tf.TensorShape` objects matching the structure of
     the dataset / iterator elements and specifying the shape of the individual
     components.
   """
@@ -2968,7 +2983,7 @@ def get_legacy_output_types(dataset_or_iterator):
     dataset_or_iterator: A `tf.data.Dataset` or `tf.data.Iterator`.
 
   Returns:
-    A nested structure of `tf.DType` objects matching the structure of
+    A (nested) structure of `tf.DType` objects matching the structure of
     dataset / iterator elements and specifying the shape of the individual
     components.
   """
@@ -3308,11 +3323,11 @@ class _NestedVariant(composite_tensor.CompositeTensor):
 
 @tf_export("data.experimental.from_variant")
 def from_variant(variant, structure):
-  """Constructs a dataset from the given variant and structure.
+  """Constructs a dataset from the given variant and (nested) structure.
 
   Args:
     variant: A scalar `tf.variant` tensor representing a dataset.
-    structure: A `tf.data.experimental.Structure` object representing the
+    structure: A (nested) structure of `tf.TypeSpec` objects representing the
       structure of each element in the dataset.
 
   Returns:
@@ -3432,19 +3447,20 @@ class StructuredFunctionWrapper(object):
     """Creates a new `StructuredFunctionWrapper` for the given function.
 
     Args:
-      func: A function from a nested structure to another nested structure.
+      func: A function from a (nested) structure to another (nested) structure.
       transformation_name: Human-readable name of the transformation in which
         this function is being instantiated, for error messages.
       dataset: (Optional.) A `tf.data.Dataset`. If given, the structure of this
         dataset will be assumed as the structure for `func` arguments; otherwise
         `input_classes`, `input_shapes`, and `input_types` must be defined.
-      input_classes: (Optional.) A nested structure of `type`. If given, this
+      input_classes: (Optional.) A (nested) structure of `type`. If given, this
         argument defines the Python types for `func` arguments.
-      input_shapes: (Optional.) A nested structure of `tf.TensorShape`. If
+      input_shapes: (Optional.) A (nested) structure of `tf.TensorShape`. If
         given, this argument defines the shapes and structure for `func`
         arguments.
-      input_types: (Optional.) A nested structure of `tf.DType`. If given, this
-        argument defines the element types and structure for `func` arguments.
+      input_types: (Optional.) A (nested) structure of `tf.DType`. If given,
+        this argument defines the element types and structure for `func`
+        arguments.
       input_structure: (Optional.) A `Structure` object. If given, this argument
         defines the element types and structure for `func` arguments.
       add_to_graph: (Optional.) If `True`, the function will be added to the
@@ -3654,9 +3670,9 @@ class _GeneratorDataset(DatasetSource):
     """Constructs a `_GeneratorDataset`.
 
     Args:
-      init_args: A nested structure representing the arguments to `init_func`.
+      init_args: A (nested) structure representing the arguments to `init_func`.
       init_func: A TensorFlow function that will be called on `init_args` each
-        time a C++ iterator over this dataset is constructed. Returns a nested
+        time a C++ iterator over this dataset is constructed. Returns a (nested)
         structure representing the "state" of the dataset.
       next_func: A TensorFlow function that will be called on the result of
         `init_func` to produce each element, and that raises `OutOfRangeError`
@@ -3664,7 +3680,7 @@ class _GeneratorDataset(DatasetSource):
       finalize_func: A TensorFlow function that will be called on the result of
         `init_func` immediately before a C++ iterator over this dataset is
         destroyed. The return value is ignored.
-      output_signature: A nested structure of `tf.TypeSpec` objects describing
+      output_signature: A (nested) structure of `tf.TypeSpec` objects describing
         the output of `next_func`.
     """
     self._init_args = init_args
@@ -3715,11 +3731,11 @@ class ZipDataset(DatasetV2):
     for ds in nest.flatten(datasets):
       if not isinstance(ds, DatasetV2):
         if isinstance(ds, list):
-          message = ("The argument to `Dataset.zip()` must be a nested "
-                     "structure of `Dataset` objects. Nested structures do not "
-                     "support Python lists; please use a tuple instead.")
+          message = ("The argument to `Dataset.zip()` must be a (nested) "
+                     "structure of `Dataset` objects. Python `list` is not "
+                     "supported, please use a `tuple` instead.")
         else:
-          message = ("The argument to `Dataset.zip()` must be a nested "
+          message = ("The argument to `Dataset.zip()` must be a (nested) "
                      "structure of `Dataset` objects.")
         raise TypeError(message)
     self._datasets = datasets
@@ -4825,7 +4841,7 @@ def normalize_to_dense(dataset):
 
 
 class _RestructuredDataset(UnaryDataset):
-  """An internal helper for changing the structure and shape of a dataset."""
+  """An internal helper for changing the element spec of a dataset."""
 
   def __init__(self, dataset, structure):
     self._input_dataset = dataset

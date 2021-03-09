@@ -3175,15 +3175,13 @@ LogicalResult deriveShapeFromFirstOperand(
   auto loc = op->getLoc();
   SmallVector<Value, 4> shape_values;
   shape_values.reserve(operand_type.getRank());
-  auto shape_scalar_type = builder->getIntegerType(64);
   for (auto element : llvm::enumerate(operand_type.getShape())) {
     if (element.value() == ShapedType::kDynamicSize) {
-      Value dim = builder->create<DimOp>(loc, operand, element.index());
       shape_values.push_back(
-          builder->create<IndexCastOp>(loc, dim, shape_scalar_type));
+          builder->create<DimOp>(loc, operand, element.index()));
     } else {
-      shape_values.push_back(builder->create<ConstantOp>(
-          loc, builder->getI64IntegerAttr(element.value())));
+      shape_values.push_back(
+          builder->create<ConstantIndexOp>(loc, element.value()));
     }
   }
   *reifiedReturnShapes = SmallVector<Value, 1>{
