@@ -205,6 +205,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseConv2D(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_CUMSUM: {
+      return ParseCumsum(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_DEPTH_TO_SPACE: {
       return ParseDepthToSpace(op, error_reporter, allocator, builtin_data);
     }
@@ -753,16 +757,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
-    case BuiltinOperator_CUMSUM: {
-      auto params = safe_allocator.Allocate<TfLiteCumsumParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* cumsum_params = op->builtin_options_as_CumsumOptions()) {
-        params->exclusive = cumsum_params->exclusive();
-        params->reverse = cumsum_params->reverse();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
     case BuiltinOperator_CONV_3D: {
       auto params = safe_allocator.Allocate<TfLiteConv3DParams>();
       TF_LITE_ENSURE(error_reporter, params != nullptr);
@@ -1101,6 +1095,24 @@ TfLiteStatus ParseConv2D(const Operator* op, ErrorReporter* error_reporter,
     // better undertand the ramifications of changing the legacy behavior.
   }
 
+  *builtin_data = params.release();
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseCumsum(const Operator* op, ErrorReporter* error_reporter,
+                         BuiltinDataAllocator* allocator, void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  auto params = safe_allocator.Allocate<TfLiteCumsumParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+  if (const auto* cumsum_params = op->builtin_options_as_CumsumOptions()) {
+    params->exclusive = cumsum_params->exclusive();
+    params->reverse = cumsum_params->reverse();
+  }
   *builtin_data = params.release();
   return kTfLiteOk;
 }
