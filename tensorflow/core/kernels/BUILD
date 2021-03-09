@@ -5019,6 +5019,7 @@ cc_library(
         ":string_to_hash_bucket_op",
         ":string_upper_op",
         ":substr_op",
+        ":tensor_to_hash_bucket_op",
         ":unicode_ops",
         ":unicode_script_op",
         ":unsorted_segment_join_op",
@@ -5057,6 +5058,12 @@ tf_kernel_library(
         "string_to_hash_bucket_op.h",
     ],
     deps = STRING_DEPS,
+)
+
+tf_kernel_library(
+    name = "tensor_to_hash_bucket_op",
+    prefix = "tensor_to_hash_bucket_op",
+    deps = STRING_DEPS + if_cuda(["@farmhash_gpu_archive//:farmhash_gpu"]),
 )
 
 tf_kernel_library(
