@@ -2855,6 +2855,215 @@ TEST_P(OpConverter_FP32_Test, ConvertBatchMatMul) {
   TestMatMulHelper(this, get_batch_matmul_nodedef, params);
 }
 
+#if IS_TRT_VERSION_GE(7, 1, 3, 0)
+TEST_P(OpConverter_FP32_Test, ConvertEinsum) {
+  // Get the NodeDef for Einsum.
+  auto get_einsum_nodedef = [](DataType dtype, std::string eq,
+                               int n_inputs = 2) -> NodeDef {
+    Scope s = Scope::NewRootScope();
+    auto a = ops::Placeholder(s.WithOpName("input_a"), dtype);
+    std::vector<Input> input_vec{a};
+    if (n_inputs > 1) {
+      auto b = ops::Placeholder(s.WithOpName("input_b"), dtype);
+      input_vec.push_back(b);
+    }
+    InputList inputs(input_vec);
+    auto einsum = ops::Einsum(s.WithOpName("my_einsum"), inputs, eq);
+    return einsum.operation.node()->def();
+  };
+
+  if (trt_mode_ == TrtTestMode::kImplicitBatch) {
+    Reset();
+    NodeDef node_def = get_einsum_nodedef(tf_type_, "ab,cb->ac");
+    AddTestTensor("input_a", {2, 3});
+    AddTestTensor("input_b", {2, 3});
+    TestOpConverter(
+        "my_einsum", node_def, {2, 2},
+        errors::Unimplemented("Einsum converter requires dynamic shape mode"),
+        Status::OK(), ElementsAreArray({13, 16, 40, 52}));
+    // No further tests.
+    return;
+  }
+
+  struct TestParams {
+    std::string equation;
+    std::vector<int> shape_a;
+    std::vector<int> values_a;
+    std::vector<int> shape_b;
+    std::vector<int> values_b;
+    std::vector<int> expected_shape;
+    std::vector<int> expected_output;
+    Status conv_status;
+  };
+
+  Status unimplemented_eq =
+      errors::Unimplemented("No conversion for einsum equation.");
+
+  std::vector<TestParams> params{
+      // Dot product.
+      TestParams{"i,i->", {2}, {2, 3}, {2}, {1, 2}, {1}, {8}, unimplemented_eq},
+      // Outer product.
+      TestParams{"i,k->ik",
+                 {2},
+                 {1, 2},
+                 {3},
+                 {1, 2, 3},
+                 {2, 3},
+                 {1, 2, 3, 2, 4, 6},
+                 unimplemented_eq},
+      // Transpose.
+      TestParams{"ik->ki",
+                 {2, 3},
+                 {0, 1, 2, 3, 4, 5},
+                 {},
+                 {},
+                 {3, 2},
+                 {0, 3, 1, 4, 2, 5},
+                 unimplemented_eq},
+      // Diag.
+      TestParams{"ii->i",
+                 {3, 3},
+                 {0, 1, 2, 3, 4, 5, 6, 7, 8},
+                 {},
+                 {},
+                 {3},
+                 {0, 4, 8},
+                 unimplemented_eq},
+      // Trace.
+      TestParams{"ii",
+                 {3, 3},
+                 {0, 1, 2, 3, 4, 5, 6, 7, 8},
+                 {},
+                 {},
+                 {},
+                 {12},
+                 unimplemented_eq},
+      // MatMul with reduction.
+      TestParams{"abbc,dc->ad",
+                 {1, 2, 2, 3},
+                 {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+                 {2, 3},
+                 {1, 2, 3, 4, 5, 6},
+                 {2, 3},
+                 {1, 2, 3, 2, 4, 6},
+                 unimplemented_eq},
+      // Ellipsis with broadcast.
+      TestParams{"...ik,...jk->...ij",
+                 {1, 3, 1, 4},
+                 {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+                 {2, 1, 1, 4},
+                 {1, 2, 3, 4, 5, 6, 7, 8},
+                 {2, 3, 1, 1},
+                 {20, 60, 100, 44, 148, 252},
+                 unimplemented_eq},
+      // MatMul and Batched MatMul.
+      TestParams{"ab,bc->ac",
+                 {2, 3},
+                 {0, 1, 2, 3, 4, 5},
+                 {3, 2},
+                 {1, 2, 3, 4, 5, 6},
+                 {2, 2},
+                 {13, 16, 40, 52}},
+      TestParams{"abc,cde->abde",
+                 {1, 2, 3},
+                 {0, 1, 2, 3, 4, 5},
+                 {3, 2, 2},
+                 {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+                 {1, 2, 2, 2},
+                 {23, 26, 29, 32, 68, 80, 92, 104}},
+      TestParams{"abcd,cde->abe",
+                 {1, 2, 2, 3},
+                 {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+                 {2, 3, 2},
+                 {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+                 {1, 2, 2},
+                 {125, 140, 341, 392}},
+      TestParams{"abc,cd->abd",
+                 {1, 2, 3},
+                 {0, 1, 2, 3, 4, 5},
+                 {3, 2},
+                 {1, 2, 3, 4, 5, 6},
+                 {1, 2, 2},
+                 {13, 16, 40, 52}},
+      TestParams{"acbe,aecd->abcd",
+                 {1, 2, 3, 4},
+                 {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+                  12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23},
+                 {1, 4, 2, 3},
+                 {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                  13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24},
+                 {1, 3, 2, 3},
+                 {90, 96, 102, 732, 786, 840, 250, 272, 294, 940, 1010, 1080,
+                  410, 448, 486, 1148, 1234, 1320}},
+      TestParams{"aecd,abcd->acbe",
+                 {1, 2, 3, 4},
+                 {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+                  12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23},
+                 {1, 2, 3, 4},
+                 {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                  13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24},
+                 {1, 3, 2, 2},
+                 {20, 140, 92, 788, 148, 460, 412, 1300, 404, 908, 860, 1940}},
+      TestParams{"acd,dce->ae",
+                 {1, 2, 3},
+                 {0, 1, 2, 3, 4, 5},
+                 {3, 2, 2},
+                 {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+                 {1, 2},
+                 {115, 130}},
+      TestParams{"abcd,bace->bade",
+                 {2, 3, 2, 1},
+                 {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+                 {3, 2, 2, 1},
+                 {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+                 {3, 2, 1, 1},
+                 {2, 46, 28, 128, 86, 242}},
+      TestParams{
+          "cebfad,fageb->abcdg",
+          {1, 1, 3, 3, 2, 2},
+          {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+           12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+           24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35},
+          {3, 2, 2, 1, 3},
+          {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+           13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+           25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36},
+          {2, 3, 1, 2, 2},
+          {252, 288, 291, 336, 768,  912,  810,  963,  1356, 1608, 1401, 1662,
+           438, 492, 495, 558, 1176, 1338, 1236, 1407, 1986, 2256, 2049, 2328}},
+  };
+
+  for (auto p : params) {
+    for (bool a_is_tensor : {true, false}) {
+      for (bool b_is_tensor : {true, false}) {
+        if (!a_is_tensor && !b_is_tensor) {
+          // Skip test when both args are weights. We do not convert this
+          // since const folding eliminates this case.
+          continue;
+        }
+        Reset();
+        int n_inputs = p.shape_b.empty() ? 1 : 2;
+        NodeDef node_def = get_einsum_nodedef(tf_type_, p.equation, n_inputs);
+        if (a_is_tensor) {
+          AddTestTensor("input_a", p.shape_a, p.values_a);
+        } else {
+          AddTestWeights("input_a", p.shape_a, p.values_a, tf_type_);
+        }
+        if (!p.shape_b.empty()) {
+          if (b_is_tensor) {
+            AddTestTensor("input_b", p.shape_b, p.values_b);
+          } else {
+            AddTestWeights("input_b", p.shape_b, p.values_b, tf_type_);
+          }
+        }
+        TestOpConverter("my_einsum", node_def, p.expected_shape, p.conv_status,
+                        Status::OK(), ElementsAreArray(p.expected_output));
+      }
+    }
+  }
+}
+#endif  // IS_TRT_VERSION_GE(7, 1, 3, 0)
+
 TEST_P(OpConverter_FP32_FP16_Test, ConvertBiasAdd) {
   // Note that kINT32 is not supported by IScaleLayer, so we don't test
   // DT_INT32 type here. DT_FLOAT and DT_HALF are tested.
