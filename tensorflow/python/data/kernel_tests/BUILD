@@ -639,10 +639,17 @@ tf_py_test(
     size = "small",
     srcs = ["range_test.py"],
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
