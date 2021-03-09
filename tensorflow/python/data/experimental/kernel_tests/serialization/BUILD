@@ -8,24 +8,6 @@ package(
 exports_files(["LICENSE"])
 
 tf_py_test(
-    name = "cache_dataset_serialization_test",
-    size = "medium",
-    srcs = ["cache_dataset_serialization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
     name = "checkpoint_input_pipeline_hook_test",
     size = "small",
     srcs = ["checkpoint_input_pipeline_hook_test.py"],

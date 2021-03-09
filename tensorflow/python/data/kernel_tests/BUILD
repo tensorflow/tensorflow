@@ -37,7 +37,7 @@ tf_py_test(
     size = "medium",
     srcs = ["batch_test.py"],
     deps = [
-        ":checkpoint_test_base"
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -58,6 +58,7 @@ tf_py_test(
     size = "medium",
     srcs = ["cache_test.py"],
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
