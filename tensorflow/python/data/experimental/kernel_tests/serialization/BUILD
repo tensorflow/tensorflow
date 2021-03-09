@@ -86,23 +86,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "rebatch_dataset_serialization_test",
-    size = "medium",
-    srcs = ["rebatch_dataset_serialization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/data/experimental/ops:distribute",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-    ],
-)
-
-tf_py_test(
     name = "parallel_map_dataset_serialization_test",
     size = "medium",
     srcs = ["parallel_map_dataset_serialization_test.py"],
