@@ -191,7 +191,9 @@ tf_py_test(
     name = "fixed_length_record_dataset_test",
     size = "small",
     srcs = ["fixed_length_record_dataset_test.py"],
+    shard_count = 4,
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -203,6 +205,7 @@ tf_py_test(
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
+        "//tensorflow/python/data/experimental/kernel_tests:reader_dataset_ops_test_base",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:readers",
     ],
