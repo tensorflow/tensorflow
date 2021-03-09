@@ -1662,7 +1662,7 @@ port::Status CheckRNNParameterSize(
     const CudnnHandle& cudnn, const CudnnRnnDescriptor& rnn_desc,
     const CudnnRnnSequenceTensorDescriptor& input_desc) {
   size_t params_size_in_bytes = 0;
-#if CUDNN_VERSION >= 8000
+#if CUDNN_VERSION >= 8100
   RETURN_IF_CUDNN_ERROR(cudnnGetRNNWeightSpaceSize(
       /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
       /*sizeInBytes=*/&params_size_in_bytes));
@@ -1783,8 +1783,9 @@ port::Status CudnnSupport::DoRnnForwardImpl(
 
   // In CUDNN v8.0, the cudnnRNNForward*** and cudnnRNNForward***Ex have been
   // deprecated. Instead, we use the cudnnRNNForward which requires the
-  // sequence_lengths parameter.
-#if CUDNN_VERSION >= 8000
+  // sequence_lengths parameter. For more info,
+  // https://docs.nvidia.com/deeplearning/cudnn/api/index.html#release-802.
+#if CUDNN_VERSION >= 8100
   if (input_desc.is_var_seq_lengths()) {
     DeviceMemory<uint8> workspace;
     DeviceMemory<uint8> reserve_space;
@@ -2002,8 +2003,9 @@ port::Status CudnnSupport::DoRnnBackwardImpl(
 
   // In CUDNN v8.0, the cudnnRNNForward*** and cudnnRNNForward***Ex have been
   // deprecated. Instead, we use the cudnnRNNForward which requires the
-  // sequence_lengths parameter.
-#if CUDNN_VERSION >= 8000
+  // sequence_lengths parameter. For more info,
+  // https://docs.nvidia.com/deeplearning/cudnn/api/index.html#release-802.
+#if CUDNN_VERSION >= 8100
   if (input_desc.is_var_seq_lengths()) {
     DeviceMemory<uint8> workspace;
     size_t workspace_size_in_bytes = 0;
