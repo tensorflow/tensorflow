@@ -264,9 +264,12 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateClusterOutliningPass();
 
 // Creates a pass that clusters ops into tf_device::ClusterOp regions
 // according to a policy specified by the pass options.
+//
+// See the documentation for the pass options in `tf_passes.td`.
 std::unique_ptr<FunctionPass> CreateClusterOpsByPolicyPass();
 std::unique_ptr<FunctionPass> CreateClusterOpsByPolicyPass(
-    ArrayRef<std::string> oplist, const std::string& policy_name);
+    ArrayRef<std::string> oplist, int min_cluster_size, StringRef algorithm,
+    StringRef policy_name);
 
 // A pass that decomposes composite resource operations into primitive ones like
 // ReadVariableOp, AssignVariableOp and other computations to facilitate
