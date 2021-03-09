@@ -20,7 +20,6 @@ cc_library(
 cc_library(
     name = "TestAnalysis",
     srcs = glob(["lib/Analysis/*.cpp"]),
-    defines = ["MLIR_CUDA_CONVERSIONS_ENABLED"],
     includes = ["lib/Dialect/Test"],
     deps = [
         ":TestDialect",
