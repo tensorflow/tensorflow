@@ -122,6 +122,7 @@ filegroup(
         "gpu_op_equal.cc",
         "gpu_op_greater.cc",
         "gpu_op_greater_equal.cc",
+        "gpu_op_left_shift.cc",
         "gpu_op_less.cc",
         "gpu_op_less_equal.cc",
         "gpu_op_logical_and.cc",
@@ -130,6 +131,7 @@ filegroup(
         "gpu_op_minimum.cc",
         "gpu_op_mul.cc",
         "gpu_op_not_equal.cc",
+        "gpu_op_right_shift.cc",
     ],
     compatible_with = get_compatible_with_cloud(),
 )
@@ -139,9 +141,7 @@ filegroup(
     srcs = [
         "gpu_op_atan2.cc",
         "gpu_op_floor_div.cc",
-        "gpu_op_left_shift.cc",
         "gpu_op_pow.cc",
-        "gpu_op_right_shift.cc",
         "gpu_op_squared_difference.cc",
         "gpu_op_sub.cc",
         "gpu_op_zeta.cc",
