@@ -173,6 +173,7 @@ tf_py_test(
     size = "small",
     srcs = ["filter_test.py"],
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
