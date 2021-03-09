@@ -107,6 +107,7 @@ tf_py_test(
     size = "small",
     srcs = ["concatenate_test.py"],
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
