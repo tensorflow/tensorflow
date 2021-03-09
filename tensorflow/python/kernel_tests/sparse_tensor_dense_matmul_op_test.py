@@ -21,6 +21,7 @@ from __future__ import print_function
 import sys
 import time
 
+from absl import app
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
@@ -35,7 +36,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
-from tensorflow.python.platform import app
 from tensorflow.python.platform import test
 
 
@@ -86,6 +86,8 @@ class SparseTensorDenseMatMulTest(test.TestCase):
           self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-4)
         elif x.dtype == np.float64:
           self.assertAllClose(np_ans, out, rtol=1e-6, atol=1e-6)
+        elif x.dtype == np.float16:
+          self.assertAllClose(np_ans, out, rtol=1e-3, atol=1e-3)
         else:
           self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-4)
 
@@ -100,6 +102,7 @@ class SparseTensorDenseMatMulTest(test.TestCase):
   def testBasic(self):
     np.random.seed(127)  # Repeatable results
     self._testBasic(np.int32)
+    self._testBasic(np.float16)
     self._testBasic(np.float32)
     self._testBasic(np.float64)
     self._testBasic(np.complex64)
@@ -162,6 +165,18 @@ class SparseTensorDenseMatMulTest(test.TestCase):
       self.evaluate(
           sparse_ops.sparse_tensor_dense_matmul(
               sparse_t, dense_t, adjoint_a=True))
+
+  def testUnorderedIndicesForSparseTensorDenseMatmul(self):
+    indices = np.array([(2, 1), (0, 0)]).astype(np.int64)
+    values = np.array([10, 11]).astype(np.float32)
+    shape = [3, 2]
+    sparse_t = sparse_tensor.SparseTensor(indices, values, shape)
+
+    dense_t = np.array([[1] * 500, [2] * 500], dtype=np.float32)
+    expected_t = np.array([[11] * 500, [0] * 500, [20] * 500], dtype=np.float32)
+
+    self.assertAllClose(
+        expected_t, sparse_ops.sparse_tensor_dense_matmul(sparse_t, dense_t))
 
   @test_util.run_gpu_only
   def testInvalidIndicesForSparseTensorDenseMatmulOnGPU(self):

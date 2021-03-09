@@ -44,6 +44,7 @@ filegroup(
         "ir/tfrt_ops.td",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:SideEffectTdFiles",
+        "@llvm-project//mlir:include/mlir/IR/SymbolInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/ControlFlowInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
@@ -163,11 +164,11 @@ gentbl(
 tf_ops_category_list = [
     {
         "name": "ops_a_m",
-        "include": "tf.[A-M].*$$",
+        "include": "tf.[A-M].*$",
     },
     {
         "name": "ops_n_z",
-        "include": "tf.[N-Z].*$$",
+        "include": "tf.[N-Z].*$",
     },
 ]
 
@@ -177,11 +178,11 @@ tf_ops_category_list = [
         compatible_with = get_compatible_with_cloud(),
         tbl_outs = [
             (
-                "-gen-op-decls -op-include-regex='" + target["include"] + "'",
+                "-gen-op-decls -op-include-regex=" + target["include"],
                 "ir/tf_" + target["name"] + ".h.inc",
             ),
             (
-                "-gen-op-defs -op-include-regex='" + target["include"] + "'",
+                "-gen-op-defs -op-include-regex=" + target["include"],
                 "ir/tf_" + target["name"] + ".cc.inc",
             ),
         ],
@@ -198,11 +199,11 @@ gentbl(
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
-            "-gen-op-decls -op-exclude-regex='" + "|".join([target["include"] for target in tf_ops_category_list]) + "' ",
+            "-gen-op-decls -op-exclude-regex=" + "|".join([target["include"] for target in tf_ops_category_list]),
             "ir/tf_remaining_ops.h.inc",
         ),
         (
-            "-gen-op-defs -op-exclude-regex='" + "|".join([target["include"] for target in tf_ops_category_list]) + "' ",
+            "-gen-op-defs -op-exclude-regex=" + "|".join([target["include"] for target in tf_ops_category_list]),
             "ir/tf_remaining_ops.cc.inc",
         ),
     ],
@@ -920,6 +921,7 @@ cc_library(
         "transforms/optimize.cc",
         "transforms/outside_compiled_to_host_launch.cc",
         "transforms/parallel_execute_to_islands.cc",
+        "transforms/prepare_tpu_computation_for_tf_export.cc",
         "transforms/promote_resources_to_args.cc",
         "transforms/readonly_references_to_resources.cc",
         "transforms/region_control_flow_to_functional.cc",
@@ -964,6 +966,7 @@ cc_library(
         "transforms/tpu_space_to_depth_pass.cc",
         "transforms/tpu_update_embedding_enqueue_op_inputs.cc",
         "transforms/tpu_variable_runtime_reformatting.cc",
+        "transforms/verify_suitable_for_graph_export_pass.cc",
         "translate/breakup-islands.cc",
         "translate/tf_executor_to_functional.cc",
         "translate/tf_functional_to_executor.cc",
@@ -1010,6 +1013,7 @@ cc_library(
         ":translate_utils",
         ":unroll_batch_matmul_pass",
         ":verification_utils",
+        ":verify_suitable_for_graph_export",
         ":visitor_util",
         ":xla_sharding_util",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
@@ -1151,6 +1155,7 @@ cc_library(
         ":tf_saved_model_passes",
         ":translate_utils",
         ":upgrade_graph",
+        ":verify_suitable_for_graph_export",
         "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/cc/saved_model:constants",
         "//tensorflow/cc/saved_model:loader_lite",
@@ -2102,6 +2107,17 @@ cc_library(
     srcs = ["utils/verification_utils.cc"],
     hdrs = ["utils/verification_utils.h"],
     deps = [
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "verify_suitable_for_graph_export",
+    srcs = ["utils/verify_suitable_for_graph_export.cc"],
+    hdrs = ["utils/verify_suitable_for_graph_export.h"],
+    deps = [
+        ":tensorflow",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],

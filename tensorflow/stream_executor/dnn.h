@@ -446,6 +446,14 @@ class FilterDescriptor {
     return AsInt64Slice(tensor_.dimensions()).subspan(2);
   }
 
+  // Full dimensions of the underlying filter,
+  // ordered according to a specific layout.
+  std::vector<int64> full_dims(const FilterLayout& layout) const;
+
+  // Full strides of the underlying filter,
+  // ordered according to a specific layout.
+  std::vector<int64> full_strides(const FilterLayout& layout) const;
+
  private:
   absl::Span<int64> input_filter_dims() {
     return AsInt64Slice(tensor_.mutable_dimensions()).subspan(2);
@@ -2185,6 +2193,7 @@ class DnnSupport {
   virtual bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
                             const dnn::RnnSequenceTensorDescriptor& input_desc,
                             const DeviceMemory<Eigen::half>& input_data,
+                            const DeviceMemory<int>& seq_lengths_data,
                             const dnn::RnnStateTensorDescriptor& input_h_desc,
                             const DeviceMemory<Eigen::half>& input_h_data,
                             const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -2206,6 +2215,7 @@ class DnnSupport {
   virtual bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
                             const dnn::RnnSequenceTensorDescriptor& input_desc,
                             const DeviceMemory<float>& input_data,
+                            const DeviceMemory<int>& seq_lengths_data,
                             const dnn::RnnStateTensorDescriptor& input_h_desc,
                             const DeviceMemory<float>& input_h_data,
                             const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -2227,6 +2237,7 @@ class DnnSupport {
   virtual bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
                             const dnn::RnnSequenceTensorDescriptor& input_desc,
                             const DeviceMemory<double>& input_data,
+                            const DeviceMemory<int>& seq_lengths_data,
                             const dnn::RnnStateTensorDescriptor& input_h_desc,
                             const DeviceMemory<double>& input_h_data,
                             const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -2289,6 +2300,7 @@ class DnnSupport {
       Stream* stream, const dnn::RnnDescriptor& rnn_desc,
       const dnn::RnnSequenceTensorDescriptor& input_desc,
       const DeviceMemory<Eigen::half>& input_data,
+      const DeviceMemory<int>& seq_lengths_data,
       const dnn::RnnStateTensorDescriptor& input_h_desc,
       const DeviceMemory<Eigen::half>& input_h_data,
       const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -2317,6 +2329,7 @@ class DnnSupport {
       Stream* stream, const dnn::RnnDescriptor& rnn_desc,
       const dnn::RnnSequenceTensorDescriptor& input_desc,
       const DeviceMemory<float>& input_data,
+      const DeviceMemory<int>& seq_lengths_data,
       const dnn::RnnStateTensorDescriptor& input_h_desc,
       const DeviceMemory<float>& input_h_data,
       const dnn::RnnStateTensorDescriptor& input_c_desc,
@@ -2345,6 +2358,7 @@ class DnnSupport {
       Stream* stream, const dnn::RnnDescriptor& rnn_desc,
       const dnn::RnnSequenceTensorDescriptor& input_desc,
       const DeviceMemory<double>& input_data,
+      const DeviceMemory<int>& seq_lengths_data,
       const dnn::RnnStateTensorDescriptor& input_h_desc,
       const DeviceMemory<double>& input_h_data,
       const dnn::RnnStateTensorDescriptor& input_c_desc,

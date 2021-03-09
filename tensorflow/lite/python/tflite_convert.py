@@ -24,9 +24,9 @@ import os
 import sys
 import warnings
 
+from absl import app
 import six
 from six.moves import zip
-# Needed to enable TF2 by default.
 import tensorflow as tf  # pylint: disable=unused-import
 
 from tensorflow.lite.python import lite
@@ -35,8 +35,9 @@ from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.lite.toco.logging import gen_html
 from tensorflow.python import tf2
 from tensorflow.python.framework import dtypes
-from tensorflow.python.platform import app
 from tensorflow.python.util import keras_deps
+
+# Needed to enable TF2 by default.
 
 
 def _parse_array(values, type_fn=str):

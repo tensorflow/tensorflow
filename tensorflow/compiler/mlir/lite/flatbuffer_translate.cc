@@ -125,7 +125,7 @@ static OwningModuleRef FlatBufferFileToMlirTrans(
       source_mgr->getMemoryBuffer(source_mgr->getMainFileID());
   std::string error;
   auto loc =
-      mlir::FileLineColLoc::get(input->getBufferIdentifier(), 0, 0, context);
+      mlir::FileLineColLoc::get(context, input->getBufferIdentifier(), 0, 0);
 
   // Parses input/output names from command line options.
   std::vector<std::string> inputs;

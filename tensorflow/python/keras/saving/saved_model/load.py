@@ -810,6 +810,8 @@ def _finalize_saved_model_layers(layers):
 
       if hasattr(_get_keras_attr(layer), 'call_and_return_conditional_losses'):
         call_fn = _get_keras_attr(layer).call_and_return_conditional_losses
+        if not call_fn.concrete_functions:
+          continue
         if call_fn.input_signature is None:
           inputs = infer_inputs_from_restored_call_function(call_fn)
         else:
@@ -1107,8 +1109,8 @@ def infer_inputs_from_restored_call_function(fn):
   """Returns TensorSpec of inputs from a restored call function.
 
   Args:
-    fn: Restored layer call function. It is assumed that the inputs are entirely
-      in the first argument.
+    fn: Restored layer call function. It is assumed that `fn` has at least
+        one concrete function and that the inputs are in the first argument.
 
   Returns:
     TensorSpec of call function inputs.

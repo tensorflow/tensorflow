@@ -226,7 +226,7 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
 
     llvm::SmallVector<int64_t, 8> slice_stride(slice_end.size(), 1);
     llvm::SmallVector<int64_t, 8> slice_shape(slice_end.size());
-    for (int64_t i = 0; i < slice_end.size(); ++i) {
+    for (size_t i = 0; i < slice_end.size(); ++i) {
       slice_shape[i] = slice_end[i] - slice_start[i];
     }
     Type element_type = gather.getType().cast<TensorType>().getElementType();
@@ -242,7 +242,7 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
           dnums.collapsed_slice_dims().getIntValues(),
           [](const llvm::APInt& i) { return i.getSExtValue(); }));
       llvm::SmallVector<int64_t, 8> reshape_shape;
-      for (int64_t i = 0; i < slice_shape.size(); ++i) {
+      for (size_t i = 0; i < slice_shape.size(); ++i) {
         if (llvm::count(collapsed_slice_dims, i) == 0) {
           reshape_shape.push_back(slice_shape[i]);
         }
@@ -3175,15 +3175,13 @@ LogicalResult deriveShapeFromFirstOperand(
   auto loc = op->getLoc();
   SmallVector<Value, 4> shape_values;
   shape_values.reserve(operand_type.getRank());
-  auto shape_scalar_type = builder->getIntegerType(64);
   for (auto element : llvm::enumerate(operand_type.getShape())) {
     if (element.value() == ShapedType::kDynamicSize) {
-      Value dim = builder->create<DimOp>(loc, operand, element.index());
       shape_values.push_back(
-          builder->create<IndexCastOp>(loc, dim, shape_scalar_type));
+          builder->create<DimOp>(loc, operand, element.index()));
     } else {
-      shape_values.push_back(builder->create<ConstantOp>(
-          loc, builder->getI64IntegerAttr(element.value())));
+      shape_values.push_back(
+          builder->create<ConstantIndexOp>(loc, element.value()));
     }
   }
   *reifiedReturnShapes = SmallVector<Value, 1>{

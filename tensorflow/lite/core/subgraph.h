@@ -325,13 +325,11 @@ class Subgraph {
   bool HasDynamicTensors() { return has_dynamic_tensors_; }
 
   // Assigns (or reassigns) a custom memory allocation for the given tensor.
-  // If AllocateTensors() is called after this, the runtime does not consider
-  // the tensor during internal memory planning and will continue using the
-  // provided allocation for the tensor (assuming it satisfies the expected
-  // tensor byte length).
   // The runtime does NOT take ownership of the underlying memory.
-  // Note that while this function can be called again to set a new allocation
-  // for the tensor, it can no longer be reset to the TFLite arena memory.
+  //
+  // NOTE: User needs to call AllocateTensors() after this. In case of input
+  // resizing, buffers will be checked for required data size during
+  // AllocateTensors().
   //
   // Parameters should satisfy the following conditions:
   // 1. tensor->allocation_type == kTfLiteArenaRw or kTfLiteArenaRwPersistent
@@ -342,6 +340,7 @@ class Subgraph {
   //    This condition is checked again if any tensors are resized.
   // 4. allocation->data should be aligned to kDefaultTensorAlignment
   //    defined in lite/util.h. (Currently 64 bytes)
+  // TODO(b/182215910): Expand on this documentation in a g3doc.
   //
   // WARNING: This is an experimental interface that is subject to change.
   TfLiteStatus SetCustomAllocationForTensor(

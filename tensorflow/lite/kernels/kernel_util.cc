@@ -21,7 +21,9 @@ limitations under the License.
 #include <complex>
 #include <limits>
 #include <memory>
+#ifndef TF_LITE_STATIC_MEMORY
 #include <string>
+#endif  // TF_LITE_STATIC_MEMORY
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"

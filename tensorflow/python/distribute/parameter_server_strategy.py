@@ -323,7 +323,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         compute_devices, self._variable_device)
 
   def _input_workers_with_options(self, options=None):
-    if not options or options.experimental_prefetch_to_device:
+    if not options or options.experimental_fetch_to_device:
       return input_lib.InputWorkers(
           [(self._worker_device, self._compute_devices)])
     else:

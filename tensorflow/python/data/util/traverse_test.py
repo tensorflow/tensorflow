@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
+from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import traverse
@@ -106,6 +107,16 @@ class TraverseTest(test_base.DatasetTestBase, parameterized.TestCase):
             "FlatMapDataset", "PrefetchDataset", "RepeatDataset",
             "RangeDataset", "RangeDataset_1"
         ]), set(x.name for x in variant_tensor_ops))
+
+  @combinations.generate(test_base.graph_only_combinations())
+  def testTfDataService(self):
+    ds = dataset_ops.Dataset.range(10)
+    ds = ds.apply(
+        data_service_ops.distribute("parallel_epochs", "grpc://foo:0"))
+    ops = traverse.obtain_capture_by_value_ops(ds)
+    self.assertContainsSubset(
+        ["RangeDataset", "DataServiceDatasetV2", "DummyIterationCounter"],
+        set(x.name for x in ops))
 
 
 if __name__ == "__main__":

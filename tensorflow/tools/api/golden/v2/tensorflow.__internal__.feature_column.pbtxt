@@ -1,0 +1,27 @@
+path: "tensorflow.__internal__.feature_column"
+tf_module {
+  member {
+    name: "DenseColumn"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FeatureColumn"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SequenceDenseColumn"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "StateManager"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "deserialize_feature_column"
+    argspec: "args=[\'config\', \'custom_objects\', \'columns_by_name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "serialize_feature_column"
+    argspec: "args=[\'fc\'], varargs=None, keywords=None, defaults=None"
+  }
+}

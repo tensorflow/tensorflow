@@ -629,11 +629,11 @@ _do_pip_no_cuda_deps_check() {
 }
 
 do_pip_no_cuda_deps_check_ubuntu() {
-  _do_pip_no_cuda_deps_check "--define using_cuda=true --define using_cuda_nvcc=true"
+  _do_pip_no_cuda_deps_check "--@local_config_cuda//:enable_cuda"
 }
 
 do_pip_no_cuda_deps_check_windows() {
-  _do_pip_no_cuda_deps_check "--define using_cuda=true --define using_cuda_nvcc=true --define framework_shared_object=false"
+  _do_pip_no_cuda_deps_check "--@local_config_cuda//:enable_cuda --define framework_shared_object=false"
 }
 
 do_configure_test() {

@@ -42,6 +42,21 @@ def _CSRSparseMatrixToDenseGrad(op, grad):
       grad, array_ops.stop_gradient(array_ops.where(math_ops.abs(grad) > 0)))
 
 
+@ops.RegisterGradient("SparseTensorToCSRSparseMatrix")
+def _SparseTensorToCSRSparseMatrixGrad(op, grad):
+  """Gradient for sparse_tensor_to_csr_sparse_matrix op."""
+  grad_values = sparse_csr_matrix_ops.csr_sparse_matrix_to_sparse_tensor(
+      grad, type=op.get_attr("T")).values
+  return (None, grad_values, None)
+
+
+@ops.RegisterGradient("CSRSparseMatrixToSparseTensor")
+def _CSRSparseMatrixToSparseTensorGrad(op, *grads):
+  """Gradient for csr_sparse_matrix_to_sparse_tensor op."""
+  return sparse_csr_matrix_ops.sparse_tensor_to_csr_sparse_matrix(
+      indices=op.outputs[0], values=grads[1], dense_shape=op.outputs[2])
+
+
 ops.NotDifferentiable("SparseMatrixNNZ")
 
 ops.NotDifferentiable("SparseMatrixZeros")

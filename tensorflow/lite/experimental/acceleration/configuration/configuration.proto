@@ -454,4 +454,10 @@ message BenchmarkEvent {
   optional BenchmarkResult result = 3;
   // Error during benchmark, used when type is ERROR.
   optional BenchmarkError error = 4;
+  // Start timestamps. These are used for
+  // 1. Checking whether a test was started but not completed within a given
+  // deadline.
+  // 2. Optionally, telemetry timestamps.
+  optional int64 boottime_us = 5;
+  optional int64 wallclock_us = 6;
 }

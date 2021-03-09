@@ -222,6 +222,19 @@ bool Status::ErasePayload(tensorflow::StringPiece type_url) {
   return true;
 }
 
+const std::unordered_map<std::string, std::string> Status::GetAllPayloads()
+    const {
+  if (ok()) return {};
+  return state_->payloads;
+}
+
+void Status::ReplaceAllPayloads(
+    const std::unordered_map<std::string, std::string>& payloads) {
+  if (ok() || payloads.empty()) return;
+  if (state_ == nullptr) state_ = std::make_unique<State>();
+  state_->payloads = payloads;
+}
+
 std::ostream& operator<<(std::ostream& os, const Status& x) {
   os << x.ToString();
   return os;

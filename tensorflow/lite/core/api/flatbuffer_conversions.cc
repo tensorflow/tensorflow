@@ -309,6 +309,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseLogistic(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_LOG_SOFTMAX: {
+      return ParseLogSoftmax(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_MAXIMUM: {
       return ParseMaximum(op, error_reporter, allocator, builtin_data);
     }
@@ -440,6 +444,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
 
     case BuiltinOperator_SQUARE: {
       return ParseSquare(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_SQUEEZE: {
+      return ParseSqueeze(op, error_reporter, allocator, builtin_data);
     }
 
     case BuiltinOperator_STRIDED_SLICE: {
@@ -640,24 +648,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_GATHER: {
       return ParseGather(op, error_reporter, allocator, builtin_data);
     }
-
-    case BuiltinOperator_SQUEEZE: {
-      auto params = safe_allocator.Allocate<TfLiteSqueezeParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params = op->builtin_options_as_SqueezeOptions()) {
-        const auto* squeeze_dims = schema_params->squeeze_dims();
-        if (squeeze_dims != nullptr) {
-          TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray(
-              sizeof(params->squeeze_dims), squeeze_dims, params->squeeze_dims,
-              error_reporter, "squeeze"));
-          params->num_squeeze_dims = squeeze_dims->size();
-        } else {
-          params->num_squeeze_dims = 0;
-        }
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
     case BuiltinOperator_SPARSE_TO_DENSE: {
       auto params = safe_allocator.Allocate<TfLiteSparseToDenseParams>();
       TF_LITE_ENSURE(error_reporter, params != nullptr);
@@ -814,7 +804,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_CUSTOM:
     case BuiltinOperator_EMBEDDING_LOOKUP:
     case BuiltinOperator_EQUAL:
-    case BuiltinOperator_LOG_SOFTMAX:
     case BuiltinOperator_MATRIX_DIAG:
     case BuiltinOperator_MATRIX_SET_DIAG:
     case BuiltinOperator_RELU_N1_TO_1:
@@ -1471,6 +1460,14 @@ TfLiteStatus ParseLogistic(const Operator*, ErrorReporter*,
 // We have this parse function instead of directly returning kTfLiteOk from the
 // switch-case in ParseOpData because this function is used as part of the
 // selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseLogSoftmax(const Operator*, ErrorReporter*,
+                             BuiltinDataAllocator*, void**) {
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseMaximum(const Operator*, ErrorReporter*,
                           BuiltinDataAllocator*, void**) {
   return kTfLiteOk;
@@ -1895,6 +1892,39 @@ TfLiteStatus ParseSplitV(const Operator* op, ErrorReporter* error_reporter,
 
   if (schema_params != nullptr) {
     params->num_splits = schema_params->num_splits();
+  } else {
+    // TODO(b/157480169): We should either return kTfLiteError or fill in some
+    // reasonable defaults in the params struct. We are not doing so until we
+    // better undertand the ramifications of changing the legacy behavior.
+  }
+
+  *builtin_data = params.release();
+  return kTfLiteOk;
+}
+
+TfLiteStatus ParseSqueeze(const Operator* op, ErrorReporter* error_reporter,
+                          BuiltinDataAllocator* allocator,
+                          void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+
+  std::unique_ptr<TfLiteSqueezeParams,
+                  SafeBuiltinDataAllocator::BuiltinDataDeleter>
+      params = safe_allocator.Allocate<TfLiteSqueezeParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+
+  const SqueezeOptions* schema_params = op->builtin_options_as_SqueezeOptions();
+
+  if (schema_params != nullptr) {
+    const auto* squeeze_dims = schema_params->squeeze_dims();
+    if (squeeze_dims != nullptr) {
+      TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray(
+          sizeof(params->squeeze_dims), squeeze_dims, params->squeeze_dims,
+          error_reporter, "squeeze"));
+      params->num_squeeze_dims = squeeze_dims->size();
+    } else {
+      params->num_squeeze_dims = 0;
+    }
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we

@@ -47,9 +47,8 @@ def _get_file_list(key, makefile_options):
   params_list = [
       "make", "-f", "tensorflow/lite/micro/tools/make/Makefile", key
   ] + makefile_options.split()
-  process = subprocess.Popen(params_list,
-                             stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE)
+  process = subprocess.Popen(
+      params_list, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
   stdout, stderr = process.communicate()
 
   if process.returncode != 0:
@@ -161,6 +160,3 @@ if __name__ == "__main__":
   args = parser.parse_args()
 
   _create_tflm_tree(args.output_dir, args.makefile_options)
-
-  if args.examples is not None:
-    _create_examples_tree(args.output_dir, args.examples)

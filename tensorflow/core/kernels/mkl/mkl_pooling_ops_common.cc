@@ -86,7 +86,7 @@ template <typename T>
 void MklPoolingFwdPrimitive<T>::Execute(const T* src_data, T* dst_data,
                                         void* ws_data,
                                         std::shared_ptr<stream> fwd_stream) {
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#ifndef ENABLE_ONEDNN_OPENMP
   context_.src_mem->set_data_handle(
       static_cast<void*>(const_cast<T*>(src_data)), *fwd_stream);
   context_.dst_mem->set_data_handle(static_cast<void*>(dst_data), *fwd_stream);
@@ -106,7 +106,7 @@ void MklPoolingFwdPrimitive<T>::Execute(const T* src_data, T* dst_data,
     DCHECK(ws_data != nullptr);
     context_.ws_mem->set_data_handle(ws_data);
   }
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
   execute_primitives(context_.fwd_primitives, fwd_stream, context_.net_args);
 
   // Set back data handle.
@@ -188,7 +188,7 @@ template <typename T>
 void MklPoolingBwdPrimitive<T>::Execute(const T* diff_dst_data,
                                         T* diff_src_data, const void* ws_data,
                                         std::shared_ptr<stream> bwd_stream) {
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#ifndef ENABLE_ONEDNN_OPENMP
   context_.diff_dst_mem->set_data_handle(
       static_cast<void*>(const_cast<T*>(diff_dst_data)), *bwd_stream);
   context_.diff_src_mem->set_data_handle(static_cast<void*>(diff_src_data),
@@ -205,7 +205,7 @@ void MklPoolingBwdPrimitive<T>::Execute(const T* diff_dst_data,
     DCHECK(ws_data != nullptr);
     context_.ws_mem->set_data_handle(const_cast<void*>(ws_data));
   }
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
 
   execute_primitives(context_.bwd_primitives, bwd_stream, context_.net_args);
 

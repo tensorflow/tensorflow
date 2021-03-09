@@ -103,6 +103,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:generic_transfer_manager",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/core:lib",
@@ -186,6 +187,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:cholesky_expander",
+        "//tensorflow/compiler/xla/service:eigh_expander",
         "//tensorflow/compiler/xla/service:qr_expander",
         "//tensorflow/compiler/xla/service:conditional_simplifier",
         "//tensorflow/compiler/xla/service:convolution_group_converter",
@@ -229,7 +231,7 @@ cc_library(
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ] + select({
-        "//tensorflow:linux_aarch64": [
+        "//tensorflow:arm_any": [
             "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
         ],
         "//tensorflow:linux_ppc64le": [
@@ -1161,10 +1163,10 @@ cc_library(
         "@llvm-project//llvm:Linker",
         "@llvm-project//mlir:CFGTransforms",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMToLLVMIRTranslation",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:TargetLLVMIR",
-        "@llvm-project//mlir:TargetLLVMIRModuleTranslation",
+        "@llvm-project//mlir:ToLLVMIRTranslation",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorToLLVM",
     ],

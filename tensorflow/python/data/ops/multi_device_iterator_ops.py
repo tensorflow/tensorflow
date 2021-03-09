@@ -487,7 +487,7 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
         prevent deadlocks, if the prefetch_buffer_size is greater than the
         max_buffer_size, we set the max_buffer_size to prefetch_buffer_size.
       components: Tensor components to construct the MultiDeviceIterator from.
-      element_spec: A nested structure of `TypeSpec` objects that
+      element_spec: A (nested) structure of `tf.TypeSpec` objects that
         represents the type specification of elements of the iterator.
 
     Raises:
