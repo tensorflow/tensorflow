@@ -330,6 +330,7 @@ tf_py_test(
     size = "medium",
     srcs = ["interleave_test.py"],
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
