@@ -44,10 +44,10 @@ void ExecuteDivTest(TfLiteTensor* tensors, int tensors_count,
 }
 
 template <typename T>
-void TestDiv(const int* input1_dims_data, const T* input1_data,
-             const int* input2_dims_data, const T* input2_data,
-             const int* expected_dims, const T* expected_data, T* output_data,
-             TfLiteFusedActivation activation) {
+void TestDiv(TfLiteFusedActivation activation, const int* input1_dims_data,
+             const T* input1_data, const int* input2_dims_data,
+             const T* input2_data, const int* expected_dims,
+             const T* expected_data, T* output_data) {
   TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInts(input2_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(expected_dims);
@@ -87,87 +87,85 @@ struct TestQuantParams {
 };
 
 template <typename T>
-void TestDivQuantized(const int* input1_dims_data, const float* input1_data,
+void TestDivQuantized(const TestQuantParams<T>& params,
+                      TfLiteFusedActivation activation,
+                      const int* input1_dims_data, const float* input1_data,
                       const int* input2_dims_data, const float* input2_data,
                       const int* expected_dims, const float* expected_data,
-                      float* output_data, TfLiteFusedActivation activation,
-                      const TestQuantParams<T>* params) {
+                      float* output_data) {
   TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInts(input2_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(expected_dims);
   const int output_count = ElementCount(*output_dims);
 
-  const float scale = ScaleFromMinMax<T>(params->data_min, params->data_max);
+  const float scale = ScaleFromMinMax<T>(params.data_min, params.data_max);
   const int zero_point =
-      ZeroPointFromMinMax<T>(params->data_min, params->data_max);
+      ZeroPointFromMinMax<T>(params.data_min, params.data_max);
 
   TfLiteTensor tensors[] = {
-      CreateQuantizedTensor(input1_data, params->input1_data, input1_dims,
-                            scale, zero_point),
-      CreateQuantizedTensor(input2_data, params->input2_data, input2_dims,
-                            scale, zero_point),
-      CreateQuantizedTensor(params->output_data, output_dims, scale,
+      CreateQuantizedTensor(input1_data, params.input1_data, input1_dims, scale,
                             zero_point),
+      CreateQuantizedTensor(input2_data, params.input2_data, input2_dims, scale,
+                            zero_point),
+      CreateQuantizedTensor(params.output_data, output_dims, scale, zero_point),
   };
   constexpr int kTensorsCount = std::extent<decltype(tensors)>::value;
 
   ExecuteDivTest(tensors, kTensorsCount, activation);
 
-  Dequantize(params->output_data, output_count, scale, zero_point, output_data);
-  const float kTolerance = GetTolerance(params->data_min, params->data_max);
+  Dequantize(params.output_data, output_count, scale, zero_point, output_data);
+  const float kTolerance = GetTolerance(params.data_min, params.data_max);
   for (int i = 0; i < output_count; i++) {
     TF_LITE_MICRO_EXPECT_NEAR(expected_data[i], output_data[i], kTolerance);
   }
 }
 
 template <typename T>
-void TestDivMultiShape(const int** shapes, const int shapes_count,
-                       const T* input1_data, const T* input2_data,
-                       const T* expected_data, T* output_data,
-                       TfLiteFusedActivation activation) {
+void TestDivMultiShape(TfLiteFusedActivation activation, const int** shapes,
+                       const int shapes_count, const T* input1_data,
+                       const T* input2_data, const T* expected_data,
+                       T* output_data) {
   for (int i = 0; i < shapes_count; i++) {
-    TestDiv(shapes[i], input1_data, shapes[i], input2_data, shapes[i],
-            expected_data, output_data, activation);
+    TestDiv(activation, shapes[i], input1_data, shapes[i], input2_data,
+            shapes[i], expected_data, output_data);
   }
 }
 
 template <typename T>
-void TestDivMultiShapeQuant(const int** shapes, const int shapes_count,
-                            const float* input1_data, const float* input2_data,
-                            const float* expected_data, float* output_data,
+void TestDivMultiShapeQuant(const TestQuantParams<T>& params,
                             TfLiteFusedActivation activation,
-                            const TestQuantParams<T>* params) {
+                            const int** shapes, const int shapes_count,
+                            const float* input1_data, const float* input2_data,
+                            const float* expected_data, float* output_data) {
   for (int i = 0; i < shapes_count; i++) {
-    TestDivQuantized(shapes[i], input1_data, shapes[i], input2_data, shapes[i],
-                     expected_data, output_data, activation, params);
+    TestDivQuantized(params, activation, shapes[i], input1_data, shapes[i],
+                     input2_data, shapes[i], expected_data, output_data);
   }
 }
 
 // when broadcasting input2 is a scaler
 template <typename T>
-void TestDivMultiBroadcast(const int** shapes, const int shapes_count,
-                           const T* input1_data, const T* input2_data,
-                           const T* expected_data, T* output_data,
-                           TfLiteFusedActivation activation) {
+void TestDivMultiBroadcast(TfLiteFusedActivation activation, const int** shapes,
+                           const int shapes_count, const T* input1_data,
+                           const T* input2_data, const T* expected_data,
+                           T* output_data) {
   constexpr int kDimScaler[] = {1, 1};
   for (int i = 0; i < shapes_count; i++) {
-    TestDiv(shapes[i], input1_data, kDimScaler, input2_data, shapes[i],
-            expected_data, output_data, activation);
+    TestDiv(activation, shapes[i], input1_data, kDimScaler, input2_data,
+            shapes[i], expected_data, output_data);
   }
 }
 
 // when broadcasting input2 is a scaler
 template <typename T>
-void TestDivMultiBroadcastQuant(const int** shapes, const int shapes_count,
-                                const float* input1_data,
-                                const float* input2_data,
-                                const float* expected_data, float* output_data,
-                                TfLiteFusedActivation activation,
-                                const TestQuantParams<T>* params) {
+void TestDivMultiBroadcastQuant(
+    const TestQuantParams<T>& params, TfLiteFusedActivation activation,
+    const int** shapes, const int shapes_count, const float* input1_data,
+    const float* input2_data, const float* expected_data, float* output_data) {
   constexpr int kDimScaler[] = {1, 1};
   for (int i = 0; i < shapes_count; i++) {
-    TestDivQuantized(shapes[i], input1_data, kDimScaler, input2_data, shapes[i],
-                     expected_data, output_data, activation, params);
+    TestDivQuantized(params, activation, shapes[i], input1_data, kDimScaler,
+                     input2_data, shapes[i], expected_data, output_data);
   }
 }
 
@@ -185,8 +183,8 @@ TF_LITE_MICRO_TEST(FloatDivOpTestActNone) {
   constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
   float output_data[kOutputCount];
 
-  tflite::testing::TestDiv(kDims, kInput1, kDims, kInput2, kDims, kExpect,
-                           output_data, kTfLiteActNone);
+  tflite::testing::TestDiv(kTfLiteActNone, kDims, kInput1, kDims, kInput2,
+                           kDims, kExpect, output_data);
 }
 
 TF_LITE_MICRO_TEST(FloatDivOpTestActReluN1To1) {
@@ -197,8 +195,8 @@ TF_LITE_MICRO_TEST(FloatDivOpTestActReluN1To1) {
   constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
   float output_data[kOutputCount];
 
-  tflite::testing::TestDiv(kDims, kInput1, kDims, kInput2, kDims, kExpect,
-                           output_data, kTfLiteActReluN1To1);
+  tflite::testing::TestDiv(kTfLiteActReluN1To1, kDims, kInput1, kDims, kInput2,
+                           kDims, kExpect, output_data);
 }
 
 TF_LITE_MICRO_TEST(FloatDivOpTestMultiShape) {
@@ -215,8 +213,8 @@ TF_LITE_MICRO_TEST(FloatDivOpTestMultiShape) {
   constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
   float output_data[kOutputCount];
 
-  tflite::testing::TestDivMultiShape(kDims, kDimsCount, kInput1, kInput2,
-                                     kExpect, output_data, kTfLiteActNone);
+  tflite::testing::TestDivMultiShape(kTfLiteActNone, kDims, kDimsCount, kInput1,
+                                     kInput2, kExpect, output_data);
 }
 
 TF_LITE_MICRO_TEST(FloatDivOpTestBroadcast) {
@@ -234,8 +232,9 @@ TF_LITE_MICRO_TEST(FloatDivOpTestBroadcast) {
   constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
   float output_data[kOutputCount];
 
-  tflite::testing::TestDivMultiBroadcast(kDims, kDimsCount, kInput1, kInput2,
-                                         kExpect, output_data, kTfLiteActNone);
+  tflite::testing::TestDivMultiBroadcast(kTfLiteActNone, kDims, kDimsCount,
+                                         kInput1, kInput2, kExpect,
+                                         output_data);
 }
 
 TF_LITE_MICRO_TEST(FloatDivOpTestBroadcast5D) {
@@ -250,8 +249,9 @@ TF_LITE_MICRO_TEST(FloatDivOpTestBroadcast5D) {
   constexpr int kOutputCount = std::extent<decltype(kExpect)>::value;
   float output_data[kOutputCount];
 
-  tflite::testing::TestDivMultiBroadcast(kDims, kDimsCount, kInput1, kInput2,
-                                         kExpect, output_data, kTfLiteActNone);
+  tflite::testing::TestDivMultiBroadcast(kTfLiteActNone, kDims, kDimsCount,
+                                         kInput1, kInput2, kExpect,
+                                         output_data);
 }
 
 TF_LITE_MICRO_TEST(QuantizedDivOpTestActNone) {
@@ -273,9 +273,9 @@ TF_LITE_MICRO_TEST(QuantizedDivOpTestActNone) {
   params.input2_data = q_input2_data;
   params.output_data = q_output_data;
 
-  tflite::testing::TestDivQuantized(kDims, kInput1, kDims, kInput2, kDims,
-                                    kExpect, output_data, kTfLiteActNone,
-                                    &params);
+  tflite::testing::TestDivQuantized(params, kTfLiteActNone, kDims, kInput1,
+                                    kDims, kInput2, kDims, kExpect,
+                                    output_data);
 }
 
 TF_LITE_MICRO_TEST(QuantizedDivOpTestActReluN1To1) {
@@ -297,17 +297,17 @@ TF_LITE_MICRO_TEST(QuantizedDivOpTestActReluN1To1) {
   params.input2_data = q_input2_data;
   params.output_data = q_output_data;
 
-  tflite::testing::TestDivQuantized(kDims, kInput1, kDims, kInput2, kDims,
-                                    kExpect1, output_data, kTfLiteActReluN1To1,
-                                    &params);
+  tflite::testing::TestDivQuantized(params, kTfLiteActReluN1To1, kDims, kInput1,
+                                    kDims, kInput2, kDims, kExpect1,
+                                    output_data);
 
   constexpr float kInput3[] = {-0.5, 0.2, 0.6, 0.3};
   constexpr float kInput4[] = {0.6, 0.5, -0.8, 0.5};
   constexpr float kExpect2[] = {-0.833, 0.4, -0.75, 0.6};
 
-  tflite::testing::TestDivQuantized(kDims, kInput3, kDims, kInput4, kDims,
-                                    kExpect2, output_data, kTfLiteActReluN1To1,
-                                    &params);
+  tflite::testing::TestDivQuantized(params, kTfLiteActReluN1To1, kDims, kInput3,
+                                    kDims, kInput4, kDims, kExpect2,
+                                    output_data);
 }
 
 TF_LITE_MICRO_TEST(QuantizedDivOpTestMultiShape) {
@@ -335,9 +335,9 @@ TF_LITE_MICRO_TEST(QuantizedDivOpTestMultiShape) {
   params.input2_data = q_input2_data;
   params.output_data = q_output_data;
 
-  tflite::testing::TestDivMultiShapeQuant(kDims, kDimsCount, kInput1, kInput2,
-                                          kExpect, output_data, kTfLiteActNone,
-                                          &params);
+  tflite::testing::TestDivMultiShapeQuant(params, kTfLiteActNone, kDims,
+                                          kDimsCount, kInput1, kInput2, kExpect,
+                                          output_data);
 }
 
 TF_LITE_MICRO_TEST(QuantizedDivOpTestBroadcast) {
@@ -367,9 +367,9 @@ TF_LITE_MICRO_TEST(QuantizedDivOpTestBroadcast) {
   params.input2_data = q_input2_data;
   params.output_data = q_output_data;
 
-  tflite::testing::TestDivMultiBroadcastQuant(kDims, kDimsCount, kInput1,
-                                              kInput2, kExpect, output_data,
-                                              kTfLiteActNone, &params);
+  tflite::testing::TestDivMultiBroadcastQuant(params, kTfLiteActNone, kDims,
+                                              kDimsCount, kInput1, kInput2,
+                                              kExpect, output_data);
 }
 
 TF_LITE_MICRO_TESTS_END

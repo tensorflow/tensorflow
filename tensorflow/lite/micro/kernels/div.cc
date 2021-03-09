@@ -58,7 +58,7 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
   TF_LITE_ENSURE_TYPES_EQ(context, input1->type, input2->type);
-  output->type = input2->type;
+  TF_LITE_ENSURE_TYPES_EQ(context, input1->type, output->type);
 
   if (output->type == kTfLiteInt8) {
     TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
