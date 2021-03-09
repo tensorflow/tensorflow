@@ -103,25 +103,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "padded_batch_dataset_serialization_test",
-    size = "medium",
-    srcs = ["padded_batch_dataset_serialization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:string_ops",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
     name = "parallel_map_dataset_serialization_test",
     size = "medium",
     srcs = ["parallel_map_dataset_serialization_test.py"],
