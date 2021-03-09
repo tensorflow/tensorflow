@@ -338,6 +338,21 @@ func @testSubOfZeroWithBroadcasting(%arg0: tensor<4x1xf32>) -> tensor<4x4xf32> {
 // CHECK: return %1
 }
 
+// CHECK-LABEL: testSubTransDistr
+func @testSubTransDistr(%arg0: tensor<8x4x8xf32>, %arg1: tensor<8x4x8xf32>) -> tensor<*xf32> {
+  %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %3 = "tf.Transpose"(%arg1, %1) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %4 = "tf.Sub"(%2, %3) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %4: tensor<*xf32>
+
+// CHECK: %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %1 = "tf.Sub"(%arg0, %arg1) : (tensor<8x4x8xf32>, tensor<8x4x8xf32>) -> tensor<8x4x8xf32>
+// CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+// CHECK: return %2
+}
+
 // CHECK-LABEL: testSquareOfSub
 func @testSquareOfSub(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.Sub"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
@@ -405,6 +420,21 @@ func @testAddV2OfNegRight(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> t
 // CHECK: return %0
 }
 
+// CHECK-LABEL: testAddV2TransDistr
+func @testAddV2TransDistr(%arg0: tensor<8x4x8xf32>, %arg1: tensor<8x4x8xf32>) -> tensor<*xf32> {
+  %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %3 = "tf.Transpose"(%arg1, %1) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %4 = "tf.AddV2"(%2, %3) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %4: tensor<*xf32>
+
+// CHECK: %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %1 = "tf.AddV2"(%arg0, %arg1) : (tensor<8x4x8xf32>, tensor<8x4x8xf32>) -> tensor<8x4x8xf32>
+// CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+// CHECK: return %2
+}
+
 // CHECK-LABEL: testAddV2IdentityScalar
 func @testAddV2IdentityScalar(%arg0: tensor<f32>, %arg1: tensor<?xf32>, %arg2: tensor<4xf32>) -> (tensor<f32>, tensor<?xf32>, tensor<4xf32>) {
   %0 = "tf.Const"() {value = dense<0.0> : tensor<f32>} : () -> tensor<f32>
@@ -443,6 +473,36 @@ func @testAddV2IdentityTensor(%arg0: tensor<f32>, %arg1: tensor<4xf32>) -> (tens
 
   // CHECK: return %1, %2, %arg1, %arg1
   return %1, %2, %3, %4: tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>
+}
+
+// CHECK-LABEL: testMulTransDistr
+func @testMulTransDistr(%arg0: tensor<8x4x8xf32>, %arg1: tensor<8x4x8xf32>) -> tensor<*xf32> {
+  %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %3 = "tf.Transpose"(%arg1, %1) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %4 = "tf.Mul"(%2, %3) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %4: tensor<*xf32>
+
+// CHECK: %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %1 = "tf.Mul"(%arg0, %arg1) : (tensor<8x4x8xf32>, tensor<8x4x8xf32>) -> tensor<8x4x8xf32>
+// CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+// CHECK: return %2
+}
+
+// CHECK-LABEL: testMulNoNanTransDistr
+func @testMulNoNanTransDistr(%arg0: tensor<8x4x8xf32>, %arg1: tensor<8x4x8xf32>) -> tensor<*xf32> {
+  %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %3 = "tf.Transpose"(%arg1, %1) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %4 = "tf.MulNoNan"(%2, %3) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %4: tensor<*xf32>
+
+// CHECK: %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %1 = "tf.MulNoNan"(%arg0, %arg1) : (tensor<8x4x8xf32>, tensor<8x4x8xf32>) -> tensor<8x4x8xf32>
+// CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+// CHECK: return %2
 }
 
 // CHECK-LABEL: testDoubleConj
@@ -707,6 +767,21 @@ func @testLogicalNotOfLessEqual(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>
 // CHECK: return %0
 }
 
+// CHECK-LABEL: testLogicalAndTransDistr
+func @testLogicalAndTransDistr(%arg0: tensor<8x4x8xi1>, %arg1: tensor<8x4x8xi1>) -> tensor<*xi1> {
+  %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<8x4x8xi1>, tensor<3xi32>) -> tensor<*xi1>
+  %3 = "tf.Transpose"(%arg1, %1) : (tensor<8x4x8xi1>, tensor<3xi32>) -> tensor<*xi1>
+  %4 = "tf.LogicalAnd"(%2, %3) : (tensor<*xi1>, tensor<*xi1>) -> tensor<*xi1>
+  return %4: tensor<*xi1>
+
+// CHECK: %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %1 = "tf.LogicalAnd"(%arg0, %arg1) : (tensor<8x4x8xi1>, tensor<8x4x8xi1>) -> tensor<8x4x8xi1>
+// CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xi1>, tensor<3xi32>) -> tensor<*xi1>
+// CHECK: return %2
+}
+
 // CHECK-LABEL: testSizeFolding
 func @testSizeFolding(%arg0: tensor<3x5x7xf32>) -> tensor<i32> {
   %0 = "tf.Size"(%arg0) : (tensor<3x5x7xf32>) -> tensor<i32>
@@ -725,6 +800,21 @@ func @testDivWithSqrtDivisor(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -
 // CHECK: %0 = "tf.Rsqrt"(%arg1) : (tensor<8x16xf32>) -> tensor<8x16xf32>
 // CHECK: %1 = "tf.Mul"(%arg0, %0) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
 // CHECK: return %1
+}
+
+// CHECK-LABEL: testDivTransDistr
+func @testDivTransDistr(%arg0: tensor<8x4x8xf32>, %arg1: tensor<8x4x8xf32>) -> tensor<*xf32> {
+  %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %3 = "tf.Transpose"(%arg1, %1) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %4 = "tf.Div"(%2, %3) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %4: tensor<*xf32>
+
+// CHECK: %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %1 = "tf.Div"(%arg0, %arg1) : (tensor<8x4x8xf32>, tensor<8x4x8xf32>) -> tensor<8x4x8xf32>
+// CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+// CHECK: return %2
 }
 
 // CHECK-LABEL: testRealDivWithSqrtDivisor
@@ -750,6 +840,22 @@ func @testRealDivWithConstDivisor(%arg0: tensor<8x2xf32>) -> tensor<8x2xf32> {
   // CHECK: return %1
 }
 
+// CHECK-LABEL: testRealDivTransDistr
+func @testRealDivTransDistr(%arg0: tensor<8x4x8xf32>, %arg1: tensor<8x4x8xf32>) -> tensor<*xf32> {
+  %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %3 = "tf.Transpose"(%arg1, %1) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %4 = "tf.RealDiv"(%2, %3) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %4: tensor<*xf32>
+
+// CHECK: %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %1 = "tf.RealDiv"(%arg0, %arg1) : (tensor<8x4x8xf32>, tensor<8x4x8xf32>) -> tensor<8x4x8xf32>
+// CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+// CHECK: return %2
+}
+
+
 // CHECK-LABEL: testTruncateDivWithSqrtDivisor
 func @testTruncateDivWithSqrtDivisor(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.Sqrt"(%arg1) : (tensor<8x16xf32>) -> tensor<8x16xf32>
@@ -761,6 +867,22 @@ func @testTruncateDivWithSqrtDivisor(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16
 // CHECK: return %1
 }
 
+// CHECK-LABEL: testTruncateDivTransDistr
+func @testTruncateDivTransDistr(%arg0: tensor<8x4x8xf32>, %arg1: tensor<8x4x8xf32>) -> tensor<*xf32> {
+  %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %3 = "tf.Transpose"(%arg1, %1) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %4 = "tf.TruncateDiv"(%2, %3) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %4: tensor<*xf32>
+
+// CHECK: %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %1 = "tf.TruncateDiv"(%arg0, %arg1) : (tensor<8x4x8xf32>, tensor<8x4x8xf32>) -> tensor<8x4x8xf32>
+// CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+// CHECK: return %2
+}
+
+
 // CHECK-LABEL: testXdivyWithSqrtDivisor
 func @testXdivyWithSqrtDivisor(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.Sqrt"(%arg1) : (tensor<8x16xf32>) -> tensor<8x16xf32>
@@ -770,6 +892,21 @@ func @testXdivyWithSqrtDivisor(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>)
 // CHECK: %0 = "tf.Rsqrt"(%arg1) : (tensor<8x16xf32>) -> tensor<8x16xf32>
 // CHECK: %1 = "tf.MulNoNan"(%0, %arg0) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
 // CHECK: return %1
+}
+
+// CHECK-LABEL: testXdivyTransDistr
+func @testXdivyTransDistr(%arg0: tensor<8x4x8xf32>, %arg1: tensor<8x4x8xf32>) -> tensor<*xf32> {
+  %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %3 = "tf.Transpose"(%arg1, %1) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %4 = "tf.Xdivy"(%2, %3) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %4: tensor<*xf32>
+
+// CHECK: %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %1 = "tf.Xdivy"(%arg0, %arg1) : (tensor<8x4x8xf32>, tensor<8x4x8xf32>) -> tensor<8x4x8xf32>
+// CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+// CHECK: return %2
 }
 
 // CHECK-LABEL: @identityTranspose
@@ -1678,4 +1815,229 @@ func @testDontConvertPackToReshapeDynamicShape(%arg0: tensor<2x?xf32>) -> tensor
   return %0 : tensor<1x2x?xf32>
   // CHECK: %[[PACK:.*]] = "tf.Pack"(%arg0) {axis = 0 : i64} : (tensor<2x?xf32>) -> tensor<1x2x?xf32>
   // CHECK: return %[[PACK]] : tensor<1x2x?xf32>
+}
+
+// CHECK-LABEL: testEqualTransDistr
+func @testEqualTransDistr(%arg0: tensor<8x4x8xf32>, %arg1: tensor<8x4x8xf32>) -> tensor<*xi1> {
+  %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %3 = "tf.Transpose"(%arg1, %1) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %4 = "tf.Equal"(%2, %3) {incompatible_shape_error = true} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xi1>
+  return %4: tensor<*xi1>
+
+// CHECK: %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %1 = "tf.Equal"(%arg0, %arg1) {incompatible_shape_error = true} : (tensor<8x4x8xf32>, tensor<8x4x8xf32>) -> tensor<8x4x8xi1>
+// CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xi1>, tensor<3xi32>) -> tensor<*xi1>
+// CHECK: return %2
+}
+
+// CHECK-LABEL: testFloorDivTransDistr
+func @testFloorDivTransDistr(%arg0: tensor<8x4x8xf32>, %arg1: tensor<8x4x8xf32>) -> tensor<*xf32> {
+  %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %3 = "tf.Transpose"(%arg1, %1) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %4 = "tf.FloorDiv"(%2, %3) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %4: tensor<*xf32>
+
+// CHECK: %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %1 = "tf.FloorDiv"(%arg0, %arg1) : (tensor<8x4x8xf32>, tensor<8x4x8xf32>) -> tensor<8x4x8xf32>
+// CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+// CHECK: return %2
+}
+
+// CHECK-LABEL: testFloorModTransDistr
+func @testFloorModTransDistr(%arg0: tensor<8x4x8xf32>, %arg1: tensor<8x4x8xf32>) -> tensor<*xf32> {
+  %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %3 = "tf.Transpose"(%arg1, %1) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %4 = "tf.FloorMod"(%2, %3) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %4: tensor<*xf32>
+
+// CHECK: %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %1 = "tf.FloorMod"(%arg0, %arg1) : (tensor<8x4x8xf32>, tensor<8x4x8xf32>) -> tensor<8x4x8xf32>
+// CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+// CHECK: return %2
+}
+
+// CHECK-LABEL: testGreaterEqualTransDistr
+func @testGreaterEqualTransDistr(%arg0: tensor<8x4x8xf32>, %arg1: tensor<8x4x8xf32>) -> tensor<*xi1> {
+  %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %3 = "tf.Transpose"(%arg1, %1) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %4 = "tf.GreaterEqual"(%2, %3) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xi1>
+  return %4: tensor<*xi1>
+
+// CHECK: %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %1 = "tf.GreaterEqual"(%arg0, %arg1) : (tensor<8x4x8xf32>, tensor<8x4x8xf32>) -> tensor<8x4x8xi1>
+// CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xi1>, tensor<3xi32>) -> tensor<*xi1>
+// CHECK: return %2
+}
+
+// CHECK-LABEL: testGreaterTransDistr
+func @testGreaterTransDistr(%arg0: tensor<8x4x8xf32>, %arg1: tensor<8x4x8xf32>) -> tensor<*xi1> {
+  %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %3 = "tf.Transpose"(%arg1, %1) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %4 = "tf.Greater"(%2, %3) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xi1>
+  return %4: tensor<*xi1>
+
+// CHECK: %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %1 = "tf.Greater"(%arg0, %arg1) : (tensor<8x4x8xf32>, tensor<8x4x8xf32>) -> tensor<8x4x8xi1>
+// CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xi1>, tensor<3xi32>) -> tensor<*xi1>
+// CHECK: return %2
+}
+
+// CHECK-LABEL: testLessEqualTransDistr
+func @testLessEqualTransDistr(%arg0: tensor<8x4x8xf32>, %arg1: tensor<8x4x8xf32>) -> tensor<*xi1> {
+  %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %3 = "tf.Transpose"(%arg1, %1) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %4 = "tf.LessEqual"(%2, %3) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xi1>
+  return %4: tensor<*xi1>
+
+// CHECK: %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %1 = "tf.LessEqual"(%arg0, %arg1) : (tensor<8x4x8xf32>, tensor<8x4x8xf32>) -> tensor<8x4x8xi1>
+// CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xi1>, tensor<3xi32>) -> tensor<*xi1>
+// CHECK: return %2
+}
+
+// CHECK-LABEL: testLessTransDistr
+func @testLessTransDistr(%arg0: tensor<8x4x8xf32>, %arg1: tensor<8x4x8xf32>) -> tensor<*xi1> {
+  %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %3 = "tf.Transpose"(%arg1, %1) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %4 = "tf.Less"(%2, %3) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xi1>
+  return %4: tensor<*xi1>
+
+// CHECK: %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %1 = "tf.Less"(%arg0, %arg1) : (tensor<8x4x8xf32>, tensor<8x4x8xf32>) -> tensor<8x4x8xi1>
+// CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xi1>, tensor<3xi32>) -> tensor<*xi1>
+// CHECK: return %2
+}
+
+// CHECK-LABEL: testMaximumTransDistr
+func @testMaximumTransDistr(%arg0: tensor<8x4x8xf32>, %arg1: tensor<8x4x8xf32>) -> tensor<*xf32> {
+  %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %3 = "tf.Transpose"(%arg1, %1) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %4 = "tf.Maximum"(%2, %3) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %4: tensor<*xf32>
+
+// CHECK: %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %1 = "tf.Maximum"(%arg0, %arg1) : (tensor<8x4x8xf32>, tensor<8x4x8xf32>) -> tensor<8x4x8xf32>
+// CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+// CHECK: return %2
+}
+
+// CHECK-LABEL: testMinimumTransDistr
+func @testMinimumTransDistr(%arg0: tensor<8x4x8xf32>, %arg1: tensor<8x4x8xf32>) -> tensor<*xf32> {
+  %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %3 = "tf.Transpose"(%arg1, %1) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %4 = "tf.Minimum"(%2, %3) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %4: tensor<*xf32>
+
+// CHECK: %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %1 = "tf.Minimum"(%arg0, %arg1) : (tensor<8x4x8xf32>, tensor<8x4x8xf32>) -> tensor<8x4x8xf32>
+// CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+// CHECK: return %2
+}
+
+// CHECK-LABEL: testNotEqualTransDistr
+func @testNotEqualTransDistr(%arg0: tensor<8x4x8xf32>, %arg1: tensor<8x4x8xf32>) -> tensor<*xi1> {
+  %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %3 = "tf.Transpose"(%arg1, %1) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %4 = "tf.NotEqual"(%2, %3) {incompatible_shape_error = true} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xi1>
+  return %4: tensor<*xi1>
+
+// CHECK: %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %1 = "tf.NotEqual"(%arg0, %arg1) {incompatible_shape_error = true} : (tensor<8x4x8xf32>, tensor<8x4x8xf32>) -> tensor<8x4x8xi1>
+// CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xi1>, tensor<3xi32>) -> tensor<*xi1>
+// CHECK: return %2
+}
+
+// CHECK-LABEL: testSquaredDifferenceTransDistr
+func @testSquaredDifferenceTransDistr(%arg0: tensor<8x4x8xf32>, %arg1: tensor<8x4x8xf32>) -> tensor<*xf32> {
+  %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %3 = "tf.Transpose"(%arg1, %1) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %4 = "tf.SquaredDifference"(%2, %3) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %4: tensor<*xf32>
+
+// CHECK: %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %1 = "tf.SquaredDifference"(%arg0, %arg1) : (tensor<8x4x8xf32>, tensor<8x4x8xf32>) -> tensor<8x4x8xf32>
+// CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xf32>, tensor<3xi32>) -> tensor<*xf32>
+// CHECK: return %2
+}
+
+// CHECK-LABEL: testBitwiseAndTransDistr
+func @testBitwiseAndTransDistr(%arg0: tensor<8x4x8xi32>, %arg1: tensor<8x4x8xi32>) -> tensor<*xi32> {
+  %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<8x4x8xi32>, tensor<3xi32>) -> tensor<*xi32>
+  %3 = "tf.Transpose"(%arg1, %1) : (tensor<8x4x8xi32>, tensor<3xi32>) -> tensor<*xi32>
+  %4 = "tf.BitwiseAnd"(%2, %3) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+  return %4: tensor<*xi32>
+
+// CHECK: %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %1 = "tf.BitwiseAnd"(%arg0, %arg1) : (tensor<8x4x8xi32>, tensor<8x4x8xi32>) -> tensor<8x4x8xi32>
+// CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xi32>, tensor<3xi32>) -> tensor<*xi32>
+// CHECK: return %2
+}
+
+// CHECK-LABEL: testBitwiseOrTransDistr
+func @testBitwiseOrTransDistr(%arg0: tensor<8x4x8xi32>, %arg1: tensor<8x4x8xi32>) -> tensor<*xi32> {
+  %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<8x4x8xi32>, tensor<3xi32>) -> tensor<*xi32>
+  %3 = "tf.Transpose"(%arg1, %1) : (tensor<8x4x8xi32>, tensor<3xi32>) -> tensor<*xi32>
+  %4 = "tf.BitwiseOr"(%2, %3) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+  return %4: tensor<*xi32>
+
+// CHECK: %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %1 = "tf.BitwiseOr"(%arg0, %arg1) : (tensor<8x4x8xi32>, tensor<8x4x8xi32>) -> tensor<8x4x8xi32>
+// CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xi32>, tensor<3xi32>) -> tensor<*xi32>
+// CHECK: return %2
+}
+
+// CHECK-LABEL: testLeftShiftTransDistr
+func @testLeftShiftTransDistr(%arg0: tensor<8x4x8xi32>, %arg1: tensor<8x4x8xi32>) -> tensor<*xi32> {
+  %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<8x4x8xi32>, tensor<3xi32>) -> tensor<*xi32>
+  %3 = "tf.Transpose"(%arg1, %1) : (tensor<8x4x8xi32>, tensor<3xi32>) -> tensor<*xi32>
+  %4 = "tf.LeftShift"(%2, %3) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+  return %4: tensor<*xi32>
+
+// CHECK: %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %1 = "tf.LeftShift"(%arg0, %arg1) : (tensor<8x4x8xi32>, tensor<8x4x8xi32>) -> tensor<8x4x8xi32>
+// CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xi32>, tensor<3xi32>) -> tensor<*xi32>
+// CHECK: return %2
+}
+
+// CHECK-LABEL: testRightShiftTransDistr
+func @testRightShiftTransDistr(%arg0: tensor<8x4x8xi32>, %arg1: tensor<8x4x8xi32>) -> tensor<*xi32> {
+  %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %1 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<8x4x8xi32>, tensor<3xi32>) -> tensor<*xi32>
+  %3 = "tf.Transpose"(%arg1, %1) : (tensor<8x4x8xi32>, tensor<3xi32>) -> tensor<*xi32>
+  %4 = "tf.RightShift"(%2, %3) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+  return %4: tensor<*xi32>
+
+// CHECK: %0 = "tf.Const"() {value = dense<[1, 0, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK: %1 = "tf.RightShift"(%arg0, %arg1) : (tensor<8x4x8xi32>, tensor<8x4x8xi32>) -> tensor<8x4x8xi32>
+// CHECK: %2 = "tf.Transpose"(%1, %0) : (tensor<8x4x8xi32>, tensor<3xi32>) -> tensor<*xi32>
+// CHECK: return %2
 }
