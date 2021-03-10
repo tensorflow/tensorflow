@@ -1034,7 +1034,12 @@ def _revive_setter(layer, name, value):
     # be temporarily added as a dependency so that checkpointed values can be
     # restored. These dependencies are manually deleted in
     # KerasObjectLoader.del_tracking.
-    layer._track_trackable(value, name)  # pylint: disable=protected-access
+
+    # Set `overwrite=True` in the case that `layer` already tracks a different
+    # layer-n. This may cause variable values to not be loaded properly in the
+    # original layer-n, but we already warn the users about this
+    # (ctrl-f "shared between different layers/models").
+    layer._track_trackable(value, name, overwrite=True)  # pylint: disable=protected-access
   elif getattr(layer, name, None) is not None:
     # Don't overwrite already defined attributes.
     pass
