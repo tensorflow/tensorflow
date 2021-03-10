@@ -2973,7 +2973,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def _is_layer(self):
     return True
 
-  def _init_call_fn_args(self):
+  def _init_call_fn_args(self, expects_training_arg=None):
     # Clear cached call function arguments.
     self.__class__._call_full_argspec.fget.cache.pop(self, None)
     self.__class__._call_fn_args.fget.cache.pop(self, None)
@@ -2981,8 +2981,12 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     call_fn_args = self._call_fn_args
     call_fn_args += self._call_full_argspec.kwonlyargs or []
-    self._expects_training_arg = ('training' in call_fn_args or
-                                  self._call_accepts_kwargs)
+    if expects_training_arg is None:
+      self._expects_training_arg = ('training' in call_fn_args or
+                                    self._call_accepts_kwargs)
+    else:
+      # Use value encoded into the metadata when loading from the SavedModel.
+      self._expects_training_arg = expects_training_arg
     # The default training arg will be any (non-None) default specified in the
     # method signature, or None if no value is specified.
     call_fn_arg_defaults = self._call_fn_arg_defaults.copy()
@@ -3120,7 +3124,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # Layer for SavedModel. By default, this is set to `True` for layers
     # exported from the Keras library, because the layers more rigidly define
     # the `input_specs` property (many custom layers only set the `ndims`)
-    return get_canonical_name_for_symbol(type(self)) is not None
+    return get_canonical_name_for_symbol(type(self),
+                                         api_name='keras') is not None
 
   def __getstate__(self):
     # Override to support `copy.deepcopy` and pickling.

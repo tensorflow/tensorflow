@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.keras.saving.saved_model import constants
+from tensorflow.python.keras.saving.saved_model import save_impl
 from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking.tracking import AutoTrackable
@@ -173,8 +174,12 @@ class SerializedAttributes(object):
   @property
   def functions_to_serialize(self):
     """Returns functions to attach to the root object during serialization."""
-    return {key: value for key, value in self.functions.items()
-            if key in CommonEndpoints.all_functions}
+    functions = {}
+    for key, v in self.functions.items():
+      if key in CommonEndpoints.all_functions:
+        functions[key] = (v.wrapped_call if isinstance(v, save_impl.LayerCall)
+                          else v)
+    return functions
 
   @property
   def objects_to_serialize(self):
@@ -189,12 +194,17 @@ class SerializedAttributes(object):
     for key in self.all_functions:
       if key in function_dict:
         if (function_dict[key] is not None and  # Not all functions are required
-            not isinstance(function_dict[key], def_function.Function)):
+            not isinstance(function_dict[key],
+                           (def_function.Function, save_impl.LayerCall))):
           raise ValueError(
               'Function dictionary contained a non-function object: {} (for key'
               ' {})'.format(function_dict[key], key))
-        self._function_dict[key] = function_dict[key]
-        setattr(self._keras_trackable, key, function_dict[key])
+        fn = function_dict[key]
+        self._function_dict[key] = fn
+
+        # Extract TensorFlow `Function` from LayerCall.
+        tf_fn = fn.wrapped_call if isinstance(fn, save_impl.LayerCall) else fn
+        setattr(self._keras_trackable, key, tf_fn)
       else:
         raise ValueError('Function {} missing from serialized function dict.'
                          .format(key))
