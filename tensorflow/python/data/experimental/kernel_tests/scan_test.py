@@ -23,7 +23,6 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import scan_ops
-from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -290,19 +289,6 @@ class ScanTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertIn(b"CPU:0", self.evaluate(get_next()))
     else:
       self.assertIn(b"GPU:0", self.evaluate(get_next()))
-
-
-class ScanDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                                parameterized.TestCase):
-
-  def _build_dataset(self, num_elements):
-    return dataset_ops.Dataset.from_tensors(1).repeat(num_elements).apply(
-        scan_ops.scan([0, 1], lambda a, _: ([a[1], a[0] + a[1]], a[1])))
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testScanCore(self):
-    num_output = 5
-    self.run_core_tests(lambda: self._build_dataset(num_output), num_output)
 
 
 if __name__ == "__main__":
