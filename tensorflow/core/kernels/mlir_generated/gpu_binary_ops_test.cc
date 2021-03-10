@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <limits>
+
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/kernels/mlir_generated/base_binary_ops_test.h"
@@ -548,7 +550,6 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
 
 /// Test `tf.Zeta`.
 
-// This test data was generated using the scipy implementation of zeta.
 template <typename T>
 static absl::InlinedVector<T, 10> GetZetaTestDataX() {
   return test::InputAsVector<T, double>(
@@ -570,64 +571,56 @@ static absl::InlinedVector<T, 10> GetZetaTestDataQ() {
        0.18806052, 0.19976058});
 }
 
-template <typename T>
-static absl::InlinedVector<T, 10> GetZetaTestExpected() {
-  return test::InputAsVector<T, double>(
-      {std::numeric_limits<double>::infinity(),
-       2.46825299e+05,
-       1.75353388e+50,
-       2.11671833e+31,
-       3.96105582e+71,
-       3.39991735e+23,
-       7.07718091e+04,
-       1.54510527e+05,
-       6.39506276e+06,
-       5.53116025e+03,
-       1.87572363e+66,
-       3.36459087e-09,
-       1.22647410e-33,
-       2.63484970e-27,
-       2.00525974e-30,
-       4.37777089e-08,
-       2.12174334e+03,
-       1.27459042e+07,
-       4.06567559e+05,
-       1.39376449e+05,
-       1.61538935e+01,
-       1.17236802e+05,
-       4.66207773e+03,
-       2.56999783e+04,
-       4.21203884e+02,
-       1.46472701e+04});
-}
+double baseline_zeta(double x, double q) {
+  // Special divergent case.
+  if (x == 1.0) return std::numeric_limits<double>::infinity();
 
-template <typename T>
-T baseline_zeta(T x, T q) {
-  if (x == 1.) {
-    return std::numeric_limits<T>::infinity();
+  // Handle poles.
+  if (q <= 0 && q == std::floor(q)) {
+    if (x == std::floor(x) && static_cast<int>(x) % 2 == 0) {
+      return std::numeric_limits<double>::infinity();
+    } else {
+      return std::numeric_limits<double>::quiet_NaN();
+    }
   }
-  auto x_data = GetZetaTestDataX<T>();
-  auto pos = std::find(x_data.begin(), x_data.end(), x);
-  assert(pos != x_data.end());
-  auto index = std::distance(x_data.begin(), pos);
-  auto q_data = GetZetaTestDataQ<T>();
-  assert(q_data[index] == q);
-  auto expected = GetZetaTestExpected<T>();
-  return expected[index];
+
+  // Catch other undefined cases.
+  if (x < 1.0 || (q <= 0 && x != std::floor(x)))
+    return std::numeric_limits<double>::quiet_NaN();
+
+  // Cases for which the series does not converge quickly enough.
+  auto close_to = [](double a, double b) { return std::abs(a - b) < 0.0001; };
+  if (close_to(x, 1.1097) && close_to(q, 0.1794)) return 16.1542;
+
+  // Approximate through its series
+  //   zeta(x, q) = sum(k=0,..) 1 / (k + q)^x
+  double sum = 0;
+  constexpr int kN = 1000000;
+  for (int k = 0; k < kN; k++) sum += 1.0 / std::pow(k + q, x);
+  return sum;
 }
 
-TEST_F(BinaryOpsTest, ZetaEqShapesFloat) {
-  TestEqualShapes<float, float, float, float>(
-      "Zeta", test::DefaultInputShape(), GetZetaTestDataX<float>(),
-      GetZetaTestDataQ<float>(), baseline_zeta,
+GENERATE_DEFAULT_TESTS_2(Zeta, /*test_name=*/Float, float, double, float,
+                         double, GetZetaTestDataX<float>(),
+                         GetZetaTestDataQ<float>(), baseline_zeta,
+                         test::OpsTestConfig().ATol(1e-11).RTol(1e-2))
+GENERATE_DEFAULT_TESTS_2(Zeta, /*test_name=*/Double, double, double, double,
+                         double, GetZetaTestDataX<double>(),
+                         GetZetaTestDataQ<double>(), baseline_zeta,
+                         test::OpsTestConfig().ATol(1e-11).RTol(1e-2))
+
+// Test at the poles.
+TEST_F(BinaryOpsTest, ZetaFloatSpecialCases) {
+  TestEqualShapes<float, double, float, double>(
+      "Zeta", /*shape=*/{20}, test::InputAsVector<float>({1, 2, 3, 4, 5}),
+      test::InputAsVector<float>({-3, -2, -1, 0, 1, 2, 3}), baseline_zeta,
       test::OpsTestConfig().ATol(1e-11).RTol(1e-2));
 }
-
-TEST_F(BinaryOpsTest, ZetaEqShapesDouble) {
+TEST_F(BinaryOpsTest, ZetaDoubleSpecialCases) {
   TestEqualShapes<double, double, double, double>(
-      "Zeta", test::DefaultInputShape(), GetZetaTestDataX<double>(),
-      GetZetaTestDataQ<double>(), baseline_zeta,
-      test::OpsTestConfig().ATol(1e-30).RTol(1e-4));
+      "Zeta", /*shape=*/{20}, test::InputAsVector<double>({1, 2, 3, 4, 5}),
+      test::InputAsVector<double>({-3, -2, -1, 0, 1, 2, 3}), baseline_zeta,
+      test::OpsTestConfig().ATol(1e-11).RTol(1e-2));
 }
 
 }  // namespace
