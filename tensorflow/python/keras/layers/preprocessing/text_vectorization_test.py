@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
 import os
 
 from absl.testing import parameterized
@@ -1554,6 +1555,11 @@ def custom_split_fn(x):
 class TextVectorizationSavingTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
+
+  def tearDown(self):
+    keras.backend.clear_session()
+    gc.collect()
+    super(TextVectorizationSavingTest, self).tearDown()
 
   def test_saving(self):
     vocab_data = ["earth", "wind", "and", "fire"]
