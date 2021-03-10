@@ -43,10 +43,10 @@ message AutotuneResult {
     oneof key {
       ConvKey reference_conv = 11;
       GemmKey reference_gemm = 12;
-      CudaConvPlanKey reference_cuda_conv_plan = 13;
+      CudaConvPlanKey reference_cuda_conv_plan = 14;
     }
 
-    int64 buffer_address = 14;
+    int64 buffer_address = 13;
   }
 
   message ConvKey {
@@ -65,15 +65,15 @@ message AutotuneResult {
   int64 scratch_bytes = 8;
   google.protobuf.Duration run_time = 9;
 
-  FailureResult failure = 10;
+  FailureResult failure = 7;
 
   oneof key {
     ConvKey conv = 5;
     GemmKey gemm = 6;
-    CudaConvPlanKey cuda_conv_plan = 7;
+    CudaConvPlanKey cuda_conv_plan = 15;
   }
 
-  // Next ID: 15
+  // Next ID: 16
 }
 
 message AutotuningLog {
@@ -92,4 +92,3 @@ message AutotuningLog {
 
   // Next ID: 7
 }
-
