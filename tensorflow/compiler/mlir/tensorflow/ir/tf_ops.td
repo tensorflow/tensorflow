@@ -1184,6 +1184,29 @@ def TF_TensorSliceDatasetOp : TF_Op<"TensorSliceDataset", []> {
   TF_DerivedOperandTypeListAttr Toutput_types = TF_DerivedOperandTypeListAttr<0>;
 }
 
+def TF_ReduceDatasetOp : TF_Op<"ReduceDataset", [SameVariadicOperandSize]> {
+  let summary = [{
+    Reduces the input dataset to a singleton using a reduce function.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_dataset,
+    Variadic<TF_Tensor>:$initial_state,
+    Variadic<TF_Tensor>:$other_arguments,
+
+    SymbolRefAttr:$f,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$Tstate,
+    Confined<TypeArrayAttr, [ArrayMinCount<0>]>:$Targuments,
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes,
+    DefaultValuedAttr<BoolAttr, "true">:$use_inter_op_parallelism
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$components
+  );
+}
+
 def TF_ToBoolOp : TF_Op<"ToBool", [NoSideEffect]> {
   let summary = "Converts a tensor to a scalar predicate.";
 
