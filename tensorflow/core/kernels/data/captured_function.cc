@@ -679,25 +679,29 @@ Status CapturedFunction::Instantiate(
     }
 
 #if !defined(IS_MOBILE_PLATFORM)
-    grappler::GrapplerItem::OptimizationOptions optimization_options;
-    optimization_options.allow_pruning_stateful_and_dataset_ops = false;
     ConfigProto config_proto = inst_opts.config_proto;
-    // Layout optimizations are excluded because they assume that ops without
-    // explicit device assignment will be placed on GPU (if available) but
-    // that's not the case for operations within tf.data functions.
-    config_proto.mutable_graph_options()
-        ->mutable_rewrite_options()
-        ->set_layout_optimizer(RewriterConfig::OFF);
-    // TODO(b/120437209): Re-enable constant folding.
-    config_proto.mutable_graph_options()
-        ->mutable_rewrite_options()
-        ->set_constant_folding(RewriterConfig::OFF);
-    inst_opts.optimize_graph_fn =
-        std::bind(tensorflow::grappler::OptimizeGraph, std::placeholders::_1,
-                  std::placeholders::_2, std::placeholders::_3,
-                  std::placeholders::_4, std::placeholders::_5,
-                  std::move(config_proto), fdef->signature().name(),
-                  std::move(optimization_options), std::placeholders::_6);
+    if (!config_proto.graph_options()
+             .rewrite_options()
+             .experimental_disable_tf_data_function_optimizations()) {
+      grappler::GrapplerItem::OptimizationOptions optimization_options;
+      optimization_options.allow_pruning_stateful_and_dataset_ops = false;
+      // Layout optimizations are excluded because they assume that ops without
+      // explicit device assignment will be placed on GPU (if available) but
+      // that's not the case for operations within tf.data functions.
+      config_proto.mutable_graph_options()
+          ->mutable_rewrite_options()
+          ->set_layout_optimizer(RewriterConfig::OFF);
+      // TODO(b/120437209): Re-enable constant folding.
+      config_proto.mutable_graph_options()
+          ->mutable_rewrite_options()
+          ->set_constant_folding(RewriterConfig::OFF);
+      inst_opts.optimize_graph_fn =
+          std::bind(tensorflow::grappler::OptimizeGraph, std::placeholders::_1,
+                    std::placeholders::_2, std::placeholders::_3,
+                    std::placeholders::_4, std::placeholders::_5,
+                    std::move(config_proto), fdef->signature().name(),
+                    std::move(optimization_options), std::placeholders::_6);
+    }
 #endif  // !IS_MOBILE_PLATFORM
   }
 

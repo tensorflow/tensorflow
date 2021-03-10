@@ -129,6 +129,15 @@ message RewriterConfig {
   // details.
   bool experimental_disable_folding_quantization_emulation = 27;
 
+  // Disables application of graph optimization to user-defined functions in
+  // tf.data input pipelines. This may be desirable for short lived input
+  // pipelines that contain non-trivial user-defined functions. For such input
+  // pipelines the cost of constructing the input pipeline (which includes
+  // optimization of its user-defined functions) can eclipse the cost of
+  // executing the input pipeline. By default, user-defined functions in tf.data
+  // input pipelines are optimized.
+  bool experimental_disable_tf_data_function_optimizations = 28;
+
   enum MemOptType {
     // The default setting (SCHEDULING and SWAPPING HEURISTICS only)
     DEFAULT_MEM_OPT = 0;
