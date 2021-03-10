@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/sparse_to_dense_op_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/stream_executor/cuda/cuda_activation.h"
 
 namespace tensorflow {
 
@@ -172,7 +173,12 @@ void LaunchSparseToDense<T, Index>::operator()(
                                      default_value, indices, values, num_elems,
                                      num_values, shape, num_dims, dense,
                                      done]() {
-      const Eigen::GpuDevice& d = c->eigen_gpu_device();
+	    // Ensure that within the callback, the proper GPU settings are
+      // configured.
+      auto stream = c->op_device_context()->stream();
+      se::cuda::ScopedActivateExecutorContext scoped_activation{
+                                                  stream->parent()};
+
       OP_REQUIRES_ASYNC(c, valid_status.valid == INT_MAX,
                         errors::InvalidArgument(
                             "indices[", valid_status.valid,
