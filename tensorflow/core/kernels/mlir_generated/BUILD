@@ -132,6 +132,7 @@ filegroup(
         "gpu_op_minimum.cc",
         "gpu_op_mul.cc",
         "gpu_op_not_equal.cc",
+        "gpu_op_polygamma.cc",
         "gpu_op_pow.cc",
         "gpu_op_right_shift.cc",
         "gpu_op_sub.cc",
@@ -296,6 +297,7 @@ tf_kernel_library(
         ":gpu_minimum_kernels",
         ":gpu_mul_kernels",
         ":gpu_not_equal_kernels",
+        ":gpu_polygamma_kernels",
         ":gpu_pow_kernels",
         ":gpu_right_shift_kernels",
         ":gpu_squared_difference_kernels",
@@ -678,6 +680,16 @@ gpu_kernel_library(
     types = [
         "c64",
         "c128",
+    ],
+)
+
+gpu_kernel_library(
+    name = "gpu_polygamma_lib",
+    op = "polygamma",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
     ],
 )
 

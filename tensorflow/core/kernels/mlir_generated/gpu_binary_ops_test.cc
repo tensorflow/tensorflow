@@ -421,6 +421,95 @@ GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/Int16, int16, bool,
 GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/Int64, int64, bool,
                        baseline_not_equal)
 
+/// Test `tf.Polygamma`.
+
+template <typename T>
+static absl::InlinedVector<T, 10> GetPolygammaValuesX() {
+  return test::InputAsVector<T, double>({-3.5, -3.0, -2.4, -2.0, -1.3, -1.0,
+                                         -0.2, -0.0, 0.0, 0.1, 1.0, 1.2, 2.0,
+                                         2.3, 3.0, 3.4});
+}
+
+template <typename T>
+static absl::InlinedVector<T, 10> GetPolygammaValuesN() {
+  int num_x_values = GetPolygammaValuesX<T>().size();
+  auto n_values = {-4.0, -1.0, -0.0, 0.0, 3.0};
+  absl::InlinedVector<T, 10> repeated_n_values;
+  repeated_n_values.reserve(n_values.size() * num_x_values);
+  for (double n : n_values) {
+    for (int i = 0; i < num_x_values; i++) {
+      repeated_n_values.push_back(n);
+    }
+  }
+  return repeated_n_values;
+}
+
+double baseline_polygamma(double n, double x) {
+  // Handle poles which have defined limits for odd n.
+  if (x <= 0 && x == std::floor(x)) {
+    if (static_cast<int>(n) % 2 == 1) {
+      return std::numeric_limits<double>::infinity();
+    } else {
+      return std::numeric_limits<double>::quiet_NaN();
+    }
+  }
+
+  // Catch other undefined cases.
+  if (n < 0 || n != std::floor(n))
+    return std::numeric_limits<double>::quiet_NaN();
+
+  // Approximate series for n > 0
+  //   polygamma(n, x) = n! sum(k=0,...) (-x - k)^(n + 1)
+  constexpr int kN = 1000000;
+  if (n > 0) {
+    double factorial = 1.0;
+    for (int i = 1; i <= n; i++) {
+      factorial *= i;
+    }
+    double sum = 0;
+    for (int k = 0; k < kN; k++) {
+      sum += 1.0 / std::pow(-x - k, n + 1);
+    }
+    return factorial * sum;
+  }
+
+  // Approximate series for n = 0
+  //   polygamma(n, x) = -gamma + sum(k=1,...) (x - 1) / (k * (k + x - 1))
+  assert(n == 0);
+  constexpr double kGammaE = 0.5772156649015328606065120900824024;
+  double sum = -kGammaE;
+  double z = x - 1;
+  for (int i = 1; i <= kN; i++) {
+    sum += z / (i * (i + z));
+  }
+  return sum;
+}
+
+GENERATE_DEFAULT_TESTS_2(Polygamma, /*test_name=*/Float, float, double, float,
+                         double, GetPolygammaValuesN<float>(),
+                         GetPolygammaValuesX<float>(), baseline_polygamma,
+                         test::OpsTestConfig().ATol(1e-11).RTol(1e-2))
+GENERATE_DEFAULT_TESTS_2(Polygamma, /*test_name=*/Double, double, double,
+                         double, double, GetPolygammaValuesN<double>(),
+                         GetPolygammaValuesX<double>(), baseline_polygamma,
+                         test::OpsTestConfig().ATol(1e-11).RTol(1e-2))
+
+// Test at the poles.
+TEST_F(BinaryOpsTest, PolygammaFloatSpecialCases) {
+  TestEqualShapes<float, double, float, double>(
+      "Polygamma", /*shape=*/{20},
+      test::InputAsVector<float>({0, 1, 2, 3, 4, 5}),
+      test::InputAsVector<float>({-3, -3, -2, -2, 0, 0}), baseline_polygamma,
+      test::OpsTestConfig().ATol(1e-11).RTol(1e-2));
+}
+TEST_F(BinaryOpsTest, PolygammaDoubleSpecialCases) {
+  TestEqualShapes<double, double, double, double>(
+      "Polygamma", /*shape=*/{20},
+      test::InputAsVector<double>({0, 1, 2, 3, 4, 5}),
+      test::InputAsVector<double>({-3, -3, -2, -2, 0, 0}), baseline_polygamma,
+      test::OpsTestConfig().ATol(1e-11).RTol(1e-2));
+}
+
 /// Test `tf.Pow`.
 
 template <typename T>
