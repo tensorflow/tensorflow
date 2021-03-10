@@ -43,20 +43,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
-
-#if TENSORFLOW_USE_ROCM
-// Returns true if the corresponding gfx arch string for the detected AMD GPU 
-// is in the list for FP16 supported compute. Returns false otherwise. 
-
-bool HasFastFP16Support(const DeviceProperties &props) {
-  absl::flat_hash_set<std::string> FP16SupportedDevices = {{"gfx906"}, {"gfx908"}};
-  std::string gcnArchName = props.environment().at("architecture");
-  std::vector<std::string> gpu_arch = absl::StrSplit(gcnArchName, ":");
-  return !gpu_arch.empty() && FP16SupportedDevices.contains(gpu_arch[0]);
-}
-#endif
-
-
 namespace {
 
 #if GOOGLE_CUDA
@@ -69,6 +55,48 @@ const char kSuffix[] = "AutoMixedPrecision";
 const char kCastToFp16[] = "CastToFp16";
 const char kCastToBf16[] = "CastToBf16";
 const char kCastToFp32[] = "CastToFp32";
+
+// Returns the GPU architecture (compute capability) as a (major, minor) pair.
+std::pair<int, int> GetDeviceGPUArch(
+    const DeviceProperties& device_properties) {
+  if (device_properties.type() != "GPU") return {0, 0};
+  string arch_str = device_properties.environment().at("architecture");
+  std::vector<string> split_arch_str = str_util::Split(arch_str, '.');
+  if (split_arch_str.empty()) {
+    return {0, 0};
+  }
+
+  int major, minor;
+  if (!strings::safe_strto32(split_arch_str[0], &major)) {
+    return {0, 0};
+  }
+
+  if (split_arch_str.size() > 1) {
+    if (strings::safe_strto32(split_arch_str[1], &minor)) {
+      return {major, minor};
+    } else {
+      return {0, 0};
+    }
+  } else {
+    return {major, 0};
+  }
+}
+
+// Returns true if FP16Support is valid
+// For CUDA, We compare the GPUArch with the kMinGPUArch, if GPUArch is >= min, return true
+// For AMD the corresponding gfx arch string for the detected AMD GPU
+// is in the list for FP16 supported compute. Returns false otherwise.
+bool HasFastFP16Support(const DeviceProperties &props) {
+#if GOOGLE_CUDA
+  return GetDeviceGPUArch(props) >= kMinGPUArch;
+#elif TENSORFLOW_USE_ROCM
+  absl::flat_hash_set<std::string> FP16SupportedDevices = {{"gfx906"}, {"gfx908"}};
+  std::string gcnArchName = props.environment().at("architecture");
+  std::vector<std::string> gpu_arch = absl::StrSplit(gcnArchName, ":");
+  return !gpu_arch.empty() && FP16SupportedDevices.contains(gpu_arch[0]);
+#endif
+  return false;
+}
 
 // Instances of this class represent unique type attribute identifiers within a
 // node. It handles regular type attributes, list type attributes (where
@@ -1147,38 +1175,10 @@ bool AutoMixedPrecisionImpl::IsOnDevice(const NodeDef& node,
   return false;
 }
 
-// Returns the GPU architecture (compute capability) as a (major, minor) pair.
-std::pair<int, int> GetDeviceGPUArch(
-    const DeviceProperties& device_properties) {
-  if (device_properties.type() != "GPU") return {0, 0};
-  string arch_str = device_properties.environment().at("architecture");
-  std::vector<string> split_arch_str = str_util::Split(arch_str, '.');
-  if (split_arch_str.empty()) {
-    return {0, 0};
-  }
 
-  int major, minor;
-  if (!strings::safe_strto32(split_arch_str[0], &major)) {
-    return {0, 0};
-  }
-
-  if (split_arch_str.size() > 1) {
-    if (strings::safe_strto32(split_arch_str[1], &minor)) {
-      return {major, minor};
-    } else {
-      return {0, 0};
-    }
-  } else {
-    return {major, 0};
-  }
-}
 
 bool AutoMixedPrecisionImpl::IsOnSuitableGPUArch(const NodeDef& node) const {
-#if TENSORLFOW_USE_ROCM
-  return HasFastFP16Support(virtual_placer_.get_device(node)); 
-#else
-  return GetDeviceGPUArch(virtual_placer_.get_device(node)) >= kMinGPUArch;
-#endif
+  return HasFastFP16Support(virtual_placer_.get_device(node));
 }
 
 bool AutoMixedPrecisionImpl::ShouldProcess(const NodeDef& node) const {
@@ -1982,24 +1982,16 @@ Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
   return Status::OK();
 }
 
-int GetNumGPUs(const Cluster& cluster,
-               const std::pair<int, int>& min_arch = {0, 0}) {
+int GetNumGPUs(const Cluster& cluster) {
   auto devices = cluster.GetDevices();
   int num_gpus = 0;
   for (const auto& device : devices) {
     const DeviceProperties& device_properties = device.second;
-#if GOOGLE_CUDA
-    std::pair<int, int> arch = GetDeviceGPUArch(device_properties);
-    if (device_properties.type() == "GPU" && arch >= min_arch) {
-      num_gpus++;
-    }
-#elif TENSORFLOW_USE_ROCM
     if (device_properties.type() == "GPU") {
       if (ShouldIgnorePerformance() || HasFastFP16Support(device_properties)) {
         num_gpus++;
       }
     }
-#endif
   }
   return num_gpus;
 }
@@ -2027,8 +2019,7 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
   // Start by copying input graph to output.
   *output = item.graph;
 
-  int num_gpus = ShouldIgnorePerformance() ? GetNumGPUs(*cluster)
-                                           : GetNumGPUs(*cluster, kMinGPUArch);
+  int num_gpus = GetNumGPUs(*cluster);
   if (num_gpus < 1 && mode_ == AutoMixedPrecisionMode::CUDA) {
     // AutoMixedPrecision is currently only tuned for GPU.
     LOG(WARNING) << "No (suitable) GPUs detected, skipping " << name()

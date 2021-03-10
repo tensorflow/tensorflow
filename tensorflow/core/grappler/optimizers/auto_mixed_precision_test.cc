@@ -43,9 +43,7 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-
-bool IsSupportedGPU()
-{
+bool IsSupportedGPU() {
 #ifdef GOOGLE_CUDA
     return GetCudaVersion(*virtual_cluster_.get()) >= 9010;
 #else
@@ -124,7 +122,7 @@ class AutoMixedPrecisionTest : public GrapplerTest {
       device_properties.mutable_environment()->insert({"architecture", "7"});
       device_properties.mutable_environment()->insert({"cuda", "9010"});
 #else
-      device_properties.mutable_environment()->insert({"architecture", "gfx906");
+      device_properties.mutable_environment()->insert({"architecture", "gfx906"});
 #endif
       virtual_cluster_.reset(
           new VirtualCluster({{"/GPU:1", device_properties}}));
