@@ -635,3 +635,17 @@ func @testEmptyResults(%arg0: tensor<0x2xf32>) -> tensor<0x2xf32> {
   %0 = "tf.DynamicStitch"(%indices, %arg0) : (tensor<0xi32>, tensor<0x2xf32>) -> tensor<0x2xf32>
   return %0 : tensor<0x2xf32>
 }
+
+// Verifies that tf.Yield op which has no result and is not side effecting is
+// preserved.
+//
+// CHECK-LABEL: func @yieldOp
+func @yieldOp(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i1>) -> (tensor<f32>) {
+  // CHECK-2: tf.Yield
+  %0 = "tf.IfRegion"(%arg2) ({
+      "tf.Yield"(%arg0) : (tensor<f32>) -> ()
+    }, {
+      "tf.Yield"(%arg1) : (tensor<f32>) -> ()
+    }) { is_stateless = true}: (tensor<i1>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
