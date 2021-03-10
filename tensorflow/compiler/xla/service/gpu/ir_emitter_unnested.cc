@@ -3154,7 +3154,7 @@ Status IrEmitterUnnested::EmitNcclThunkFromMlir(MlirEmitterInput input) {
     return Status::OK();
   }
 
-  if (replica_count != 1) {
+  if (!is_degenerate) {
     CollectiveOpGroupMode group_mode = NcclThunkType::GetGroupMode(op);
 
     string message = absl::StrFormat(
