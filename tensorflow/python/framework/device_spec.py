@@ -304,7 +304,6 @@ class DeviceSpecV2(object):
 
   @staticmethod
   def _get_valid_device_types():
-    #physical_devices = context.context().list_physical_devices()
     valid_device_types = set({})
     physical_devices = pywrap_tfe.TF_ListPhysicalDevices()
     for device in physical_devices:
@@ -355,8 +354,6 @@ class DeviceSpecV2(object):
             raise ValueError("Cannot specify multiple device types: %s" % spec)
           device_type = y[1]
           if y[2] != "*":
-            if y[2].isdigit() is False:
-              raise ValueError("invalid literal for int: %s" % spec)
             device_index = int(y[2])
         elif ly and y[0] != "":  # pylint: disable=g-explicit-bool-comparison
           raise ValueError("Unknown attribute: '%s' in '%s'" % (y[0], spec))
