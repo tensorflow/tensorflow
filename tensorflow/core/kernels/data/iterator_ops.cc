@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -625,9 +624,6 @@ class ToSingleElementOp : public AsyncOpKernel {
         unbounded_threadpool_(ctx->env(), "tf_data_to_single_element") {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
-    // TODO(jsimsa): Support configuring the cache capacity.
-    function_handle_cache_ = absl::make_unique<FunctionHandleCache>(
-        ctx->function_library(), /*capacity=*/1000);
   }
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
@@ -655,7 +651,8 @@ class ToSingleElementOp : public AsyncOpKernel {
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
 
     IteratorContext::Params params(ctx);
-    params.function_handle_cache = function_handle_cache_.get();
+    FunctionHandleCache function_handle_cache(params.flr);
+    params.function_handle_cache = &function_handle_cache;
     ResourceMgr resource_mgr;
     params.resource_mgr = &resource_mgr;
     CancellationManager cancellation_manager(ctx->cancellation_manager());
@@ -692,7 +689,6 @@ class ToSingleElementOp : public AsyncOpKernel {
   }
 
   UnboundedThreadPool unbounded_threadpool_;
-  std::unique_ptr<FunctionHandleCache> function_handle_cache_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
 };
