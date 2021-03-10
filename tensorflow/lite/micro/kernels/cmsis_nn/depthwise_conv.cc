@@ -54,9 +54,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   const TfLiteTensor* input =
       GetInput(context, node, kDepthwiseConvInputTensor);
+  TF_LITE_ENSURE(context, input != nullptr);
   const TfLiteTensor* filter =
       GetInput(context, node, kDepthwiseConvWeightsTensor);
+  TF_LITE_ENSURE(context, filter != nullptr);
   TfLiteTensor* output = GetOutput(context, node, kDepthwiseConvOutputTensor);
+  TF_LITE_ENSURE(context, output != nullptr);
 
   const TfLiteType data_type = input->type;
   int input_width = SizeOfDimension(input, 2);
