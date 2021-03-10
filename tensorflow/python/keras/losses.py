@@ -743,7 +743,6 @@ class SparseCategoricalCrossentropy(LossFunctionWrapper):
     Args:
       from_logits: Whether `y_pred` is expected to be a logits tensor. By
         default, we assume that `y_pred` encodes a probability distribution.
-        **Note - Using from_logits=True may be more numerically stable.**
       reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to
         loss. Default value is `AUTO`. `AUTO` indicates that the reduction
         option will be determined by the usage context. For almost all cases
