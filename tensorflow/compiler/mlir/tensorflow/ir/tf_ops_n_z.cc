@@ -772,11 +772,6 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 // SelectOp
 //===----------------------------------------------------------------------===//
 
-void SelectOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                           MLIRContext *context) {
-  results.insert<SelectToSelectV2>(context);
-}
-
 // Verifies a few extra requirements on SelectOp:
 // (1) `then` and `else` must have same shape
 // (2) At least one of the following must be true:
