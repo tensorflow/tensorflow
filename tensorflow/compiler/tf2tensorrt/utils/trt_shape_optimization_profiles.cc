@@ -475,8 +475,10 @@ Status TrtShapeOptimizationProfile::RestoreProfiles(
 #endif
   int n_profiles = engine->getNbOptimizationProfiles();
   need_profiles_ = n_profiles > 0;
+#if IS_TRT_VERSION_GE(7, 1, 3, 0)
   int n_bindings = engine->getNbBindings();
   int K = n_bindings / n_profiles;
+#endif
   int n_inputs = GetNumberOfEngineInputs(engine);
   VLOG(2) << "Attempting to restore " << n_profiles << " profiles, each with "
           << n_inputs << " inputs";
