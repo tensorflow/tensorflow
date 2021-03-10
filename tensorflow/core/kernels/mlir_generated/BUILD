@@ -846,7 +846,6 @@ gpu_kernel_library(
         types = [
             "i1",
         ],
-        unroll_factors = "4",
     )
     for op in [
         "logical_and",
