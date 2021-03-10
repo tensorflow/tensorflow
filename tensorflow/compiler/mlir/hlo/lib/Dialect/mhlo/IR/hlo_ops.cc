@@ -920,7 +920,8 @@ class DynamicBroadcastInDimOpNotActuallyDynamic
 void DynamicBroadcastInDimOp::getCanonicalizationPatterns(
     OwningRewritePatternList& results, MLIRContext* context) {
   results.insert<DynamicBroadcastInDimOpNotActuallyDynamic,
-                 DynamicBroadcastToOwnShape_1, DynamicBroadcastToOwnShape_2>(
+                 DynamicBroadcastToOwnShape_1, DynamicBroadcastToOwnShape_2,
+                 DynamicBroadcastToOwnShape_3, DynamicBroadcastToOwnShape_4>(
       context);
 }
 
