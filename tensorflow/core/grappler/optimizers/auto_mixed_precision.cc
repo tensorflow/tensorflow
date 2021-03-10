@@ -83,14 +83,15 @@ std::pair<int, int> GetDeviceGPUArch(
 }
 
 // Returns true if FP16Support is valid
-// For CUDA, We compare the GPUArch with the kMinGPUArch, if GPUArch is >= min, return true
-// For AMD the corresponding gfx arch string for the detected AMD GPU
-// is in the list for FP16 supported compute. Returns false otherwise.
-bool HasFastFP16Support(const DeviceProperties &props) {
+// For CUDA, We compare the GPUArch with the kMinGPUArch, if GPUArch is >= min,
+// return true. For AMD the corresponding gfx arch string for the detected AMD
+// GPU is in the list for FP16 supported compute. Returns false otherwise.
+bool HasFastFP16Support(const DeviceProperties& props) {
 #if GOOGLE_CUDA
   return GetDeviceGPUArch(props) >= kMinGPUArch;
 #elif TENSORFLOW_USE_ROCM
-  absl::flat_hash_set<std::string> FP16SupportedDevices = {{"gfx906"}, {"gfx908"}};
+  absl::flat_hash_set<std::string> FP16SupportedDevices = {{"gfx906"},
+                                                           {"gfx908"}};
   std::string gcnArchName = props.environment().at("architecture");
   std::vector<std::string> gpu_arch = absl::StrSplit(gcnArchName, ":");
   return !gpu_arch.empty() && FP16SupportedDevices.contains(gpu_arch[0]);
@@ -1175,8 +1176,6 @@ bool AutoMixedPrecisionImpl::IsOnDevice(const NodeDef& node,
   return false;
 }
 
-
-
 bool AutoMixedPrecisionImpl::IsOnSuitableGPUArch(const NodeDef& node) const {
   return HasFastFP16Support(virtual_placer_.get_device(node));
 }
@@ -1987,10 +1986,9 @@ int GetNumGPUs(const Cluster& cluster) {
   int num_gpus = 0;
   for (const auto& device : devices) {
     const DeviceProperties& device_properties = device.second;
-    if (device_properties.type() == "GPU") {
-      if (ShouldIgnorePerformance() || HasFastFP16Support(device_properties)) {
-        num_gpus++;
-      }
+    if (device_properties.type() == "GPU" &&
+        (ShouldIgnorePerformance() || HasFastFP16Support(device_properties))) {
+      num_gpus++;
     }
   }
   return num_gpus;

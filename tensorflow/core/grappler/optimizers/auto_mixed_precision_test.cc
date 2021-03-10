@@ -43,7 +43,6 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-
 template <DataType DTYPE>
 Tensor GenerateIdentityMatrix(int64 height, int64 width) {
   typedef typename EnumToDataType<DTYPE>::Type T;
@@ -1024,13 +1023,6 @@ TEST_F(AutoMixedPrecisionTest, TensorListThroughFunction) {
   }
 }
 
-bool IsSupportedGPU() {
-#ifdef GOOGLE_CUDA
-    return GetCudaVersion(*virtual_cluster_.get()) >= 9010;
-#else
-    return true;
-#endif
-}
 
 int GetCudaVersion(const Cluster& cluster) {
   auto devices = cluster.GetDevices();
@@ -1046,6 +1038,14 @@ int GetCudaVersion(const Cluster& cluster) {
     }
   }
   return 0;
+}
+
+bool IsSupportedGPU(const Cluster& cluster) {
+#ifdef GOOGLE_CUDA
+    return GetCudaVersion(cluster) >= 9010;
+#else
+    return true;
+#endif
 }
 
 TEST_F(AutoMixedPrecisionTest, BatchMatMul) {
@@ -1067,7 +1067,7 @@ TEST_F(AutoMixedPrecisionTest, BatchMatMul) {
 
   GraphView output_view(&output);
   EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
-  if (IsSupportedGPU()) {
+  if (IsSupportedGPU(*virtual_cluster_.get())) {
     EXPECT_EQ(output.node_size(), item.graph.node_size() + 2);
     EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_HALF);
   } else {
