@@ -1069,13 +1069,6 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
   }
 
   if (consumer->opcode() == HloOpcode::kSelectAndScatter) {
-    // We currently only support adds in the scatter.
-    auto scatter_comp = consumer->scatter();
-    if (!Match(scatter_comp->root_instruction(),
-               m::AddAnyOrder(m::Parameter(0), m::Parameter(1)))) {
-      return false;
-    }
-
     for (int64 i = 0; i < consumer->operand_count(); ++i) {
       auto old_producer = consumer->mutable_operand(i);
       if (i < 2 && !old_to_new_instrs_.contains(old_producer)) {
@@ -1330,6 +1323,34 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
       }
     }
 
+    // Select-and-scatter specific checks.
+    if (consumer->opcode() == HloOpcode::kSelectAndScatter) {
+      // Only support floating point datatypes.
+      if (!ShapeUtil::ElementIsFloating(consumer->shape())) {
+        return false;
+      }
+      // We currently only support adds in the scatter.
+      auto scatter_comp = consumer->scatter();
+      if (!Match(scatter_comp->root_instruction(),
+                 m::AddAnyOrder(m::Parameter(0), m::Parameter(1)))) {
+        return false;
+      }
+      // Select should just be a single comparison with GE as the direction.
+      auto select_comp = consumer->select();
+      if (!Match(select_comp->root_instruction(),
+                 m::Compare(m::Parameter(0), m::Parameter(1))
+                     .WithComparisonDirection(ComparisonDirection::kGe)) &&
+          !Match(select_comp->root_instruction(),
+                 m::Compare(m::Parameter(1), m::Parameter(0))
+                     .WithComparisonDirection(ComparisonDirection::kGe))) {
+        return false;
+      }
+      // We do not support low padding on select-and-scatter.
+      if (consumer->window().dimensions(old_space_dim).padding_low() != 0) {
+        return false;
+      }
+    }
+
     return true;
   }
 
@@ -1546,11 +1567,17 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
     const int64 new_batch_dim = DimLookUp(permute_dims, old_batch_dim);
     const int64 new_space_dim = DimLookUp(permute_dims, old_space_dim);
 
+    auto pad_val =
+        is_select_and_scatter
+            ? computation_->AddInstruction(
+                  HloInstruction::CreateConstant(LiteralUtil::MinValue(
+                      consumer->operand(2)->shape().element_type())))
+            : init_val;
     TF_ASSIGN_OR_RETURN(
         first_operand,
-        SelectValidPortion(first_operand, consumer->mutable_operand(0),
-                           init_val, new_batch_dim, new_space_dim,
-                           old_batch_dim, old_space_dim));
+        SelectValidPortion(first_operand, consumer->mutable_operand(0), pad_val,
+                           new_batch_dim, new_space_dim, old_batch_dim,
+                           old_space_dim));
 
     // Calculate the required halo size
     auto new_shape = first_operand->shape();
