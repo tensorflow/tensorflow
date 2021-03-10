@@ -160,3 +160,6 @@ if __name__ == "__main__":
   args = parser.parse_args()
 
   _create_tflm_tree(args.output_dir, args.makefile_options)
+
+  if args.examples is not None:
+    _create_examples_tree(args.output_dir, args.examples)
