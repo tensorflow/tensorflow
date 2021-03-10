@@ -148,8 +148,13 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
 DEFINE_ALL_INDEX_TYPES(Eigen::half);
 DEFINE_ALL_INDEX_TYPES(float);
 DEFINE_ALL_INDEX_TYPES(double);
+
+// ROCm's GpuAtomicAdd doesn't support std::complex yet.
+#ifndef TENSORFLOW_USE_ROCM
 DEFINE_ALL_INDEX_TYPES(complex64);
 DEFINE_ALL_INDEX_TYPES(complex128);
+#endif
+
 #undef DEFINE_ALL_INDEX_TYPES
 #undef DEFINE
 
