@@ -111,14 +111,21 @@ else
   $(error "TOOLCHAIN=$(TOOLCHAIN) is not supported.")
 endif
 
+# TODO: fix CMSIS-NN related warnings.
+OMIT_ERRORS = \
+  -Wno-implicit-fallthrough \
+  -Wno-strict-aliasing
+
 PLATFORM_FLAGS = \
   -DTF_LITE_MCU_DEBUG_LOG \
   -mthumb \
   -mfloat-abi=$(FLOAT) \
   -funsigned-char \
   -mlittle-endian \
+   ${OMIT_ERRORS} \
   -Wno-type-limits \
   -Wno-unused-private-field \
+  -Wno-unused-variable \
   -fomit-frame-pointer \
   -MD \
   -DCPU_$(CORE)=1 \
@@ -127,3 +134,7 @@ PLATFORM_FLAGS = \
 # Common + C/C++ flags
 CXXFLAGS += $(PLATFORM_FLAGS)
 CCFLAGS += $(PLATFORM_FLAGS)
+
+EXCLUDED_EXAMPLE_TESTS := \
+  tensorflow/lite/micro/examples/micro_speech/Makefile.inc
+MICRO_LITE_EXAMPLE_TESTS := $(filter-out $(EXCLUDED_EXAMPLE_TESTS), $(MICRO_LITE_EXAMPLE_TESTS))

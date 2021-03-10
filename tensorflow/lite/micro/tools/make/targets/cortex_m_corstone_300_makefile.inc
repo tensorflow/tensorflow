@@ -104,7 +104,7 @@ else
   $(error "TOOLCHAIN=$(TOOLCHAIN) is not supported.")
 endif
 
-# TODO: fix warnings.
+# TODO: fix CMSIS-NN related warnings.
 OMIT_ERRORS = \
   -Wno-implicit-fallthrough \
   -Wno-strict-aliasing
