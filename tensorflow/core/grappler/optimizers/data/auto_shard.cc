@@ -37,6 +37,8 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
+using tensorflow::data::AutoShardPolicy;
+
 constexpr char kAssertCardinalityDatasetOpName[] = "AssertCardinalityDataset";
 constexpr char kShardDatasetOpName[] = "ShardDataset";
 constexpr char kShuffleDatasetOpName[] = "ShuffleDataset";
@@ -48,6 +50,7 @@ constexpr char kRebatchDatasetV2OpName[] = "RebatchDatasetV2";
 constexpr char kTensorDatasetOpName[] = "TensorDataset";
 constexpr char kTensorSliceDatasetOpName[] = "TensorSliceDataset";
 constexpr char kPlaceholderOpName[] = "Placeholder";
+constexpr char kConstOpName[] = "Const";
 
 constexpr char kNumWorkersAttrName[] = "num_workers";
 constexpr char kNumReplicasAttrName[] = "num_replicas";
@@ -624,6 +627,35 @@ Status ShardByData(const NodeDef& sink_node, int64 num_workers, int64 index,
   return AddShardNode(graph, *shard_before, num_workers, index);
 }
 
+// Searches the dataset graph replacing any occurence of `shard(1, 0)` with
+// `shard(num_workers, index)`.
+Status ShardByHint(const NodeDef& sink_node, int64 num_workers, int64 index,
+                   int64 num_replicas, MutableGraphView* graph) {
+  auto get_shard_node = [graph](const NodeDef& node) -> const NodeDef* {
+    if (node.op() != kShardDatasetOpName) return nullptr;
+    auto num_workers_node = graph->GetNode(node.input(1));
+    if (num_workers_node->op() != kConstOpName) return nullptr;
+    if (num_workers_node->attr().at("value").tensor().int64_val(0) !=
+        tensorflow::data::kShardHint)
+      return nullptr;
+    return &node;
+  };
+
+  auto* num_workers_node =
+      graph_utils::AddScalarConstNode(static_cast<int64>(num_workers), graph);
+  auto* worker_index_node =
+      graph_utils::AddScalarConstNode(static_cast<int64>(index), graph);
+
+  for (const NodeDef& node : graph->graph()->node()) {
+    const NodeDef* shard_node = get_shard_node(node);
+    if (!shard_node) continue;
+    auto mutable_node = graph->GetNode(shard_node->name());
+    *mutable_node->mutable_input(1) = num_workers_node->name();
+    *mutable_node->mutable_input(2) = worker_index_node->name();
+  }
+  return Status::OK();
+}
+
 Status OptimizeGraph(const GrapplerItem& item, int64 num_workers, int64 index,
                      AutoShardPolicy policy, int64 num_replicas,
                      GraphDef* output) {
@@ -642,13 +674,12 @@ Status OptimizeGraph(const GrapplerItem& item, int64 num_workers, int64 index,
   switch (policy) {
     case AutoShardPolicy::OFF:
       return Status::OK();
-
     case AutoShardPolicy::FILE:
       return ShardByFile(*sink_node, num_workers, index, &flib, &graph);
-
     case AutoShardPolicy::DATA:
       return ShardByData(*sink_node, num_workers, index, num_replicas, &graph);
-
+    case AutoShardPolicy::HINT:
+      return ShardByHint(*sink_node, num_workers, index, num_replicas, &graph);
     case AutoShardPolicy::AUTO:
     default:
       Status s = ShardByFile(*sink_node, num_workers, index, &flib, &graph);
@@ -689,7 +720,8 @@ Status AutoShard::Init(
   if (auto_shard_policy_ != AutoShardPolicy::OFF &&
       auto_shard_policy_ != AutoShardPolicy::AUTO &&
       auto_shard_policy_ != AutoShardPolicy::DATA &&
-      auto_shard_policy_ != AutoShardPolicy::FILE) {
+      auto_shard_policy_ != AutoShardPolicy::FILE &&
+      auto_shard_policy_ != AutoShardPolicy::HINT) {
     return errors::InvalidArgument(kAutoShardPolicyAttrName, " is invalid.");
   }
 
