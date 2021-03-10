@@ -584,7 +584,6 @@ class BinaryCrossentropy(LossFunctionWrapper):
       from_logits: Whether to interpret `y_pred` as a tensor of
         [logit](https://en.wikipedia.org/wiki/Logit) values. By default, we
           assume that `y_pred` contains probabilities (i.e., values in [0, 1]).
-          **Note - Using from_logits=True may be more numerically stable.**
       label_smoothing: Float in [0, 1]. When 0, no smoothing occurs. When > 0,
         we compute the loss between the predicted labels and a smoothed version
         of the true labels, where the smoothing squeezes the labels towards 0.5.
@@ -664,7 +663,6 @@ class CategoricalCrossentropy(LossFunctionWrapper):
     Args:
       from_logits: Whether `y_pred` is expected to be a logits tensor. By
         default, we assume that `y_pred` encodes a probability distribution.
-        **Note - Using from_logits=True is more numerically stable.**
       label_smoothing: Float in [0, 1]. When > 0, label values are smoothed,
         meaning the confidence on label values are relaxed. For example, if
         `0.1`, use `0.1 / num_classes` for non-target labels and 
