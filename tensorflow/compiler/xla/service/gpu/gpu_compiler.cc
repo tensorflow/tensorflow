@@ -931,10 +931,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
             << tensorflow::strings::HumanReadableNumBytes(
                    cost_analysis.bytes_accessed());
     if (module->config().hlo_profiling_enabled()) {
-      profile_index_map = absl::make_unique<HloProfileIndexMap>(*module);
-      profile_printer =
-          CreateHloProfilePrinterData(*profile_index_map, cost_analysis,
-                                      module->entry_computation()->name());
+      LOG(ERROR) << "--xla_hlo_profile for GPU is unsupported.";
     }
   }
 
