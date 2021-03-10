@@ -271,6 +271,22 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertCountEqual(num_repetitions * list(range(num_elements)), results)
 
   @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testRoundRobinConsumerRestart(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    # Round robin reads can cause slow cluster shutdown.
+    data_service_test_base.GLOBAL_CLUSTERS.add(cluster)
+    num_consumers = 3
+    ds = self.make_round_robin_dataset(cluster, num_consumers)
+    ds = ds.take(20)
+    self.getDatasetOutput(ds)
+    ds2 = self.make_round_robin_dataset(cluster, num_consumers)
+    ds2 = ds2.take(20)
+    with self.assertRaisesRegex(errors.FailedPreconditionError,
+                                "current round has already reached"):
+      self.getDatasetOutput(ds2)
+
+  @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(num_workers=[1, 3], num_consumers=[1, 2, 5])))
