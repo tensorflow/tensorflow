@@ -374,7 +374,7 @@ class InterleaveDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
               cycle_length=2,
               block_length=[1, 3],
               num_parallel_calls=[None, 1, 2])))
-  def testSerializationCore(self, cycle_length, block_length,
+  def testCore(self, cycle_length, block_length,
                             num_parallel_calls):
     input_values = np.array([4, 5, 6], dtype=np.int64)
     num_outputs = np.sum(input_values) * 2
