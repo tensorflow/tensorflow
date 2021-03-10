@@ -36,6 +36,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"
 #include "mlir-hlo/utils/convert_op_folder.h"
 #include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
@@ -479,32 +480,8 @@ LogicalResult AbsOp::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(CollectivePermuteOp op) {
-  // Check that source target pair is Nx2 tensor.
-  auto type = op.source_target_pairs().getType().dyn_cast<RankedTensorType>();
-  if (type.getRank() != 2)
-    return op.emitError() << "expect source_target_pairs attribute to be of "
-                             "rank 2, but got rank "
-                          << type.getRank();
-  if (type.getShape()[1] != 2)
-    return op.emitError()
-           << "expect source_target_pairs attribute of shape (N, 2), but got ("
-           << type.getShape() << ")";
-  // Check source target pairs for duplicate sources or targets
-  llvm::DenseSet<int64_t> sources;
-  llvm::DenseSet<int64_t> targets;
-  for (auto i = op.source_target_pairs().begin(),
-            e = op.source_target_pairs().end();
-       i != e; ++i) {
-    auto val = (*i).getSExtValue();
-    if (i.getIndex() % 2 == 0) {
-      bool is_unique = sources.insert(val).second;
-      if (!is_unique) return op.emitError() << "duplicate sources not allowed.";
-    } else {
-      bool is_unique = targets.insert(val).second;
-      if (!is_unique) return op.emitError() << "duplicate targets not allowed.";
-    }
-  }
-  return success();
+  return mlir::hlo::VerifyCollectivePermuteSourceTargetPairs(
+      op, op.source_target_pairs());
 }
 
 //===----------------------------------------------------------------------===//

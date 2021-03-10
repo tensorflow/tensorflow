@@ -225,6 +225,17 @@ gentbl(
 )
 
 cc_library(
+    name = "hlo_ops_common",
+    srcs = ["lib/Dialect/mhlo/IR/hlo_ops_common.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"],
+    includes = ["include"],
+    deps = [
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "lhlo_gpu_ops_structs",
     srcs = [
         "include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_structs.cc.inc",
@@ -382,14 +393,15 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
-        "hlo_ops_pattern_gen",
         ":canonicalize_inc_gen",
         ":chlo_ops_inc_gen",
         ":convert_op_folder",
         ":hlo_ops_base_enums",
         ":hlo_ops_base_inc_gen",
         ":hlo_ops_base_structs",
+        ":hlo_ops_common",
         ":hlo_ops_inc_gen",
+        ":hlo_ops_pattern_gen",
         ":infer_fusibility_op_interface",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
@@ -426,6 +438,7 @@ cc_library(
         ":hlo_ops_base_enums",
         ":hlo_ops_base_inc_gen",
         ":hlo_ops_base_structs",
+        ":hlo_ops_common",
         ":lhlo_ops_inc_gen",
         ":lhlo_ops_structs_inc_gen",
         "@llvm-project//llvm:Support",

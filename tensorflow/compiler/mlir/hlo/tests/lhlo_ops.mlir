@@ -788,6 +788,36 @@ func @collective_permute_memrefs(%arg0: memref<128x32xf32>, %arg_out: memref<128
 
 // -----
 
+func @invalid_collective_permute(%arg0: memref<128x32xf32>, %arg_out: memref<128x32xf32>) -> () {
+  // expected-error@+1{{expect source_target_pairs attribute of shape (N, 2), but got (1, 3)}}
+  "lmhlo.collective_permute"(%arg0, %arg_out) {
+    source_target_pairs = dense<[[2, 3, 4]]> : tensor<1x3xi64>
+  } : (memref<128x32xf32>, memref<128x32xf32>) -> ()
+  return
+}
+
+// -----
+
+func @invalid_collective_permute(%arg0: memref<128x32xf32>, %arg_out: memref<128x32xf32>) -> () {
+  // expected-error@+1{{duplicate sources not allowed.}}
+  "lmhlo.collective_permute"(%arg0, %arg_out) {
+    source_target_pairs = dense<[[1,2], [1,3]]> : tensor<2x2xi64>
+  } : (memref<128x32xf32>, memref<128x32xf32>) -> ()
+  return
+}
+
+// -----
+
+func @invalid_collective_permute(%arg0: memref<128x32xf32>, %arg_out: memref<128x32xf32>) -> () {
+  // expected-error@+1{{duplicate targets not allowed.}}
+  "lmhlo.collective_permute"(%arg0, %arg_out) {
+    source_target_pairs = dense<[[1,2], [0,2]]> : tensor<2x2xi64>
+  } : (memref<128x32xf32>, memref<128x32xf32>) -> ()
+  return
+}
+
+// -----
+
 // CHECK-LABEL: func @fft_memrefs
 func @fft_memrefs(%arg0: memref<3x9xf32>, %arg_out: memref<3x5xcomplex<f32>>) -> () {
   "lmhlo.fft"(%arg0, %arg_out) {fft_length = dense<9> : tensor<1xi64>, fft_type = "RFFT"} : (memref<3x9xf32>, memref<3x5xcomplex<f32>>) -> ()
