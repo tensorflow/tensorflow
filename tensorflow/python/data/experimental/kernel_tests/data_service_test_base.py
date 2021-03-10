@@ -34,6 +34,7 @@ NO_WORK_DIR = ""
 # We use a faster than normal heartbeat interval so that tests run faster.
 TEST_HEARTBEAT_INTERVAL_MS = 100
 TEST_DISPATCHER_TIMEOUT_MS = 1000
+PROTOCOL = "grpc"
 # Some clusters may take a long time to shut down due to blocked outstanding
 # RPCs. We store the clusters here so that they are destroyed at end of process
 # instead of slowing down unit tests.
@@ -55,7 +56,7 @@ def _make_worker(dispatcher_address, shutdown_quiet_period_ms=0, port=0):
       dispatcher_address=dispatcher_address,
       worker_address=defaults.worker_address,
       port=port,
-      protocol=defaults.protocol,
+      protocol=PROTOCOL,
       heartbeat_interval_ms=TEST_HEARTBEAT_INTERVAL_MS,
       dispatcher_timeout_ms=TEST_DISPATCHER_TIMEOUT_MS,
       data_transfer_protocol=None,
@@ -141,6 +142,7 @@ class TestCluster(object):
         server_lib.DispatcherConfig(
             port=dispatcher_port,
             work_dir=work_dir,
+            protocol=PROTOCOL,
             fault_tolerant_mode=fault_tolerant_mode,
             job_gc_check_interval_ms=job_gc_check_interval_ms,
             job_gc_timeout_ms=job_gc_timeout_ms),
@@ -149,10 +151,6 @@ class TestCluster(object):
     self.workers = []
     for _ in range(num_workers):
       self.add_worker(start=start)
-
-  @property
-  def target(self):
-    return self.dispatcher.target
 
   def dispatcher_address(self):
     return self.dispatcher.target.split("://")[1]
@@ -191,6 +189,7 @@ class TestCluster(object):
         server_lib.DispatcherConfig(
             port=port,
             work_dir=self.dispatcher._config.work_dir,
+            protocol=PROTOCOL,
             fault_tolerant_mode=self.dispatcher._config.fault_tolerant_mode))
 
   def num_registered_workers(self):
@@ -218,7 +217,7 @@ class TestBase(test_base.DatasetTestBase):
     return dataset.apply(
         data_service_ops._distribute(
             processing_mode,
-            cluster.target,
+            cluster.dispatcher_address(),
             job_name=job_name,
             consumer_index=consumer_index,
             num_consumers=num_consumers,
