@@ -24,7 +24,6 @@ import re
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
-from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_utils
@@ -78,8 +77,8 @@ class SidecarEvaluator(object):
       data=data,
       checkpoint_dir='/tmp/checkpoint_dir',  # dir for training-saved checkpoint
       steps=None,  # Eval until dataset is exhausted
-      log_dir='/tmp/log_dir',
-      max_evaluations=None  # The evaluation needs to be stopped manually
+      max_evaluations=None,  # The evaluation needs to be stopped manually
+      callbacks=[tf.keras.callbacks.TensorBoard(log_dir='/tmp/log_dir')]
   ).start()
   ```
 
@@ -87,7 +86,7 @@ class SidecarEvaluator(object):
   files which can be visualized by tensorboard (which provides a webpage link):
 
   ```bash
-  $ tensorboard --logdir=/tmp/log_dir
+  $ tensorboard --logdir=/tmp/log_dir/validation
   ...
   TensorBoard 2.4.0a0 at http://host:port (Press CTRL+C to quit)
   ```
@@ -109,9 +108,9 @@ class SidecarEvaluator(object):
                model,
                data,
                checkpoint_dir,
-               log_dir=None,
                steps=None,
-               max_evaluations=None):
+               max_evaluations=None,
+               callbacks=None):
     """Initializes an `SidecarEvaluator` object.
 
     Args:
@@ -123,7 +122,6 @@ class SidecarEvaluator(object):
         types that Keras `model.evaluate` supports as the input data `x`, such
         as a `tf.data.Dataset`.
       checkpoint_dir: Directory where checkpoint files are saved.
-      log_dir: Directory where summary files for TensorBoard are saved.
       steps: Number of steps to perform evaluation for, when evaluating a single
         checkpoint file. If `None`, evaluation continues until the dataset is
         exhausted. For repeated evaluation dataset, user must specify `steps` to
@@ -142,21 +140,19 @@ class SidecarEvaluator(object):
         checkpoints may be skipped if evaluation is slower than checkpoint
         creation. If `None`, `SidecarEvaluator` will evaluate indefinitely, and
         the user must terminate evaluator program themselves.
+      callbacks: List of `keras.callbacks.Callback` instances to apply during
+        evaluation. See [callbacks](/api_docs/python/tf/keras/callbacks).
     """
     self.model = model
     self.data = data
     self.checkpoint_dir = checkpoint_dir
-    if log_dir:
-      self._summary_writer = summary_ops_v2.create_file_writer_v2(
-          logdir=log_dir)
-    else:
-      self._summary_writer = None
     self._iterations = variables.Variable(
         name='iterations',
         initial_value=_ITERATIONS_UNINITIALIZED,
         dtype=dtypes.int64)
     self.max_evaluations = max_evaluations
     self.steps = steps
+    self.callbacks = callbacks or []
 
   def start(self):
     """Starts the evaluation loop."""
@@ -185,6 +181,12 @@ class SidecarEvaluator(object):
             if re.match(r'^layer_with_weights-[\d+]', attribute) is not None:
               self.model.load_weights(latest_checkpoint)
               break
+        else:
+          # The model checkpoint might not include optimizer in cases, e.g.
+          # using a custom training loop. Directly assign the iterations
+          # property to be used in callbacks.
+          if self.model.optimizer:
+            self.model.optimizer.iterations.assign(self._iterations)
       except (errors_impl.OpError,) as e:
         # A couple errors can happen here with the coordinator racing to write
         # checkpoint:
@@ -208,8 +210,7 @@ class SidecarEvaluator(object):
           'Evaluation starts: Model weights loaded from latest '
           'checkpoint file: %s.', latest_checkpoint)
 
-      # TODO(rchao): Support arbitrary callback for extensibility.
-      self.model.evaluate(self.data, steps=self.steps)
+      self.model.evaluate(self.data, steps=self.steps, callbacks=self.callbacks)
 
       logging.info(
           'End of evaluation. Metrics: %s', ' '.join([
@@ -217,14 +218,6 @@ class SidecarEvaluator(object):
                              metric.result().numpy())
               for metric in self.model.metrics
           ]))
-
-      if self._summary_writer:
-        with summary_ops_v2.record_if(True), self._summary_writer.as_default():
-          for metric in self.model.metrics:
-            summary_ops_v2.scalar(
-                metric.name,
-                metric.result(),
-                step=self._iterations.read_value())
 
       # TODO(rchao): Make the max evaluation robust in case users save the
       # checkpoints with epoch format {epoch:03d}.

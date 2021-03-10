@@ -43,6 +43,7 @@ from tensorflow.python.keras import losses
 from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.engine import functional
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.feature_column import dense_features
 from tensorflow.python.keras.feature_column import sequence_feature_column as ksfc
@@ -875,7 +876,7 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
     self.assertAllEqual(model(args), expected)
     self.assertAllEqual(model.predict(args, batch_size=batch_size), expected)
 
-    # Make sure it can be successfully saved and loaded
+    # Make sure it can be successfully saved and loaded.
     save_format = testing_utils.get_save_format()
     saved_model_dir = self._save_model_dir()
     keras.models.save_model(model, saved_model_dir, save_format=save_format)
@@ -885,6 +886,41 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
     self.assertAllEqual(loaded_model(args), expected)
     self.assertAllEqual(loaded_model.predict(args, batch_size=batch_size),
                         expected)
+
+  @combinations.generate(combinations.combine(mode=['eager', 'graph']))
+  def test_custom_functional_registered(self):
+
+    def _get_cls_definition():
+      class CustomModel(keras.Model):
+
+        def c(self):
+          return 'c'
+
+      return CustomModel
+
+    cls = _get_cls_definition()
+    self.assertEqual(cls.__bases__[0], keras.Model)
+    input_ = keras.layers.Input(shape=(1,))
+    output = keras.layers.Dense(1)(input_)
+    model = cls(input_, output)
+    # `cls` now inherits from `Functional` class.
+    self.assertEqual(cls.__bases__[0], functional.Functional)
+
+    save_format = testing_utils.get_save_format()
+    saved_model_dir = self._save_model_dir()
+    keras.models.save_model(model, saved_model_dir, save_format=save_format)
+
+    loaded_model = keras.models.load_model(
+        saved_model_dir, custom_objects={'CustomModel': cls})
+    self.assertIsInstance(loaded_model, cls)
+
+    # Check with "new" `CustomModel` class definition.
+    new_cls = _get_cls_definition()
+    # The new `CustomModel` class is *not* derived from `Functional`.
+    self.assertEqual(new_cls.__bases__[0], keras.Model)
+    reloaded_model = keras.models.load_model(
+        saved_model_dir, custom_objects={'CustomModel': new_cls})
+    self.assertIsInstance(reloaded_model, new_cls)
 
   @combinations.generate(combinations.combine(mode=['eager']))
   def test_shared_objects(self):
@@ -1005,34 +1041,47 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
     loaded = keras.models.load_model(saved_model_dir)
     self.assertIs(loaded.layers[1], loaded.layers[2].layer)
 
-  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
-  def test_multi_output_metrics_name_stay_same(self):
+  @combinations.generate(
+      combinations.combine(mode=['graph', 'eager'], fit=[True, False]))
+  def test_multi_output_metrics_name_stay_same(self, fit):
     """Tests that metric names don't change with each save/load cycle.
 
     e.g. "head_0_accuracy" should not become "head_0_head_0_accuracy" after
     saving and loading a model.
+
+    Arguments:
+      fit: Whether the model should be fit before saving.
     """
-    input_ = keras.Input((4,))
-    model = keras.Model(
-        input_,
-        [keras.layers.Softmax(name='head_0')(keras.layers.Dense(3)(input_)),
-         keras.layers.Softmax(name='head_1')(keras.layers.Dense(5)(input_))])
-    metric = keras.metrics.BinaryAccuracy()
-    model.compile(optimizer='rmsprop',
-                  loss='mse',
-                  metrics={'head_0': [metric, 'accuracy']})
+    # This doesn't work at all, so we can't check whether metric names are
+    # correct.
+    if not context.executing_eagerly() and not fit:
+      self.skipTest('b/181767784')
 
-    # Run one iteration.
-    x = np.random.rand(2, 4)
-    y = {'head_0': np.random.randint(2, size=(2, 3)),
-         'head_1': np.random.randint(2, size=(2, 5))}
-    model.fit(x, y, verbose=0)
+    with self.cached_session():
+      input_ = keras.Input((4,))
+      model = keras.Model(
+          input_,
+          [keras.layers.Softmax(name='head_0')(keras.layers.Dense(3)(input_)),
+           keras.layers.Softmax(name='head_1')(keras.layers.Dense(5)(input_))])
+      metric = keras.metrics.BinaryAccuracy()
+      model.compile(optimizer='rmsprop',
+                    loss='mse',
+                    metrics={'head_0': [metric, 'accuracy']})
 
-    # Save and reload.
-    save_format = testing_utils.get_save_format()
-    saved_model_dir = self._save_model_dir()
-    keras.models.save_model(model, saved_model_dir, save_format=save_format)
-    loaded = keras.models.load_model(saved_model_dir)
+      x = np.random.rand(2, 4)
+      y = {'head_0': np.random.randint(2, size=(2, 3)),
+           'head_1': np.random.randint(2, size=(2, 5))}
+
+      # Make sure metrix prefixing works the same regardless of whether the user
+      # has fit the model before saving.
+      if fit:
+        model.fit(x, y, verbose=0)
+
+      # Save and reload.
+      save_format = testing_utils.get_save_format()
+      saved_model_dir = self._save_model_dir()
+      keras.models.save_model(model, saved_model_dir, save_format=save_format)
+      loaded = keras.models.load_model(saved_model_dir)
 
     # Make sure the metrics names from the model before saving match the loaded
     # model.

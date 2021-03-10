@@ -302,6 +302,57 @@ OpFoldResult PackOp::fold(ArrayRef<Attribute> operands) {
   return slice_op.input();
 }
 
+// Convert Pack to Reshape when there is only one operand to be packed.
+// For example,
+//
+//   %0 = tf.Pack(%input) {axis = 0} // %input : tensor<2x3xf32>
+//
+// can be canonicalized to
+//
+//   %shape = "tf.Const"() {value = dense<[1, 2, 3]> : tensor<3xi64>}
+//   %0 = tf.Reshape(%input, %shape)
+struct ConvertPackToReshape : public OpRewritePattern<PackOp> {
+  using OpRewritePattern<PackOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(PackOp pack_op,
+                                PatternRewriter &rewriter) const override {
+    // Check if there is only one operand to be packed.
+    if (pack_op.N() != 1) {
+      return failure();
+    }
+
+    // Check if input and output are static.
+    auto input_ty = pack_op.getOperand(0).getType().cast<ShapedType>();
+    auto output_ty = pack_op.output().getType().cast<ShapedType>();
+    if (!input_ty.hasStaticShape() || !output_ty.hasStaticShape()) {
+      return failure();
+    }
+
+    // Create constant shape for reshape.
+    auto type =
+        RankedTensorType::get(output_ty.getRank(), rewriter.getIntegerType(64));
+    auto shape_attr = DenseIntElementsAttr::get(type, output_ty.getShape());
+    auto shape = rewriter.create<ConstOp>(pack_op.getLoc(), shape_attr);
+
+    auto reshape_op = rewriter.create<ReshapeOp>(pack_op.getLoc(), output_ty,
+                                                 pack_op.getOperand(0), shape);
+    // Preserve unregistered attributes. Outside compilation relies on
+    // unregistered attribute `_xla_outside_compilation` to form clusters, so
+    // they must be preserved during canonicalization.
+    // TODO(b/173622615): Remove after fixed.
+    CopyUnderscoredAttributes(pack_op.getOperation(),
+                              reshape_op.getOperation());
+
+    rewriter.replaceOp(pack_op, reshape_op.getResult());
+    return success();
+  }
+};
+
+void PackOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                         MLIRContext *context) {
+  results.insert<ConvertPackToReshape>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // PadOp
 //===----------------------------------------------------------------------===//
@@ -720,11 +771,6 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 // SelectOp
 //===----------------------------------------------------------------------===//
-
-void SelectOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                           MLIRContext *context) {
-  results.insert<SelectToSelectV2>(context);
-}
 
 // Verifies a few extra requirements on SelectOp:
 // (1) `then` and `else` must have same shape
@@ -2587,7 +2633,7 @@ class ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
                              TF::FusedBatchNormV3Op::getOperationName(),
                              tf_fused_batch_norm_op.getOperands(),
                              new_result_types,
-                             tf_fused_batch_norm_op.getAttrs());
+                             tf_fused_batch_norm_op->getAttrs());
     Operation *tf_fused_batch_norm_op_v3 = rewriter.createOperation(new_state);
 
     rewriter.replaceOp(tf_fused_batch_norm_op,
@@ -2880,16 +2926,17 @@ static LogicalResult VerifyWhileTypes(Operation *op, TypeRange cond_input,
   return success();
 }
 
-static LogicalResult Verify(WhileOp op) {
-  auto cond_fn = op.cond_function();
-  auto body_fn = op.body_function();
+LogicalResult WhileOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
+  // TODO(jpienaar): Remove.
+  if (failed(WhileOpAdaptor(*this).verify(getLoc()))) return failure();
+
+  auto cond_fn = symbol_table.lookupNearestSymbolFrom<FuncOp>(*this, cond());
+  auto body_fn = symbol_table.lookupNearestSymbolFrom<FuncOp>(*this, body());
   if (!cond_fn) {
-    return op.emitOpError("cond refers to an undefined function : ")
-           << op.cond();
+    return emitOpError("cond refers to an undefined function : ") << cond();
   }
   if (!body_fn) {
-    return op.emitOpError("body refers to an undefined function : ")
-           << op.body();
+    return emitOpError("body refers to an undefined function : ") << body();
   }
 
   auto cond_fn_type = cond_fn.getType();
@@ -2897,14 +2944,12 @@ static LogicalResult Verify(WhileOp op) {
 
   // Verify that the cond function has exactly one result.
   if (cond_fn_type.getNumResults() != 1)
-    return op.emitOpError("requires cond function to have exactly one result");
+    return emitOpError("requires cond function to have exactly one result");
 
-  if (failed(VerifyWhileTypes(op, /*cond_input=*/cond_fn_type.getInputs(),
-                              /*body_input=*/body_fn_type.getInputs(),
-                              /*body_result=*/body_fn_type.getResults(),
-                              op.shape_invariant())))
-    return failure();
-  return success();
+  return VerifyWhileTypes(*this, /*cond_input=*/cond_fn_type.getInputs(),
+                          /*body_input=*/body_fn_type.getInputs(),
+                          /*body_result=*/body_fn_type.getResults(),
+                          shape_invariant());
 }
 
 //===----------------------------------------------------------------------===//
@@ -3029,9 +3074,9 @@ struct WhileRegionEliminatePassThrough
     }
 
     // Create the new while operation.
-    auto new_while_op =
-        rewriter.create<WhileRegionOp>(while_op.getLoc(), new_result_types,
-                                       new_while_operands, while_op.getAttrs());
+    auto new_while_op = rewriter.create<WhileRegionOp>(
+        while_op.getLoc(), new_result_types, new_while_operands,
+        while_op->getAttrs());
 
     // Move region bodies to the new while.
     rewriter.inlineRegionBefore(while_op.cond(), new_while_op.cond(),

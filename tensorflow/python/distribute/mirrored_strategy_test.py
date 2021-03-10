@@ -236,7 +236,7 @@ class MirroredTwoDeviceDistributionTest(
 
   def test_prefetch_to_device_dataset(self, distribution):
     input_options = distribute_lib.InputOptions(
-        experimental_prefetch_to_device=True)
+        experimental_fetch_to_device=True)
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.batch(distribution.num_replicas_in_sync)
     dataset = distribution.experimental_distribute_dataset(
@@ -258,7 +258,7 @@ class MirroredTwoDeviceDistributionTest(
 
   def test_prefetch_to_host_dataset(self, distribution):
     input_options = distribute_lib.InputOptions(
-        experimental_prefetch_to_device=False)
+        experimental_fetch_to_device=False)
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.batch(distribution.num_replicas_in_sync)
     dataset = distribution.experimental_distribute_dataset(

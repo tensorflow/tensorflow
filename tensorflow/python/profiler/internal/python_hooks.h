@@ -45,25 +45,36 @@ struct PythonHooksOptions {
 };
 
 struct PythonTraceEntry {
-  PythonTraceEntry(uint64 start, uint64 end, PyCodeObject* code,
-                   PyCFunctionObject* func)
+  PythonTraceEntry(uint64 start, uint64 end, PyObject* filename, PyObject* name,
+                   int firstlineno)
       : start_time_ns(start),
         end_time_ns(end),
-        code_object(code),
-        function_object(func) {
-    Py_XINCREF(code_object);
+        co_filename(filename),
+        co_name(name),
+        co_firstlineno(firstlineno) {
+    Py_XINCREF(co_filename);
+    Py_XINCREF(co_name);
+  }
+  PythonTraceEntry(uint64 start, uint64 end, PyCFunctionObject* func)
+      : start_time_ns(start), end_time_ns(end), function_object(func) {
     Py_XINCREF(function_object);
   }
+
   ~PythonTraceEntry() {
-    Py_XDECREF(code_object);
+    Py_XDECREF(co_filename);
+    Py_XDECREF(co_name);
     Py_XDECREF(function_object);
   }
+
   PythonTraceEntry(PythonTraceEntry&& other) {
     start_time_ns = other.start_time_ns;
     end_time_ns = other.end_time_ns;
-    code_object = other.code_object;
+    co_firstlineno = other.co_firstlineno;
+    co_filename = other.co_filename;
+    co_name = other.co_name;
     function_object = other.function_object;
-    other.code_object = nullptr;
+    other.co_filename = nullptr;
+    other.co_name = nullptr;
     other.function_object = nullptr;
   }
 
@@ -71,8 +82,10 @@ struct PythonTraceEntry {
 
   uint64 start_time_ns;
   uint64 end_time_ns;
-  PyCodeObject* code_object;
-  PyCFunctionObject* function_object;
+  PyObject* co_filename = nullptr;
+  PyObject* co_name = nullptr;
+  int co_firstlineno = 0;
+  PyCFunctionObject* function_object = nullptr;
 
   PythonTraceEntry(const PythonTraceEntry& other) = delete;
   void operator=(const PythonTraceEntry&) = delete;

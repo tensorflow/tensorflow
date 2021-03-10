@@ -377,21 +377,35 @@ class MultiHeadAttention(Layer):
       # These computations could be wrapped into the keras attention layer once
       # it support mult-head einsum computations.
       self._build_attention(output_rank)
-      if self._output_shape:
-        if not isinstance(self._output_shape, collections.abc.Sized):
-          output_shape = [self._output_shape]
-        else:
-          output_shape = self._output_shape
+      self._output_dense = self._make_output_dense(
+          free_dims, common_kwargs, "attention_output")
+
+  def _make_output_dense(self, free_dims, common_kwargs, name=None):
+    """Builds the output projection matrix.
+
+    Args:
+      free_dims: Number of free dimensions for einsum equation building.
+      common_kwargs: Common keyword arguments for einsum layer.
+      name: the name for the projection layer.
+
+    Returns:
+      Projection layer.
+    """
+    if self._output_shape:
+      if not isinstance(self._output_shape, collections.abc.Sized):
+        output_shape = [self._output_shape]
       else:
-        output_shape = [self._query_shape[-1]]
-      einsum_equation, bias_axes, output_rank = _build_proj_equation(
-          free_dims, bound_dims=2, output_dims=len(output_shape))
-      self._output_dense = einsum_dense.EinsumDense(
-          einsum_equation,
-          output_shape=_get_output_shape(output_rank - 1, output_shape),
-          bias_axes=bias_axes if self._use_bias else None,
-          name="attention_output",
-          **common_kwargs)
+        output_shape = self._output_shape
+    else:
+      output_shape = [self._query_shape[-1]]
+    einsum_equation, bias_axes, output_rank = _build_proj_equation(
+        free_dims, bound_dims=2, output_dims=len(output_shape))
+    return einsum_dense.EinsumDense(
+        einsum_equation,
+        output_shape=_get_output_shape(output_rank - 1, output_shape),
+        bias_axes=bias_axes if self._use_bias else None,
+        name=name,
+        **common_kwargs)
 
   def _build_attention(self, rank):
     """Builds multi-head dot-product attention computations.

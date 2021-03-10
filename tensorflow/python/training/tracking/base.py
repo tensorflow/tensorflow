@@ -45,14 +45,19 @@ OBJECT_GRAPH_PROTO_KEY = "_CHECKPOINTABLE_OBJECT_GRAPH"
 VARIABLE_VALUE_KEY = "VARIABLE_VALUE"
 OBJECT_CONFIG_JSON_KEY = "OBJECT_CONFIG_JSON"
 
-TrackableReference = collections.namedtuple(
-    "TrackableReference",
-    [
-        # The local name for this dependency.
-        "name",
-        # The Trackable object being referenced.
-        "ref"
-    ])
+
+@tf_export("__internal__.tracking.TrackableReference", v1=[])
+class TrackableReference(
+    collections.namedtuple("TrackableReference", ["name", "ref"])):
+  """A named reference to a trackable object for use with the `Trackable` class.
+
+  These references mark named `Trackable` dependencies of a `Trackable` object
+  and should be created when overriding `Trackable._checkpoint_dependencies`.
+
+  Attributes:
+    name: The local name for this dependency.
+    ref: The `Trackable` object being referenced.
+  """
 
 
 # TODO(bfontain):  Update once sharded initialization interface is finalized.

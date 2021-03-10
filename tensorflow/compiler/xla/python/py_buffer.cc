@@ -28,7 +28,7 @@ namespace xla {
 namespace py = pybind11;
 
 PyBuffer::PyBuffer(std::shared_ptr<PyClient> client,
-                   std::unique_ptr<PjRtBuffer> buffer,
+                   std::shared_ptr<PjRtBuffer> buffer,
                    std::shared_ptr<Traceback> traceback)
     : client_(std::move(client)),
       buffer_(std::move(buffer)),
@@ -66,6 +66,13 @@ pybind11::dtype PyBuffer::python_dtype() const {
 
 ClientAndPtr<PjRtDevice> PyBuffer::device() const {
   return WrapWithClient(client_, buffer_->device());
+}
+
+std::unique_ptr<PyBuffer> PyBuffer::Clone() const {
+  auto buffer = std::make_unique<PyBuffer>(client_, buffer_, traceback_);
+  buffer->sticky_device_ = sticky_device_;
+  buffer->aval_ = aval_;
+  return buffer;
 }
 
 StatusOr<std::unique_ptr<PyBuffer>> PyBuffer::CopyToDevice(
@@ -149,19 +156,8 @@ StatusOr<pybind11::object> PyBuffer::AsNumPyArray(py::handle this_obj) {
   return array;
 }
 
-// TODO(zhangqiaorjc): Delete UnsafeBufferPointer.
 StatusOr<std::uintptr_t> PyBuffer::UnsafeBufferPointer() const {
-  if (buffer_->on_device_shape().IsTuple()) {
-    return Unimplemented(
-        "unsafe_buffer_pointer is not implemented for tuple "
-        "buffers.");
-  }
-
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold,
-      buffer_->AcquireExternalReference());
-  const void* ptr = external_reference_hold->OpaqueDeviceMemoryDataPointer();
-  return absl::bit_cast<std::uintptr_t>(ptr);
+  return client_->pjrt_client()->UnsafeBufferPointer(buffer_.get());
 }
 
 StatusOr<py::dict> PyBuffer::CudaArrayInterface() const {

@@ -459,8 +459,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
     input_iterator = iter(
         distribution.experimental_distribute_dataset(
             get_dataset_from_tensor_slices(data).batch(2),
-            distribute_lib.InputOptions(
-                experimental_prefetch_to_device=False)))
+            distribute_lib.InputOptions(experimental_fetch_to_device=False)))
 
     local_results = distribution.experimental_local_results(
         input_iterator.get_next())
@@ -479,7 +478,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
     input_iterator = iter(
         distribution.distribute_datasets_from_function(
             lambda _: get_dataset_from_tensor_slices(data),
-            distribute_lib.InputOptions(experimental_prefetch_to_device=False)))
+            distribute_lib.InputOptions(experimental_fetch_to_device=False)))
 
     local_results = distribution.experimental_local_results(
         input_iterator.get_next())

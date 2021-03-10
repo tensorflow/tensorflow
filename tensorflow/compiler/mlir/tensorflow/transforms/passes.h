@@ -43,6 +43,11 @@ namespace TF {
 // ops.
 std::unique_ptr<OperationPass<FuncOp>> CreateDropWhileShapeInvariantPass();
 
+// Creates a pass that drops `shape_invariant` attribute from While/WhileRegion
+// ops within device cluster.
+std::unique_ptr<OperationPass<FuncOp>>
+CreateDropWhileShapeInvariantInDeviceClusterPass();
+
 // Transforms functional control flow operations in the TensorFlow dialect to
 // MLIR Control Flow Graph (CFG) form.
 std::unique_ptr<OperationPass<FuncOp>> CreateTFFunctionalControlFlowToCFG();
@@ -207,6 +212,15 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateConstantOpDeviceAssignmentPass();
 // to TensorFlow Graph.
 void AddGraphExportLoweringPasses(OpPassManager& pm);
 
+// Returns pass that verifies whether all functions in module are of single
+// tf_executor.graph and each tf_executor.island in tf_executor.graph only has a
+// single op.
+std::unique_ptr<OperationPass<ModuleOp>> CreateVerifySuitableForExportPass();
+
+// Returns pass that prepares TPU computation to be legal for export to
+// TensorFlow.
+std::unique_ptr<OperationPass<FuncOp>>
+CreatePrepareTpuComputationForTfExportPass();
 }  // namespace TF
 
 namespace tf_executor {
@@ -250,7 +264,12 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateClusterOutliningPass();
 
 // Creates a pass that clusters ops into tf_device::ClusterOp regions
 // according to a policy specified by the pass options.
+//
+// See the documentation for the pass options in `tf_passes.td`.
 std::unique_ptr<FunctionPass> CreateClusterOpsByPolicyPass();
+std::unique_ptr<FunctionPass> CreateClusterOpsByPolicyPass(
+    ArrayRef<std::string> oplist, int min_cluster_size, StringRef algorithm,
+    StringRef policy_name);
 
 // A pass that decomposes composite resource operations into primitive ones like
 // ReadVariableOp, AssignVariableOp and other computations to facilitate

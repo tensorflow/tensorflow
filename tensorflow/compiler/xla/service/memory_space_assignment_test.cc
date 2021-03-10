@@ -4371,6 +4371,166 @@ ENTRY %primitive_computation_gather.4 (parameter.1: f32[3,10,5], parameter.2: s3
               root->shape().layout().memory_space() == kDefaultMemorySpace);
 }
 
+TEST_P(MemorySpaceAssignmentTest, AsyncOpShortLiveRange) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  param = bf16[4]{0} parameter(0)
+  negate0 = bf16[4]{0} negate(param)
+  collective-permute-start = (bf16[4]{0}, bf16[4]{0}, u32[], u32[]) collective-permute-start(negate0), source_target_pairs={{0,1},{1,2},{2,3}}
+  negate1 = bf16[4]{0} negate(param)
+  negate2 = bf16[4]{0} negate(negate1)
+  negate3 = bf16[4]{0} negate(negate2)
+  collective-permute-done = bf16[4]{0} collective-permute-done(collective-permute-start)
+  ROOT add = add(collective-permute-done, negate3)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  // Expect both the source and destination buffers to get alternate memory
+  // allocations.
+  HloInstruction* collective_permute_start =
+      module->entry_computation()->GetInstructionWithName(
+          "collective-permute-start");
+  EXPECT_TRUE(collective_permute_start->shape()
+                  .tuple_shapes(0)
+                  .layout()
+                  .memory_space() == kAlternateMemorySpace);
+  EXPECT_TRUE(collective_permute_start->shape()
+                  .tuple_shapes(1)
+                  .layout()
+                  .memory_space() == kAlternateMemorySpace);
+}
+
+TEST_P(MemorySpaceAssignmentTest, AsyncOpShortLiveRangeInputBufferConsumer) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  param = bf16[4]{0} parameter(0)
+  negate0 = bf16[4]{0} negate(param)
+  collective-permute-start = (bf16[4]{0}, bf16[4]{0}, u32[], u32[]) collective-permute-start(negate0), source_target_pairs={{0,1},{1,2},{2,3}}
+  negate1 = bf16[4]{0} negate(negate0)
+  negate2 = bf16[4]{0} negate(negate1)
+  negate3 = bf16[4]{0} negate(negate2)
+  collective-permute-done = bf16[4]{0} collective-permute-done(collective-permute-start)
+  ROOT add = add(collective-permute-done, negate3)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  // Expect only the destination buffer to get alternate memory allocation
+  // because negate0 is also used by negate1.
+  HloInstruction* collective_permute_start =
+      module->entry_computation()->GetInstructionWithName(
+          "collective-permute-start");
+  EXPECT_TRUE(collective_permute_start->shape()
+                  .tuple_shapes(0)
+                  .layout()
+                  .memory_space() == kDefaultMemorySpace);
+  EXPECT_TRUE(collective_permute_start->shape()
+                  .tuple_shapes(1)
+                  .layout()
+                  .memory_space() == kAlternateMemorySpace);
+}
+
+TEST_P(MemorySpaceAssignmentTest, AsyncOpLongLiveRange) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  param = bf16[4]{0} parameter(0)
+  negate0 = bf16[4]{0} negate(param)
+  collective-permute-start = (bf16[4]{0}, bf16[4]{0}, u32[], u32[]) collective-permute-start(negate0), source_target_pairs={{0,1},{1,2},{2,3}}
+  negate1 = bf16[4]{0} negate(param)
+  negate2 = bf16[4]{0} negate(negate1)
+  negate3 = bf16[4]{0} negate(negate2)
+  negate4 = bf16[4]{0} negate(negate3)
+  negate5 = bf16[4]{0} negate(negate4)
+  negate6 = bf16[4]{0} negate(negate5)
+  negate7 = bf16[4]{0} negate(negate6)
+  negate8 = bf16[4]{0} negate(negate7)
+  negate9 = bf16[4]{0} negate(negate8)
+  negate10 = bf16[4]{0} negate(negate9)
+  negate11 = bf16[4]{0} negate(negate10)
+  negate12 = bf16[4]{0} negate(negate11)
+  negate13 = bf16[4]{0} negate(negate12)
+  collective-permute-done = bf16[4]{0} collective-permute-done(collective-permute-start)
+  ROOT add = add(collective-permute-done, negate13)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  // Expect none of the buffers to get alternate memory allocations because of
+  // the long live range.
+  HloInstruction* collective_permute_start =
+      module->entry_computation()->GetInstructionWithName(
+          "collective-permute-start");
+  EXPECT_TRUE(collective_permute_start->shape()
+                  .tuple_shapes(0)
+                  .layout()
+                  .memory_space() == kDefaultMemorySpace);
+  EXPECT_TRUE(collective_permute_start->shape()
+                  .tuple_shapes(1)
+                  .layout()
+                  .memory_space() == kDefaultMemorySpace);
+}
+
+TEST_P(MemorySpaceAssignmentTest, AsyncOpLongLiveRangeInputBufferConsumer) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  param = bf16[4]{0} parameter(0)
+  negate0 = bf16[4]{0} negate(param)
+  collective-permute-start = (bf16[4]{0}, bf16[4]{0}, u32[], u32[]) collective-permute-start(negate0), source_target_pairs={{0,1},{1,2},{2,3}}
+  negate1 = bf16[4]{0} negate(negate0)
+  negate2 = bf16[4]{0} negate(negate1)
+  negate3 = bf16[4]{0} negate(negate2)
+  negate4 = bf16[4]{0} negate(negate3)
+  negate5 = bf16[4]{0} negate(negate4)
+  negate6 = bf16[4]{0} negate(negate5)
+  negate7 = bf16[4]{0} negate(negate6)
+  negate8 = bf16[4]{0} negate(negate7)
+  negate9 = bf16[4]{0} negate(negate8)
+  negate10 = bf16[4]{0} negate(negate9)
+  negate11 = bf16[4]{0} negate(negate10)
+  negate12 = bf16[4]{0} negate(negate11)
+  negate13 = bf16[4]{0} negate(negate12)
+  collective-permute-done = bf16[4]{0} collective-permute-done(collective-permute-start)
+  ROOT add = add(collective-permute-done, negate13)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  // Expect none of the buffers to get alternate memory allocations because of
+  // the long live range and because negate0 is also used by negate1.
+  HloInstruction* collective_permute_start =
+      module->entry_computation()->GetInstructionWithName(
+          "collective-permute-start");
+  EXPECT_TRUE(collective_permute_start->shape()
+                  .tuple_shapes(0)
+                  .layout()
+                  .memory_space() == kDefaultMemorySpace);
+  EXPECT_TRUE(collective_permute_start->shape()
+                  .tuple_shapes(1)
+                  .layout()
+                  .memory_space() == kDefaultMemorySpace);
+}
+
 // A mock MemorySpaceAssignmentRepacker class that accepst a map of
 // (start_time,offset) -> new_offset values. Using this map, the repacker
 // repacks the allocations to the new_offset.

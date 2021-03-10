@@ -173,6 +173,8 @@ class PjRtClient {
   // Returns a string that identifies the platform (CPU/GPU/TPU).
   virtual absl::string_view platform_name() const = 0;
 
+  virtual absl::string_view platform_version() const = 0;
+
   // Return a device-specific default device assignment, e.g., GPU and TPU may
   // be different.
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
@@ -245,6 +247,10 @@ class PjRtClient {
       void* device_ptr, const Shape& shape, PjRtDevice* device,
       std::function<void()> on_delete_callback) = 0;
 
+  // Returns platform-dependent address for the given buffer that is often but
+  // not guaranteed to be the physical/device address.
+  virtual StatusOr<std::uintptr_t> UnsafeBufferPointer(PjRtBuffer* buffer);
+
   // Asynchronously makes a vector of PjRtBuffers that can be used to receive
   // cross host transfers using `client` on `device'. `shapes` must be the exact
   // shapes, with identical layouts, corresponding to the buffers that will be
@@ -262,6 +268,11 @@ class PjRtClient {
   virtual StatusOr<ChannelHandle> CreateChannelHandle() = 0;
   virtual StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() = 0;
   virtual StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() = 0;
+
+  // TODO(zhangqiaorjc): Experimental API to be removed.
+  // Defragment device memory.
+  virtual Status Defragment(absl::Span<PjRtBuffer* const> buffers,
+                            absl::Span<PjRtExecutable* const> executables) = 0;
 };
 
 // Holds a reference from Python to a tuple of device buffers. A PjRtBuffer

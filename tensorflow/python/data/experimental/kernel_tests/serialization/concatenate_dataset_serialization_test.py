@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the ConcatenateDataset serialization."""
+"""Tests for checkpointing the ConcatenateDataset."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -20,16 +20,15 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
-class ConcatenateDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase,
-    parameterized.TestCase):
+class ConcatenateDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                       parameterized.TestCase):
 
   def _build_concatenate_dataset(self, var_array):
     input_components = (np.tile(np.array([[1], [2], [3], [4]]), 20),

@@ -138,10 +138,9 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     optimizer->options_.remove_redundant_cast = true;
   }
 
-  void EnableOnlyReorderRedundantReshapeAroundUnary(
-      ArithmeticOptimizer* optimizer) {
+  void EnableOnlyReorderReshapeAroundUnary(ArithmeticOptimizer* optimizer) {
     DisableAllStages(optimizer);
-    optimizer->options_.reorder_redundant_reshape_around_unary = true;
+    optimizer->options_.reorder_reshape_around_unary = true;
   }
 
   void EnableOnlyRemoveRedundantReshape(ArithmeticOptimizer* optimizer) {
@@ -167,6 +166,11 @@ class ArithmeticOptimizerTest : public GrapplerTest {
   void EnableOnlyReplaceMulWithSquare(ArithmeticOptimizer* optimizer) {
     DisableAllStages(optimizer);
     optimizer->options_.replace_mul_with_square = true;
+  }
+
+  void EnableOnlyReplacePackWithTileReshape(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.replace_pack_with_tile_reshape = true;
   }
 
   void EnableOnlyHoistCWiseUnaryChains(ArithmeticOptimizer* optimizer) {

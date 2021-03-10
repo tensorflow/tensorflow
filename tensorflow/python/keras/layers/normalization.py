@@ -518,22 +518,33 @@ class BatchNormalizationBase(Layer):
     self.built = True
 
   def _assign_moving_average(self, variable, value, momentum, inputs_size):
+
+    def calculate_update_delta():
+      decay = ops.convert_to_tensor_v2_with_dispatch(
+          1.0 - momentum, name='decay')
+      if decay.dtype != variable.dtype.base_dtype:
+        decay = math_ops.cast(decay, variable.dtype.base_dtype)
+      update_delta = (variable - math_ops.cast(value, variable.dtype)) * decay
+      if inputs_size is not None:
+        update_delta = array_ops.where(inputs_size > 0, update_delta,
+                                       K.zeros_like(update_delta))
+      return update_delta
+
     with K.name_scope('AssignMovingAvg') as scope:
-      with ops._colocate_with(variable):  # pylint: disable=protected-access
-        decay = ops.convert_to_tensor_v2_with_dispatch(
-            1.0 - momentum, name='decay')
-        if decay.dtype != variable.dtype.base_dtype:
-          decay = math_ops.cast(decay, variable.dtype.base_dtype)
-        update_delta = (variable - math_ops.cast(value, variable.dtype)) * decay
-        if inputs_size is not None:
-          update_delta = array_ops.where(inputs_size > 0, update_delta,
-                                         K.zeros_like(update_delta))
-        return state_ops.assign_sub(variable, update_delta, name=scope)
+      if ops.executing_eagerly_outside_functions():
+        return variable.assign_sub(calculate_update_delta(), name=scope)
+      else:
+        with ops._colocate_with(variable):  # pylint: disable=protected-access
+          return state_ops.assign_sub(
+              variable, calculate_update_delta(), name=scope)
 
   def _assign_new_value(self, variable, value):
     with K.name_scope('AssignNewValue') as scope:
-      with ops._colocate_with(variable):  # pylint: disable=protected-access
-        return state_ops.assign(variable, value, name=scope)
+      if ops.executing_eagerly_outside_functions():
+        return variable.assign(value, name=scope)
+      else:
+        with ops._colocate_with(variable):  # pylint: disable=protected-access
+          return state_ops.assign(variable, value, name=scope)
 
   def _fused_batch_norm(self, inputs, training):
     """Returns the output of fused batch norm."""

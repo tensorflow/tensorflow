@@ -1049,6 +1049,7 @@ tf_kernel_library(
     srcs = ["shard_dataset_op.cc"],
     hdrs = ["shard_dataset_op.h"],
     deps = [
+        ":dataset_utils",
         ":name_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",

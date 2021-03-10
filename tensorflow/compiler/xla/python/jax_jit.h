@@ -27,6 +27,10 @@ limitations under the License.
 
 namespace jax {
 
+// Returns the value for jax_enable_x64 (defined by a thread-local value if
+// defined, defaulting to the value of the flag otherwise).
+bool GetEnableX64();
+
 // Describes the abstract shape and dtype of an argument.
 struct ArgSignature {
   ArgSignature(xla::PrimitiveType dtype, absl::Span<const xla::int64> shape,
@@ -86,6 +90,7 @@ struct CallSignature {
   // arguments (sorted by keyword name).
   std::vector<ArgSignature> dynamic_args_signatures;
   xla::PjRtDevice* device;
+  bool jax_enable_x64;
 
   bool operator==(const CallSignature& other) const;
   bool operator!=(const CallSignature& other) const {
@@ -138,37 +143,12 @@ xla::Status ParseArguments(const pybind11::args& args,
                            absl::Span<int const> static_argnums,
                            ParsedArgumentsAsBuffers& arguments);
 
-struct DevicePutResult {
-  explicit DevicePutResult(xla::PjRtBuffer* b, bool weak_type)
-      : buffer(b), weak_type(weak_type), owned_buffer(nullptr) {}
-  DevicePutResult(std::unique_ptr<xla::PjRtBuffer> new_buffer, bool weak_type)
-      : buffer(new_buffer.get()),
-        weak_type(weak_type),
-        owned_buffer(std::move(new_buffer)) {}
-
-  xla::PjRtBuffer* buffer;
-  bool weak_type;
-  std::unique_ptr<xla::PjRtBuffer> owned_buffer;
-};
 
 // Returns the ArgSignature associated with an argument. Returns an error if
 // the argument is not supported.
 xla::StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
                                                 bool jax_enable_x64);
 
-// Moves a device-like object to be on device.
-// - If the object is already on device, `owned_buffer` will be nullptr.
-// - If it's not, a new buffer will be created and returned using
-//   `owned_buffer`.
-// In all cases, `buffer` will point to the already existing or newly created
-// buffer.
-// If `obj` is not convertible to a `xla::PjRtBuffer` from C++, an error will be
-// returned; float0 dtype and `_DeviceArray` with non-trivial LazyExpr are not
-// supported yet.
-xla::StatusOr<DevicePutResult> DevicePut(pybind11::handle arg,
-                                         xla::PjRtDevice* to_device,
-                                         bool jax_enable_x64,
-                                         xla::PyClient& pyclient);
 
 // The function to call in `xla.cc` to add the bindings for this module.
 void BuildJaxjitSubmodule(pybind11::module& m);

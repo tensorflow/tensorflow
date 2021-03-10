@@ -26,6 +26,7 @@ from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -628,7 +629,7 @@ class Loader(object):
     return imported_constant, setattr
 
   def _recreate_resource(self, proto):
-    return _RestoredResource(device=proto.device), setattr
+    return _RestoredResource(device=proto.device), _setattr_and_track
 
 
 # TODO(b/124205571,b/124092991): Solve destruction of resources.
@@ -637,7 +638,6 @@ class _RestoredResource(tracking.TrackableResource):
 
   def __init__(self, device=""):
     super(_RestoredResource, self).__init__(device=device)
-    self._destroy_resource_fn = None
 
   def _create_resource(self):
     raise RuntimeError()
@@ -645,15 +645,13 @@ class _RestoredResource(tracking.TrackableResource):
   def _initialize(self):
     raise RuntimeError()
 
-  @property
+  # _list_functions_for_serialization expects Function objects, but unlike
+  # _create_resource and _initialize, _destroy_function didn't always exist in
+  # older TrackableResource implementations, so this default stub must be a
+  # Function.
+  @def_function.function
   def _destroy_resource(self):
-    return self._destroy_resource_fn
-
-  @_destroy_resource.setter
-  def _destroy_resource(self, destroy_resource_fn):
-    self._resource_deleter = tracking.CapturableResourceDeleter(
-        destroy_resource_fn)
-    self._destroy_resource_fn = destroy_resource_fn
+    raise RuntimeError()
 
   def _list_functions_for_serialization(self, unused_serialization_cache):
     # Overwrite this method to avoid the implementation of
@@ -662,14 +660,20 @@ class _RestoredResource(tracking.TrackableResource):
     functions = {
         "_create_resource": self._create_resource,
         "_initialize": self._initialize,
+        "_destroy_resource": self._destroy_resource,
     }
-    if self._destroy_resource:
-      functions.update(_destroy_resource=self._destroy_resource)
     return functions
 
 
 def _call_attribute(instance, *args, **kwargs):
   return instance.__call__(*args, **kwargs)
+
+
+def _setattr_and_track(obj, name, value):
+  """Sets new attribute and marks it as a dependency if Trackable."""
+  setattr(obj, name, value)
+  if isinstance(value, base.Trackable):
+    obj._track_trackable(value, name)  # pylint:disable=protected-access
 
 
 @tf_export("__internal__.saved_model.load_partial", v1=[])

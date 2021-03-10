@@ -425,6 +425,12 @@ Status DatasetBase::MakeIterator(
     IteratorContext* ctx, const IteratorBase* parent,
     const string& output_prefix,
     std::unique_ptr<IteratorBase>* iterator) const {
+  profiler::TraceMe traceme(
+      [&] {
+        return profiler::TraceMeEncode(
+            strings::StrCat("MakeIterator::", type_string()), {});
+      },
+      profiler::TraceMeLevel::kInfo);
   *iterator = MakeIteratorInternal(output_prefix);
   Status s = (*iterator)->InitializeBase(ctx, parent);
   if (s.ok()) {
@@ -528,11 +534,7 @@ DatasetBaseIterator::DatasetBaseIterator(const BaseParams& params)
     : params_(params) {
   params_.dataset->Ref();
   VLOG(2) << prefix() << " constructor";
-  traceme_metadata_ = strings::StrCat("id=", id_);
-  if (parent_) {
-    strings::StrAppend(&traceme_metadata_, ",parent_id=", parent_id_);
-  }
-  strings::StrAppend(&traceme_metadata_, ",shapes=");
+  strings::StrAppend(&traceme_metadata_, "shapes=");
   auto& shapes = output_shapes();
   for (int i = 0; i < shapes.size(); ++i) {
     if (i > 0) {
@@ -556,7 +558,11 @@ DatasetBaseIterator::~DatasetBaseIterator() {
 }
 
 string DatasetBaseIterator::BuildTraceMeName() {
-  string result = strings::StrCat(params_.prefix, "#", traceme_metadata_);
+  string result =
+      strings::StrCat(params_.prefix, "#", traceme_metadata_, ",id=", id_);
+  if (parent_) {
+    strings::StrAppend(&result, ",parent_id=", parent_id_);
+  }
   TraceMeMetadata metadata = GetTraceMeMetadata();
   for (const auto& pair : metadata) {
     strings::StrAppend(&result, ",", pair.first, "=", pair.second);

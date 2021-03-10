@@ -820,23 +820,30 @@ class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
     self.assertAllClose(layer.states, loaded_layer.states)
     self.assertAllClose(model(input_arr), loaded(input_arr))
 
-  def testSaveStatelessConvLSTM2D(self):
+  @parameterized.named_parameters([('stateful', True), ('stateless', False)])
+  def testSaveConvLSTM2D(self, stateful):
     data_format = 'channels_first'
     batch, timesteps, channels, rows, cols = 12, 10, 8, 4, 4
     input_arr = np.ones(
         (batch, timesteps, channels, rows, cols)).astype('float32')
     layer = keras.layers.ConvLSTM2D(
-        filters=16, kernel_size=(1, 1), data_format=data_format)
+        filters=16, kernel_size=(1, 1), data_format=data_format,
+        stateful=stateful)
     x = keras.Input(batch_shape=(batch, timesteps, channels, rows, cols))
     y = layer(x)
     model = keras.Model(x, y)
 
     predict_1 = model(input_arr)
+    self.evaluate([v.initializer for v in model.variables])
     saved_model_dir = self._save_model_dir()
+
     tf_save.save(model, saved_model_dir)
     del model
 
     loaded = keras_load.load(saved_model_dir)
+    self.evaluate([v.initializer for v in loaded.variables])
+    if stateful:
+      loaded.reset_states()
     predict_2 = loaded(input_arr)
     self.assertAllClose(predict_1, predict_2)
 
@@ -1008,21 +1015,25 @@ class TestLayerCallTracing(test.TestCase, parameterized.TestCase):
         return inputs * 2
 
     layer = Layer()
+
     call_collection = keras_save.LayerCallCollection(layer)
     fn = call_collection.add_function(layer.call, 'call')
     fn2 = call_collection.add_function(layer.call2, 'call2')
 
-    fn(np.ones((2, 3)))
-    fn(np.ones((4, 5)))
+    with keras_save.tracing_scope():
+      fn(np.ones((2, 3)))
+      fn(np.ones((4, 5)))
 
-    self.assertLen(fn._list_all_concrete_functions_for_serialization(), 2)
-    self.assertLen(fn2._list_all_concrete_functions_for_serialization(), 2)
+    self.assertLen(
+        fn.wrapped_call._list_all_concrete_functions_for_serialization(), 2)
+    self.assertLen(
+        fn2.wrapped_call._list_all_concrete_functions_for_serialization(), 2)
 
     # Check that the shapes are correct
     self.assertEqual(
         {(2, 3), (4, 5)},
-        set(tuple(c.structured_input_signature[0][0].shape.as_list())
-            for c in fn2._list_all_concrete_functions_for_serialization()))
+        set(tuple(c.structured_input_signature[0][0].shape.as_list()) for c in
+            fn2.wrapped_call._list_all_concrete_functions_for_serialization()))
 
   def test_training_arg_replacement(self):
 
@@ -1031,17 +1042,24 @@ class TestLayerCallTracing(test.TestCase, parameterized.TestCase):
       call_collection = keras_save.LayerCallCollection(layer)
       fn = call_collection.add_function(layer.call, 'call')
 
-      fn(np.ones((2, 3)), training=True)
-      self.assertLen(fn._list_all_concrete_functions_for_serialization(), 2)
-
-      fn(np.ones((2, 4)), training=False)
-      self.assertLen(fn._list_all_concrete_functions_for_serialization(), 4)
+      with keras_save.tracing_scope():
+        fn(np.ones((2, 3)), training=True)
+      self.assertLen(
+          fn.wrapped_call._list_all_concrete_functions_for_serialization(), 2)
+      with keras_save.tracing_scope():
+        fn(np.ones((2, 4)), training=False)
+      self.assertLen(
+          fn.wrapped_call._list_all_concrete_functions_for_serialization(), 4)
 
       if training_keyword:
-        fn(np.ones((2, 5)), True)
-        self.assertLen(fn._list_all_concrete_functions_for_serialization(), 6)
-        fn(np.ones((2, 6)))
-        self.assertLen(fn._list_all_concrete_functions_for_serialization(), 8)
+        with keras_save.tracing_scope():
+          fn(np.ones((2, 5)), True)
+        self.assertLen(
+            fn.wrapped_call._list_all_concrete_functions_for_serialization(), 6)
+        with keras_save.tracing_scope():
+          fn(np.ones((2, 6)))
+        self.assertLen(
+            fn.wrapped_call._list_all_concrete_functions_for_serialization(), 8)
 
     class LayerWithTrainingKeyword(keras.engine.base_layer.Layer):
 

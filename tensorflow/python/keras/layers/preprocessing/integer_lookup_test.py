@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
 import itertools
 import os
 import random
@@ -573,6 +574,11 @@ class IntegerLookupErrorTest(keras_parameterized.TestCase,
 @keras_parameterized.run_all_keras_modes
 class IntegerLookupSavingTest(keras_parameterized.TestCase,
                               preprocessing_test_utils.PreprocessingLayerTest):
+
+  def tearDown(self):
+    keras.backend.clear_session()
+    gc.collect()
+    super(IntegerLookupSavingTest, self).tearDown()
 
   def test_vocabulary_persistence_across_saving(self):
     vocab_data = [42, 1138, 725, 1729]

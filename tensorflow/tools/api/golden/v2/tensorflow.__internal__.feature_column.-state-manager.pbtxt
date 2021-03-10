@@ -1,0 +1,34 @@
+path: "tensorflow.__internal__.feature_column.StateManager"
+tf_class {
+  is_instance: "<class \'tensorflow.python.feature_column.feature_column_v2._StateManagerImpl\'>"
+  is_instance: "<class \'tensorflow.python.feature_column.feature_column_v2.StateManager\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'layer\', \'trainable\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "add_resource"
+    argspec: "args=[\'self\', \'feature_column\', \'resource_name\', \'resource\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "add_variable"
+    argspec: "args=[\'self\', \'feature_column\', \'var\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "create_variable"
+    argspec: "args=[\'self\', \'feature_column\', \'name\', \'shape\', \'dtype\', \'trainable\', \'use_resource\', \'initializer\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'True\', \'None\'], "
+  }
+  member_method {
+    name: "get_resource"
+    argspec: "args=[\'self\', \'feature_column\', \'resource_name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_variable"
+    argspec: "args=[\'self\', \'feature_column\', \'name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "has_resource"
+    argspec: "args=[\'self\', \'feature_column\', \'resource_name\'], varargs=None, keywords=None, defaults=None"
+  }
+}

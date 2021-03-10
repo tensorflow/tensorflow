@@ -47,9 +47,8 @@ def _get_file_list(key, makefile_options):
   params_list = [
       "make", "-f", "tensorflow/lite/micro/tools/make/Makefile", key
   ] + makefile_options.split()
-  process = subprocess.Popen(params_list,
-                             stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE)
+  process = subprocess.Popen(
+      params_list, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
   stdout, stderr = process.communicate()
 
   if process.returncode != 0:
@@ -145,19 +144,21 @@ def _create_examples_tree(prefix_dir, examples_list):
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(
       description="Starting script for TFLM project generation")
-  parser.add_argument("output_dir",
-                      help="Output directory for generated TFLM tree")
-  parser.add_argument("--makefile_options",
-                      default="",
-                      help="Additional TFLM Makefile options. For example: "
-                      "--makefile_options=\"TARGET=<target> "
-                      "OPTIMIZED_KERNEL_DIR=<optimized_kernel_dir> "
-                      "TARGET_ARCH=corex-m4\"")
-  parser.add_argument("--examples",
-                      "-e",
-                      action="append",
-                      help="Examples to add to the output tree. For example: "
-                      "-e hello_world -e micro_speech")
+  parser.add_argument(
+      "output_dir", help="Output directory for generated TFLM tree")
+  parser.add_argument(
+      "--makefile_options",
+      default="",
+      help="Additional TFLM Makefile options. For example: "
+      "--makefile_options=\"TARGET=<target> "
+      "OPTIMIZED_KERNEL_DIR=<optimized_kernel_dir> "
+      "TARGET_ARCH=corex-m4\"")
+  parser.add_argument(
+      "--examples",
+      "-e",
+      action="append",
+      help="Examples to add to the output tree. For example: "
+      "-e hello_world -e micro_speech")
   args = parser.parse_args()
 
   _create_tflm_tree(args.output_dir, args.makefile_options)

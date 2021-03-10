@@ -51,6 +51,7 @@ struct ChloLegalizeToHloPass
     conversionTarget.addLegalDialect<
         MhloDialect, mlir::StandardOpsDialect, mlir::tensor::TensorDialect,
         mlir::shape::ShapeDialect, mlir::scf::SCFDialect>();
+    conversionTarget.addLegalOp<chlo::MinimumBroadcastShapesOp>();
 
     if (broadcast_only_) {
       chlo::PopulateChloBroadcastingPatterns(&getContext(),

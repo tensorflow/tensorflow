@@ -23,6 +23,7 @@ import re
 import sys
 import threading
 import types
+from absl import app
 
 import numpy as np
 import six
@@ -61,7 +62,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import traceable_stack
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import control_flow_util
-from tensorflow.python.platform import app
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
 from tensorflow.python.types import core as core_tf_types
@@ -1021,12 +1021,20 @@ class _EagerTensorBase(Tensor):
     return self
 
   def __str__(self):
-    return "tf.Tensor(%s, shape=%s, dtype=%s)" % (numpy_text(self), self.shape,
+    if self._has_custom_summarizer():
+      value_text = self._summarize_value()
+    else:
+      value_text = numpy_text(self)
+    return "tf.Tensor(%s, shape=%s, dtype=%s)" % (value_text, self.shape,
                                                   self.dtype.name)
 
   def __repr__(self):
-    return "<tf.Tensor: shape=%s, dtype=%s, numpy=%s>" % (
-        self.shape, self.dtype.name, numpy_text(self, is_repr=True))
+    if self._has_custom_summarizer():
+      value_text = "value=" + self._summarize_value()
+    else:
+      value_text = "numpy=" + numpy_text(self, is_repr=True)
+    return "<tf.Tensor: shape=%s, dtype=%s, %s>" % (self.shape, self.dtype.name,
+                                                    value_text)
 
   def __len__(self):
     """Returns the length of the first dimension in the Tensor."""

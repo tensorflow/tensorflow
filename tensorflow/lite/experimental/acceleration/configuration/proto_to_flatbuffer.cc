@@ -248,10 +248,15 @@ Offset<EdgeTpuSettings> ConvertEdgeTpuSettings(
         ConvertEdgeTpuDeviceSpec(builder, settings.edgetpu_device_spec());
   }
 
+  Offset<String> model_token = 0;
+  if (settings.has_model_token()) {
+    model_token = builder->CreateString(settings.model_token());
+  }
+
   return CreateEdgeTpuSettings(
       *builder, ConvertEdgeTpuPowerState(settings.inference_power_state()),
       inactive_power_configs, settings.inference_priority(),
-      edgetpu_device_spec);
+      edgetpu_device_spec, model_token);
 }
 
 Offset<CoralSettings> ConvertCoralSettings(const proto::CoralSettings& settings,
