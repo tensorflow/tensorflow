@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
@@ -662,7 +663,28 @@ bool VerifyOps(const Model& model, const OpResolver& resolver,
   if (!model.operator_codes()) {
     return true;
   }
-  for (const auto& opcode : *model.operator_codes()) {
+
+  // Track whichs ops are used in only the validation subgraphs. Validation
+  // subgraphs are allowed to contain custom ops that are not in the resolver,
+  // as they will be run with a custom resolver.
+  absl::flat_hash_set<int> regular_code_indices;
+  absl::flat_hash_set<int> validation_code_indices;
+  for (const auto& subgraph : *model.subgraphs()) {
+    if (!subgraph->operators()) {
+      continue;
+    }
+    if (subgraph->name() && IsValidationSubgraph(subgraph->name()->c_str())) {
+      for (const auto& op : *(subgraph->operators())) {
+        validation_code_indices.insert(op->opcode_index());
+      }
+    } else {
+      for (const auto& op : *(subgraph->operators())) {
+        regular_code_indices.insert(op->opcode_index());
+      }
+    }
+  }
+  for (int i = 0; i < model.operator_codes()->size(); i++) {
+    const auto* opcode = model.operator_codes()->Get(i);
     auto builtin_code = GetBuiltinCode(opcode);
     if (builtin_code < BuiltinOperator_MIN ||
         builtin_code > BuiltinOperator_MAX) {
@@ -678,9 +700,12 @@ bool VerifyOps(const Model& model, const OpResolver& resolver,
         return false;
       } else if (!resolver.FindOp(opcode->custom_code()->c_str(),
                                   opcode->version())) {
-        ReportError(error_reporter, "Unsupported custom op: %s, version: %d",
-                    opcode->custom_code()->c_str(), opcode->version());
-        return false;
+        if (regular_code_indices.contains(i) ||
+            !validation_code_indices.contains(i)) {
+          ReportError(error_reporter, "Unsupported custom op: %s, version: %d",
+                      opcode->custom_code()->c_str(), opcode->version());
+          return false;
+        }
       }
     } else {
       if (!resolver.FindOp(builtin_code, opcode->version())) {
