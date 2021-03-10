@@ -28,9 +28,19 @@ namespace data {
 
 class ModelDatasetOp : public UnaryDatasetOpKernel {
  public:
+  static constexpr const char* const kDatasetType = "ModelDataset";
+  static constexpr const char* const kDatasetOp = "ModelDatasetOp";
   static constexpr const char* const kAlgorithm = "algorithm";
   static constexpr const char* const kCpuBudget = "cpu_budget";
   static constexpr const char* const kRamBudget = "ram_budget";
+
+  // Creates and returns a ModelDatasetOp::Dataset in output, given the
+  // input, algorithm, cpu_budget and ram_budget parameters. This method is used
+  // to create the dataset without explicitly using the ModelDatasetOp.
+  static void MakeDatasetFromOptions(OpKernelContext* ctx, DatasetBase* input,
+                                     model::AutotuneAlgorithm algorithm,
+                                     bool cpu_budget, bool ram_budget,
+                                     DatasetBase** output);
 
   explicit ModelDatasetOp(OpKernelConstruction* ctx);
 
@@ -56,6 +66,14 @@ namespace data {
 
 class ModelDatasetOp : public UnaryDatasetOpKernel {
  public:
+  // Creates and returns a ModelDatasetOp::Dataset in output, given the
+  // input, algorithm, cpu_budget and ram_budget parameters. This method is used
+  // to create the dataset without explicitly using the ModelDatasetOp.
+  static void MakeDatasetFromOptions(OpKernelContext* ctx, DatasetBase* input,
+                                     model::AutotuneAlgorithm algorithm,
+                                     bool cpu_budget, bool ram_budget,
+                                     DatasetBase** output);
+
   explicit ModelDatasetOp(OpKernelConstruction* ctx);
 
  protected:

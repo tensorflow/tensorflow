@@ -45,6 +45,8 @@ constexpr char kShuffleDatasetOpName[] = "ShuffleDataset";
 constexpr char kShuffleDatasetV2OpName[] = "ShuffleDatasetV2";
 constexpr char kShuffleDatasetV3OpName[] = "ShuffleDatasetV3";
 constexpr char kPrefetchDatasetOpName[] = "PrefetchDataset";
+constexpr char kFinalizeDatasetOpName[] = "FinalizeDataset";
+constexpr char kOptionsDatasetOpName[] = "OptionsDataset";
 constexpr char kRebatchDatasetOpName[] = "RebatchDataset";
 constexpr char kRebatchDatasetV2OpName[] = "RebatchDatasetV2";
 constexpr char kTensorDatasetOpName[] = "TensorDataset";
@@ -74,7 +76,7 @@ constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
     "ZipDataset"
 };
 
-constexpr std::array<const char*, 28> kPassThroughOps = {
+constexpr std::array<const char*, 30> kPassThroughOps = {
     "_Retval",
     "AssertNextDataset",
     "BatchDataset",
@@ -83,12 +85,14 @@ constexpr std::array<const char*, 28> kPassThroughOps = {
     "ExperimentalParseExampleDataset",
     "ExperimentalRebatchDataset",
     "FilterDataset",
+    "FinalizeDataset",
     "Identity",
     "MapAndBatchDataset",
     "MapDataset",
     "MaxIntraOpParallelismDataset",
     "ModelDataset",
     "OptimizeDataset",
+    "OptionsDataset",
     "PaddedBatchDataset",
     "ParallelMapDataset",
     "ParseExampleDataset",
@@ -614,12 +618,16 @@ Status RewriteRebatchV2ToV1(const NodeDef& sink_node, int64 num_replicas,
 Status ShardByData(const NodeDef& sink_node, int64 num_workers, int64 index,
                    int64 num_replicas, MutableGraphView* graph) {
   const NodeDef* shard_before = &sink_node;
-  // We sometimes insert a PrefetchDataset at the end of the input pipeline
-  // before autosharding. When sharding by data, we should insert the shard
-  // before the prefetch so that the right number of elements is prefetched.
+  // We sometimes insert a PrefetchDataset, OptionsDataset, and FinalizeDataset
+  // at the end of the input pipeline before autosharding. When sharding by
+  // data, we should insert the shard before the these datasets so that the
+  // right number of elements is prefetched.
   NodeDef* input_node = graph_utils::GetInputNode(sink_node, *graph);
-  if (input_node->op() == kPrefetchDatasetOpName) {
+  while (input_node->op() == kPrefetchDatasetOpName ||
+         input_node->op() == kOptionsDatasetOpName ||
+         input_node->op() == kFinalizeDatasetOpName) {
     shard_before = input_node;
+    input_node = graph_utils::GetInputNode(*input_node, *graph);
   }
   // Sharding by data only works with legacy RebatchDataset. As such, we rewrite
   // all instances of RebatchDatasetV2 to RebatchDataset.

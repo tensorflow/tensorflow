@@ -421,10 +421,131 @@ Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor) {
   return Status::OK();
 }
 
+namespace internal {
+
+#define WARN_PROTO_FIELD_CONFLICT(reflection, field, field_type, src, dst)     \
+  {                                                                            \
+    auto source_value = reflection->Get##field_type(src, field);               \
+    auto destination_value = reflection->Get##field_type(*dst, field);         \
+    if (source_value != destination_value) {                                   \
+      LOG(WARNING) << "Changing the value of option field " << field->name()   \
+                   << " from " << destination_value << " to " << source_value; \
+    }                                                                          \
+  }
+
+#define WARN_PROTO_ENUM_FIELD_CONFLICT(reflection, field, src, dst) \
+  {                                                                 \
+    auto source_value = reflection->GetEnum(src, field);            \
+    auto destination_value = reflection->GetEnum(*dst, field);      \
+    if (source_value != destination_value) {                        \
+      LOG(WARNING) << "Changing the value of option enum field "    \
+                   << field->name() << " from "                     \
+                   << destination_value->full_name() << " to "      \
+                   << source_value->full_name();                    \
+    }                                                               \
+  }
+
+void WarnProtoConflicts(const protobuf::Message& src, protobuf::Message* dst) {
+  std::vector<const protobuf::FieldDescriptor*> set_src;
+  std::vector<const protobuf::FieldDescriptor*> set_dst;
+  const protobuf::Reflection* reflection = src.GetReflection();
+  reflection->ListFields(src, &set_src);
+  reflection->ListFields(*dst, &set_dst);
+  std::sort(set_src.begin(), set_src.end());
+  std::sort(set_dst.begin(), set_dst.end());
+
+  std::vector<const protobuf::FieldDescriptor*> in_both;
+  std::set_intersection(set_src.begin(), set_src.end(), set_dst.begin(),
+                        set_dst.end(), std::back_inserter(in_both));
+
+  for (auto field : in_both) {
+    if (field->type() == protobuf::FieldDescriptor::TYPE_MESSAGE) {
+      WarnProtoConflicts(reflection->GetMessage(src, field),
+                         reflection->MutableMessage(dst, field));
+    } else {
+      switch (field->cpp_type()) {
+        case protobuf::FieldDescriptor::CPPTYPE_INT32:
+          WARN_PROTO_FIELD_CONFLICT(reflection, field, Int32, src, dst);
+          break;
+        case protobuf::FieldDescriptor::CPPTYPE_INT64:
+          WARN_PROTO_FIELD_CONFLICT(reflection, field, Int64, src, dst);
+          break;
+        case protobuf::FieldDescriptor::CPPTYPE_UINT32:
+          WARN_PROTO_FIELD_CONFLICT(reflection, field, UInt32, src, dst);
+          break;
+        case protobuf::FieldDescriptor::CPPTYPE_UINT64:
+          WARN_PROTO_FIELD_CONFLICT(reflection, field, UInt64, src, dst);
+          break;
+        case protobuf::FieldDescriptor::CPPTYPE_DOUBLE:
+          WARN_PROTO_FIELD_CONFLICT(reflection, field, Double, src, dst);
+          break;
+        case protobuf::FieldDescriptor::CPPTYPE_FLOAT:
+          WARN_PROTO_FIELD_CONFLICT(reflection, field, Float, src, dst);
+          break;
+        case protobuf::FieldDescriptor::CPPTYPE_BOOL:
+          WARN_PROTO_FIELD_CONFLICT(reflection, field, Bool, src, dst);
+          break;
+        case protobuf::FieldDescriptor::CPPTYPE_ENUM:
+          WARN_PROTO_ENUM_FIELD_CONFLICT(reflection, field, src, dst);
+          break;
+        default: {
+          LOG(ERROR) << "Unrecognized proto type for field "
+                     << field->full_name();
+        }
+      }
+    }
+  }
+}
+
+#undef WARN_PROTO_ENUM_FIELD_CONFLICT
+#undef WARN_PROTO_FIELD_CONFLICT
+
+void MergeOptions(const protobuf::Message& source,
+                  protobuf::Message* destination) {
+  WarnProtoConflicts(source, destination);
+  destination->MergeFrom(source);
+}
+
+void MergeOptions(const protobuf::MessageLite& source,
+                  protobuf::MessageLite* destination) {
+  destination->CheckTypeAndMergeFrom(source);
+}
+
+}  // namespace internal
+
+Status DatasetBase::MergeOptionsFromInputs() {
+  std::vector<const DatasetBase*> inputs;
+  Status s = InputDatasets(&inputs);
+  if (errors::IsUnimplemented(s)) {
+    return errors::Unimplemented(
+        "Cannot merge options for dataset of type ", type_string(),
+        ", because the dataset does not implement `InputDatasets`.");
+  }
+  if (inputs.empty()) {
+    return Status::OK();
+  }
+  // Merge options from inputs sequentially before merging options from dataset.
+  // Since the last options merged takes precedence, the options that may be set
+  // for the current dataset through OptionsDataset takes precedence over those
+  // set on the input datasets.
+  Options merged_options = inputs[0]->options_;
+  for (int i = 1; i < inputs.size(); ++i) {
+    internal::MergeOptions(inputs[i]->options_, &merged_options);
+  }
+  internal::MergeOptions(options_, &merged_options);
+  options_ = merged_options;
+  return Status::OK();
+}
+
 Status DatasetBase::MakeIterator(
     IteratorContext* ctx, const IteratorBase* parent,
     const string& output_prefix,
     std::unique_ptr<IteratorBase>* iterator) const {
+  if (type_string() == "OptionsDataset" || type_string() == "FinalizeDataset") {
+    std::vector<const DatasetBase*> inputs;
+    Status s = InputDatasets(&inputs);
+    return inputs[0]->MakeIterator(ctx, parent, output_prefix, iterator);
+  }
   profiler::TraceMe traceme(
       [&] {
         return profiler::TraceMeEncode(
@@ -676,6 +797,10 @@ void DatasetOpKernel::Compute(OpKernelContext* ctx) {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
     OP_REQUIRES_OK(ctx, StoreDatasetInVariantTensor(dataset, output));
+    auto status = dataset->MergeOptionsFromInputs();
+    if (!status.ok()) {
+      LOG(ERROR) << status;
+    }
   }
 }
 

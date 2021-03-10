@@ -219,6 +219,7 @@ cc_library(
         ":iterator_ops",
         ":map_dataset_op",
         ":name_utils",
+        ":options_dataset_op",
         ":range_dataset_op",
         ":split_utils",
         ":take_dataset_op",
@@ -1007,6 +1008,117 @@ tf_cc_test(
     ],
 )
 
+tf_kernel_library(
+    name = "options_dataset_op",
+    srcs = ["options_dataset_op.cc"],
+    hdrs = ["options_dataset_op.h"],
+    deps = [
+        ":name_utils",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/framework:dataset_options_proto_cc",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_test(
+    name = "options_dataset_op_test",
+    size = "small",
+    srcs = ["options_dataset_op_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":options_dataset_op",
+        ":range_dataset_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_kernel_library(
+    name = "get_options_op",
+    srcs = ["get_options_op.cc"],
+    hdrs = ["get_options_op.h"],
+    deps = [
+        ":name_utils",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/framework:dataset_options_proto_cc",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_test(
+    name = "get_options_op_test",
+    size = "small",
+    srcs = ["get_options_op_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":get_options_op",
+        ":options_dataset_op",
+        ":range_dataset_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_kernel_library(
+    name = "finalize_dataset_op",
+    srcs = ["finalize_dataset_op.cc"],
+    hdrs = ["finalize_dataset_op.h"],
+    deps = [
+        ":model_dataset_op",
+        ":name_utils",
+        ":optimize_dataset_op",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/framework:dataset_options_proto_cc",
+        "//tensorflow/core/kernels/data/experimental:threadpool_dataset_op",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "finalize_dataset_op_test",
+    size = "small",
+    srcs = ["finalize_dataset_op_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":finalize_dataset_op",
+        ":options_dataset_op",
+        ":range_dataset_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 cc_library(
     name = "rewrite_utils",
     srcs = ["rewrite_utils.cc"],
@@ -1515,7 +1627,9 @@ tf_cc_test(
 # A file group which contains all operators which are known to work on mobile.
 filegroup(
     name = "android_all_op_kernels",
-    srcs = glob(
+    srcs = [
+        "//tensorflow/core/kernels/data/experimental:android_all_op_kernels",
+    ] + glob(
         [
             "*.cc",
             "*.h",
@@ -1537,9 +1651,11 @@ tf_kernel_library(
         ":concatenate_dataset_op",
         ":dataset_ops",
         ":filter_dataset_op",
+        ":finalize_dataset_op",
         ":fixed_length_record_dataset_op",
         ":flat_map_dataset_op",
         ":generator_dataset_op",
+        ":get_options_op",
         ":interleave_dataset_op",
         ":iterator_ops",
         ":map_dataset_op",
@@ -1548,6 +1664,7 @@ tf_kernel_library(
         ":multi_device_iterator_ops",
         ":optimize_dataset_op",
         ":optional_ops",
+        ":options_dataset_op",
         ":padded_batch_dataset_op",
         ":parallel_batch_dataset_op",
         ":parallel_interleave_dataset_op",

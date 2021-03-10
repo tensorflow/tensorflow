@@ -96,4 +96,51 @@ INSTANTIATE_TEST_SUITE_P(
         {_tf_string_, tensor_strs,
          static_cast<int64>(sizeof(str) + str.size()) /*bytes*/}}));
 
+struct MergeOptionsTestParam {
+  const std::string source;
+  const std::string destination;
+  const std::string expected;
+};
+
+class MergeOptionsTest
+    : public ::testing::TestWithParam<MergeOptionsTestParam> {};
+
+TEST_P(MergeOptionsTest, MergeOptions) {
+  const MergeOptionsTestParam& test_case = GetParam();
+  data::Options source;
+  CHECK(tensorflow::protobuf::TextFormat::ParseFromString(test_case.source,
+                                                          &source));
+  data::Options destination;
+  CHECK(tensorflow::protobuf::TextFormat::ParseFromString(test_case.destination,
+                                                          &destination));
+  data::Options expected;
+  CHECK(tensorflow::protobuf::TextFormat::ParseFromString(test_case.expected,
+                                                          &expected));
+  data::internal::MergeOptions(source, &destination);
+  EXPECT_EQ(expected.SerializeAsString(), destination.SerializeAsString());
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    MergeOptionsTest, MergeOptionsTest,
+    ::testing::ValuesIn(std::vector<MergeOptionsTestParam>{
+        // Destination is empty.
+        {"optimization_options { map_vectorization { enabled: true }}", "",
+         "optimization_options { map_vectorization { enabled: true }}"},
+        // Source and destination have the same values.
+        {"optimization_options { map_vectorization { enabled: true }}",
+         "optimization_options { map_vectorization { enabled: true }}",
+         "optimization_options { map_vectorization { enabled: true }}"},
+        // Source values override destination values.
+        {"slack: true "
+         "optimization_options { map_vectorization { enabled: true }}",
+         "slack: false "
+         "deterministic: true "
+         "optimization_options { map_vectorization { enabled: false }}",
+         "slack: true "
+         "deterministic: true "
+         "optimization_options { map_vectorization { enabled: true }}"},
+        // Values are enums.
+        {"external_state_policy: IGNORE", "external_state_policy: FAIL",
+         "external_state_policy: IGNORE"}}));
+
 }  // namespace tensorflow
