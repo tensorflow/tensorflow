@@ -122,6 +122,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParseAdd);
   }
 
+  TfLiteStatus AddAddN() {
+    return AddBuiltin(BuiltinOperator_ADD_N, tflite::Register_ADD_N(),
+                      ParseAddN);
+  }
+
   TfLiteStatus AddArgMax() {
     return AddBuiltin(BuiltinOperator_ARG_MAX,
                       tflite::ops::micro::Register_ARG_MAX(), ParseArgMax);

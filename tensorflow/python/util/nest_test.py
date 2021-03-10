@@ -31,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
@@ -285,6 +286,14 @@ class NestTest(parameterized.TestCase, test.TestCase):
         "Structure had 2 elements, but flat_sequence had 3 elements."):
       nest.pack_sequence_as(["hello", "world"],
                             ["and", "goodbye", "again"])
+
+  def testPackSequenceAs_CompositeTensor(self):
+    val = ragged_tensor.RaggedTensor.from_row_splits(values=[1],
+                                                     row_splits=[0, 1])
+    with self.assertRaisesRegex(
+        ValueError,
+        "Structure had 2 elements, but flat_sequence had 1 elements."):
+      nest.pack_sequence_as(val, [val], expand_composites=True)
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testIsNested(self):

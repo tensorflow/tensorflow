@@ -1094,6 +1094,7 @@ cc_test(
         "//tensorflow/lite:testdata/conv_huge_im2col.bin",
     ],
     tags = [
+        "notsan",  # b/182184675
         "tflite_not_portable_android",
         "tflite_not_portable_ios",
         "tflite_smoke_test",

@@ -58,7 +58,15 @@ class CPlatform : public Platform {
   Id id() const override { return const_cast<int*>(&plugin_id_value_); }
   const std::string& Name() const override { return name_; }
   int VisibleDeviceCount() const override {
-    return platform_.visible_device_count;
+    int visible_device_count = 0;
+    std::unique_ptr<TF_Status, TFStatusDeleter> c_status(TF_NewStatus());
+    platform_fns_.get_device_count(&platform_, &visible_device_count,
+                                   c_status.get());
+    if (TF_GetCode(c_status.get()) != TF_OK) {
+      LOG(ERROR) << TF_Message(c_status.get());
+      return 0;
+    }
+    return visible_device_count;
   }
   port::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
       int ordinal) const override;

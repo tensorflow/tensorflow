@@ -328,18 +328,22 @@ struct ConvertPackToReshape : public OpRewritePattern<PackOp> {
       return failure();
     }
 
-    // TODO(b/179286433): Follow up to verify behavior here and the user pass.
-    if (input_ty.getElementType().isa<TensorFlowTypeWithSubtype>())
-      return failure();
-
     // Create constant shape for reshape.
     auto type =
         RankedTensorType::get(output_ty.getRank(), rewriter.getIntegerType(64));
     auto shape_attr = DenseIntElementsAttr::get(type, output_ty.getShape());
     auto shape = rewriter.create<ConstOp>(pack_op.getLoc(), shape_attr);
 
-    rewriter.replaceOpWithNewOp<ReshapeOp>(pack_op, output_ty,
-                                           pack_op.getOperand(0), shape);
+    auto reshape_op = rewriter.create<ReshapeOp>(pack_op.getLoc(), output_ty,
+                                                 pack_op.getOperand(0), shape);
+    // Preserve unregistered attributes. Outside compilation relies on
+    // unregistered attribute `_xla_outside_compilation` to form clusters, so
+    // they must be preserved during canonicalization.
+    // TODO(b/173622615): Remove after fixed.
+    CopyUnderscoredAttributes(pack_op.getOperation(),
+                              reshape_op.getOperation());
+
+    rewriter.replaceOp(pack_op, reshape_op.getResult());
     return success();
   }
 };

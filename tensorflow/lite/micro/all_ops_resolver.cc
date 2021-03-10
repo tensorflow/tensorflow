@@ -23,6 +23,7 @@ AllOpsResolver::AllOpsResolver() {
   // Please keep this list of Builtin Operators in alphabetical order.
   AddAbs();
   AddAdd();
+  AddAddN();
   AddArgMax();
   AddArgMin();
   AddAveragePool2D();
@@ -34,6 +35,7 @@ AllOpsResolver::AllOpsResolver() {
   AddDequantize();
   AddDetectionPostprocess();
   AddDiv();
+  AddElu();
   AddEqual();
   AddEthosU();
   AddFloor();

@@ -14,8 +14,8 @@ load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
 
 def if_mlir_generated_gpu_kernels_enabled(if_true, if_false = []):
     return select({
-        "//tensorflow/core/kernels/mlir_generated:mlir_generated_gpu_kernels_disabled": if_false,
-        "//conditions:default": if_true,
+        "//tensorflow/core/kernels/mlir_generated:is_gpu_enabled": if_true,
+        "//conditions:default": if_false,
     })
 
 def _lookup_file(filegroup, path):
@@ -115,7 +115,7 @@ def _gen_mlir_op(op, type, platform, output_type):
 
 def if_mlir_experimental_kernels_enabled(if_true, if_false = []):
     return select({
-        "//tensorflow/core/kernels/mlir_generated:mlir_experimental_kernels_enabled": if_true,
+        "//tensorflow/core/kernels/mlir_generated:is_experimental_enabled": if_true,
         "//conditions:default": if_false,
     })
 

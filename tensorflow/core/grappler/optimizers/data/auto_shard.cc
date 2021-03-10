@@ -653,9 +653,9 @@ Status OptimizeGraph(const GrapplerItem& item, int64 num_workers, int64 index,
     default:
       Status s = ShardByFile(*sink_node, num_workers, index, &flib, &graph);
       if (errors::IsNotFound(s)) {
-        LOG(WARNING) << "In AUTO-mode, and switching to DATA-based sharding, "
-                        "instead of FILE-based sharding as we cannot find "
-                        "appropriate reader dataset op(s) to shard. Error: "
+        LOG(WARNING) << "AUTO sharding policy will apply DATA sharding policy "
+                        "as it failed to apply FILE sharding policy because of "
+                        "the following reason: "
                      << s.error_message();
         return ShardByData(*sink_node, num_workers, index, num_replicas,
                            &graph);

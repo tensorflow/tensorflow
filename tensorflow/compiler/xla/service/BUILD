@@ -2873,6 +2873,47 @@ cc_library(
 )
 
 cc_library(
+    name = "dynamic_dimension_simplifier",
+    srcs = ["dynamic_dimension_simplifier.cc"],
+    hdrs = ["dynamic_dimension_simplifier.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:status_macros",
+    ],
+)
+
+tf_cc_test(
+    name = "dynamic_dimension_simplifier_test",
+    srcs = ["dynamic_dimension_simplifier_test.cc"],
+    deps = [
+        ":dynamic_dimension_simplifier",
+        ":hlo",
+        ":hlo_casting_utils",
+        ":hlo_creation_utils",
+        ":hlo_parser",
+        ":hlo_pass",
+        ":hlo_pass_pipeline",
+        ":pattern_matcher",
+        ":pattern_matcher_gmock",
+        ":shape_inference",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:window_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "dynamic_padder",
     srcs = ["dynamic_padder.cc"],
     hdrs = ["dynamic_padder.h"],
@@ -4861,6 +4902,54 @@ tf_cc_test(
         ":hlo_matchers",
         ":hlo_verifier",
         ":while_loop_all_reduce_code_motion",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "while_loop_concat_code_motion",
+    srcs = ["while_loop_concat_code_motion.cc"],
+    hdrs = ["while_loop_concat_code_motion.h"],
+    deps = [
+        ":hlo",
+        ":hlo_casting_utils",
+        ":hlo_dce",
+        ":hlo_pass",
+        ":hlo_pass_pipeline",
+        ":tuple_simplifier",
+        ":while_loop_simplifier",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "while_loop_concat_code_motion_test",
+    srcs = ["while_loop_concat_code_motion_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_casting_utils",
+        ":hlo_matchers",
+        ":hlo_verifier",
+        ":while_loop_concat_code_motion",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",

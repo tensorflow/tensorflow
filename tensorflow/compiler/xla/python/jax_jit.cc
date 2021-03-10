@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
+#include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -285,80 +286,6 @@ xla::Status ParseArguments(const py::args& args, const py::kwargs& py_kwargs,
 
 namespace {
 
-struct NumpyScalarTypes {
-  py::object np_bool;
-  py::object np_int8;
-  py::object np_int16;
-  py::object np_int32;
-  py::object np_int64;
-  py::object np_uint8;
-  py::object np_uint16;
-  py::object np_uint32;
-  py::object np_uint64;
-  py::object np_float16;
-  py::object np_float32;
-  py::object np_float64;
-  py::object np_complex64;
-  py::object np_complex128;
-  py::object np_longlong;
-  py::object np_intc;
-};
-
-const NumpyScalarTypes& GetNumpyScalarTypes() {
-  static const NumpyScalarTypes* singleton = []() {
-    // Use Designated initializers when they are available.
-    const auto numpy = py::module::import("numpy");
-    NumpyScalarTypes* dtypes = new NumpyScalarTypes();
-    dtypes->np_bool = py::object(numpy.attr("bool_"));
-    dtypes->np_int8 = py::object(numpy.attr("int8"));
-    dtypes->np_int16 = py::object(numpy.attr("int16"));
-    dtypes->np_int32 = py::object(numpy.attr("int32"));
-    dtypes->np_int64 = py::object(numpy.attr("int64"));
-    dtypes->np_uint8 = py::object(numpy.attr("uint8"));
-    dtypes->np_uint16 = py::object(numpy.attr("uint16"));
-    dtypes->np_uint32 = py::object(numpy.attr("uint32"));
-    dtypes->np_uint64 = py::object(numpy.attr("uint64"));
-    dtypes->np_float16 = py::object(numpy.attr("float16"));
-    dtypes->np_float32 = py::object(numpy.attr("float32"));
-    dtypes->np_float64 = py::object(numpy.attr("float64"));
-    dtypes->np_complex64 = py::object(numpy.attr("complex64"));
-    dtypes->np_complex128 = py::object(numpy.attr("complex128"));
-    dtypes->np_longlong = py::object(numpy.attr("longlong"));
-    dtypes->np_intc = py::object(numpy.attr("intc"));
-
-    return dtypes;
-  }();
-
-  return *singleton;
-}
-
-const py::dtype* DtypeTo32BitDtype(const py::dtype& dtype) {
-  // TODO(jblespiau): Use GetNumpyScalarTypes instead.
-  static const auto* int64_dt = new py::dtype("int64");
-  static const auto* int32_dt = new py::dtype("int32");
-  static const auto* uint64_dt = new py::dtype("uint64");
-  static const auto* uint32_dt = new py::dtype("uint32");
-  static const auto* float64_dt = new py::dtype("float64");
-  static const auto* float32_dt = new py::dtype("float32");
-  static const auto* complex64_dt = new py::dtype("complex64");
-  static const auto* complex128_dt = new py::dtype("complex128");
-
-  if (dtype.equal(*int64_dt)) {
-    return int32_dt;
-  }
-  if (dtype.equal(*float64_dt)) {
-    return float32_dt;
-  }
-  if (dtype.equal(*uint64_dt)) {
-    return uint32_dt;
-  }
-  if (dtype.equal(*complex128_dt)) {
-    return complex64_dt;
-  }
-
-  return nullptr;
-}
-
 bool IsFloat0(py::array arg) {
   static const auto* dtypes_module =
       new py::module(py::module::import("jax.dtypes"));
@@ -367,29 +294,10 @@ bool IsFloat0(py::array arg) {
   return float0_dtype->is(arg.attr("dtype"));
 }
 
-template <typename CppType, typename Pybind11Type>
-std::unique_ptr<xla::PjRtBuffer> ConvertToScalarBuffer(
-    const py::handle& scalar, xla::PjRtClient* client,
-    xla::PjRtDevice* device) {
-  CppType data = py::cast<Pybind11Type>(scalar);
-  // Work around for https://github.com/pybind/pybind11/issues/2786
-  if (PyErr_Occurred()) {
-    throw py::error_already_set();
-  }
-  xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<CppType>({});
-  return ValueOrThrow(client->BufferFromHostBuffer(
-      &data, shape,
-      xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-      device));
-}
-
-}  // namespace
-
-namespace {
-
 using ToArgSignatureHandler =
     std::function<xla::StatusOr<ArgSignature>(py::handle, bool)>;
-}
+
+}  // namespace
 
 xla::StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
                                                 bool jax_enable_x64) {
@@ -400,7 +308,7 @@ xla::StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
     const auto xla_module = py::module::import("jax.interpreters.xla");
     const auto& device_array = xla_module.attr("_DeviceArray");
 
-    const NumpyScalarTypes& dtypes = GetNumpyScalarTypes();
+    const xla::NumpyScalarTypes& dtypes = xla::GetNumpyScalarTypes();
 
     // The 4 Python native types.
     ToArgSignatureHandler bool_handler =
@@ -409,6 +317,7 @@ xla::StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
     };
     ToArgSignatureHandler int_handler =
         [](py::handle h, bool jax_enable_x64) -> xla::StatusOr<ArgSignature> {
+      // TODO(phawkins): we should consider checking for integer overflow.
       if (jax_enable_x64) {
         return ArgSignature(xla::PrimitiveType::S64, {}, true);
       } else {
@@ -476,32 +385,21 @@ xla::StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
             "float0 numpy arrays not supported in C++. "
             "Falling back to Python.");
       }
-      if (!jax_enable_x64) {
-        const py::dtype raw_dtype = numpy_array.dtype();
-        const py::dtype* to_dtype = DtypeTo32BitDtype(raw_dtype);
-
-        xla::PrimitiveType dtype;
-        if (to_dtype) {
-          TF_ASSIGN_OR_RETURN(dtype, xla::DtypeToPrimitiveType(*to_dtype));
-        } else {
-          TF_ASSIGN_OR_RETURN(dtype, xla::DtypeToPrimitiveType(raw_dtype));
-        }
-        // We need the reinterpret_cast for the OSS version to build.
-        return ArgSignature(
-            dtype,
-            absl::MakeConstSpan(
-                reinterpret_cast<const xla::int64*>(numpy_array.shape()),
-                numpy_array.ndim()),
-            /*weak_type=*/false);
-      }
-      TF_ASSIGN_OR_RETURN(auto dtype,
+      TF_ASSIGN_OR_RETURN(xla::PrimitiveType dtype,
                           xla::DtypeToPrimitiveType(numpy_array.dtype()));
-      return ArgSignature(
-          dtype,
-          absl::MakeConstSpan(
-              reinterpret_cast<const xla::int64*>(numpy_array.shape()),
-              numpy_array.ndim()),
-          /*weak_type=*/false);
+      if (!jax_enable_x64) {
+        dtype = xla::Squash64BitTypes(dtype);
+      }
+      // We use reinterpret_cast<> to defend against environments where ssize_t
+      // may not be precisely the same type as int64_t, even if it is the same
+      // size (long vs long long).
+      static_assert(sizeof(int64_t) == sizeof(ssize_t),
+                    "Code assumes ssize_t is the same as int64_t");
+      return ArgSignature(dtype,
+                          absl::MakeConstSpan(reinterpret_cast<const int64_t*>(
+                                                  numpy_array.shape()),
+                                              numpy_array.ndim()),
+                          /*weak_type=*/false);
     };
     const auto numpy = py::module::import("numpy");
     const auto& ndarray = numpy.attr("ndarray");
@@ -546,6 +444,7 @@ xla::StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
     (*p)[dtypes.np_uint32.ptr()] = numpy_array_handler;
     (*p)[dtypes.np_uint64.ptr()] = np_uint64_handler;
     (*p)[dtypes.np_float16.ptr()] = numpy_array_handler;
+    (*p)[dtypes.np_bfloat16.ptr()] = numpy_array_handler;
     (*p)[dtypes.np_float32.ptr()] = numpy_array_handler;
     (*p)[dtypes.np_float64.ptr()] = float_handler;
     (*p)[dtypes.np_complex64.ptr()] = numpy_array_handler;
@@ -573,252 +472,6 @@ xla::StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
                            py::cast<std::string>(py::str(arg.get_type()))));
   } else {
     return res->second(arg, jax_enable_x64);
-  }
-}
-
-namespace {
-using DevicePutFunc = std::function<xla::StatusOr<DevicePutResult>(
-    py::handle, xla::PjRtDevice*, bool, xla::PyClient&)>;
-
-DevicePutResult HandleBool(py::handle h, xla::PjRtDevice* to_device,
-                           bool jax_enable_x64, xla::PyClient& pyclient) {
-  return DevicePutResult(ConvertToScalarBuffer<bool, py::bool_>(
-                             h, pyclient.pjrt_client(), to_device),
-                         /*weak_type=*/true);
-}
-
-DevicePutResult HandleInt(py::handle obj, xla::PjRtDevice* to_device,
-                          bool jax_enable_x64, xla::PyClient& pyclient) {
-  if (jax_enable_x64) {
-    return DevicePutResult(ConvertToScalarBuffer<xla::int64, py::int_>(
-                               obj, pyclient.pjrt_client(), to_device),
-                           /*weak_type=*/true);
-  } else {
-    return DevicePutResult(ConvertToScalarBuffer<int, py::int_>(
-                               obj, pyclient.pjrt_client(), to_device),
-                           /*weak_type=*/true);
-  }
-}
-
-template <bool weak_type>
-xla::StatusOr<DevicePutResult> HandleFloat(py::handle h,
-                                           xla::PjRtDevice* to_device,
-                                           bool jax_enable_x64,
-                                           xla::PyClient& pyclient) {
-  if (jax_enable_x64) {
-    return DevicePutResult(ConvertToScalarBuffer<double, py::float_>(
-                               h, pyclient.pjrt_client(), to_device),
-                           /*weak_type=*/weak_type);
-  } else {
-    return DevicePutResult(ConvertToScalarBuffer<float, py::float_>(
-                               h, pyclient.pjrt_client(), to_device),
-                           /*weak_type=*/weak_type);
-  }
-}
-
-template <bool weak_type>
-xla::StatusOr<DevicePutResult> HandleComplex(py::handle h,
-                                             xla::PjRtDevice* to_device,
-                                             bool jax_enable_x64,
-                                             xla::PyClient& pyclient) {
-  // This branch is also taken  for np.complex128:
-  // isinstance(np.complex128(3), complex) returns True
-  // isinstance(np.complex64(3), complex) returns False
-  Py_complex result = PyComplex_AsCComplex(h.ptr());
-  if (result.real == -1.0 && PyErr_Occurred()) {
-    PyErr_Clear();
-    throw std::runtime_error("Could not convert the complex number");
-  }
-  if (jax_enable_x64) {
-    xla::complex128 data(result.real, result.imag);
-    xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<xla::complex128>({});
-    return DevicePutResult(
-        ValueOrThrow(pyclient.pjrt_client()->BufferFromHostBuffer(
-            &data, shape,
-            xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
-            nullptr, to_device)),
-        /*weak_type=*/weak_type);
-  } else {
-    xla::complex64 data(result.real, result.imag);
-    xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<xla::complex64>({});
-    return DevicePutResult(
-        ValueOrThrow(pyclient.pjrt_client()->BufferFromHostBuffer(
-            &data, shape,
-            xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
-            nullptr, to_device)),
-        /*weak_type=*/weak_type);
-  }
-}
-
-xla::StatusOr<DevicePutResult> HandleDeviceArray(py::handle obj,
-                                                 xla::PjRtDevice* to_device,
-                                                 bool jax_enable_x64,
-                                                 xla::PyClient& pyclient) {
-  if (!py::getattr(obj, "_lazy_expr").is_none()) {
-    return xla::InvalidArgument(
-        "Non-trivial lazy expression not supported in C++. "
-        "Falling back to Python.");
-  }
-  xla::PyBuffer* buffer = py::cast<xla::PyBuffer*>(obj.attr("device_buffer"));
-  bool weak_type = py::cast<py::bool_>(obj.attr("aval").attr("weak_type"));
-  // Same block as in the previous `if (is_py_buffer)`.
-  if (buffer->device().contents == to_device) {
-    return DevicePutResult(buffer->buffer(), weak_type);
-  } else {
-    std::unique_ptr<xla::PjRtBuffer> copied_buffer =
-        ValueOrThrow(buffer->buffer()->CopyToDevice(to_device));
-    return DevicePutResult(std::move(copied_buffer), weak_type);
-  }
-}
-
-// Do not convert types, and only call PjRtBufferFromPyval, independently
-// of the value of jax_enable_x64.
-DevicePutResult HandleBufferFromPyval(py::handle h, xla::PjRtDevice* to_device,
-                                      bool jax_enable_x64,
-                                      xla::PyClient& pyclient) {
-  std::unique_ptr<xla::PjRtBuffer> buffer =
-      ValueOrThrow(pyclient.PjRtBufferFromPyval(
-          h, to_device,
-          /*force_copy=*/false, /*host_buffer_semantics=*/
-          xla::PjRtClient::HostBufferSemantics::kZeroCopy));
-  return DevicePutResult(std::move(buffer), /*weak_type=*/false);
-}
-
-DevicePutResult HandleNpBool(py::handle h, xla::PjRtDevice* to_device,
-                             bool jax_enable_x64, xla::PyClient& pyclient) {
-  if (jax_enable_x64) {
-    return DevicePutResult(ConvertToScalarBuffer<xla::int64, py::int_>(
-                               h, pyclient.pjrt_client(), to_device),
-                           /*weak_type=*/false);
-  } else {
-    return DevicePutResult(ConvertToScalarBuffer<int, py::int_>(
-                               h, pyclient.pjrt_client(), to_device),
-                           /*weak_type=*/false);
-  }
-}
-
-DevicePutResult HandleUint64(py::handle h, xla::PjRtDevice* to_device,
-                             bool jax_enable_x64, xla::PyClient& pyclient) {
-  if (jax_enable_x64) {
-    std::unique_ptr<xla::PjRtBuffer> buffer =
-        ValueOrThrow(pyclient.PjRtBufferFromPyval(
-            h, to_device,
-            /*force_copy=*/false, /*host_buffer_semantics=*/
-            xla::PjRtClient::HostBufferSemantics::kZeroCopy));
-    return DevicePutResult(std::move(buffer), /*weak_type=*/false);
-  } else {
-    static const auto* numpy = new py::module(py::module::import("numpy"));
-    const auto& np_array = numpy->attr("array");
-
-    // Note that this is calling back to Python!
-    std::unique_ptr<xla::PjRtBuffer> buffer =
-        ValueOrThrow(pyclient.PjRtBufferFromPyval(
-            np_array(h, py::dtype("uint32")), to_device,
-            /*force_copy=*/false, /*host_buffer_semantics=*/
-            xla::PjRtClient::HostBufferSemantics::kZeroCopy));
-    return DevicePutResult(std::move(buffer), /*weak_type=*/false);
-  }
-}
-
-xla::StatusOr<DevicePutResult> HandleNdarray(py::handle h,
-                                             xla::PjRtDevice* to_device,
-                                             bool jax_enable_x64,
-                                             xla::PyClient& pyclient) {
-  py::array numpy_array = py::cast<py::array>(h);
-  if (IsFloat0(numpy_array)) {
-    return xla::InvalidArgument("%s",
-                                "float0 numpy arrays not supported in C++. "
-                                "Falling back to Python.");
-  }
-  // If jax_enable_x64 is not set, we need to coerce 32 bits types.
-  // Note that this is calling back to Python!
-  if (!jax_enable_x64) {
-    const py::dtype* to_dtype = DtypeTo32BitDtype(numpy_array.dtype());
-    if (to_dtype) {
-      static const auto* numpy = new py::module(py::module::import("numpy"));
-      const auto& np_array = numpy->attr("array");
-      numpy_array = np_array(numpy_array, *to_dtype);
-    }
-  }
-  std::unique_ptr<xla::PjRtBuffer> buffer =
-      ValueOrThrow(pyclient.PjRtBufferFromPyval(
-          numpy_array, to_device,
-          /*force_copy=*/false, /*host_buffer_semantics=*/
-          xla::PjRtClient::HostBufferSemantics::kZeroCopy));
-  return DevicePutResult(std::move(buffer), /*weak_type=*/false);
-}
-
-}  // namespace
-
-xla::StatusOr<DevicePutResult> DevicePut(pybind11::handle arg,
-                                         xla::PjRtDevice* to_device,
-                                         bool jax_enable_x64,
-                                         xla::PyClient& pyclient) {
-  static const absl::flat_hash_map<PyObject*, DevicePutFunc>* const handlers =
-      [] {
-        auto p = new absl::flat_hash_map<PyObject*, DevicePutFunc>();
-
-        const NumpyScalarTypes& dtypes = GetNumpyScalarTypes();
-
-        const auto numpy = py::module::import("numpy");
-        const auto xla_module = py::module::import("jax.interpreters.xla");
-        const auto& device_array = xla_module.attr("_DeviceArray");
-
-        // Python base types.
-        (*p)[reinterpret_cast<PyObject*>(&PyBool_Type)] = HandleBool;
-        (*p)[reinterpret_cast<PyObject*>(&PyLong_Type)] = HandleInt;
-        (*p)[reinterpret_cast<PyObject*>(&PyFloat_Type)] = HandleFloat<true>;
-        (*p)[reinterpret_cast<PyObject*>(&PyComplex_Type)] =
-            HandleComplex<true>;
-
-        // DeviceArray and co.
-        const auto pxla_module = py::module::import("jax.interpreters.pxla");
-        const auto& sda = pxla_module.attr("ShardedDeviceArray");
-        (*p)[device_array.ptr()] = HandleDeviceArray;
-        (*p)[py::type::handle_of<xla::DeviceArrayBase>().ptr()] =
-            HandleDeviceArray;
-        (*p)[sda.ptr()] = HandleBufferFromPyval;
-        // Numpy arrays.
-        (*p)[numpy.attr("ndarray").ptr()] = HandleNdarray;
-
-        // Numpy scalar types. For some of them, we share the handler with
-        // Python types (np_int64, np_float64, np_complex128).
-        (*p)[dtypes.np_bool.ptr()] = HandleBufferFromPyval;
-        (*p)[dtypes.np_int8.ptr()] = HandleBufferFromPyval;
-        (*p)[dtypes.np_int16.ptr()] = HandleBufferFromPyval;
-        (*p)[dtypes.np_int32.ptr()] = HandleBufferFromPyval;
-        (*p)[dtypes.np_int64.ptr()] = HandleNpBool;
-        (*p)[dtypes.np_uint8.ptr()] = HandleBufferFromPyval;
-        (*p)[dtypes.np_uint16.ptr()] = HandleBufferFromPyval;
-        (*p)[dtypes.np_uint32.ptr()] = HandleBufferFromPyval;
-        (*p)[dtypes.np_uint64.ptr()] = HandleUint64;
-        (*p)[dtypes.np_float16.ptr()] = HandleBufferFromPyval;
-        (*p)[dtypes.np_float32.ptr()] = HandleBufferFromPyval;
-        (*p)[dtypes.np_float64.ptr()] = HandleFloat<false>;
-        (*p)[dtypes.np_complex64.ptr()] = HandleBufferFromPyval;
-        (*p)[dtypes.np_complex128.ptr()] = HandleComplex<false>;
-        (*p)[dtypes.np_longlong.ptr()] = HandleNpBool;
-        (*p)[dtypes.np_intc.ptr()] = HandleBufferFromPyval;
-
-        return p;
-      }();
-
-  auto res = handlers->find(arg.get_type().ptr());
-  if (res == handlers->end()) {
-    for (auto base_class : arg.get_type().attr("mro")()) {
-      res = handlers->find(base_class.ptr());
-      if (res != handlers->end()) {
-        return res->second(arg, to_device, jax_enable_x64, pyclient);
-      }
-    }
-    return xla::InvalidArgument(
-        "%s", absl::StrCat(
-                  "Not supported: The C++ jax jit execution path, only accepts "
-                  "DeviceArray, Numpy arrays scalars of supported types "
-                  "(see implementation), or Python scalars. Got type ",
-                  py::cast<std::string>(py::str(arg.get_type()))));
-  } else {
-    return res->second(arg, to_device, jax_enable_x64, pyclient);
   }
 }
 
@@ -1000,14 +653,22 @@ xla::Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
   CHECK(data_device);
   arguments.signature.device = data_device;
 
+  xla::DevicePutOptions options;
+  options.squash_64bit_types = !jax_enable_x64;
+  // TODO(phawkins): consider allowing forces here.
+  options.force_lazy_arrays = false;
+  options.allow_zero_copy = true;
   for (py::handle arg : arguments.flat_dynamic_args) {
-    TF_ASSIGN_OR_RETURN(DevicePutResult on_device,
-                        DevicePut(arg, data_device, jax_enable_x64, pyclient));
+    TF_ASSIGN_OR_RETURN(xla::DevicePutResult on_device,
+                        DevicePut(arg, data_device, options));
 
     xla::PjRtBuffer* buffer = on_device.buffer;
     arg_buffers.push_back(buffer);
     if (on_device.owned_buffer) {
-      keep_alive.emplace_back(std::move(on_device.owned_buffer));
+      keep_alive.push_back(std::move(on_device.owned_buffer));
+    } else if (on_device.owning_pybuffer) {
+      arguments.keep_alive_objects.push_back(
+          std::move(on_device.owning_pybuffer));
     }
 
     ArgSignature sig(buffer->on_device_shape().element_type(),
@@ -1241,8 +902,12 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
   jitlib.def("device_put", [](py::handle obj, bool jax_enable_x64,
                               xla::ClientAndPtr<xla::PjRtDevice> to_device) {
     std::shared_ptr<xla::PyClient>& pyclient = to_device.client;
-    xla::StatusOr<DevicePutResult> results =
-        DevicePut(obj, to_device.contents, jax_enable_x64, *pyclient);
+    xla::DevicePutOptions options;
+    options.squash_64bit_types = !jax_enable_x64;
+    options.force_lazy_arrays = true;
+    options.allow_zero_copy = true;
+    xla::StatusOr<xla::DevicePutResult> results =
+        DevicePut(obj, to_device.contents, options);
     if (!results.ok()) {
       throw std::runtime_error(results.status().error_message());
     }
@@ -1279,15 +944,6 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
 
   // All private members are only for testing purposes
   cfun.def("_cache_size", &CompiledFunction::cache_size);
-  jitlib.def("_DtypeTo32BitDtype", [](const py::object obj) -> py::object {
-    py::dtype dtype = py::dtype::from_args(obj);
-    const py::dtype* res = DtypeTo32BitDtype(dtype);
-    if (res) {
-      return *res;
-    } else {
-      return py::none();
-    }
-  });
   jitlib.def("_is_float0", &IsFloat0);
 }
 

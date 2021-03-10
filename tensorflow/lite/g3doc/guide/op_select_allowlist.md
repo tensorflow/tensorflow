@@ -320,6 +320,10 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.OneHot`
 *   `raw_ops.OnesLike`
 *   `raw_ops.OptimizeDatasetV2`
+*   `raw_ops.OptionalFromValue`
+*   `raw_ops.OptionalGetValue`
+*   `raw_ops.OptionalHasValue`
+*   `raw_ops.OptionalNone`
 *   `raw_ops.Pack`
 *   `raw_ops.Pad`
 *   `raw_ops.PadV2`

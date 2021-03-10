@@ -24,6 +24,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import error_ops
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
@@ -165,6 +166,20 @@ class IgnoreErrorsTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testCardinality(self):
     ds = dataset_ops.Dataset.range(10).apply(error_ops.ignore_errors())
     self.assertEqual(self.evaluate(ds.cardinality()), dataset_ops.UNKNOWN)
+
+
+class IgnoreErrorsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                 parameterized.TestCase):
+
+  def _build_ds(self):
+    return dataset_ops.Dataset.range(5).map(
+        array_ops.ones).map(lambda x: array_ops.gather(x, [0])).apply(
+            error_ops.ignore_errors())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testIgnoreErrorsCore(self):
+    num_outputs = 4
+    self.run_core_tests(self._build_ds, num_outputs)
 
 
 if __name__ == "__main__":

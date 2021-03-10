@@ -39,6 +39,11 @@
         `num_parallel_calls` set, `deterministic` is used to indicate that
         outputs can be obtained in the non-deterministic order.
     *   Options returned by `tf.data.Dataset.options()` are no longer mutable.
+* `tf.lite`
+    *   Enabled the new MLIR-based quantization backend by default
+        *   The new backend is used for 8 bits full integer post-training quantization
+        *   The new backend removes the redundant rescales and fixes some bugs (shared weight/bias, extremely small scales, etc)
+        *   Set `experimental_new_quantizer` in tf.lite.TFLiteConverter to False to disable this change
 
 ## Bug Fixes and Other Changes
 
@@ -69,6 +74,10 @@
 *   XLA compilation:
     *   `tf.function(experimental_compile=True)` has become a stable API,
         renamed `tf.function(jit_compile=True)`.
+
+*   `tf.distribute`:
+    *   Rename `experimental_prefetch_to_device` in `tf.distribute.InputOptions`
+        to `experimental_fetch_to_device` to better reflect the purpose.
 
 *   `tf.lite`:
     *   class `tflite::Subgraph`:
