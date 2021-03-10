@@ -43,13 +43,6 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-bool IsSupportedGPU() {
-#ifdef GOOGLE_CUDA
-    return GetCudaVersion(*virtual_cluster_.get()) >= 9010;
-#else
-    return true;
-#endif
-}
 
 template <DataType DTYPE>
 Tensor GenerateIdentityMatrix(int64 height, int64 width) {
@@ -1029,6 +1022,14 @@ TEST_F(AutoMixedPrecisionTest, TensorListThroughFunction) {
   for (int i = 0; i < item.fetch.size(); ++i) {
     test::ExpectClose(tensors_expected[i], tensors[i], -1, 5e-4);
   }
+}
+
+bool IsSupportedGPU() {
+#ifdef GOOGLE_CUDA
+    return GetCudaVersion(*virtual_cluster_.get()) >= 9010;
+#else
+    return true;
+#endif
 }
 
 int GetCudaVersion(const Cluster& cluster) {
