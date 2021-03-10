@@ -70,61 +70,17 @@ constexpr bool kVerifyGpuContext = false;
 
 namespace stream_executor {
 namespace gpu {
-namespace {
-
-// Manages the singleton map of contexts that we've created, mapping
-// from the CUcontext to the GpuContext* that we pass around internally.
-// This also manages assignment of unique ids to GpuContexts, to allow
-// for fast comparison of a context against the current context.
-//
-// CUDA-runtime-created contexts are avoided, if triple angle
-// brace launches are required, by using the scoped activations in
-// gpu/gpu_activation.h.
-class CreatedContexts {
- public:
-  // Returns whether context is a member of the live set.
-  static bool Has(CUcontext context) {
-    absl::ReaderMutexLock lock(&mu_);
-    return Live()->find(context) != Live()->end();
-  }
-
-  // Adds context to the live set, or returns it if it's already present.
-  static GpuContext* Add(CUcontext context) {
-    CHECK(context != nullptr);
-    absl::MutexLock lock(&mu_);
-    auto insert_result = Live()->insert(std::make_pair(context, nullptr));
-    auto it = insert_result.first;
-    if (insert_result.second) {
-      // context was not present in the map.  Add it.
-      it->second = absl::make_unique<GpuContext>(context, next_id_++);
-    }
-    return it->second.get();
-  }
-
-  // Removes context from the live set.
-  static void Remove(CUcontext context) {
-    CHECK(context != nullptr);
-    absl::MutexLock lock(&mu_);
-    auto it = Live()->find(context);
-    CHECK(it != Live()->end()) << context;
-    Live()->erase(it);
-  }
-
- private:
-  // Returns the live map singleton.
-  static std::map<CUcontext, std::unique_ptr<GpuContext>>* Live() {
-    static auto singleton =
-        new std::map<CUcontext, std::unique_ptr<GpuContext>>;
-    return singleton;
-  }
-
-  // Lock that guards access-to/mutation-of the live set.
-  static absl::Mutex mu_;
-  static int64 next_id_;
-};
 
 /* static */ absl::Mutex CreatedContexts::mu_{absl::kConstInit};
 /* static */ int64 CreatedContexts::next_id_ = 1;  // 0 means "no context"
+
+namespace {
+
+bool UseCudaMallocAsyncAllocator() {
+  static const char* debug_allocator_str = std::getenv("TF_GPU_ALLOCATOR");
+  return debug_allocator_str != nullptr &&
+      std::strcmp(debug_allocator_str, "cuda_malloc_async") == 0;
+}
 
 // Formats CUresult to output prettified values into a log stream.
 std::string ToString(CUresult result) {
@@ -443,7 +399,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   CHECK_EQ(CUDA_SUCCESS, cuCtxSetCurrent(former_context));
 
   if (res == CUDA_SUCCESS) {
-    *context = CreatedContexts::Add(new_context);
+    *context = CreatedContexts::Add(new_context, device_ordinal);
     CHECK(*context != nullptr)
         << "success in this call must entail non-null result";
     VLOG(2) << "created or reused context " << new_context
@@ -1216,7 +1172,33 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64 bytes) {
                                                    uint64 size,
                                                    CUstream stream) {
   ScopedActivateContext activation(context);
-  CUresult result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
+  CUresult result;
+  if(!UseCudaMallocAsyncAllocator()){
+    result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
+  } else {
+    CUcontext dstContext = CreatedContexts::GetContext(absl::bit_cast<void*>(gpu_dst));
+    CUcontext srcContext = CreatedContexts::GetContext(absl::bit_cast<void*>(gpu_src));
+
+    if ((void*)dstContext == nullptr) {
+      port::StatusOr<GpuContext*> context = GetPointerContext(gpu_dst);
+      if (!context.ok()) {
+        dstContext = context.ValueOrDie()->context();
+      }
+    }
+
+    if ((void*)srcContext == nullptr) {
+      port::StatusOr<GpuContext*> context = GetPointerContext(gpu_dst);
+      if (context.ok()) {
+        srcContext = context.ValueOrDie()->context();
+      }
+    }
+
+    VLOG(0) << absl::bit_cast<void*>(gpu_dst) << " " << absl::bit_cast<void*>(gpu_src);
+    VLOG(0) << dstContext << " " << srcContext;
+    VLOG(0) << size;
+
+    result = cuMemcpyPeerAsync(gpu_dst, dstContext, gpu_src, srcContext, size, stream);
+  }
   if (result != CUDA_SUCCESS) {
     LOG(ERROR) << absl::StrFormat(
         "failed to enqueue async memcpy from device to device: %s"
