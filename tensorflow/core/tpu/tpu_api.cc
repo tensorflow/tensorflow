@@ -23,7 +23,7 @@ TfTpu_BaseFn* InitializeApiFn() {
   return &base_fn;
 }
 
-TfTpu_OpsApiFn* OpsApiFn() {
+const TfTpu_OpsApiFn* OpsApiFn() {
   static TfTpu_OpsApiFn ops_api_fn;
   return &ops_api_fn;
 }

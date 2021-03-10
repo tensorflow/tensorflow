@@ -118,7 +118,7 @@ ProfilerSession::ProfilerSession(ProfileOptions options)
       options_(std::move(options)) {
 #if !defined(IS_MOBILE_PLATFORM)
   if (!active_) {
-    status_ = tensorflow::Status(error::UNAVAILABLE,
+    status_ = tensorflow::Status(error::ALREADY_EXISTS,
                                  "Another profiler session is active.");
     return;
   }

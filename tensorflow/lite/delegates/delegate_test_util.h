@@ -48,6 +48,8 @@ class TestDelegate : public ::testing::Test {
     return interpreter_->RemoveAllDelegates();
   }
 
+  void SetUpSubgraph(Subgraph* subgraph);
+
  protected:
   class SimpleDelegate {
    public:

@@ -25,11 +25,38 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+# Export a few files for use on Android.
+exports_files([
+    "batch_dataset_op.cc",
+    "batch_dataset_op.h",
+    "captured_function.cc",
+    "captured_function.h",
+    "dataset_utils.cc",
+    "dataset_utils.h",
+    "iterator_ops.cc",
+    "iterator_ops.h",
+    "map_dataset_op.cc",
+    "map_dataset_op.h",
+    "model_dataset_op.cc",
+    "model_dataset_op.h",
+    "name_utils.cc",
+    "name_utils.h",
+    "optimize_dataset_op.cc",
+    "optimize_dataset_op.h",
+    "optional_ops.cc",
+    "optional_ops.h",
+    "stats_utils.cc",
+    "stats_utils.h",
+    "unbounded_thread_pool.cc",
+    "unbounded_thread_pool.h",
+])
+
 tf_kernel_library(
     name = "batch_dataset_op",
     srcs = ["batch_dataset_op.cc"],
     hdrs = ["batch_dataset_op.h"],
     deps = [
+        ":dataset_utils",
         ":name_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -462,6 +489,7 @@ tf_kernel_library(
         "//tensorflow/core:session_options",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -680,6 +708,50 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+tf_kernel_library(
+    name = "parallel_batch_dataset_op",
+    srcs = ["parallel_batch_dataset_op.cc"],
+    hdrs = ["parallel_batch_dataset_op.h"],
+    deps = [
+        ":dataset_utils",
+        ":name_utils",
+        ":stats_utils",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
+    ],
+)
+
+tf_cc_test(
+    name = "parallel_batch_dataset_op_test",
+    size = "medium",
+    srcs = ["parallel_batch_dataset_op_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":iterator_ops",
+        ":name_utils",
+        ":parallel_batch_dataset_op",
+        ":range_dataset_op",
+        ":stats_utils",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:function_ops",
     ],
 )
 
@@ -1476,6 +1548,7 @@ tf_kernel_library(
         ":optimize_dataset_op",
         ":optional_ops",
         ":padded_batch_dataset_op",
+        ":parallel_batch_dataset_op",
         ":parallel_interleave_dataset_op",
         ":parallel_map_dataset_op",
         ":prefetch_dataset_op",

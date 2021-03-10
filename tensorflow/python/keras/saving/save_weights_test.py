@@ -40,7 +40,6 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import training as training_module
 from tensorflow.python.training.tracking import util as trackable
@@ -401,21 +400,6 @@ class SubclassedModel(training.Model):
 
 
 class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
-
-  def test_keras_optimizer_warning(self):
-    graph = ops.Graph()
-    with graph.as_default(), self.session(graph):
-      model = keras.models.Sequential()
-      model.add(keras.layers.Dense(2, input_shape=(3,)))
-      model.add(keras.layers.Dense(3))
-      model.compile(loss='mse', optimizer=optimizer_v1.Adam(), metrics=['acc'])
-      if not ops.executing_eagerly_outside_functions():
-        model._make_train_function()
-      temp_dir = self.get_temp_dir()
-      prefix = os.path.join(temp_dir, 'ckpt')
-      with test.mock.patch.object(logging, 'warning') as mock_log:
-        model.save_weights(prefix)
-        self.assertRegex(str(mock_log.call_args), 'Keras optimizer')
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_tensorflow_format_overwrite(self):

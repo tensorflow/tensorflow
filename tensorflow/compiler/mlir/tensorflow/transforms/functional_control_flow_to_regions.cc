@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
 #define DEBUG_TYPE "tf-functional-cf-to-region"
@@ -43,8 +44,8 @@ namespace TF {
 namespace {
 
 struct FunctionalControlFlowToRegions
-    : public PassWrapper<FunctionalControlFlowToRegions,
-                         OperationPass<ModuleOp>> {
+    : public TF::FunctionalControlFlowToRegionsPassBase<
+          FunctionalControlFlowToRegions> {
   void runOnOperation() override;
 };
 
@@ -62,7 +63,7 @@ YieldOp CreateCall(Operation* op, FuncOp func, Region& caller_region,
   Block* entry = builder.createBlock(&caller_region);
 
   if (use_region_args) {
-    entry->addArguments(args.getType());
+    entry->addArguments(func.getType().getInputs());
     args = entry->getArguments();
   }
   llvm::SmallVector<Value, 4> casted_args;
@@ -94,8 +95,11 @@ Value ConvertConditionToBoolean(Operation* op, Value cond) {
 // Transform a functional IfOp to a region based IfRegionOp.
 LogicalResult ConvertIfOp(IfOp if_op) {
   Value cond = ConvertConditionToBoolean(if_op, if_op.cond());
-  auto if_region = OpBuilder(if_op).create<TF::IfRegionOp>(
-      if_op.getLoc(), if_op.getResultTypes(), cond, if_op.is_stateless());
+  OpBuilder builder(if_op);
+  auto if_region = builder.create<TF::IfRegionOp>(
+      if_op.getLoc(), if_op.getResultTypes(), cond, if_op.is_stateless(),
+      builder.getStringAttr(if_op.then_function().getName()),
+      builder.getStringAttr(if_op.else_function().getName()));
   CopyDeviceAndUnderscoredAttributes(if_op, if_region);
 
   CreateCall(if_op, if_op.then_function(),
@@ -156,10 +160,6 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFFunctionalControlFlowToRegions() {
   return std::make_unique<FunctionalControlFlowToRegions>();
 }
-
-static PassRegistration<FunctionalControlFlowToRegions> pass(
-    "tf-functional-control-flow-to-regions",
-    "Transform functional control flow Ops to Region based counterparts");
 
 }  // namespace TF
 }  // namespace mlir

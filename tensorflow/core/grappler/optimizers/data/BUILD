@@ -16,6 +16,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":autotune_buffer_sizes",
+        ":batch_parallelization",
         ":disable_intra_op_parallelism",
         ":disable_prefetch_legacy_autotune",
         ":enable_gradient_descent",
@@ -35,6 +36,7 @@ cc_library(
         ":reorder_data_discarding_ops",
         ":shuffle_and_repeat_fusion",
         ":slack",
+        ":use_private_thread_pool",
     ],
 )
 
@@ -87,6 +89,44 @@ tf_cc_test(
     srcs = ["autotune_buffer_sizes_test.cc"],
     deps = [
         ":autotune_buffer_sizes",
+        ":graph_test_utils",
+        ":graph_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
+cc_library(
+    name = "batch_parallelization",
+    srcs = ["batch_parallelization.cc"],
+    hdrs = [
+        "batch_parallelization.h",
+    ],
+    deps = [
+        ":function_utils",
+        ":graph_utils",
+        ":optimizer_base",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+    ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "batch_parallelization_test",
+    srcs = ["batch_parallelization_test.cc"],
+    deps = [
+        ":batch_parallelization",
         ":graph_test_utils",
         ":graph_utils",
         "//tensorflow/core:framework",
@@ -912,6 +952,41 @@ tf_cc_test(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/kernels/data",
+    ],
+)
+
+cc_library(
+    name = "use_private_thread_pool",
+    srcs = ["use_private_thread_pool.cc"],
+    hdrs = ["use_private_thread_pool.h"],
+    deps = [
+        ":graph_utils",
+        ":optimizer_base",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core:lib_internal",
+    ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "use_private_thread_pool_test",
+    srcs = ["use_private_thread_pool_test.cc"],
+    deps = [
+        ":graph_test_utils",
+        ":graph_utils",
+        ":use_private_thread_pool",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
     ],
 )
 

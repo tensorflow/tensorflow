@@ -61,6 +61,7 @@ test_suite(
         ":test_graph_tfvariable_test",
         ":tfcompile_test",
     ],
+    visibility = ["//visibility:public"],
 )
 
 py_binary(
@@ -82,6 +83,7 @@ py_binary(
         "//tensorflow/python:session",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "@absl_py//absl:app",
         "@six_archive//:six",
     ],
 )

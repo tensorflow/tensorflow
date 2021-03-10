@@ -30,10 +30,10 @@ template <typename T>
 class OperationPass;
 class Pass;
 
+namespace mhlo {
+
 // Transforms unranked HLO operations to ranked ones where possible.
 std::unique_ptr<FunctionPass> createTransformUnrankedHloPass();
-
-namespace mhlo {
 
 /// Lowers HLO control flow ops to the Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeControlFlowPass();
@@ -45,7 +45,8 @@ std::unique_ptr<OperationPass<FuncOp>> createControlFlowToScfPass();
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeToStdPass();
 
 /// Lowers from the CHLO dialect to the HLO dialect.
-std::unique_ptr<FunctionPass> createChloLegalizeToHloPass();
+std::unique_ptr<FunctionPass> createChloLegalizeToHloPass(
+    bool broadcast_only = false);
 
 /// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
 /// buffers if necessary.

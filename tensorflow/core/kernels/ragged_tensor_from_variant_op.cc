@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <algorithm>
 #include <utility>
 #include <vector>
 
@@ -183,9 +184,8 @@ Status NestedStackRaggedTensors(
     }
     for (int j = 0; j < ragged_components[i].values().dim_size(0);
          j++, values_index++) {
-      for (int k = 0; k < num_inner_elements; k++) {
-        output_values_flat(values_index, k) = component_values_flat(j, k);
-      }
+      std::copy_n(&component_values_flat(j, 0), num_inner_elements,
+                  &output_values_flat(values_index, 0));
     }
   }
   return Status::OK();

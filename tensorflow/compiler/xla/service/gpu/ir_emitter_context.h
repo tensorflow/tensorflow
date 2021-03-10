@@ -50,11 +50,7 @@ class IrEmitterContext {
         cuda_compute_capability_(cuda_compute_capability),
         profile_index_map_(profile_index_map),
         mlir_context_(mlir_context),
-        llvm_module_(llvm_module) {
-    mlir_context_->loadDialect<
-        mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
-        mlir::StandardOpsDialect, mlir::lmhlo_gpu::LmhloGpuDialect>();
-  }
+        llvm_module_(llvm_module) {}
   // Disallow copy and assign.
   IrEmitterContext(const IrEmitterContext&) = delete;
   IrEmitterContext& operator=(const IrEmitterContext&) = delete;
@@ -76,9 +72,22 @@ class IrEmitterContext {
 
   std::vector<GpuExecutable::ConstantInfo>& constants() { return constants_; }
 
+  absl::Span<const BufferAllocation> allocations() const {
+    if (buffer_assignment_) {
+      return buffer_assignment_->Allocations();
+    }
+    return allocations_;
+  }
+
+  void set_allocations(absl::Span<const BufferAllocation> allocations) {
+    CHECK_EQ(nullptr, buffer_assignment_);
+    allocations_ = allocations;
+  }
+
  private:
   const HloModule* hlo_module_;
   const BufferAssignment* buffer_assignment_;
+  absl::Span<const BufferAllocation> allocations_;
   std::string platform_name_;
   GpuDeviceInfo gpu_device_info_;
   absl::optional<CudaComputeCapability> cuda_compute_capability_;

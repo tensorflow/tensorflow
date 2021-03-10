@@ -47,7 +47,7 @@ py_library(
         "python_io.py",
         "tf_record.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         ":_pywrap_file_io",
         ":_pywrap_record_io",

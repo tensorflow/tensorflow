@@ -76,7 +76,7 @@ limitations under the License.
 //     // Values such as `name` and `type` must outlive SE_InitPlugin call.
 //     params->platform->name = DEVICE_NAME;
 //     params->platform->type = DEVICE_TYPE;
-//     params->platform->visible_device_count = 2;
+//     params->platform_fns->get_device_count = get_device_count;
 //     params->platform_fns->create_device = create_device;
 //     params->platform_fns->destroy_device = destroy_device;
 //     ...
@@ -428,9 +428,6 @@ typedef struct SP_Platform {
   // capital letters and underscores.
   const char* type;
 
-  // Number of visible devices
-  size_t visible_device_count;
-
   // Whether this platform supports unified memory.
   // Unified memory is a single memory address space accessible from any device.
   TF_Bool supports_unified_memory;
@@ -444,6 +441,9 @@ typedef struct SP_PlatformFns {
 
   void* ext;  // reserved for future use
 
+  // Callbacks for getting device count
+  void (*get_device_count)(const SP_Platform* platform, int* device_count,
+                           TF_Status* status);
   // Callbacks for creating/destroying SP_Device.
   void (*create_device)(const SP_Platform* platform,
                         SE_CreateDeviceParams* params, TF_Status* status);

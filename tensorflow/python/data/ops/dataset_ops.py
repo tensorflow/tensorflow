@@ -28,8 +28,10 @@ import numpy as np
 import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
+from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
+from tensorflow.python.compat import compat as tf_compat
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import stats_options
@@ -185,6 +187,8 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
   >>> e = Point(1, 2) # Named tuple # doctest: +SKIP
   >>> f = tf.data.Dataset.range(10) # Dataset element
 
+  For more information,
+  read [this guide](https://www.tensorflow.org/guide/data).
   """
 
   def __init__(self, variant_tensor):
@@ -216,6 +220,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       input_options = input_dataset.options()
       if input_options is not None:
         self._options_attr = self._options_attr.merge(input_options)
+    self._options_attr._set_mutable(False)  # pylint: disable=protected-access
 
   @property
   def _variant_tensor(self):
@@ -462,8 +467,11 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     >>> dataset.element_spec
     TensorSpec(shape=(), dtype=tf.int32, name=None)
 
+    For more information,
+    read [this guide](https://www.tensorflow.org/guide/data#dataset_structure).
+
     Returns:
-      A nested structure of `tf.TypeSpec` objects matching the structure of an
+      A (nested) structure of `tf.TypeSpec` objects matching the structure of an
       element of this dataset and specifying the type of individual components.
     """
     raise NotImplementedError("Dataset.element_spec")
@@ -605,7 +613,8 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     guide](https://tensorflow.org/guide/data#consuming_numpy_arrays).
 
     Args:
-      tensors: A dataset element.
+      tensors: A dataset "element". Supported values are documented
+        [here](https://www.tensorflow.org/guide/data#dataset_structure).
 
     Returns:
       Dataset: A `Dataset`.
@@ -682,8 +691,9 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     https://tensorflow.org/guide/data#consuming_numpy_arrays).
 
     Args:
-      tensors: A dataset element, with each component having the same size in
-        the first dimension.
+      tensors: A dataset element, whose components have the same first
+        dimension. Supported values are documented
+        [here](https://www.tensorflow.org/guide/data#dataset_structure).
 
     Returns:
       Dataset: A `Dataset`.
@@ -790,14 +800,16 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         `iter()` protocol. If `args` is not specified, `generator` must take no
         arguments; otherwise it must take as many arguments as there are values
         in `args`.
-      output_types: (Optional.) A nested structure of `tf.DType` objects
+      output_types: (Optional.) A (nested) structure of `tf.DType` objects
         corresponding to each component of an element yielded by `generator`.
-      output_shapes: (Optional.) A nested structure of `tf.TensorShape` objects
-        corresponding to each component of an element yielded by `generator`.
+      output_shapes: (Optional.) A (nested) structure of `tf.TensorShape`
+        objects corresponding to each component of an element yielded by
+        `generator`.
       args: (Optional.) A tuple of `tf.Tensor` objects that will be evaluated
         and passed to `generator` as NumPy-array arguments.
-      output_signature: (Optional.) A nested structure of `tf.TypeSpec` objects
-        corresponding to each component of an element yielded by `generator`.
+      output_signature: (Optional.) A (nested) structure of `tf.TypeSpec`
+        objects corresponding to each component of an element yielded by
+        `generator`.
 
     Returns:
       Dataset: A `Dataset`.
@@ -833,10 +845,9 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       output_signature = nest.map_structure_up_to(output_types,
                                                   tensor_spec.TensorSpec,
                                                   output_shapes, output_types)
-    if all([
+    if all(
         isinstance(x, tensor_spec.TensorSpec)
-        for x in nest.flatten(output_signature)
-    ]):
+        for x in nest.flatten(output_signature)):
       output_types = nest.pack_sequence_as(
           output_signature, [x.dtype for x in nest.flatten(output_signature)])
       output_shapes = nest.pack_sequence_as(
@@ -1070,7 +1081,9 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
 
     This method has similar semantics to the built-in `zip()` function
     in Python, with the main difference being that the `datasets`
-    argument can be an arbitrary nested structure of `Dataset` objects.
+    argument can be a (nested) structure of `Dataset` objects. The supported
+    nesting mechanisms are documented
+    [here] (https://www.tensorflow.org/guide/data#dataset_structure).
 
     >>> # The nested structure of the `datasets` argument determines the
     >>> # structure of elements in the resulting dataset.
@@ -1102,7 +1115,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     [(1, 13), (2, 14)]
 
     Args:
-      datasets: A nested structure of datasets.
+      datasets: A (nested) structure of datasets.
 
     Returns:
       Dataset: A `Dataset`.
@@ -1117,8 +1130,8 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     >>> ds = a.concatenate(b)
     >>> list(ds.as_numpy_iterator())
     [1, 2, 3, 4, 5, 6, 7]
-    >>> # The input dataset and dataset to be concatenated should have the same
-    >>> # nested structures and output types.
+    >>> # The input dataset and dataset to be concatenated should have
+    >>> # compatible element specs.
     >>> c = tf.data.Dataset.zip((a, b))
     >>> a.concatenate(c)
     Traceback (most recent call last):
@@ -1269,8 +1282,8 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     (6, 2)
     (7, 3)
 
-    >>> # The nested structure of the input dataset determines the structure of
-    >>> # elements in the resulting dataset.
+    >>> # The (nested) structure of the input dataset determines the
+    >>> # structure of elements in the resulting dataset.
     >>> dataset = tf.data.Dataset.from_tensor_slices([(7, 8), (9, 10)])
     >>> dataset = dataset.enumerate()
     >>> for element in dataset.as_numpy_iterator():
@@ -1505,7 +1518,11 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     """
     return ShardDataset(self, num_shards, index)
 
-  def batch(self, batch_size, drop_remainder=False):
+  def batch(self,
+            batch_size,
+            drop_remainder=False,
+            num_parallel_calls=None,
+            deterministic=None):
     """Combines consecutive elements of this dataset into batches.
 
     >>> dataset = tf.data.Dataset.range(8)
@@ -1532,11 +1549,31 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         whether the last batch should be dropped in the case it has fewer than
         `batch_size` elements; the default behavior is not to drop the smaller
         batch.
+      num_parallel_calls: (Optional.) A `tf.int64` scalar `tf.Tensor`,
+        representing the number of batches to compute asynchronously in
+        parallel.
+        If not specified, batches will be computed sequentially. If the value
+        `tf.data.AUTOTUNE` is used, then the number of parallel
+        calls is set dynamically based on available resources.
+      deterministic: (Optional.) When `num_parallel_calls` is specified, if this
+        boolean is specified (`True` or `False`), it controls the order in which
+        the transformation produces elements. If set to `False`, the
+        transformation is allowed to yield elements out of order to trade
+        determinism for performance. If not specified, the
+        `tf.data.Options.experimental_deterministic` option
+        (`True` by default) controls the behavior.
 
     Returns:
       Dataset: A `Dataset`.
     """
-    return BatchDataset(self, batch_size, drop_remainder)
+    if num_parallel_calls is None:
+      if deterministic is not None:
+        warnings.warn("The `deterministic` argument has no effect unless the "
+                      "`num_parallel_calls` argument is specified.")
+      return BatchDataset(self, batch_size, drop_remainder)
+    else:
+      return ParallelBatchDataset(self, batch_size, drop_remainder,
+                                  num_parallel_calls, deterministic)
 
   def padded_batch(self,
                    batch_size,
@@ -1624,19 +1661,19 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     Args:
       batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
         consecutive elements of this dataset to combine in a single batch.
-      padded_shapes: (Optional.) A nested structure of `tf.TensorShape` or
+      padded_shapes: (Optional.) A (nested) structure of `tf.TensorShape` or
         `tf.int64` vector tensor-like objects representing the shape to which
         the respective component of each input element should be padded prior
         to batching. Any unknown dimensions will be padded to the maximum size
         of that dimension in each batch. If unset, all dimensions of all
         components are padded to the maximum size in the batch. `padded_shapes`
         must be set if any component has an unknown rank.
-      padding_values: (Optional.) A nested structure of scalar-shaped
+      padding_values: (Optional.) A (nested) structure of scalar-shaped
         `tf.Tensor`, representing the padding values to use for the respective
-        components. None represents that the nested structure should be padded
+        components. None represents that the (nested) structure should be padded
         with default values.  Defaults are `0` for numeric types and the empty
-        string for string types. The `padding_values` should have the
-        same structure as the input dataset. If `padding_values` is a single
+        string for string types. The `padding_values` should have the same
+        (nested) structure as the input dataset. If `padding_values` is a single
         element and the input dataset has multiple components, then the same
         `padding_values` will be used to pad every component of the dataset.
         If `padding_values` is a scalar, then its value will be broadcasted
@@ -1670,8 +1707,12 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     This transformation applies `map_func` to each element of this dataset, and
     returns a new dataset containing the transformed elements, in the same
     order as they appeared in the input. `map_func` can be used to change both
-    the values and the structure of a dataset's elements. For example, adding 1
-    to each element, or projecting a subset of element components.
+    the values and the structure of a dataset's elements. Supported structure
+    constructs are documented
+    [here](https://www.tensorflow.org/guide/data#dataset_structure).
+
+    For example, `map` can be used for adding 1 to each element, or projecting a
+    subset of element components.
 
     >>> dataset = Dataset.range(1, 6)  # ==> [ 1, 2, 3, 4, 5 ]
     >>> dataset = dataset.map(lambda x: x + 1)
@@ -1792,21 +1833,26 @@ name=None))
 
     Args:
       map_func: A function mapping a dataset element to another dataset element.
-      num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
+      num_parallel_calls: (Optional.) A `tf.int64` scalar `tf.Tensor`,
         representing the number elements to process asynchronously in parallel.
         If not specified, elements will be processed sequentially. If the value
         `tf.data.AUTOTUNE` is used, then the number of parallel
         calls is set dynamically based on available CPU.
-      deterministic: (Optional.) A boolean controlling whether determinism
-        should be traded for performance by allowing elements to be yielded out
-        of order.  If `deterministic` is `None`, the
-        `tf.data.Options.experimental_deterministic` dataset option (`True` by
-        default) is used to decide whether to run deterministically.
+      deterministic: (Optional.) When `num_parallel_calls` is specified, if this
+        boolean is specified (`True` or `False`), it controls the order in which
+        the transformation produces elements. If set to `False`, the
+        transformation is allowed to yield elements out of order to trade
+        determinism for performance. If not specified, the
+        `tf.data.Options.experimental_deterministic` option
+        (`True` by default) controls the behavior.
 
     Returns:
       Dataset: A `Dataset`.
     """
     if num_parallel_calls is None:
+      if deterministic is not None:
+        warnings.warn("The `deterministic` argument has no effect unless the "
+                      "`num_parallel_calls` argument is specified.")
       return MapDataset(self, map_func, preserve_cardinality=True)
     else:
       return ParallelMapDataset(
@@ -1926,11 +1972,13 @@ name=None))
         from cycle elements synchronously with no parallelism. If the value
         `tf.data.AUTOTUNE` is used, then the number of parallel
         calls is set dynamically based on available CPU.
-      deterministic: (Optional.) A boolean controlling whether determinism
-        should be traded for performance by allowing elements to be produced out
-        of order.  If `deterministic` is `None`, the
-        `tf.data.Options.experimental_deterministic` dataset option (`True` by
-        default) is used to decide whether to run deterministically.
+      deterministic: (Optional.) When `num_parallel_calls` is specified, if this
+        boolean is specified (`True` or `False`), it controls the order in which
+        the transformation produces elements. If set to `False`, the
+        transformation is allowed to yield elements out of order to trade
+        determinism for performance. If not specified, the
+        `tf.data.Options.experimental_deterministic` option
+        (`True` by default) controls the behavior.
 
     Returns:
       Dataset: A `Dataset`.
@@ -1942,6 +1990,9 @@ name=None))
       cycle_length = AUTOTUNE
 
     if num_parallel_calls is None:
+      if deterministic is not None:
+        warnings.warn("The `deterministic` argument has no effect unless the "
+                      "`num_parallel_calls` argument is specified.")
       return InterleaveDataset(self, map_func, cycle_length, block_length)
     else:
       return ParallelInterleaveDataset(
@@ -2361,19 +2412,17 @@ class DatasetV1(DatasetV2):
         return iterator_ops.OwnedIterator(self)
 
     _ensure_same_dataset_graph(self)
-    # Now that we create datasets at python object creation time, the capture
-    # by value _make_dataset() function would try to capture these variant
-    # tensor dataset inputs, which are marked as stateful ops and would throw
-    # an error if we try and capture them. We therefore traverse the graph
-    # to find all these ops and allowlist them so that the capturing
-    # logic instead of throwing an error recreates these ops which is what was
-    # happening before.
-    all_ds_ops = traverse.obtain_all_variant_tensor_ops(self)
+    # Some ops (e.g. dataset ops) are marked as stateful but are stil safe to
+    # to capture by value. We must allowlist these ops so that the capturing
+    # logic captures the ops instead of raising an exception.
+    allowlisted_stateful_ops = traverse.obtain_capture_by_value_ops(self)
     graph_level_seed, op_level_seed = core_random_seed.get_seed(None)
 
     # NOTE(mrry): We capture by value here to ensure that `_make_dataset()` is
     # a 0-argument function.
-    @function.Defun(capture_by_value=True, allowlisted_stateful_ops=all_ds_ops)
+    @function.Defun(
+        capture_by_value=True,
+        allowlisted_stateful_ops=allowlisted_stateful_ops)
     def _make_dataset():
       """Factory function for a dataset."""
       # NOTE(mrry): `Defun` does not capture the graph-level seed from the
@@ -2488,7 +2537,7 @@ class DatasetV1(DatasetV2):
     """Returns the class of each component of an element of this dataset.
 
     Returns:
-      A nested structure of Python `type` objects corresponding to each
+      A (nested) structure of Python `type` objects corresponding to each
       component of an element of this dataset.
     """
     return nest.map_structure(
@@ -2502,7 +2551,7 @@ class DatasetV1(DatasetV2):
     """Returns the shape of each component of an element of this dataset.
 
     Returns:
-      A nested structure of `tf.TensorShape` objects corresponding to each
+      A (nested) structure of `tf.TensorShape` objects corresponding to each
       component of an element of this dataset.
     """
     return nest.map_structure(
@@ -2516,7 +2565,7 @@ class DatasetV1(DatasetV2):
     """Returns the type of each component of an element of this dataset.
 
     Returns:
-      A nested structure of `tf.DType` objects corresponding to each component
+      A (nested) structure of `tf.DType` objects corresponding to each component
       of an element of this dataset.
     """
     return nest.map_structure(
@@ -2613,9 +2662,14 @@ class DatasetV1(DatasetV2):
     return DatasetV1Adapter(super(DatasetV1, self).shard(num_shards, index))
 
   @functools.wraps(DatasetV2.batch)
-  def batch(self, batch_size, drop_remainder=False):
-    return DatasetV1Adapter(super(DatasetV1, self).batch(
-        batch_size, drop_remainder))
+  def batch(self,
+            batch_size,
+            drop_remainder=False,
+            num_parallel_calls=None,
+            deterministic=None):
+    return DatasetV1Adapter(
+        super(DatasetV1, self).batch(batch_size, drop_remainder,
+                                     num_parallel_calls, deterministic))
 
   @functools.wraps(DatasetV2.padded_batch)
   def padded_batch(self,
@@ -2653,25 +2707,28 @@ class DatasetV1(DatasetV2):
     should migrate to `map` as this method will be removed in V2.
 
     Args:
-      map_func: A function mapping a nested structure of tensors (having shapes
-        and types defined by `self.output_shapes` and `self.output_types`) to
-        another nested structure of tensors.
+      map_func: A function mapping a (nested) structure of tensors (having
+        shapes and types defined by `self.output_shapes` and
+        `self.output_types`) to another (nested) structure of tensors.
       num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
         representing the number elements to process asynchronously in parallel.
         If not specified, elements will be processed sequentially. If the value
         `tf.data.AUTOTUNE` is used, then the number of parallel
         calls is set dynamically based on available CPU.
-      deterministic: (Optional.) A boolean controlling whether determinism
-        should be traded for performance by allowing elements to be produced out
-        of order.  If `deterministic` is `None`, the
-        `tf.data.Options.experimental_deterministic` dataset option (`True` by
-        default) is used to decide whether to produce elements
-        deterministically.
+      deterministic: (Optional.) When `num_parallel_calls` is specified, this
+        boolean controls the order in which the transformation produces
+        elements. If set to `False`, the transformation is allowed to yield
+        elements out of order to trade determinism for performance. If not
+        specified, the `tf.data.Options.experimental_deterministic` option
+        (`True` by default) controls the behavior.
 
     Returns:
       Dataset: A `Dataset`.
     """
     if num_parallel_calls is None:
+      if deterministic is not None:
+        warnings.warn("The `deterministic` argument has no effect unless the "
+                      "`num_parallel_calls` argument is specified.")
       return DatasetV1Adapter(
           MapDataset(
               self,
@@ -2716,9 +2773,9 @@ class DatasetV1(DatasetV2):
     should migrate to `filter` as this method will be removed in V2.
 
     Args:
-      predicate: A function mapping a nested structure of tensors (having shapes
-        and types defined by `self.output_shapes` and `self.output_types`) to a
-        scalar `tf.bool` tensor.
+      predicate: A function mapping a (nested) structure of tensors (having
+        shapes and types defined by `self.output_shapes` and
+        `self.output_types`) to a scalar `tf.bool` tensor.
 
     Returns:
       Dataset: The `Dataset` containing the elements of this dataset for which
@@ -2868,7 +2925,7 @@ def get_structure(dataset_or_iterator):
     dataset_or_iterator: A `tf.data.Dataset` or an `tf.data.Iterator`.
 
   Returns:
-    A nested structure of `tf.TypeSpec` objects matching the structure of an
+    A (nested) structure of `tf.TypeSpec` objects matching the structure of an
     element of `dataset_or_iterator` and specifying the type of individual
     components.
 
@@ -2892,7 +2949,7 @@ def get_legacy_output_classes(dataset_or_iterator):
     dataset_or_iterator: A `tf.data.Dataset` or `tf.data.Iterator`.
 
   Returns:
-    A nested structure of Python `type` objects matching the structure of the
+    A (nested) structure of Python `type` objects matching the structure of the
     dataset / iterator elements and specifying the class of the individual
     components.
   """
@@ -2909,7 +2966,7 @@ def get_legacy_output_shapes(dataset_or_iterator):
     dataset_or_iterator: A `tf.data.Dataset` or `tf.data.Iterator`.
 
   Returns:
-    A nested structure of `tf.TensorShape` objects matching the structure of
+    A (nested) structure of `tf.TensorShape` objects matching the structure of
     the dataset / iterator elements and specifying the shape of the individual
     components.
   """
@@ -2926,7 +2983,7 @@ def get_legacy_output_types(dataset_or_iterator):
     dataset_or_iterator: A `tf.data.Dataset` or `tf.data.Iterator`.
 
   Returns:
-    A nested structure of `tf.DType` objects matching the structure of
+    A (nested) structure of `tf.DType` objects matching the structure of
     dataset / iterator elements and specifying the shape of the individual
     components.
   """
@@ -2947,15 +3004,9 @@ class Options(options_lib.OptionsBase):
   The options are set for the entire dataset and are carried over to datasets
   created through tf.data transformations.
 
-  The options can be set either by mutating the object returned by
-  `tf.data.Dataset.options()` or by constructing an `Options` object and using
-  the `tf.data.Dataset.with_options(options)` transformation, which returns a
+  The options can be set by constructing an `Options` object and using the
+  `tf.data.Dataset.with_options(options)` transformation, which returns a
   dataset with the options set.
-
-  >>> dataset = tf.data.Dataset.range(42)
-  >>> dataset.options().experimental_deterministic = False
-  >>> print(dataset.options().experimental_deterministic)
-  False
 
   >>> dataset = tf.data.Dataset.range(42)
   >>> options = tf.data.Options()
@@ -3027,6 +3078,42 @@ class Options(options_lib.OptionsBase):
       "IGNORE: External state is ignored without a warning; WARN: External "
       "state is ignored and a warning is logged; FAIL: External state results "
       "in an error.")
+
+  def _to_proto(self):
+    pb = dataset_options_pb2.Options()
+    if self.experimental_deterministic is not None:
+      pb.deterministic = self.experimental_deterministic
+    pb.distribute_options.CopyFrom(self.experimental_distribute._to_proto())  # pylint: disable=protected-access
+    if self.experimental_external_state_policy is not None:
+      pb.external_state_policy = (
+          distribute_options.ExternalStatePolicy._to_proto(  # pylint: disable=protected-access
+              self.experimental_external_state_policy))
+    pb.optimization_options.CopyFrom(self.experimental_optimization._to_proto())  # pylint: disable=protected-access
+    if self.experimental_slack is not None:
+      pb.slack = self.experimental_slack
+    pb.threading_options.CopyFrom(self.experimental_threading._to_proto())  # pylint: disable=protected-access
+    return pb
+
+  def _from_proto(self, pb):
+    if pb.WhichOneof("optional_deterministic") is not None:
+      self.experimental_deterministic = pb.deterministic
+    self.experimental_distribute._from_proto(pb.distribute_options)  # pylint: disable=protected-access
+    if pb.WhichOneof("optional_external_state_policy") is not None:
+      self.experimental_external_state_policy = (
+          distribute_options.ExternalStatePolicy._from_proto(  # pylint: disable=protected-access
+              pb.external_state_policy))
+    self.experimental_optimization._from_proto(pb.optimization_options)  # pylint: disable=protected-access
+    if pb.WhichOneof("optional_slack") is not None:
+      self.experimental_slack = pb.slack
+    self.experimental_threading._from_proto(pb.threading_options)  # pylint: disable=protected-access
+
+  def _set_mutable(self, mutable):
+    """Change the mutability value to `mutable` on this options and children."""
+    # pylint: disable=protected-access
+    object.__setattr__(self, "_mutable", mutable)
+    self.experimental_distribute._set_mutable(mutable)
+    self.experimental_optimization._set_mutable(mutable)
+    self.experimental_threading._set_mutable(mutable)
 
   def _graph_rewrites(self):
     """Produces lists of enabled, disabled, default static graph rewrites.
@@ -3236,11 +3323,11 @@ class _NestedVariant(composite_tensor.CompositeTensor):
 
 @tf_export("data.experimental.from_variant")
 def from_variant(variant, structure):
-  """Constructs a dataset from the given variant and structure.
+  """Constructs a dataset from the given variant and (nested) structure.
 
   Args:
     variant: A scalar `tf.variant` tensor representing a dataset.
-    structure: A `tf.data.experimental.Structure` object representing the
+    structure: A (nested) structure of `tf.TypeSpec` objects representing the
       structure of each element in the dataset.
 
   Returns:
@@ -3284,6 +3371,11 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
   @property
   def value_type(self):
     return Dataset
+
+  @property
+  def element_spec(self):
+    """The inner element spec."""
+    return self._element_spec
 
   def _serialize(self):
     return (self._element_spec, self._dataset_shape)
@@ -3355,19 +3447,20 @@ class StructuredFunctionWrapper(object):
     """Creates a new `StructuredFunctionWrapper` for the given function.
 
     Args:
-      func: A function from a nested structure to another nested structure.
+      func: A function from a (nested) structure to another (nested) structure.
       transformation_name: Human-readable name of the transformation in which
         this function is being instantiated, for error messages.
       dataset: (Optional.) A `tf.data.Dataset`. If given, the structure of this
         dataset will be assumed as the structure for `func` arguments; otherwise
         `input_classes`, `input_shapes`, and `input_types` must be defined.
-      input_classes: (Optional.) A nested structure of `type`. If given, this
+      input_classes: (Optional.) A (nested) structure of `type`. If given, this
         argument defines the Python types for `func` arguments.
-      input_shapes: (Optional.) A nested structure of `tf.TensorShape`. If
+      input_shapes: (Optional.) A (nested) structure of `tf.TensorShape`. If
         given, this argument defines the shapes and structure for `func`
         arguments.
-      input_types: (Optional.) A nested structure of `tf.DType`. If given, this
-        argument defines the element types and structure for `func` arguments.
+      input_types: (Optional.) A (nested) structure of `tf.DType`. If given,
+        this argument defines the element types and structure for `func`
+        arguments.
       input_structure: (Optional.) A `Structure` object. If given, this argument
         defines the element types and structure for `func` arguments.
       add_to_graph: (Optional.) If `True`, the function will be added to the
@@ -3577,9 +3670,9 @@ class _GeneratorDataset(DatasetSource):
     """Constructs a `_GeneratorDataset`.
 
     Args:
-      init_args: A nested structure representing the arguments to `init_func`.
+      init_args: A (nested) structure representing the arguments to `init_func`.
       init_func: A TensorFlow function that will be called on `init_args` each
-        time a C++ iterator over this dataset is constructed. Returns a nested
+        time a C++ iterator over this dataset is constructed. Returns a (nested)
         structure representing the "state" of the dataset.
       next_func: A TensorFlow function that will be called on the result of
         `init_func` to produce each element, and that raises `OutOfRangeError`
@@ -3587,7 +3680,7 @@ class _GeneratorDataset(DatasetSource):
       finalize_func: A TensorFlow function that will be called on the result of
         `init_func` immediately before a C++ iterator over this dataset is
         destroyed. The return value is ignored.
-      output_signature: A nested structure of `tf.TypeSpec` objects describing
+      output_signature: A (nested) structure of `tf.TypeSpec` objects describing
         the output of `next_func`.
     """
     self._init_args = init_args
@@ -3638,11 +3731,11 @@ class ZipDataset(DatasetV2):
     for ds in nest.flatten(datasets):
       if not isinstance(ds, DatasetV2):
         if isinstance(ds, list):
-          message = ("The argument to `Dataset.zip()` must be a nested "
-                     "structure of `Dataset` objects. Nested structures do not "
-                     "support Python lists; please use a tuple instead.")
+          message = ("The argument to `Dataset.zip()` must be a (nested) "
+                     "structure of `Dataset` objects. Python `list` is not "
+                     "supported, please use a `tuple` instead.")
         else:
-          message = ("The argument to `Dataset.zip()` must be a nested "
+          message = ("The argument to `Dataset.zip()` must be a (nested) "
                      "structure of `Dataset` objects.")
         raise TypeError(message)
     self._datasets = datasets
@@ -3931,6 +4024,64 @@ class BatchDataset(UnaryDataset):
     return self._structure
 
 
+class ParallelBatchDataset(UnaryDataset):
+  """A `Dataset` that batches contiguous elements from its input in parallel."""
+
+  def __init__(self, input_dataset, batch_size, drop_remainder,
+               num_parallel_calls, deterministic):
+    """See `Dataset.batch()` for details."""
+    self._input_dataset = input_dataset
+    self._batch_size = ops.convert_to_tensor(
+        batch_size, dtype=dtypes.int64, name="batch_size")
+    self._drop_remainder = ops.convert_to_tensor(
+        drop_remainder, dtype=dtypes.bool, name="drop_remainder")
+    self._num_parallel_calls = ops.convert_to_tensor(
+        num_parallel_calls, dtype=dtypes.int64, name="num_parallel_calls")
+    if deterministic is None:
+      self._deterministic = "default"
+    elif deterministic:
+      self._deterministic = "true"
+    else:
+      self._deterministic = "false"
+
+    constant_drop_remainder = tensor_util.constant_value(self._drop_remainder)
+    # pylint: disable=protected-access
+    if constant_drop_remainder:
+      # NOTE(mrry): `constant_drop_remainder` may be `None` (unknown statically)
+      # or `False` (explicitly retaining the remainder).
+      # pylint: disable=g-long-lambda
+      constant_batch_size = tensor_util.constant_value(self._batch_size)
+      self._structure = nest.map_structure(
+          lambda component_spec: component_spec._batch(constant_batch_size),
+          input_dataset.element_spec)
+    else:
+      self._structure = nest.map_structure(
+          lambda component_spec: component_spec._batch(None),
+          input_dataset.element_spec)
+
+    if tf_compat.forward_compatible(2021, 3,
+                                    18) or self._deterministic != "default":
+      variant_tensor = gen_dataset_ops.parallel_batch_dataset(
+          input_dataset._variant_tensor,
+          batch_size=self._batch_size,
+          num_parallel_calls=self._num_parallel_calls,
+          drop_remainder=self._drop_remainder,
+          deterministic=self._deterministic,
+          **self._flat_structure)
+    else:
+      variant_tensor = gen_dataset_ops.parallel_batch_dataset(
+          input_dataset._variant_tensor,
+          batch_size=self._batch_size,
+          num_parallel_calls=self._num_parallel_calls,
+          drop_remainder=self._drop_remainder,
+          **self._flat_structure)
+    super(ParallelBatchDataset, self).__init__(input_dataset, variant_tensor)
+
+  @property
+  def element_spec(self):
+    return self._structure
+
+
 class _NumpyIterator(object):
   """Iterator over a dataset with elements converted to numpy."""
 
@@ -3943,7 +4094,16 @@ class _NumpyIterator(object):
     return self
 
   def __next__(self):
-    return nest.map_structure(lambda x: x.numpy(), next(self._iterator))
+
+    def to_numpy(x):
+      numpy = x._numpy()  # pylint: disable=protected-access
+      if isinstance(numpy, np.ndarray):
+        # `numpy` shares the same underlying buffer as the `x` Tensor.
+        # Tensors are expected to be immutable, so we disable writes.
+        numpy.setflags(write=False)
+      return numpy
+
+    return nest.map_structure(to_numpy, next(self._iterator))
 
   def next(self):
     return self.__next__()
@@ -4522,17 +4682,17 @@ class _OptionsDataset(UnaryUnchangedStructureDataset):
   """An identity `Dataset` that stores options."""
 
   def __init__(self, input_dataset, options):
+    # pylint: disable=protected-access
     self._input_dataset = input_dataset
-    variant_tensor = input_dataset._variant_tensor  # pylint: disable=protected-access
+    variant_tensor = input_dataset._variant_tensor
     super(_OptionsDataset, self).__init__(input_dataset, variant_tensor)
 
     if self._options_attr:
+      self._options_attr._set_mutable(True)
       self._options_attr = self._options_attr.merge(options)
     else:
       self._options_attr = options
-
-  def options(self):
-    return self._options_attr
+    self._options_attr._set_mutable(False)
 
 
 class _ModelDataset(UnaryUnchangedStructureDataset):
@@ -4561,6 +4721,15 @@ class _OptimizeDataset(UnaryUnchangedStructureDataset):
     self._input_dataset = input_dataset
     if optimization_configs is None:
       optimization_configs = []
+
+    # We sort the options here before embedding as constant tensors to ensure
+    # that serialization to NodeDef is determinstic.
+    if optimizations_enabled:
+      optimizations_enabled.sort()
+    if optimizations_disabled:
+      optimizations_disabled.sort()
+    if optimizations_default:
+      optimizations_default.sort()
 
     self._optimizations_enabled = convert.optional_param_to_tensor(
         argument_name="optimizations_enabled",
@@ -4672,7 +4841,7 @@ def normalize_to_dense(dataset):
 
 
 class _RestructuredDataset(UnaryDataset):
-  """An internal helper for changing the structure and shape of a dataset."""
+  """An internal helper for changing the element spec of a dataset."""
 
   def __init__(self, dataset, structure):
     self._input_dataset = dataset

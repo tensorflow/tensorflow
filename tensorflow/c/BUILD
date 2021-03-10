@@ -4,6 +4,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
+    "check_deps",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -174,6 +175,13 @@ tf_cuda_library(
     }),
 )
 
+# Check that c_api_no_xla does not depend on xla.
+check_deps(
+    name = "c_api_no_xla_check_deps",
+    disallowed_deps = ["//tensorflow/compiler/jit:xla_kernel_creator"],
+    deps = [":c_api_no_xla"],
+)
+
 tf_cuda_library(
     name = "c_api_no_xla",
     srcs = [
@@ -199,6 +207,7 @@ tf_cuda_library(
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            ":env",
             ":logging",
             ":tf_status",
             ":tf_tensor",
@@ -506,11 +515,13 @@ tf_cuda_library(
             "//tensorflow/core:framework",
         ],
     }) + [
-        ":c_api",
+        ":c_api_macros",
+        ":tf_status",
         ":tf_status_helper",
-        ":c_api_internal",
         ":tf_file_statistics",
-        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:types",
     ],
 )
 
@@ -641,6 +652,7 @@ tf_cuda_cc_test(
         "//conditions:default": [],
     }),
     tags = [
+        "no_cuda_asan",  # TODO(b/181771536)
         "no_windows",  # TODO(b/155444728)
         "noasan",
     ],
@@ -649,6 +661,7 @@ tf_cuda_cc_test(
     # linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":c_api",
+        ":c_api_internal",
         ":c_test_util",
         ":test_op_kernel",
         "//tensorflow/cc:cc_ops",

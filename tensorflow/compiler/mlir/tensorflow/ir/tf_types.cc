@@ -96,9 +96,6 @@ bool TensorFlowRefType::classof(Type type) {
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
       >();
 }
-bool TensorFlowTypeWithSubtype::classof(Type type) {
-  return type.isa<ResourceType, VariantType>();
-}
 
 TensorFlowType TensorFlowRefType::get(Type type) {
   MLIRContext* ctx = type.getContext();
@@ -155,19 +152,19 @@ Type TensorFlowRefType::RemoveRef() {
   if (isa<FloatRefType>()) return mlir::FloatType::getF32(ctx);
   if (isa<DoubleRefType>()) return mlir::FloatType::getF64(ctx);
   if (isa<Bfloat16RefType>()) return mlir::FloatType::getBF16(ctx);
-  if (isa<BoolRefType>()) return mlir::IntegerType::get(1, ctx);
-  if (isa<Int8RefType>()) return mlir::IntegerType::get(8, ctx);
-  if (isa<Int16RefType>()) return mlir::IntegerType::get(16, ctx);
-  if (isa<Int32RefType>()) return mlir::IntegerType::get(32, ctx);
-  if (isa<Int64RefType>()) return mlir::IntegerType::get(64, ctx);
+  if (isa<BoolRefType>()) return mlir::IntegerType::get(ctx, 1);
+  if (isa<Int8RefType>()) return mlir::IntegerType::get(ctx, 8);
+  if (isa<Int16RefType>()) return mlir::IntegerType::get(ctx, 16);
+  if (isa<Int32RefType>()) return mlir::IntegerType::get(ctx, 32);
+  if (isa<Int64RefType>()) return mlir::IntegerType::get(ctx, 64);
   if (isa<Uint8RefType>())
-    return mlir::IntegerType::get(8, IntegerType::Unsigned, ctx);
+    return mlir::IntegerType::get(ctx, 8, IntegerType::Unsigned);
   if (isa<Uint16RefType>())
-    return mlir::IntegerType::get(16, IntegerType::Unsigned, ctx);
+    return mlir::IntegerType::get(ctx, 16, IntegerType::Unsigned);
   if (isa<Uint32RefType>())
-    return mlir::IntegerType::get(32, IntegerType::Unsigned, ctx);
+    return mlir::IntegerType::get(ctx, 32, IntegerType::Unsigned);
   if (isa<Uint64RefType>())
-    return mlir::IntegerType::get(64, IntegerType::Unsigned, ctx);
+    return mlir::IntegerType::get(ctx, 64, IntegerType::Unsigned);
   if (isa<Complex64RefType>())
     return mlir::ComplexType::get(mlir::FloatType::getF32(ctx));
   if (isa<Complex128RefType>())
@@ -181,10 +178,26 @@ Type TensorFlowRefType::RemoveRef() {
   llvm_unreachable("unexpected tensorflow ref type kind");
 }
 
+bool TensorFlowTypeWithSubtype::classof(Type type) {
+  return type.isa<ResourceType, VariantType>();
+}
+
 Type TensorFlowTypeWithSubtype::RemoveSubtypes() {
   MLIRContext* ctx = getContext();
   if (isa<VariantType>()) return VariantType::get(ctx);
   if (isa<ResourceType>()) return ResourceType::get(ctx);
+  llvm_unreachable("unexpected tensorflow type with subtypes kind");
+}
+
+TensorFlowTypeWithSubtype TensorFlowTypeWithSubtype::clone(
+    ArrayRef<TensorType> new_subtypes) {
+  MLIRContext* ctx = getContext();
+  if (isa<VariantType>())
+    return VariantType::get(new_subtypes, ctx)
+        .cast<TensorFlowTypeWithSubtype>();
+  if (isa<ResourceType>())
+    return ResourceType::get(new_subtypes, ctx)
+        .cast<TensorFlowTypeWithSubtype>();
   llvm_unreachable("unexpected tensorflow type with subtypes kind");
 }
 
@@ -198,7 +211,7 @@ ArrayRef<TensorType> TensorFlowTypeWithSubtype::GetSubtypes() {
 
 // TODO(jpienaar): BroadcastCompatible and HasCompatibleElementTypes have
 // similar structure that could be extracted into helper method.
-bool BroadcastCompatible(ArrayRef<Type> lhs, ArrayRef<Type> rhs) {
+bool BroadcastCompatible(TypeRange lhs, TypeRange rhs) {
   if (lhs.size() != rhs.size()) return false;
   for (auto types : llvm::zip(lhs, rhs)) {
     // Drop ref types because they don't affect broadcast compatibility. E.g.,
@@ -349,7 +362,7 @@ bool HasCompatibleElementTypes(Type lhs, Type rhs,
   return GetCastCompatibleType(lhs, rhs, may_ignore_ref_type_lhs) != nullptr;
 }
 
-bool AreCastCompatible(ArrayRef<Type> types) {
+bool AreCastCompatible(TypeRange types) {
   Type common = types.front();
   for (auto type : types.drop_front()) {
     Type refined_type =
@@ -360,7 +373,7 @@ bool AreCastCompatible(ArrayRef<Type> types) {
   return true;
 }
 
-bool ArraysAreCastCompatible(ArrayRef<Type> lhs, ArrayRef<Type> rhs) {
+bool ArraysAreCastCompatible(TypeRange lhs, TypeRange rhs) {
   if (lhs.size() != rhs.size()) return false;
   for (auto pair : llvm::zip(lhs, rhs)) {
     auto lhs_i = std::get<0>(pair);

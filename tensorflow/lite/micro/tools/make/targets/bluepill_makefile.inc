@@ -2,9 +2,25 @@ export PATH := $(MAKEFILE_DIR)/downloads/gcc_embedded/bin/:$(PATH)
 TARGET_ARCH := cortex-m3
 TARGET_TOOLCHAIN_PREFIX := arm-none-eabi-
 
-$(eval $(call add_third_party_download,$(GCC_EMBEDDED_URL),$(GCC_EMBEDDED_MD5),gcc_embedded,))
-$(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,))
-$(eval $(call add_third_party_download,$(STM32_BARE_LIB_URL),$(STM32_BARE_LIB_MD5),stm32_bare_lib,))
+DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/arm_gcc_download.sh ${MAKEFILE_DIR}/downloads)
+ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+  $(error Something went wrong with the GCC download: $(DOWNLOAD_RESULT))
+endif
+
+DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/renode_download.sh ${MAKEFILE_DIR}/downloads)
+ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+  $(error Something went wrong with the renode download: $(DOWNLOAD_RESULT))
+endif
+
+DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/ext_libs/cmsis_download.sh ${MAKEFILE_DIR}/downloads)
+ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+  $(error Something went wrong with the CMSIS download: $(DOWNLOAD_RESULT))
+endif
+
+DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/ext_libs/stm32_bare_lib_download.sh ${MAKEFILE_DIR}/downloads)
+ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+  $(error Something went wrong with the STM32 Bare Lib download: $(DOWNLOAD_RESULT))
+endif
 
 PLATFORM_FLAGS = \
   -DTF_LITE_MCU_DEBUG_LOG \
@@ -20,6 +36,9 @@ PLATFORM_FLAGS = \
 # TODO(b/168334217): Currently we always add -DNDEBUG because the build is
 # broken w/o it. Remove this workaround once the issue is resolved.
 PLATFORM_FLAGS += -DNDEBUG
+
+# TODO(#46937): Remove once initialization of global variables is sorted out.
+PLATFORM_FLAGS += -DRENODE
 
 CXXFLAGS += $(PLATFORM_FLAGS) -fno-use-cxa-atexit
 CCFLAGS += $(PLATFORM_FLAGS)
@@ -47,8 +66,7 @@ EXCLUDED_TESTS := \
   tensorflow/lite/micro/micro_interpreter_test.cc \
   tensorflow/lite/micro/micro_allocator_test.cc \
   tensorflow/lite/micro/memory_helpers_test.cc \
-  tensorflow/lite/micro/memory_arena_threshold_test.cc \
-  tensorflow/lite/micro/kernels/circular_buffer_test.cc
+  tensorflow/lite/micro/memory_arena_threshold_test.cc
 MICROLITE_TEST_SRCS := $(filter-out $(EXCLUDED_TESTS), $(MICROLITE_TEST_SRCS))
 
 EXCLUDED_EXAMPLE_TESTS := \
@@ -57,5 +75,10 @@ EXCLUDED_EXAMPLE_TESTS := \
   tensorflow/lite/micro/examples/image_recognition_experimental/Makefile.inc
 MICRO_LITE_EXAMPLE_TESTS := $(filter-out $(EXCLUDED_EXAMPLE_TESTS), $(MICRO_LITE_EXAMPLE_TESTS))
 
-TEST_SCRIPT := tensorflow/lite/micro/testing/test_bluepill_binary.sh
+TEST_SCRIPT := tensorflow/lite/micro/testing/test_with_renode.sh
 
+# We are setting this variable to non-zero to allow us to have a custom
+# implementation of `make test` for bluepill
+TARGET_SPECIFIC_MAKE_TEST := 1
+test: build
+	$(TEST_SCRIPT) $(BINDIR) $(TEST_PASS_STRING) $(TARGET)

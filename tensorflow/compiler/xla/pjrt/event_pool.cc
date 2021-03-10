@@ -31,8 +31,8 @@ EventPool::Handle::~Handle() {
 EventPool::EventPool(bool allow_reuse)
     : allow_reuse_(allow_reuse), next_sequence_number_(0) {}
 
-StatusOr<EventPool::Handle> EventPool::ThenAllocateAndRecordEvent(
-    se::Stream* stream) {
+StatusOr<EventPool::Handle> EventPool::AllocateEvent(
+    se::StreamExecutor* executor) {
   Handle event;
 
   if (allow_reuse_) {
@@ -44,15 +44,24 @@ StatusOr<EventPool::Handle> EventPool::ThenAllocateAndRecordEvent(
     }
   }
   if (!event.event_) {
-    event.event_ = absl::make_unique<se::Event>(stream->parent());
+    event.event_ = absl::make_unique<se::Event>(executor);
     TF_RET_CHECK(event.event_->Init()) << "Event initialization failed";
   }
-  {
-    absl::MutexLock lock(&mu_);
-    stream->ThenRecordEvent(event.event_.get());
-    event.sequence_number_ = next_sequence_number_++;
-  }
   return event;
+}
+
+void EventPool::ThenRecordEvent(se::Stream* stream, EventPool::Handle& handle) {
+  absl::MutexLock lock(&mu_);
+  stream->ThenRecordEvent(handle.event_.get());
+  handle.sequence_number_ = next_sequence_number_++;
+}
+
+StatusOr<EventPool::Handle> EventPool::ThenAllocateAndRecordEvent(
+    se::Stream* stream) {
+  TF_ASSIGN_OR_RETURN(EventPool::Handle handle,
+                      AllocateEvent(stream->parent()));
+  ThenRecordEvent(stream, handle);
+  return handle;
 }
 
 }  // namespace xla

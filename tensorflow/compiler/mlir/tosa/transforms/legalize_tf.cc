@@ -2112,12 +2112,12 @@ void LegalizeTF::runOnFunction() {
   patterns.insert<ConvertTFReverseV2Op>(ctx);
   patterns.insert<ConvertTFFakeQuantWithMinMaxArgsOp>(ctx);
   patterns.insert<ConvertTFFakeQuantWithMinMaxVarsOp>(ctx);
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // anonymous namespace
 
-// Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
+// Creates an instance of the TensorFlow dialect LegalizeTF pass.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass() {
   return std::make_unique<LegalizeTF>();
 }

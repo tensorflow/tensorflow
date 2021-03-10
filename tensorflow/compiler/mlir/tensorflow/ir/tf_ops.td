@@ -35,6 +35,7 @@ include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/OpBase.td"
+include "mlir/IR/SymbolInterfaces.td"
 
 class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
   let results = (outs
@@ -70,7 +71,7 @@ class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
   }];
 }
 
-def TF_CaseOp : TF_Op<"Case", []> {
+def TF_CaseOp : TF_Op<"Case", [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = [{
 An n-way switch statement which calls a single branch function.
   }];
@@ -202,14 +203,14 @@ def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect,
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 
   let builders = [
-    OpBuilderDAG<(ins "Attribute":$value)>,
-    OpBuilderDAG<(ins "Type":$type, "Attribute":$value)>,
+    OpBuilder<(ins "Attribute":$value)>,
+    OpBuilder<(ins "Type":$type, "Attribute":$value)>,
   ];
 
   let hasFolder = 1;
 
   let extraClassDeclaration = [{
-    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r) {
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       return BroadcastCompatible(l, r);
     }
   }];
@@ -295,7 +296,7 @@ Returns a tensor with the same shape and contents as input.
   TF_DerivedResultTypeAttr T = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_IfOp : TF_Op<"If", []> {
+def TF_IfOp : TF_Op<"If", [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "output = cond ? then_branch(input) : else_branch(input)";
 
   let description = [{
@@ -333,10 +334,6 @@ else_branch: A function that takes 'inputs' and returns a list of
   TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<1>;
   TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
   TF_DerivedResultShapeListAttr output_shapes = TF_DerivedResultShapeListAttr<0>;
-
-  let verifier = [{
-    return Verify(*this);
-  }];
 
   let hasCanonicalizer = 1;
 
@@ -394,7 +391,12 @@ else_branch: A region that computes the outputs of the op if cond = false.
     0DTensorOf<[I1]>:$cond,
 
     // Used to map StatelessIf and If op defined in TensorFlow to a common op.
-    BoolAttr:$is_stateless
+    BoolAttr:$is_stateless,
+    // Used to maintain function name when round-tripping
+    // between functional and regional control flow.  This can be removed if
+    // the runtime does not require globally unique then/else branch function names.
+    OptionalAttr<StrAttr>:$_then_func_name,
+    OptionalAttr<StrAttr>:$_else_func_name
   );
 
   let results = (outs
@@ -408,7 +410,7 @@ else_branch: A region that computes the outputs of the op if cond = false.
   }];
 
   let builders = [
-    OpBuilderDAG<(ins "TypeRange":$resultTypes, "ValueRange":$operands,
+    OpBuilder<(ins "TypeRange":$resultTypes, "ValueRange":$operands,
       "llvm::ArrayRef<::mlir::NamedAttribute>":$attributes,
       "unsigned":$numRegions),
     [{
@@ -660,7 +662,7 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
   let verifier = [{ return VerifyPartitionedCall(*this); }];
 }
 
-def TF_WhileOp : TF_Op<"While", []> {
+def TF_WhileOp : TF_Op<"While", [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = [{
 output = input; While (Cond(output)) { output = Body(output) }
   }];
@@ -712,10 +714,6 @@ body: A function that takes a list of tensors and returns another
 
   TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
   TF_DerivedResultShapeListAttr output_shapes = TF_DerivedResultShapeListAttr<0>;
-
-  let verifier = [{
-    return Verify(*this);
-  }];
 
   let extraClassDeclaration = [{
     // Get the condition function.
@@ -865,16 +863,35 @@ Example:
     Res<TF_ResourceTensor, "", [TF_VariableAlloc]>:$resource
   );
 
-  TF_DerivedOperandOrResultHandleTypeAttr dtype =
-    TF_DerivedOperandOrResultHandleTypeAttr<"resource">;
-  TF_DerivedOperandOrResultHandleShapeAttr shape =
-    TF_DerivedOperandOrResultHandleShapeAttr<"resource">;
+  let verifier = [{
+    // VarHandleOp requires the resource handle supply a single subtype from
+    // which to derive the dtype and shape attributes.
+    if (resource_type().getSubtypes().size() != 1) {
+      return emitOpError(
+          "must have exactly one subtype in the result resource type");
+    }
+
+    return success();
+  }];
+
+  DerivedTypeAttr dtype = DerivedTypeAttr<
+      "return getElementTypeOrSelf(resource_subtype());">;
+  DerivedAttr shape = DerivedAttr<
+      "ShapedType",
+      "return resource_subtype().cast<ShapedType>();",
+      [{ mlir::TF::ShapeAttr::get($_ctx, $_self) }]>;
 
   let extraClassDeclaration = [{
     // TF_ResourceHandleAllocatorInterface:
     ResourceHandleValueAndId GetResourceHandleValueAndId(
       llvm::SmallDenseMap<ResourceHandle, int64_t> &resource_handle_id_map,
       int64_t &next_id);
+
+    TensorType resource_subtype() { return resource_type().getSubtypes()[0]; }
+
+    ResourceType resource_type() {
+      return getElementTypeOrSelf(resource()).cast<TF::ResourceType>();
+    }
   }];
 }
 
@@ -994,6 +1011,7 @@ An op which shards the input based on the given sharding attribute.
   let arguments = (ins
     TF_Tensor:$input,
 
+    DefaultValuedAttr<StrAttr, "">:$sharding,
     OptionalAttr<StrAttr>:$_XlaSharding
   );
 
@@ -1195,7 +1213,7 @@ as true/false for a branch condition.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilderDAG<(ins "Value":$value),
+    OpBuilder<(ins "Value":$value),
     [{
       build($_builder, $_state, RankedTensorType::get({}, $_builder.getI1Type()),
             value);
@@ -1361,12 +1379,12 @@ def TF_AddV2Op : TF_Op<"AddV2", [Commutative, NoSideEffect, ResultsBroadcastable
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint32]>:$x,
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint32]>:$y
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint16, TF_Uint32, TF_Uint64]>:$x,
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint16, TF_Uint32, TF_Uint64]>:$y
   );
 
   let results = (outs
-    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint32]>:$z
+    TensorOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8, TF_Uint16, TF_Uint32, TF_Uint64]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -2042,5 +2060,48 @@ argument "ref" in addition to returning the results.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_TPUPartitionedInputOp : TF_Op<"TPUPartitionedInput", [NoSideEffect]> {
+  let summary = [{
+An op that groups a list of partitioned inputs together. This op
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$inputs,
+
+    DefaultValuedAttr<I64Attr, "0">:$partition_dim,
+    OptionalAttr<StrAttr>:$_XlaSharding
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+}
+
+def TF_TPUPartitionedOutputOp : TF_Op<"TPUPartitionedOutput", [NoSideEffect]> {
+  let summary = [{
+An op that demultiplexes a tensor to be sharded by XLA to a list of partitioned
+  }];
+
+  let description = [{
+outputs outside the XLA computation.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$inputs,
+
+    DefaultValuedAttr<I64Attr, "0">:$partition_dim,
+    OptionalAttr<StrAttr>:$_XlaSharding
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultSizeAttr num_splits = TF_DerivedResultSizeAttr<0>;
+}
 
 #endif // TF_OPS

@@ -38,6 +38,7 @@ cmake_policy(SET CMP0028 NEW)
 # Enable MACOSX_RPATH (@rpath) for built dynamic libraries.
 cmake_policy(SET CMP0042 NEW)
 project(tensorflow-lite C CXX)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(TENSORFLOW_SOURCE_DIR "" CACHE PATH
   "Directory that contains the TensorFlow project"
 )
@@ -57,8 +58,6 @@ set(CMAKE_PREFIX_PATH
   "${TFLITE_SOURCE_DIR}/tools/cmake/modules"
   ${CMAKE_PREFIX_PATH}
 )
-# b/168750039: To workaround absl module not found error on Android build.
-set(absl_DIR "${TFLITE_SOURCE_DIR}/tools/cmake/modules")
 
 option(TFLITE_ENABLE_RUY "Enable experimental RUY integration" OFF)
 option(TFLITE_ENABLE_RESOURCE "Enable experimental support for resources" ON)
@@ -125,7 +124,7 @@ macro(populate_tf_source_vars RELATIVE_DIR SOURCES_VAR)
   )
 endmacro()
 # Find TensorFlow Lite dependencies.
-find_package(absl REQUIRED CONFIG)
+find_package(absl REQUIRED)
 find_package(eigen REQUIRED)
 find_package(farmhash REQUIRED)
 find_package(fft2d REQUIRED)
@@ -206,6 +205,7 @@ endif()
 if(TFLITE_ENABLE_GPU)
   find_package(opencl_headers REQUIRED)
   find_package(vulkan_headers REQUIRED)
+  find_package(fp16_headers REQUIRED)
   # Android NDK already has OpenGL, EGL headers.
   if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
     find_package(opengl_headers REQUIRED)
@@ -263,6 +263,7 @@ if(TFLITE_ENABLE_GPU)
   list(APPEND TFLITE_DELEGATES_GPU_SRCS
     ${TFLITE_SOURCE_DIR}/delegates/gpu/api.cc
     ${TFLITE_SOURCE_DIR}/delegates/gpu/delegate.cc
+    ${TFLITE_SOURCE_DIR}/experimental/acceleration/compatibility/android_info.cc
     ${TFLITE_DELEGATES_GPU_CL_SRCS}
     ${TFLITE_DELEGATES_GPU_CL_KERNELS_SRCS}
     ${TFLITE_DELEGATES_GPU_COMMON_DEFAULT_SRCS}
@@ -420,71 +421,34 @@ target_compile_options(tensorflow-lite
 )
 add_library(tensorflow::tensorflowlite ALIAS tensorflow-lite)
 
-# Benchmark Tool
-populate_source_vars("${TFLITE_SOURCE_DIR}/tools/benchmark"
-  TFLITE_BENCHMARK_SRCS
-  FILTER "(_test|_plus_flex_main|_performance_options.*)\\.cc$"
-)
-list(APPEND TFLITE_BENCHMARK_SRCS
-  ${TF_SOURCE_DIR}/core/util/stats_calculator.cc
-  ${TFLITE_SOURCE_DIR}/profiling/memory_info.cc
-  ${TFLITE_SOURCE_DIR}/profiling/profile_summarizer.cc
-  ${TFLITE_SOURCE_DIR}/profiling/profile_summary_formatter.cc
-  ${TFLITE_SOURCE_DIR}/profiling/time.cc
-  ${TFLITE_SOURCE_DIR}/tools/command_line_flags.cc
-  ${TFLITE_SOURCE_DIR}/tools/delegates/default_execution_provider.cc
-  ${TFLITE_SOURCE_DIR}/tools/evaluation/utils.cc
-  ${TFLITE_SOURCE_DIR}/tools/optimize/sparsity/format_converter.cc
-  ${TFLITE_SOURCE_DIR}/tools/tool_params.cc
+# The benchmark tool.
+add_subdirectory(${TFLITE_SOURCE_DIR}/tools/benchmark)
+
+# The label_image example.
+add_subdirectory(${TFLITE_SOURCE_DIR}/examples/label_image)
+
+# Python interpreter wrapper.
+add_library(_pywrap_tensorflow_interpreter_wrapper SHARED EXCLUDE_FROM_ALL
+  ${TFLITE_SOURCE_DIR}/python/interpreter_wrapper/interpreter_wrapper.cc
+  ${TFLITE_SOURCE_DIR}/python/interpreter_wrapper/interpreter_wrapper_pybind11.cc
+  ${TFLITE_SOURCE_DIR}/python/interpreter_wrapper/numpy.cc
+  ${TFLITE_SOURCE_DIR}/python/interpreter_wrapper/python_error_reporter.cc
+  ${TFLITE_SOURCE_DIR}/python/interpreter_wrapper/python_utils.cc
 )
 
-list(APPEND TFLITE_BENCHMARK_LIBS
+# To remove "lib" prefix.
+set_target_properties(_pywrap_tensorflow_interpreter_wrapper PROPERTIES PREFIX "")
+
+target_include_directories(_pywrap_tensorflow_interpreter_wrapper
+  PUBLIC
+    ${TFLITE_INCLUDE_DIRS}
+)
+
+target_link_libraries(_pywrap_tensorflow_interpreter_wrapper
   tensorflow-lite
   ${CMAKE_DL_LIBS}
 )
-
-# TODO(b/171007016): Enable performance options on Windows.
-if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Windows")
-  list(APPEND TFLITE_BENCHMARK_SRCS
-    ${TFLITE_SOURCE_DIR}/tools/benchmark/benchmark_performance_options.cc
-  )
-endif()
-
-if(TFLITE_ENABLE_XNNPACK)
-  list(APPEND TFLITE_BENCHMARK_SRCS
-    ${TFLITE_SOURCE_DIR}/tools/delegates/xnnpack_delegate_provider.cc
-  )
-else()
-  set(TFLITE_BENCHMARK_CC_OPTIONS "-DTFLITE_WITHOUT_XNNPACK")
-endif()  # TFLITE_ENABLE_XNNPACK
-
-if(CMAKE_SYSTEM_NAME MATCHES "Android")
-  if(_TFLITE_ENABLE_NNAPI)
-    list(APPEND TFLITE_BENCHMARK_SRCS
-      ${TFLITE_SOURCE_DIR}/tools/delegates/nnapi_delegate_provider.cc
-    )
-  endif()  # _TFLITE_ENABLE_NNAPI
-  list(APPEND TFLITE_BENCHMARK_LIBS
-    ${ANDROID_LOG_LIB}
-    absl::strings
-  )
-endif()  # Android
-
-if(TFLITE_ENABLE_GPU)
-  list(APPEND TFLITE_BENCHMARK_SRCS
-    ${TFLITE_SOURCE_DIR}/tools/delegates/gpu_delegate_provider.cc
-  )
-endif()  # TFLITE_ENABLE_GPU
-
-add_executable(benchmark_model
-  EXCLUDE_FROM_ALL
-  ${TFLITE_BENCHMARK_SRCS}
+target_compile_options(_pywrap_tensorflow_interpreter_wrapper
+  PUBLIC ${TFLITE_TARGET_PUBLIC_OPTIONS}
+  PRIVATE ${TFLITE_TARGET_PRIVATE_OPTIONS}
 )
-target_compile_options(benchmark_model
-  PRIVATE
-    ${TFLITE_BENCHMARK_CC_OPTIONS}
-)
-target_link_libraries(benchmark_model
-    ${TFLITE_BENCHMARK_LIBS}
-)
-

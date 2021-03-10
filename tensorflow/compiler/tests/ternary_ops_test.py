@@ -63,7 +63,6 @@ class TernaryOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     self.assertEqual(result[-1], expected[-1])
     self.assertEqual(result[0], expected[0])
 
-  @test_util.disable_mlir_bridge('TODO(b/172473885)')
   def testRange(self):
     self._testTernary(
         math_ops.range,
@@ -183,7 +182,6 @@ class TernaryOpsTest(xla_test.XLATestCase, parameterized.TestCase):
           np.array([8, 9], dtype=dtype),
           expected=np.array([[7, 9], [8, 7], [8, 9]], dtype=dtype))
 
-  @test_util.disable_mlir_bridge('TODO(b/172473885)')
   def testSlice(self):
     for dtype in self.numeric_types:
       self._testTernary(

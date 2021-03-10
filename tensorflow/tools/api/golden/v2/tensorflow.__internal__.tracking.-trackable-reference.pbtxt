@@ -1,0 +1,23 @@
+path: "tensorflow.__internal__.tracking.TrackableReference"
+tf_class {
+  is_instance: "<class \'tensorflow.python.training.tracking.base.TrackableReference\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.base.TrackableReference\'>"
+  is_instance: "<type \'tuple\'>"
+  member {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "ref"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "count"
+  }
+  member_method {
+    name: "index"
+  }
+}

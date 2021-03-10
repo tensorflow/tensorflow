@@ -59,6 +59,7 @@ _graph_options = config_pb2.GraphOptions(rewrite_options=_rewrites)
 _config = config_pb2.ConfigProto(graph_options=_graph_options)
 
 
+@testing_utils.run_all_without_tensor_float_32('RNN GRU can use TF32 on GPU')
 @keras_parameterized.run_all_keras_modes(config=_config)
 class GRUV2Test(keras_parameterized.TestCase):
 
@@ -667,6 +668,7 @@ class GRUV2Test(keras_parameterized.TestCase):
     self.assertAllClose(self.evaluate(outputs), self.evaluate(copied_outputs))
 
 
+@testing_utils.run_all_without_tensor_float_32('RNN GRU can use TF32 on GPU')
 class GRULayerGradientTapeTest(keras_parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['eager']))
@@ -694,6 +696,7 @@ class GRULayerGradientTapeTest(keras_parameterized.TestCase):
       tape.gradient(loss, gru.variables)
 
 
+@testing_utils.run_all_without_tensor_float_32('RNN GRU can use TF32 on GPU')
 @keras_parameterized.run_all_keras_modes(config=_config)
 class GRUGraphRewriteTest(keras_parameterized.TestCase):
 

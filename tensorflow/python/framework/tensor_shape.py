@@ -118,7 +118,7 @@ def dimension_value(dimension):
   value = tensor_shape[i]  # Warning: this will return the dim value in V2!
   ```
 
-  Arguments:
+  Args:
     dimension: Either a `Dimension` instance, an integer, or None.
 
   Returns:
@@ -164,7 +164,7 @@ def dimension_at_index(shape, index):
   # instantiated on the fly.
   ```
 
-  Arguments:
+  Args:
     shape: A TensorShape instance.
     index: An integer index.
 
@@ -233,6 +233,10 @@ class Dimension(object):
     if self._value is None or other.value is None:
       return None
     return self._value != other.value
+
+  def __bool__(self):
+    """Equivalent to `bool(self.value)`."""
+    return bool(self._value)
 
   def __int__(self):
     return self._value

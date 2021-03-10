@@ -66,7 +66,7 @@ def InceptionResNetV2(include_top=True,
   `tf.keras.applications.inception_resnet_v2.preprocess_input`
   on your inputs before passing them to the model.
 
-  Arguments:
+  Args:
     include_top: whether to include the fully-connected
       layer at the top of the network.
     weights: one of `None` (random initialization),
@@ -260,7 +260,7 @@ def conv2d_bn(x,
               name=None):
   """Utility function to apply conv + BN.
 
-  Arguments:
+  Args:
     x: input tensor.
     filters: filters in `Conv2D`.
     kernel_size: kernel size as in `Conv2D`.
@@ -302,7 +302,7 @@ def inception_resnet_block(x, scale, block_type, block_idx, activation='relu'):
   - Inception-ResNet-B: `block_type='block17'`
   - Inception-ResNet-C: `block_type='block8'`
 
-  Arguments:
+  Args:
     x: input tensor.
     scale: scaling factor to scale the residuals (i.e., the output of passing
       `x` through an inception module) before adding them to the shortcut

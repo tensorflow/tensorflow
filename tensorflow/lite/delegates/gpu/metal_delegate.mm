@@ -39,10 +39,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
-#include "tensorflow/lite/delegates/gpu/metal/api.h"
 #include "tensorflow/lite/delegates/gpu/metal/buffer_convert.h"
 #include "tensorflow/lite/delegates/gpu/metal/common.h"
-#include "tensorflow/lite/delegates/gpu/metal/compiled_model.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
@@ -214,6 +212,9 @@ class Delegate {
     for (auto& input : graph_inputs_) {
       if (input.tensor_id == tensor_index) {
         input_output_buffers_[input.id] = buffer;
+        if (bphwc4_buffers_[input.id] != buffer) {
+          bphwc_buffers_updated_ = true;
+        }
         bphwc4_buffers_[input.id] = buffer;
         input.set_externally = true;
         return absl::OkStatus();
@@ -222,6 +223,9 @@ class Delegate {
     for (auto& output : graph_outputs_) {
       if (output.tensor_id == tensor_index) {
         input_output_buffers_[output.id] = buffer;
+        if (bphwc4_buffers_[output.id] != buffer) {
+          bphwc_buffers_updated_ = true;
+        }
         bphwc4_buffers_[output.id] = buffer;
         output.set_externally = true;
         return absl::OkStatus();
@@ -362,9 +366,6 @@ class Delegate {
       const auto& input_tensor = tensors_[input];
       const auto tensor_id = input_tensor.tensor_id;
       input_ids.push_back(input);
-      if (input_tensor.shape.b != 1) {
-        return absl::UnimplementedError("Batching is not supported yet.");
-      }
       input_dimensions[input] = input_tensor.shape;
       graph_inputs_.push_back({
           input,               // .id
@@ -431,15 +432,13 @@ class Delegate {
         bphwc4_buffers_[output] = buffer;
       }
     }
+    bphwc_buffers_updated_ = true;
 
-    // TODO(impjdi): Merge these.
-    CompiledModel compiled_model;
-    RETURN_IF_ERROR(Compile(graph, gpu_info, precision, &compiled_model));
-    CompiledModel optimized_model;
-    RETURN_IF_ERROR(ValidateOptimizeModel(input_ids, output_ids, compiled_model, &optimized_model));
-
-    RETURN_IF_ERROR(inference_context_.CompileModelWithDevice(metal_device_, optimized_model,
-                                                              input_ids, output_ids, precision));
+    InferenceContext::CreateInferenceInfo create_info;
+    create_info.precision = precision;
+    create_info.storage_type = TensorStorageType::BUFFER;
+    RETURN_IF_ERROR(
+        inference_context_.InitFromGraphWithTransforms(create_info, &graph, metal_device_));
     return absl::OkStatus();
   }
 
@@ -480,13 +479,18 @@ class Delegate {
       [input_encoder endEncoding];
     }
 
+    if (bphwc_buffers_updated_) {
+      inference_context_.UpdatePreallocatedTensors(bphwc4_buffers_);
+      bphwc_buffers_updated_ = false;
+    }
+
     @autoreleasepool {
       if (flush) {
         [command_buffer commit];
-        inference_context_.EncodeWithCommandQueue(command_queue_, bphwc4_buffers_, flush_period);
+        inference_context_.EncodeWithCommandQueue(command_queue_, flush_period);
         command_buffer = [command_queue_ commandBuffer];
       } else {
-        inference_context_.EncodeWithCommandBuffer(command_buffer, bphwc4_buffers_);
+        inference_context_.EncodeWithCommandBuffer(command_buffer);
       }
     }
 
@@ -595,6 +599,7 @@ class Delegate {
   // input and output buffers are passed into Metal inference engine
   std::map<::tflite::gpu::ValueId, id<MTLBuffer>> input_output_buffers_;
   std::map<::tflite::gpu::ValueId, id<MTLBuffer>> bphwc4_buffers_;
+  bool bphwc_buffers_updated_ = true;
   TFLBufferConvert* converter_to_BPHWC4_ = nil;
   TFLBufferConvert* converter_from_BPHWC4_ = nil;
 

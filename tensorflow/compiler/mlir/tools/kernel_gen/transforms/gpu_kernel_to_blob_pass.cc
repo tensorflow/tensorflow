@@ -15,8 +15,7 @@ limitations under the License.
 
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/Target/NVVMIR.h"  // from @llvm-project
-#include "mlir/Target/ROCDLIR.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
@@ -53,13 +52,14 @@ class GpuKernelToBlobPass
  public:
   GpuKernelToBlobPass(mlir::StringRef blob_annotation,
                       llvm::ArrayRef<std::string> architectures,
-                      bool generate_fatbin, bool print_ptx) {
+                      bool generate_fatbin, bool print_ptx, bool enable_ftz) {
     if (!blob_annotation.empty()) {
       blob_annotation_ = blob_annotation.str();
     }
     architectures_ = architectures;
     generate_fatbin_ = generate_fatbin;
     print_ptx_ = print_ptx;
+    enable_ftz_ = enable_ftz;
   }
 
   void runOnOperation() override {
@@ -68,8 +68,8 @@ class GpuKernelToBlobPass
     if (blob_or.ok()) {
       const auto& blob = blob_or.ValueOrDie();
       std::string blob_string(blob.begin(), blob.end());
-      gpu_module.setAttr(blob_annotation_,
-                         mlir::StringAttr::get(blob_string, &getContext()));
+      gpu_module->setAttr(blob_annotation_,
+                          mlir::StringAttr::get(&getContext(), blob_string));
       return;
     }
     // Forward the error by attaching the message to the gpu module.
@@ -89,9 +89,9 @@ class GpuKernelToBlobPass
     }
 
     llvm::LLVMContext llvmContext;
+    auto llvmModule = mlir::translateModuleToLLVMIR(gpu_module, llvmContext);
 
 #if TENSORFLOW_USE_ROCM
-    auto llvmModule = mlir::translateModuleToROCDLIR(gpu_module, llvmContext);
     if (!llvmModule) {
       return InternalError("Could not translate MLIR module to ROCDL IR");
     }
@@ -99,7 +99,9 @@ class GpuKernelToBlobPass
     llvmModule->setModuleIdentifier("acme");
 
     xla::HloModuleConfig config;
-    config.set_debug_options(xla::GetDebugOptionsFromFlags());
+    xla::DebugOptions options = xla::GetDebugOptionsFromFlags();
+    options.set_xla_gpu_ftz(enable_ftz_);
+    config.set_debug_options(options);
 
     using AmdGpuHsaco = std::vector<tensorflow::uint8>;
     std::vector<tensorflow::se::HsacoImage> images;
@@ -117,8 +119,9 @@ class GpuKernelToBlobPass
 
       std::string libdevice_dir = tensorflow::RocdlRoot();
       auto llvm_module_copy = llvm::CloneModule(*llvmModule);
+      xla::gpu::GpuVersion gpu_version{std::make_pair(arch, arch_str)};
       auto hsaco_or = xla::gpu::amdgpu::CompileToHsaco(
-          llvm_module_copy.get(), arch, config, libdevice_dir);
+          llvm_module_copy.get(), gpu_version, config, libdevice_dir);
       if (!hsaco_or.ok()) {
         return InternalError("Failure when generating HSACO");
       }
@@ -139,7 +142,6 @@ class GpuKernelToBlobPass
     return tensorflow::se::BundleGpuAsm(images, tensorflow::RocmRoot());
 
 #elif GOOGLE_CUDA
-    auto llvmModule = mlir::translateModuleToNVVMIR(gpu_module, llvmContext);
     if (!llvmModule) {
       return InternalError("Could not translate MLIR module to NVVM");
     }
@@ -148,7 +150,11 @@ class GpuKernelToBlobPass
     llvmModule->setDataLayout(xla::gpu::nvptx::kDataLayout);
 
     xla::HloModuleConfig config;
-    config.set_debug_options(xla::GetDebugOptionsFromFlags());
+    xla::DebugOptions options = xla::GetDebugOptionsFromFlags();
+    options.set_xla_gpu_ftz(enable_ftz_);
+    // Make sure we use full precision division operations.
+    (*options.mutable_xla_backend_extra_options())["-nvptx-prec-divf32"] = "2";
+    config.set_debug_options(options);
 
     auto enable_fusion = [](llvm::TargetMachine* target) {
       target->Options.AllowFPOpFusion = llvm::FPOpFusion::FPOpFusionMode::Fast;
@@ -241,15 +247,16 @@ class GpuKernelToBlobPass
     return InternalError(
         "Can't find libdevice directory ${CUDA_DIR}/nvvm/libdevice");
   }
+  bool enable_ftz_;
 };
 
 }  // namespace
 
 std::unique_ptr<OperationPass<gpu::GPUModuleOp>> CreateGpuKernelToBlobPass(
     mlir::StringRef blob_annotation, ArrayRef<std::string> architectures,
-    bool generate_fatbin, bool print_ptx) {
-  return std::make_unique<GpuKernelToBlobPass>(blob_annotation, architectures,
-                                               generate_fatbin, print_ptx);
+    bool generate_fatbin, bool print_ptx, bool enable_ftz) {
+  return std::make_unique<GpuKernelToBlobPass>(
+      blob_annotation, architectures, generate_fatbin, print_ptx, enable_ftz);
 }
 
 }  // namespace transforms

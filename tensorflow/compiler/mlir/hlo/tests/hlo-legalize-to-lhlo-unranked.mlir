@@ -32,3 +32,13 @@ func @dynamic_reshape_to_unranked(
 // CHECK-SAME: ([[ARG:%.*]]: memref<?xf32>, [[SHAPE:%.*]]: memref<?xi32>)
 // CHECK-NEXT: memref_reshape [[ARG]]([[SHAPE]])
 // CHECK-SAME:   : (memref<?xf32>, memref<?xi32>) -> memref<*xf32>
+
+// -----
+
+// CHECK-LABEL: func @reshape_unranked
+func @reshape_unranked(%operand: tensor<*xf32>) -> tensor<f32> {
+  %reshaped = "mhlo.reshape"(%operand) : (tensor<*xf32>) -> tensor<f32>
+  return %reshaped : tensor<f32>
+}
+// CHECK-SAME: ([[ARG:%.*]]: memref<*xf32>)
+// CHECK-NEXT: memref_cast [[ARG]] : memref<*xf32> to memref<f32>

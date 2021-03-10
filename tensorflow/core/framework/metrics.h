@@ -84,6 +84,14 @@ void RecordTFDataIteratorLifetime(uint64 duration_us);
 // The `name` argument identifies the optimization (e.g. "noop_elimination").
 void RecordTFDataOptimization(const string& name, int64 num_changes);
 
+// Records that a tf.data service worker has been created.
+void RecordTFDataServiceWorkerCreated();
+
+// Records the file name read by a tf.data Dataset.
+//
+// The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").
+void RecordTFDataFilename(const string& name, const string& filename);
+
 // Records parsing of dense tensor features.
 void RecordParseDenseFeature(int64 num_features);
 
@@ -96,6 +104,9 @@ void RecordParseRaggedFeature(int64 num_features);
 // Records the size of input/output tensors in bytes.
 void RecordGraphInputTensors(const size_t size);
 void RecordGraphOutputTensors(const size_t size);
+
+// Records the number of cores requested by graphs with XLA SPMD enabled.
+void RecordTPUXlaSpmdCoresPerReplica(int64 cores_per_replica);
 
 void UpdateGraphExecTime(const uint64 running_time_usecs);
 void UpdateGraphPendingQueueLength(uint64 len);

@@ -16,6 +16,9 @@ limitations under the License.
 #define TENSORFLOW_C_EAGER_C_API_TEST_UTIL_H_
 
 #include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
@@ -52,6 +55,27 @@ TFE_TensorHandle* TestTensorHandleWithDimsFloat(TFE_Context* ctx, float data[],
 // Get a Matrix TensorHandle with given int values and dimensions
 TFE_TensorHandle* TestTensorHandleWithDimsInt(TFE_Context* ctx, int data[],
                                               int64_t dims[], int num_dims);
+
+// Return a tensor handle with given type, values and dimensions.
+template <class T, TF_DataType datatype>
+TFE_TensorHandle* TestTensorHandleWithDims(TFE_Context* ctx, const T* data,
+                                           const int64_t* dims, int num_dims) {
+  TF_Status* status = TF_NewStatus();
+  TF_Tensor* t = TFE_AllocateHostTensor(ctx, datatype, dims, num_dims, status);
+  memcpy(TF_TensorData(t), data, TF_TensorByteSize(t));
+  TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteTensor(t);
+  TF_DeleteStatus(status);
+  return th;
+}
+
+// Return a scalar tensor handle with given values.
+template <class T, TF_DataType datatype>
+TFE_TensorHandle* TestScalarTensorHandle(TFE_Context* ctx, const T value) {
+  T data[] = {value};
+  return TestTensorHandleWithDims<T, datatype>(ctx, data, nullptr, 0);
+}
 
 // Return a tensor handle containing a 100x100 matrix of floats
 TFE_TensorHandle* TestMatrixTensorHandle100x100(TFE_Context* ctx);

@@ -126,7 +126,13 @@ def record_if(condition):
 
   The provided value can be a python boolean, a scalar boolean Tensor, or
   or a callable providing such a value; if a callable is passed it will be
-  invoked on-demand to determine whether summary writing will occur.
+  invoked on-demand to determine whether summary writing will occur.  Note that
+  when calling record_if() in an eager mode context, if you intend to provide a
+  varying condition like `step % 100 == 0`, you must wrap this in a
+  callable to avoid immediate eager evaluation of the condition.  In particular,
+  using a callable is the only way to have your condition evaluated as part of
+  the traced body of an @tf.function that is invoked from within the
+  `record_if()` context.
 
   Args:
     condition: can be True, False, a bool Tensor, or a callable providing such.
@@ -691,9 +697,6 @@ def write(tag, tensor, step=None, metadata=None, name=None):
       return constant_op.constant(False)
     if step is None:
       step = get_step()
-      if step is None:
-        raise ValueError("No step set via 'step' argument or "
-                         "tf.summary.experimental.set_step()")
     if metadata is None:
       serialized_metadata = b""
     elif hasattr(metadata, "SerializeToString"):
@@ -703,6 +706,10 @@ def write(tag, tensor, step=None, metadata=None, name=None):
 
     def record():
       """Record the actual summary and return True."""
+      if step is None:
+        raise ValueError("No step set via 'step' argument or "
+                         "tf.summary.experimental.set_step()")
+
       # Note the identity to move the tensor to the CPU.
       with ops.device("cpu:0"):
         summary_tensor = tensor() if callable(tensor) else array_ops.identity(
@@ -1112,7 +1119,7 @@ def _check_create_file_writer_args(inside_function, **kwargs):
     ValueError: if the arguments are graph tensors.
   """
   for arg_name, arg in kwargs.items():
-    if not isinstance(arg, ops.EagerTensor) and tensor_util.is_tensor(arg):
+    if not isinstance(arg, ops.EagerTensor) and tensor_util.is_tf_type(arg):
       if inside_function:
         raise ValueError(
             "Invalid graph Tensor argument \"%s=%s\" to create_file_writer() "

@@ -106,7 +106,7 @@ class MklConvBwdInputPrimitive : public MklPrimitive {
   void Execute(const T* diff_src_data, const T* filter_data,
                const T* diff_dst_data,
                std::shared_ptr<stream> bwd_input_stream) {
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#ifndef ENABLE_ONEDNN_OPENMP
     // TODO: Create a common function and avoid the duplicate code
     context_.diff_src_mem->set_data_handle(
         static_cast<T*>(const_cast<T*>(diff_src_data)), *bwd_input_stream);
@@ -121,7 +121,7 @@ class MklConvBwdInputPrimitive : public MklPrimitive {
         static_cast<T*>(const_cast<T*>(filter_data)));
     context_.diff_dst_mem->set_data_handle(
         static_cast<T*>(const_cast<T*>(diff_dst_data)));
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
     execute_primitives(context_.bwd_input_primitives, bwd_input_stream,
                        context_.bwd_input_primitives_args);
 
@@ -169,10 +169,10 @@ class MklConvBwdInputPrimitive : public MklPrimitive {
           filter_mem(nullptr),
           diff_dst_mem(nullptr),
           bwd_input_pd(nullptr),
-          conv_bwd_input(nullptr),
           bwd_input_desc(nullptr),
-          fwd_desc(nullptr),
           fwd_pd(nullptr),
+          fwd_desc(nullptr),
+          conv_bwd_input(nullptr),
           diff_src_md(nullptr),
           filter_md(nullptr),
           diff_dst_md(nullptr) {}
@@ -330,9 +330,10 @@ class MklConvCustomBackpropInputOp
       // allow this class to handle this case.
       TensorShape src_tf_shape;
       if (src_tensor.dim_size(0) == 2) {
-        Conv2DBackpropComputeInputShape(src_tensor, filter_tensor.shape(),
-                                        diff_dst_tensor.shape(),
-                                        this->data_format_, &src_tf_shape);
+        OP_REQUIRES_OK(context, Conv2DBackpropComputeInputShape(
+                                    src_tensor, filter_tensor.shape(),
+                                    diff_dst_tensor.shape(), this->data_format_,
+                                    &src_tf_shape));
       } else {
         src_tf_shape = MakeInputTfShape(context, src_tensor);
       }
@@ -481,7 +482,9 @@ class MklConvCustomBackpropInputOp
       }
 
       std::shared_ptr<stream> bwd_cpu_stream;
-      bwd_cpu_stream.reset(CreateStream(context, conv_bwd_input->GetEngine()));
+      MklDnnThreadPool eigen_tp(context);
+      bwd_cpu_stream.reset(
+          CreateStream(&eigen_tp, conv_bwd_input->GetEngine()));
       // Execute conv bwd input primitive.
       conv_bwd_input->Execute(diff_src_data, filter_data, diff_dst_data,
                               bwd_cpu_stream);

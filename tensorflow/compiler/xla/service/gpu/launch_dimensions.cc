@@ -54,9 +54,9 @@ static int64 ThreadsPerBlockLimit(GpuDeviceInfo gpu_device_info) {
 }
 
 // Calculates the launch dimensions used to invoke `hlo`.
-LaunchDimensions CalculateLaunchDimensions(const Shape& shape,
-                                           GpuDeviceInfo gpu_device_info,
-                                           int unroll_factor, bool few_waves) {
+StatusOr<LaunchDimensions> CalculateLaunchDimensions(
+    const Shape& shape, GpuDeviceInfo gpu_device_info, int unroll_factor,
+    bool few_waves) {
   int64 num_elements = ShapeUtil::ElementsIn(shape);
   if (num_elements <= 1) {
     return LaunchDimensions();
@@ -91,10 +91,26 @@ LaunchDimensions CalculateLaunchDimensions(const Shape& shape,
 
   int64 block_count = CeilOfRatio(num_elements, threads_per_block);
   if (few_waves) {
-    threads_per_block = std::min(threads_per_block, int64{128});
-    block_count = gpu_device_info.core_count *
-                  (gpu_device_info.threads_per_core_limit / threads_per_block);
+    int64 capped_threads_per_block = std::min<int64>(threads_per_block, 128);
+    int64 capped_block_count =
+        gpu_device_info.core_count *
+        (gpu_device_info.threads_per_core_limit / capped_threads_per_block);
+    // Do not increase the number of blocks. This can happens for
+    // small num_elements.
+    if (capped_block_count < block_count) {
+      threads_per_block = capped_threads_per_block;
+      block_count = capped_block_count;
+    }
   }
+
+  if (gpu_device_info.block_dim_limit_x > 0 &&
+      block_count >= gpu_device_info.block_dim_limit_x) {
+    return tensorflow::errors::Unimplemented(
+        "Kernel launch needs more blocks (", block_count,
+        ") than allowed by hardware (", gpu_device_info.block_dim_limit_x,
+        ").");
+  }
+
   VLOG(2) << absl::StrFormat(
       "Initialized the block count to ceil(# of elements / threads per "
       "block) = ceil(%d/%d) = %d",

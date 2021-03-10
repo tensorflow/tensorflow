@@ -11,7 +11,7 @@ tfr.func @tf__my_add_n(%values: !tfr.tensor_list,
                        %n: i64 {tfr.name="N"}) -> !tfr.tensor {
   %index = constant 0 : index
   %cst = constant 1 : i64
-  %eq = cmpi "eq", %n, %cst : i64
+  %eq = cmpi eq, %n, %cst : i64
   %v1 = tfr.get_element %values[%index] : (!tfr.tensor_list, index) -> !tfr.tensor
   %res = scf.if %eq -> !tfr.tensor {
     scf.yield %v1 : !tfr.tensor

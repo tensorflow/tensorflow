@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <algorithm>
 #include <limits>
 #include <memory>
 #include <string>
@@ -41,9 +42,7 @@ void WriteValueSlices(
   int out_pos = 0;
   for (const auto& slice : value_slices) {
     for (int i = slice.first; i < slice.second; ++i) {
-      for (int j = 0; j < value_size; ++j) {
-        values(out_pos, j) = params_dense_values(i, j);
-      }
+      std::copy_n(&params_dense_values(i, 0), value_size, &values(out_pos, 0));
       ++out_pos;
     }
   }

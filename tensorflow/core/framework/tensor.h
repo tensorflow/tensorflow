@@ -157,6 +157,12 @@ class Tensor {
   /// Acquires a ref on buf that belongs to this Tensor.
   Tensor(DataType type, const TensorShape& shape, TensorBuffer* buf);
 
+  /// \brief Creates a tensor with the input datatype, shape and buf.
+  ///
+  /// Takes an ownership of the bufffer from the reference counted pointer.
+  Tensor(DataType type, const TensorShape& shape,
+         core::RefCountPtr<TensorBuffer> buf);
+
   /// \brief Creates an empty Tensor of the given data type.
   ///
   /// Like Tensor(), returns a 1-dimensional, 0-element Tensor with

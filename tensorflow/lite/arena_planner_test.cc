@@ -14,12 +14,22 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/arena_planner.h"
 
-#include <cstdarg>
-#include <cstdint>
+#include <stdio.h>
 
-#include <gmock/gmock.h>
+#include <algorithm>
+#include <cstdarg>
+#include <cstddef>
+#include <cstdint>
+#include <initializer_list>
+#include <memory>
+#include <set>
+#include <utility>
+#include <vector>
+
 #include <gtest/gtest.h>
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {

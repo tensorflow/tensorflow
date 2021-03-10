@@ -129,7 +129,8 @@ def _embedding_lookup_and_transform(params,
     np = len(params)  # Number of partitions
     # Preserve the resource variable status to avoid accidental dense reads.
     if not any(
-        isinstance(p, resource_variable_ops.ResourceVariable) for p in params):
+        isinstance(p, resource_variable_ops.BaseResourceVariable)
+        for p in params):
       params = ops.convert_n_to_tensor_or_indexed_slices(params, name="params")
     ids = ops.convert_to_tensor(ids, name="ids")
     if np == 1 and (not transform_fn or ids.get_shape().ndims == 1):
@@ -204,13 +205,14 @@ def _embedding_lookup_and_transform(params,
       partitioned_result = []
       for p in xrange(np):
         pids = gather_ids[p]
-        with ops.colocate_with(params[p]):
-          result = array_ops.gather(params[p], pids)
-          if transform_fn:
-            # If transform_fn is provided, the clip_by_norm precedes
-            # the transform and hence must be co-located. See below
-            # for the counterpart if transform_fn is not provided.
-            result = transform_fn(_clip(result, pids, max_norm))
+        with ops.device_v2(None):
+          with ops.colocate_with(params[p]):
+            result = array_ops.gather(params[p], pids)
+            if transform_fn:
+              # If transform_fn is provided, the clip_by_norm precedes
+              # the transform and hence must be co-located. See below
+              # for the counterpart if transform_fn is not provided.
+              result = transform_fn(_clip(result, pids, max_norm))
         partitioned_result.append(result)
       # Stitch these back together
       ret = data_flow_ops.parallel_dynamic_stitch(

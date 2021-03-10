@@ -217,7 +217,6 @@ tensorflow::Status CreateRemoteContexts(
     tensorflow::uint64 context_id, tensorflow::uint64 context_view_id,
     int keep_alive_secs, const tensorflow::ServerDef& server_def,
     tensorflow::eager::EagerClientCache* remote_eager_workers, bool async,
-    const bool lazy_copy_remote_function_inputs,
     const tensorflow::eager::CreateContextRequest& base_request) {
   int num_remote_workers = remote_workers.size();
   tensorflow::BlockingCounter counter(num_remote_workers);
@@ -269,8 +268,9 @@ tensorflow::Status CreateRemoteContexts(
     }
     request.set_async(async);
     request.set_keep_alive_secs(keep_alive_secs);
-    request.set_lazy_copy_remote_function_inputs(
-        lazy_copy_remote_function_inputs);
+    // TODO(b/134094971): deprecate lazy_copy_remote_function_inputs when server
+    // doesn't try to get the value of lazy_copy_remote_function_inputs.
+    request.set_lazy_copy_remote_function_inputs(true);
 
     eager_client->CreateContextAsync(
         &request, response,
@@ -557,7 +557,7 @@ tensorflow::Status UpdateContextWithServerDef(
     const tensorflow::Status s = CreateRemoteContexts(
         context, remote_workers, context_id, context_view_id, keep_alive_secs,
         server_def, remote_eager_workers.get(), context->Executor().Async(),
-        context->LazyCopyFunctionRemoteInputs(), base_request);
+        base_request);
     // NOTE: the remote tasks could fail after `GetAllRemoteDevices` and cause
     // the CreateRemoteContexts to fail. We currently only log instead of
     // directly returning the error, since returning here will cause the server
@@ -582,8 +582,7 @@ tensorflow::Status UpdateContextWithServerDef(
       sg.Update(CreateRemoteContexts(
           context, added_workers, context_id, context_view_id + 1,
           keep_alive_secs, server_def, remote_eager_workers.get(),
-          context->Executor().Async(), context->LazyCopyFunctionRemoteInputs(),
-          base_request));
+          context->Executor().Async(), base_request));
     }
     if (!existing_workers.empty()) {
       if (VLOG_IS_ON(1)) {
@@ -676,6 +675,46 @@ Status EagerContextDistributedManager::SetOrUpdateServerDef(
   }
   return UpdateContextWithServerDef(context_, server_def, reset_context,
                                     keep_alive_secs);
+}
+
+Status EagerContextDistributedManager::EnableCollectiveOps(
+    const ServerDef& server_def) {
+  // We don't use the TF_RETURN_IF_ERROR macro directly since that destroys the
+  // server object (which currently CHECK-fails) and we miss the error, instead,
+  // we log the error, and then return to allow the user to see the error
+  // message.
+#define LOG_AND_RETURN_IF_ERROR(...)                    \
+  do {                                                  \
+    const ::tensorflow::Status _status = (__VA_ARGS__); \
+    if (TF_PREDICT_FALSE(!_status.ok())) {              \
+      LOG(ERROR) << _status.error_message();            \
+      return _status;                                   \
+    }                                                   \
+  } while (0);
+
+  tensorflow::GrpcServer* grpc_server =
+      dynamic_cast<tensorflow::GrpcServer*>(context_->GetServer());
+  if (grpc_server == nullptr) {
+    std::unique_ptr<tensorflow::ServerInterface> new_server;
+    LOG_AND_RETURN_IF_ERROR(tensorflow::NewServer(server_def, &new_server));
+    grpc_server = dynamic_cast<tensorflow::GrpcServer*>(new_server.get());
+    if (grpc_server == nullptr) {
+      LOG_AND_RETURN_IF_ERROR(tensorflow::errors::Internal(
+          "Currently, TF eager runtime only supports tensorflow::GrpcServer."));
+    }
+    LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
+
+    LOG_AND_RETURN_IF_ERROR(context_->StoreCollectiveOpsServer(
+        std::move(new_server), grpc_server->worker_env()->device_mgr,
+        grpc_server->worker_env()->collective_executor_mgr.get()));
+  } else {
+    LOG_AND_RETURN_IF_ERROR(grpc_server->UpdateServerDef(server_def));
+    LOG_AND_RETURN_IF_ERROR(context_->StoreCollectiveOpsServer(
+        /*new_server=*/nullptr, grpc_server->worker_env()->device_mgr,
+        grpc_server->worker_env()->collective_executor_mgr.get()));
+  }
+#undef LOG_AND_RETURN_IF_ERROR
+  return Status::OK();
 }
 
 Status EagerContextDistributedManager::CheckRemoteAlive(

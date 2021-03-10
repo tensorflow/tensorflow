@@ -45,9 +45,13 @@ class LayoutUtil {
   static Layout MakeLayoutFromMajorToMinor(
       absl::Span<const int64> major_to_minor);
 
-  // Returns a layout with descending ((i.e. {n, n-1, ..., 0}) minor-to-major
+  // Returns a layout with descending ((i.e. {n-1, n-2, ... 0}) minor-to-major
   // dimensions.
   static Layout MakeDescendingLayout(int64 rank);
+
+  // Returns a layout with ascending ((i.e. {0, 1, ... n-1}) minor-to-major
+  // dimensions.
+  static Layout MakeAscendingLayout(int64 rank);
 
   // Returns default layout for the given shape.
   static Layout GetDefaultLayoutForShape(const Shape& shape);

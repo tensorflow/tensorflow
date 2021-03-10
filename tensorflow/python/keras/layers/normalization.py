@@ -54,7 +54,7 @@ class BatchNormalizationBase(Layer):
   with the argument `training=True`), the layer normalizes its output using
   the mean and standard deviation of the current batch of inputs. That is to
   say, for each channel being normalized, the layer returns
-  `(batch - mean(batch)) / (var(batch) + epsilon) * gamma + beta`, where:
+  `gamma * (batch - mean(batch)) / sqrt(var(batch) + epsilon) + beta`, where:
 
   - `epsilon` is small constant (configurable as part of the constructor
   arguments)
@@ -68,7 +68,7 @@ class BatchNormalizationBase(Layer):
   default), the layer normalizes its output using a moving average of the
   mean and standard deviation of the batches it has seen during training. That
   is to say, it returns
-  `(batch - self.moving_mean) / (self.moving_var + epsilon) * gamma + beta`.
+  `gamma * (batch - self.moving_mean) / sqrt(self.moving_var + epsilon) + beta`.
 
   `self.moving_mean` and `self.moving_var` are non-trainable variables that
   are updated each time the layer in called in training mode, as such:
@@ -80,7 +80,7 @@ class BatchNormalizationBase(Layer):
   *after having been trained on data that has similar statistics as the
   inference data*.
 
-  Arguments:
+  Args:
     axis: Integer or a list of integers, the axis that should be normalized
     (typically the features axis). For instance, after a `Conv2D` layer with
       `data_format="channels_first"`, set `axis=1` in `BatchNormalization`.
@@ -518,22 +518,33 @@ class BatchNormalizationBase(Layer):
     self.built = True
 
   def _assign_moving_average(self, variable, value, momentum, inputs_size):
+
+    def calculate_update_delta():
+      decay = ops.convert_to_tensor_v2_with_dispatch(
+          1.0 - momentum, name='decay')
+      if decay.dtype != variable.dtype.base_dtype:
+        decay = math_ops.cast(decay, variable.dtype.base_dtype)
+      update_delta = (variable - math_ops.cast(value, variable.dtype)) * decay
+      if inputs_size is not None:
+        update_delta = array_ops.where(inputs_size > 0, update_delta,
+                                       K.zeros_like(update_delta))
+      return update_delta
+
     with K.name_scope('AssignMovingAvg') as scope:
-      with ops.colocate_with(variable):
-        decay = ops.convert_to_tensor_v2_with_dispatch(
-            1.0 - momentum, name='decay')
-        if decay.dtype != variable.dtype.base_dtype:
-          decay = math_ops.cast(decay, variable.dtype.base_dtype)
-        update_delta = (variable - math_ops.cast(value, variable.dtype)) * decay
-        if inputs_size is not None:
-          update_delta = array_ops.where(inputs_size > 0, update_delta,
-                                         K.zeros_like(update_delta))
-        return state_ops.assign_sub(variable, update_delta, name=scope)
+      if ops.executing_eagerly_outside_functions():
+        return variable.assign_sub(calculate_update_delta(), name=scope)
+      else:
+        with ops._colocate_with(variable):  # pylint: disable=protected-access
+          return state_ops.assign_sub(
+              variable, calculate_update_delta(), name=scope)
 
   def _assign_new_value(self, variable, value):
     with K.name_scope('AssignNewValue') as scope:
-      with ops.colocate_with(variable):
-        return state_ops.assign(variable, value, name=scope)
+      if ops.executing_eagerly_outside_functions():
+        return variable.assign(value, name=scope)
+      else:
+        with ops._colocate_with(variable):  # pylint: disable=protected-access
+          return state_ops.assign(variable, value, name=scope)
 
   def _fused_batch_norm(self, inputs, training):
     """Returns the output of fused batch norm."""
@@ -1063,7 +1074,7 @@ class LayerNormalization(Layer):
   So, this Layer Normalization implementation will not match a Group
   Normalization layer with group size set to 1.
 
-  Arguments:
+  Args:
     axis: Integer or List/Tuple. The axis or axes to normalize across. Typically
       this is the features axis/axes. The left-out axes are typically the batch
       axis/axes. This argument defaults to `-1`, the last dimension in the

@@ -20,6 +20,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -210,7 +212,6 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
-        mutex_lock l(mu_);
         return input_impl_->GetNext(IteratorContext(CreateParams(ctx)),
                                     out_tensors, end_of_sequence);
       }
@@ -224,7 +225,6 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
 
       Status SaveInternal(SerializationContext* ctx,
                           IteratorStateWriter* writer) override {
-        mutex_lock l(mu_);
         DCHECK(input_impl_ != nullptr);
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         return Status::OK();
@@ -232,7 +232,6 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
-        mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         return Status::OK();
       }
@@ -248,8 +247,7 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
         return params;
       }
 
-      mutex mu_;
-      std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_;
     };
 
     const DatasetBase* const input_;
@@ -282,7 +280,11 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
             int64 max_intra_op_parallelism)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
-          max_intra_op_parallelism_(max_intra_op_parallelism) {
+          max_intra_op_parallelism_(max_intra_op_parallelism),
+          traceme_metadata_(
+              {{"parallelism",
+                strings::Printf("%lld", static_cast<long long>(
+                                            max_intra_op_parallelism_))}}) {
       input_->Ref();
     }
 
@@ -350,7 +352,6 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
         auto max_parallelism = dataset()->max_intra_op_parallelism_;
         params.runner =
             RunnerWithMaxParallelism(*ctx->runner(), max_parallelism);
-        mutex_lock l(mu_);
         return input_impl_->GetNext(IteratorContext{std::move(params)},
                                     out_tensors, end_of_sequence);
       }
@@ -364,7 +365,6 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
 
       Status SaveInternal(SerializationContext* ctx,
                           IteratorStateWriter* writer) override {
-        mutex_lock l(mu_);
         DCHECK(input_impl_ != nullptr);
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         return Status::OK();
@@ -372,18 +372,21 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
-        mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         return Status::OK();
       }
 
+      TraceMeMetadata GetTraceMeMetadata() const override {
+        return dataset()->traceme_metadata_;
+      }
+
      private:
-      mutex mu_;
-      std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_;
     };
 
     const DatasetBase* const input_;
     const int64 max_intra_op_parallelism_;
+    const TraceMeMetadata traceme_metadata_;
   };
 };
 
@@ -397,8 +400,8 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
     int64 num_threads = 0;
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument<int64>(ctx, "num_threads", &num_threads));
-    OP_REQUIRES(ctx, num_threads >= 1,
-                errors::InvalidArgument("`num_threads` must be >= 1"));
+    OP_REQUIRES(ctx, num_threads >= 0,
+                errors::InvalidArgument("`num_threads` must be >= 0"));
     *output = new Dataset(ctx, input, num_threads);
   }
 
@@ -408,10 +411,12 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
     Dataset(OpKernelContext* ctx, const DatasetBase* input, int num_threads)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
-          num_threads_(num_threads) {
+          num_threads_(num_threads == 0 ? port::MaxParallelism() : num_threads),
+          traceme_metadata_(
+              {{"num_threads", strings::Printf("%lld", static_cast<long long>(
+                                                           num_threads_))}}) {
       thread_pool_ = absl::make_unique<thread::ThreadPool>(
-          ctx->env(), ThreadOptions{}, "data_private_threadpool", num_threads,
-          /*low_latency_hint=*/false);
+          ctx->env(), ThreadOptions{}, "data_private_threadpool", num_threads_);
       input_->Ref();
     }
 
@@ -480,7 +485,6 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
           pool->Schedule(std::move(c));
         };
         params.runner_threadpool_size = dataset()->num_threads_;
-        mutex_lock l(mu_);
         return input_impl_->GetNext(IteratorContext{std::move(params)},
                                     out_tensors, end_of_sequence);
       }
@@ -494,7 +498,6 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
 
       Status SaveInternal(SerializationContext* ctx,
                           IteratorStateWriter* writer) override {
-        mutex_lock l(mu_);
         DCHECK(input_impl_ != nullptr);
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         return Status::OK();
@@ -502,18 +505,21 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
-        mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         return Status::OK();
       }
 
+      TraceMeMetadata GetTraceMeMetadata() const override {
+        return dataset()->traceme_metadata_;
+      }
+
      private:
-      mutex mu_;
-      std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_;
     };
 
     const DatasetBase* const input_;
     const int64 num_threads_;
+    const TraceMeMetadata traceme_metadata_;
     std::unique_ptr<thread::ThreadPool> thread_pool_;
   };
 };

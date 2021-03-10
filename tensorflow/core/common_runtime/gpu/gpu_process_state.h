@@ -72,17 +72,18 @@ class GPUProcessState {
   //
   // 'total_bytes' is the total number of bytes that should be made
   // available to the allocator.  The first call to this function for
-  // a given tf_gpu_id creates the allocator, so only the total_bytes
+  // a given tf_device_id creates the allocator, so only the total_bytes
   // used on that first call is used.
   //
   // "Allocator type" describes the type of algorithm to use for the
   // underlying allocator.  REQUIRES: Must be a valid type (see
   // config.proto for the list of supported strings.).
   //
-  // REQUIRES: tf_gpu_id must be a valid id for a BaseGPUDevice available in the
-  // current system environment.  Otherwise returns nullptr.
-  virtual Allocator* GetGPUAllocator(const GPUOptions& options,
-                                     TfGpuId tf_gpu_id, size_t total_bytes);
+  // REQUIRES: tf_device_id must be a valid id for a BaseGPUDevice available in
+  // the current system environment.  Otherwise returns nullptr.
+  virtual Allocator* GetGPUAllocator(
+      const GPUOptions& options, TfDeviceId tf_device_id, size_t total_bytes,
+      const std::vector<TfDeviceId>& peer_gpu_ids);
 
   int NumGPUAllocators() {
     mutex_lock l(mu_);
@@ -114,9 +115,9 @@ class GPUProcessState {
                                      const SubAllocator::Visitor& visitor);
 
   // Returns bus_id for the given GPU id.
-  virtual int BusIdForGPU(TfGpuId tf_gpu_id);
+  virtual int BusIdForGPU(TfDeviceId tf_device_id);
 
-  SharedCounter* GPUAllocatorCounter(TfGpuId tf_gpu_id);
+  SharedCounter* GPUAllocatorCounter(TfDeviceId tf_device_id);
 
  protected:
   // GPUProcessState is a singleton that should not normally be deleted except

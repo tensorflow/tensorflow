@@ -230,12 +230,14 @@ void CopyTensor::ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
     // Device to device copy.  Look through registry for an appropriate
     // CopyFunction.
     std::vector<RegistrationInfo>* registry = MutableRegistry();
+    // TODO(penpornk): Revisit the lookup mechanism after PR #43611 (device
+    // alias) is resolved.
+    const bool src_device_is_pluggable =
+        DeviceFactory::IsPluggableDevice(src_device_type.type_string());
     for (const RegistrationInfo& ri : *registry) {
       if (ri.sender_device_type == src_device_type &&
           ri.receiver_device_type == dst_device_type) {
-        if (DeviceFactory::IsPluggableDevice(src_device_type.type_string()) &&
-            !ri.is_pluggable_device)
-          continue;
+        if (src_device_is_pluggable && !ri.is_pluggable_device) continue;
         CopyDeviceToDevice(ri.copy_function, cpu_allocator, out_allocator,
                            send_dev_context, recv_dev_context, src, dst,
                            src_alloc_attr, dst_alloc_attr, input, output,

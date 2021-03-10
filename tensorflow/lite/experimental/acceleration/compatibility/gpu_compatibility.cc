@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cctype>
 #include <map>
+#include <memory>
 #include <string>
 
 #include "absl/strings/string_view.h"
@@ -51,14 +52,26 @@ void CanonicalizeValues(std::map<std::string, std::string>* variable_values) {
 
 }  // namespace
 
-GPUCompatibilityList::GPUCompatibilityList()
-    : GPUCompatibilityList(g_tflite_acceleration_gpu_compatibility_binary) {}
-
 GPUCompatibilityList::GPUCompatibilityList(
     const unsigned char* compatibility_list_flatbuffer) {
   if (!compatibility_list_flatbuffer) return;
   database_ =
       flatbuffers::GetRoot<DeviceDatabase>(compatibility_list_flatbuffer);
+}
+
+std::unique_ptr<GPUCompatibilityList> GPUCompatibilityList::Create() {
+  return Create(g_tflite_acceleration_gpu_compatibility_binary,
+                g_tflite_acceleration_gpu_compatibility_binary_len);
+}
+
+std::unique_ptr<GPUCompatibilityList> GPUCompatibilityList::Create(
+    const unsigned char* compatibility_list_flatbuffer, int length) {
+  if (!compatibility_list_flatbuffer ||
+      !IsValidFlatbuffer(compatibility_list_flatbuffer, length)) {
+    return nullptr;
+  }
+  return std::unique_ptr<GPUCompatibilityList>(
+      new GPUCompatibilityList(compatibility_list_flatbuffer));
 }
 
 std::map<std::string, std::string> GPUCompatibilityList::CalculateVariables(
@@ -97,10 +110,6 @@ TfLiteGpuDelegateOptionsV2 GPUCompatibilityList::GetBestOptionsFor(
   // information about which backend to choose (OpenGL/OpenCL/Vulkan) or other
   // options.
   return TfLiteGpuDelegateOptionsV2Default();
-}
-
-bool GPUCompatibilityList::IsDatabaseLoaded() const {
-  return database_ != nullptr;
 }
 
 // static

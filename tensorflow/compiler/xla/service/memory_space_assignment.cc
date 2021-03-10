@@ -254,12 +254,6 @@ float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToCompute(
           cost_analysis_.per_second_rate(HloCostAnalysis::kTranscendentalsKey));
 }
 
-float MemorySpaceAssignmentCostAnalysis::
-    GetInstructionElapsedDueToMemorySlowdown(int64 bytes) const {
-  return bytes /
-         cost_analysis_.per_second_rate(HloCostAnalysis::kBytesAccessedKey);
-}
-
 float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToMemory(
     const HloInstruction& instruction,
     absl::optional<int64> operand_in_alternate_mem,
@@ -729,6 +723,8 @@ bool MemorySpaceAssignment::CopyAllocation::operator==(
 
 std::string MemorySpaceAssignment::AllocationValue::ToString() const {
   std::string out = absl::StrCat("computation = ", computation()->name());
+  absl::StrAppend(&out,
+                  (requires_contiguous_allocation_ ? " (cont alloc)" : ""));
   absl::StrAppend(&out, "\n position:\n");
   absl::StrAppend(&out, "  ", defining_position_.ToString(), "\n");
   absl::StrAppend(&out, " uses:\n");
@@ -741,7 +737,8 @@ std::string MemorySpaceAssignment::AllocationValue::ToString() const {
 std::string MemorySpaceAssignment::AllocationValue::ToShortString() const {
   return absl::StrCat("computation = ", computation()->name(),
                       ", position = ", defining_position_.ToString(),
-                      ", value = ", value_->ToShortString());
+                      ", value = ", value_->ToShortString(),
+                      (requires_contiguous_allocation_ ? " (cont alloc)" : ""));
 }
 
 void AlternateMemoryBestFitHeap::CreateAllocationValues(
@@ -801,9 +798,18 @@ void AlternateMemoryBestFitHeap::CreateAllocationValues(
     AllocationValue* last_allocation_value = nullptr;
     for (int i = beginning_idx; i < allocation_values.size(); ++i) {
       AllocationValue* allocation_value = &allocation_values.at(i);
-      if (allocation_value->computation() == use_computation &&
-          instruction_schedule.at(
-              allocation_value->defining_position().instruction) < use_time) {
+      if (HloDataflowAnalysis::IsAsynchronousOperationDone(
+              use.instruction->opcode())) {
+        if (allocation_value->defining_instruction() ==
+            use.instruction->operand(0)) {
+          last_allocation_value = allocation_value;
+        }
+      } else if (!HloDataflowAnalysis::IsAsynchronousOperationStart(
+                     allocation_value->defining_instruction()->opcode()) &&
+                 allocation_value->computation() == use_computation &&
+                 instruction_schedule.at(
+                     allocation_value->defining_position().instruction) <
+                     use_time) {
         last_allocation_value = allocation_value;
       }
     }
@@ -812,6 +818,16 @@ void AlternateMemoryBestFitHeap::CreateAllocationValues(
   }
 
   for (int i = beginning_idx; i < allocation_values.size(); ++i) {
+    AllocationValue& allocation_value = allocation_values.at(i);
+    if (HloDataflowAnalysis::IsAsynchronousOperationStart(
+            allocation_value.defining_instruction()->opcode())) {
+      CHECK_EQ(allocation_value.uses().size(), 1);
+      CHECK(HloDataflowAnalysis::IsAsynchronousOperationDone(
+          allocation_value.uses().at(0).hlo_use.instruction->opcode()));
+      VLOG(3) << "Mark " << allocation_value.ToShortString()
+              << " to require contiguous allocation.";
+      allocation_value.set_requires_contiguous_allocation(true);
+    }
     VLOG(3) << "Created allocation value: "
             << allocation_values.at(i).ToString();
   }
@@ -941,12 +957,8 @@ bool AlternateMemoryBestFitHeap::IsUseAllowedInAlternateMemory(
     int64 while_time = instruction_schedule.at(use.instruction);
     auto existing_required_assignment =
         RequiredMemoryAssignmentAt(while_value, while_time);
-    if (existing_required_assignment) {
-      // TODO(berkin): Failing for now when the output is requested to be in
-      // alternate memory, and the buffer is a while loop output.
-      CHECK(existing_required_assignment->memory_space == MemorySpace::kDefault)
-          << "While loop buffers pinned to alternate memory not "
-             "currently supported.";
+    if (existing_required_assignment &&
+        existing_required_assignment->memory_space == MemorySpace::kDefault) {
       VLOG(4) << "While allocation not allowed in alternate memory because "
                  "there is a required default memory assignment.";
       return false;
@@ -1298,6 +1310,17 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
     absl::Span<MemorySpaceAssignment::AllocationValue> allocation_values) {
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
 
+  // Find the use times across all of the related AllocationValues and sort
+  // them. We use these to find allocations that are available throughout the
+  // entire live range of all the AllocationValues.
+  std::vector<int64_t> all_use_times;
+  for (const AllocationValue& allocation_value : allocation_values) {
+    absl::c_transform(allocation_value.uses(),
+                      std::back_inserter(all_use_times),
+                      [](const AllocationValue::Use& use) { return use.time; });
+  }
+  absl::c_sort(all_use_times);
+
   // Data structure to contain the preferred offset for a given computation.
   // We ensure that the same offset will be allocated outside the while loop
   // as well as inside the while loop.
@@ -1429,6 +1452,7 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
         request.preferred_offset = preferred_offset;
         request.use = &use;
         request.allocation_value = &allocation_value;
+        request.all_use_times = all_use_times;
         result_mark(AllocateSegment(request), result);
         if (result_requires_uncommit(result)) {
           // If the allocation finding failed (e.g., due to running out of
@@ -2005,17 +2029,15 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
 
   if (required_assignment_at_start) {
     if (!allocation_sequence->empty()) {
-      const auto& prev_allocation = allocation_sequence->back();
-      CHECK(prev_allocation->memory_space() ==
-            required_assignment_at_start->memory_space);
-      if (required_assignment_at_start->memory_space ==
-          MemorySpace::kAlternate) {
-        // We expect the required assignment offset to match the offset of the
-        // previous allocation.
-        CHECK_EQ(GetAliasedOffset(*prev_allocation),
-                 required_assignment_at_start->offset);
-      }
-      prev_allocation->Extend(request.start_time);
+      auto prev_allocation_it = std::find_if(
+          allocation_sequence->rbegin(), allocation_sequence->rend(),
+          [&](const auto& allocation) {
+            return allocation->memory_space() ==
+                       required_memory_space_at_start &&
+                   allocation->defining_position() == defining_position;
+          });
+      CHECK(prev_allocation_it != allocation_sequence->rend());
+      (*prev_allocation_it)->Extend(request.start_time);
     } else {
       absl::optional<Chunk> aliased_chunk = absl::nullopt;
       if (required_assignment_at_start->memory_space ==
@@ -2059,7 +2081,8 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
   if (prev_allocation_in_default_mem_it == allocation_sequence->rend() &&
       prev_allocation_it != allocation_sequence->rend() &&
       (*prev_allocation_it)->memory_space() == MemorySpace::kAlternate &&
-      (*prev_allocation_it)->defining_position() == defining_position) {
+      (*prev_allocation_it)->defining_position() == defining_position &&
+      !request.allocation_value->requires_contiguous_allocation()) {
     // If there was an allocation for this HloValue that was in the alternate
     // memory space, we also need to perform an eviction.
     Result eviction_result = Evict(request);
@@ -2090,16 +2113,26 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
   }
 
   // Finally, try to prefetch the buffer into alternate memory.
-  Result prefetch_result =
-      Prefetch(request, **prev_allocation_in_default_mem_it);
-  if (prefetch_result == Result::kSuccess) {
-    return Result::kSuccess;
+  if (!request.allocation_value->requires_contiguous_allocation()) {
+    Result prefetch_result =
+        Prefetch(request, **prev_allocation_in_default_mem_it);
+    if (prefetch_result == Result::kSuccess) {
+      return Result::kSuccess;
+    }
+    result_mark(prefetch_result, allocation_result);
   }
-  result_mark(prefetch_result, allocation_result);
 
   // If the end assignment was required to be in alternate memory but that
   // wasn't possible, then this allocation is invalid.
   if (required_memory_space_at_end == MemorySpace::kAlternate) {
+    return result_mark(Result::kFailRequiresUncommit, allocation_result);
+  }
+
+  // If the start assignment was required to be in alternate memory and the
+  // buffer needs a contiguous assignment, we couldn't satisfy this requirement
+  // and must abort.
+  if (required_memory_space_at_start == MemorySpace::kAlternate &&
+      request.allocation_value->requires_contiguous_allocation()) {
     return result_mark(Result::kFailRequiresUncommit, allocation_result);
   }
 
@@ -2543,36 +2576,37 @@ AlternateMemoryBestFitHeap::FindBestChunkCandidate(
   int64 end_time = request.end_time;
   if (!preferred_offset) {
     // First find the earliest use that is the same or later than the end time.
-    const auto& uses = request.allocation_value->uses();
-    auto use_it = uses.begin();
-    for (; use_it->time < end_time; ++use_it) {
+    const auto& use_times = request.all_use_times;
+    auto use_time_it = use_times.begin();
+    for (; *use_time_it < end_time; ++use_time_it) {
     }
-    CHECK(use_it != uses.end());
-    int64 earliest_use = use_it->time;
+    CHECK(use_time_it != use_times.end());
+    int64 earliest_use = *use_time_it;
 
     // Then find the latest use that can be allocated contiguously without
     // copies.
     const Shape& shape = request.allocation_value->defining_position().shape();
     for (;
-         (use_it + 1) != uses.end() &&
+         (use_time_it + 1) != use_times.end() &&
          options_.prefetch_interval_picker->CanAllocateInAlternateMemoryNoCopy(
-             shape, use_it->time, (use_it + 1)->time);
-         ++use_it) {
+             shape, *use_time_it, *(use_time_it + 1));
+         ++use_time_it) {
     }
-    CHECK(use_it != uses.end());
-    int64 latest_contiguous_use = use_it->time;
+    CHECK(use_time_it != use_times.end());
+    int64 latest_contiguous_use_time = *use_time_it;
 
     // Find a chunk that's as long living as possible iterating in reverse over
     // the use times.
-    for (; use_it >= uses.begin() && use_it->time >= end_time; --use_it) {
-      alternate_mem_interval->end = use_it->time;
+    for (; use_time_it >= use_times.begin() && *use_time_it >= end_time;
+         --use_time_it) {
+      alternate_mem_interval->end = *use_time_it;
       ChunkCandidate chunk_candidate =
           FindChunkCandidate(*alternate_mem_interval);
       if (chunk_candidate.heap_size <= available_heap_size()) {
         alternate_mem_interval->end = end_time;
         VLOG(3) << "FindBestChunkCandidate earliest use = " << earliest_use
-                << ", latest contiguous use = " << latest_contiguous_use
-                << ", use with available mem = " << use_it->time
+                << ", latest contiguous use = " << latest_contiguous_use_time
+                << ", use with available mem = " << *use_time_it
                 << ", offset = " << chunk_candidate.chunk.offset;
         return chunk_candidate;
       }

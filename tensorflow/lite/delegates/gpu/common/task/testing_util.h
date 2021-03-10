@@ -66,6 +66,10 @@ class TestExecutionEnvironment {
   }
 };
 
+absl::Status PointWiseNear(const std::vector<float>& ref,
+                           const std::vector<float>& to_compare,
+                           float eps = 0.0f);
+
 }  // namespace gpu
 }  // namespace tflite
 

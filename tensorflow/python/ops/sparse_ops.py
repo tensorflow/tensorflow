@@ -419,17 +419,38 @@ def sparse_concat_v2(axis, sp_inputs, expand_nonconcat_dims=False, name=None):  
   output_ind, output_val, output_shape = (
       gen_sparse_ops.sparse_concat(inds, vals, shapes, axis, name=name))
 
-  shapes_value = [tensor_util.constant_value(shape) for shape in shapes]
-  if shapes_value and all(shape is not None for shape in shapes_value):
-    dim = sum(shape[axis] for shape in shapes_value)
-    output_shape = shapes_value[0]
-    output_shape[axis] = dim
-    output_shape = ops.convert_to_tensor(output_shape)
-  return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
+  input_shapes = [inp.shape for inp in sp_inputs]
+  if all(shape.rank is not None for shape in input_shapes):
+    if expand_nonconcat_dims:
+      static_output_shape = []
+      for dim in range(input_shapes[0].rank):
+        static_output_shape.append(
+            max(tensor_shape.dimension_at_index(shape, dim)
+                for shape in input_shapes))
+    else:
+      static_output_shape = input_shapes[0].as_list()
+    static_output_shape[axis] = sum(
+        tensor_shape.dimension_at_index(shape, axis)
+        for shape in input_shapes)
+  else:
+    static_output_shape = tensor_shape.unknown_shape()
+  if all(shape.is_fully_defined() for shape in input_shapes):
+    output_shape = ops.convert_to_tensor(static_output_shape,
+                                         dtype=dtypes.int64)
+    return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
+  else:
+    # In case there are partially defined shape, we couldn't update the
+    # output_shape tensor value. We update the output._dense_shape_default,
+    # which populate output.shape as the best effort.
+    output = sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
+    output._dense_shape_default = tensor_shape.TensorShape(static_output_shape)
+    return output
 
 
 sparse_concat_v2.__doc__ = sparse_concat.__doc__.replace(
-    "    concat_dim: The old (deprecated) name for axis.\n", "")
+    "    concat_dim: The old (deprecated) name for axis.\n",
+    "").replace("    expand_nonconcat_dims: alias for expand_nonconcat_dim\n",
+                "")
 
 
 @tf_export(v1=["sparse.add", "sparse_add"])
@@ -2410,13 +2431,30 @@ def sparse_tensor_dense_matmul(sp_a,
   (or SparseTensor) "B". Please note that one and only one of the inputs MUST
   be a SparseTensor and the other MUST be a dense matrix.
 
-  No validity checking is performed on the indices of `A`.  However, the
-  following input format is recommended for optimal behavior:
+  The following input format is recommended (but not required) for optimal
+  performance:
 
   * If `adjoint_a == false`: `A` should be sorted in lexicographically
     increasing order.  Use `sparse.reorder` if you're not sure.
   * If `adjoint_a == true`: `A` should be sorted in order of increasing
     dimension 1 (i.e., "column major" order instead of "row major" order).
+
+  Args:
+    sp_a: SparseTensor (or dense Matrix) A, of rank 2.
+    b: dense Matrix (or SparseTensor) B, with the same dtype as sp_a.
+    adjoint_a: Use the adjoint of A in the matrix multiply.  If A is complex,
+      this is transpose(conj(A)).  Otherwise it's transpose(A).
+    adjoint_b: Use the adjoint of B in the matrix multiply.  If B is complex,
+      this is transpose(conj(B)).  Otherwise it's transpose(B).
+    name: A name prefix for the returned tensors (optional)
+
+  Returns:
+    A dense matrix (pseudo-code in dense np.matrix notation):
+      `A = A.H if adjoint_a else A`
+      `B = B.H if adjoint_b else B`
+      `return A*B`
+
+  Notes:
 
   Using `tf.nn.embedding_lookup_sparse` for sparse multiplication:
 
@@ -2589,20 +2627,6 @@ def sparse_tensor_dense_matmul(sp_a,
   0.8    25  False 1000  1000  0.00211448    0.00752736   3.55992
   ```
 
-  Args:
-    sp_a: SparseTensor (or dense Matrix) A, of rank 2.
-    b: dense Matrix (or SparseTensor) B, with the same dtype as sp_a.
-    adjoint_a: Use the adjoint of A in the matrix multiply.  If A is complex,
-      this is transpose(conj(A)).  Otherwise it's transpose(A).
-    adjoint_b: Use the adjoint of B in the matrix multiply.  If B is complex,
-      this is transpose(conj(B)).  Otherwise it's transpose(B).
-    name: A name prefix for the returned tensors (optional)
-
-  Returns:
-    A dense matrix (pseudo-code in dense np.matrix notation):
-      `A = A.H if adjoint_a else A`
-      `B = B.H if adjoint_b else B`
-      `return A*B`
   """
   # pylint: enable=line-too-long
 

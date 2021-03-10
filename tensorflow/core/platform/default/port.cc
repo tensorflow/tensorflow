@@ -369,5 +369,10 @@ MemoryInfo GetMemoryInfo() {
   return mem_info;
 }
 
+MemoryBandwidthInfo GetMemoryBandwidthInfo() {
+  MemoryBandwidthInfo membw_info = {INT64_MAX};
+  return membw_info;
+}
+
 }  // namespace port
 }  // namespace tensorflow

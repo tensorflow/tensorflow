@@ -56,7 +56,7 @@ class CopyTensor {
     Registration(DeviceType sender_device_type, DeviceType receiver_device_type,
                  CopyFunction copy_function) {
       TF_QCHECK_OK(Register(sender_device_type, receiver_device_type,
-                            copy_function, /*is_pluggable_device*/ false));
+                            copy_function, /*is_pluggable_device=*/false));
     }
   };
 

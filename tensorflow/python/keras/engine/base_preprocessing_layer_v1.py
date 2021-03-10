@@ -17,10 +17,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_preprocessing_layer
+from tensorflow.python.keras.engine import training_generator_v1
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 
 
 class CombinerPreprocessingLayer(
@@ -45,6 +53,10 @@ class CombinerPreprocessingLayer(
   This is only necessary for internal classes, since any class that inherits
   from tf.keras.[...].CombinerPreprocessingLayer will get the right symbol.
   """
+
+  def __init__(self, combiner, **kwargs):
+    super(CombinerPreprocessingLayer, self).__init__(combiner, **kwargs)
+    self._previously_updated = False
 
   def _restore_updates(self):
     """Recreates a dict of updates from the layer's weights."""
@@ -72,3 +84,93 @@ class CombinerPreprocessingLayer(
       assignments.append(
           state_ops.assign(self.state_variables[var_name], value))
     K.get_session().run(assignments)
+
+  def adapt(self, data, reset_state=True):
+    """Fits the state of the preprocessing layer to the data being passed.
+
+    Args:
+      data: The data to train on. It can be passed either as a tf.data Dataset,
+        or as a numpy array.
+      reset_state: Optional argument specifying whether to clear the state of
+        the layer at the start of the call to `adapt`, or whether to start from
+        the existing state. Subclasses may choose to throw if reset_state is set
+        to 'False'.
+    """
+    if reset_state:
+      accumulator = None
+    else:
+      accumulator = self._combiner.restore(self._restore_updates())
+    if isinstance(data, (list, tuple)):
+      data = ops.convert_to_tensor_v2_with_dispatch(data)
+    if not isinstance(data, (dataset_ops.DatasetV2, np.ndarray, ops.Tensor,
+                             ragged_tensor.RaggedTensor)):
+      raise ValueError('`adapt()` requires a batched Dataset, a Tensor, '
+                       'or a Numpy array as input, '
+                       'got {}'.format(type(data)))
+
+    if isinstance(data, dataset_ops.DatasetV2):
+      # Validate that the dataset only contains single-tensor elements.
+      if not isinstance(data.element_spec, type_spec.TypeSpec):
+        raise TypeError(
+            'The dataset should yield single-Tensor elements. Use `dataset.map`'
+            'to select the element of interest.\n'
+            'Got dataset.element_spec=' + str(data.element_spec))
+      # Validate the datasets to try and ensure we haven't been passed one with
+      # infinite size. That would cause an infinite loop here.
+      if tf_utils.dataset_is_infinite(data):
+        raise ValueError(
+            'The dataset passed to `adapt()` has an infinite number of '
+            'elements. Please use `dataset.take(...)` to make the number '
+            'of elements finite.')
+      next_data = self._get_dataset_iterator(data)
+      # TODO(fchollet): consider checking if the dataset is already batched
+      # and otherwise batching it.
+    elif isinstance(data, (ops.Tensor, ragged_tensor.RaggedTensor)):
+      next_data = self._get_dataset_iterator(
+          dataset_ops.Dataset.from_tensor_slices(data).batch(512))
+    else:
+      generator, _ = training_generator_v1.convert_to_generator_like(
+          data, batch_size=512)
+      # If the data is not a dataset, we can iterate over it using next(foo);
+      # here, we wrap that into a callable.
+      next_data = lambda: next(generator)
+
+    # TODO(momernick): Some sort of status bar?
+    # TODO(momernick): Implement parallel processing here?
+    try:
+      data_element = next_data()
+
+      # First, see if the layer is built or not. If it is not, then we must
+      # build it.
+      if not self.built:
+        try:
+          # If this is a Numpy array or tensor, we can get shape from .shape.
+          # If not, an attribute error will be thrown.
+          data_shape = data_element.shape
+          data_shape_nones = tuple([None] * len(data_element.shape))
+        except AttributeError:
+          # The input has an unknown number of dimensions.
+          data_shape = None
+          data_shape_nones = None
+
+        # TODO (b/159261555): move this to base layer build.
+        batch_input_shape = getattr(self, '_batch_input_shape', None)
+        if batch_input_shape is None:
+          # Set the number of dimensions.
+          self._batch_input_shape = data_shape_nones
+
+        self.build(data_shape)
+
+      # Once we have built the Layer, we can process the input data. We do so
+      # until we've gotten an exception indicating that we have no more data.
+      while True:
+        accumulator = self._combiner.compute(data_element, accumulator)
+        data_element = next_data()
+    # Note that this belongs to the outer indentation of 'try' - we need to
+    # catch exceptions resulting from the first 'next_data()' invocation as
+    # well.
+    except (StopIteration, errors.OutOfRangeError):
+      pass
+
+    updates = self._combiner.extract(accumulator)
+    self._set_state_variables(updates)

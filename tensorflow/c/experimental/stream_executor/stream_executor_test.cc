@@ -171,7 +171,11 @@ void create_stream_executor(const SP_Platform* platform,
 }
 void destroy_stream_executor(const SP_Platform* platform,
                              SP_StreamExecutor* se) {}
-
+void get_device_count(const SP_Platform* platform, int* device_count,
+                      TF_Status* status) {
+  TF_SetStatus(status, TF_OK, "");
+  *device_count = kDeviceCount;
+}
 void create_device(const SP_Platform* platform, SE_CreateDeviceParams* params,
                    TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
@@ -192,7 +196,7 @@ void PopulateDefaultPlatform(SP_Platform* platform,
   *platform = {SP_PLATFORM_STRUCT_SIZE};
   platform->name = kDeviceName;
   platform->type = kDeviceType;
-  platform->visible_device_count = kDeviceCount;
+  platform_fns->get_device_count = get_device_count;
   platform_fns->create_device = create_device;
   platform_fns->destroy_device = destroy_device;
   platform_fns->create_device_fns = create_device_fns;

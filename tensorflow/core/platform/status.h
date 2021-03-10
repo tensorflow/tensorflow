@@ -24,25 +24,12 @@ limitations under the License.
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/stack_frame.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
-
-// A struct representing a frame in a stack trace.
-struct StackFrame {
-  std::string file_name;
-  int line_number;
-  std::string function_name;
-
-  bool operator==(const StackFrame& other) const {
-    return line_number == other.line_number &&
-           function_name == other.function_name && file_name == other.file_name;
-  }
-
-  bool operator!=(const StackFrame& other) const { return !(*this == other); }
-};
 
 #if defined(__clang__)
 // Only clang supports warn_unused_result as a type annotation.
@@ -126,13 +113,22 @@ class Status {
   // Sets the payload for a non-ok status using a `type_url` key, overwriting
   // any existing payload for that `type_url`.
   //
-  // NOTE: This function does nothing if the Status is ok.
+  // This function does nothing if the Status is ok.
   void SetPayload(tensorflow::StringPiece type_url,
                   tensorflow::StringPiece payload);
 
   // Erases the payload corresponding to the `type_url` key.  Returns `true` if
   // the payload was present.
   bool ErasePayload(tensorflow::StringPiece type_url);
+
+  // Returns all the payload information.
+  // Returns an empty result if status is ok.
+  const std::unordered_map<std::string, std::string> GetAllPayloads() const;
+
+  // Copies all the payloads using the input and discards existing payloads.
+  // Does nothing if status is ok or 'payloads' is empty.
+  void ReplaceAllPayloads(
+      const std::unordered_map<std::string, std::string>& payloads);
 
  private:
   static const std::string& empty_string();

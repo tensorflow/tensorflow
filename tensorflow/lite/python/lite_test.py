@@ -32,6 +32,7 @@ from tensorflow import keras
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
+from tensorflow.lite.python import util
 from tensorflow.lite.python.convert import ConverterError
 from tensorflow.lite.python.convert import mlir_quantize
 from tensorflow.lite.python.interpreter import Interpreter
@@ -367,7 +368,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
 
     quantized_converter.inference_input_type = inference_input_output_type
     quantized_converter.inference_output_type = inference_input_output_type
-    quantized_converter._experimental_new_quantizer = enable_mlir_quantizer
+    quantized_converter.experimental_new_quantizer = enable_mlir_quantizer
     quantized_tflite_model = quantized_converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
 
@@ -1163,7 +1164,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [inp], [output])
     quantized_converter.experimental_new_converter = enable_mlir_converter
-    quantized_converter._experimental_new_quantizer = enable_mlir_quantizer
+    quantized_converter.experimental_new_quantizer = enable_mlir_quantizer
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_converter.target_spec.supported_types = [dtypes.float16]
     if include_int8:
@@ -1239,18 +1240,22 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       quantized_converter.inference_type = quantized_type
       quantized_converter.convert()
     self.assertEqual(
-        'The `quantized_input_stats` flag must be defined when '
-        'either `inference_type` flag or `inference_input_type` '
-        'flag is set to tf.uint8 or tf.int8.', str(error.exception))
+        'The `quantized_input_stats` flag must be defined when either '
+        '`inference_type` flag or `inference_input_type` flag is set to '
+        'tf.int8 or tf.uint8. Currently, `inference_type=tf.{}` and '
+        '`inference_input_type=None`.'.format(quantized_type.name),
+        str(error.exception))
 
     with self.assertRaises(ValueError) as error:
       quantized_converter.inference_type = dtypes.float32
       quantized_converter.inference_input_type = quantized_type
       quantized_converter.convert()
     self.assertEqual(
-        'The `quantized_input_stats` flag must be defined when '
-        'either `inference_type` flag or `inference_input_type` '
-        'flag is set to tf.uint8 or tf.int8.', str(error.exception))
+        'The `quantized_input_stats` flag must be defined when either '
+        '`inference_type` flag or `inference_input_type` flag is set to '
+        'tf.int8 or tf.uint8. Currently, `inference_type=tf.float32` and '
+        '`inference_input_type=tf.{}`.'.format(quantized_type.name),
+        str(error.exception))
 
     quantized_converter.inference_type = quantized_type
     quantized_converter.inference_input_type = quantized_type
@@ -1306,7 +1311,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     # trigger post-training quantization
     converter.optimizations = [lite.Optimize.DEFAULT]
     converter.representative_dataset = calibration_gen
-    converter._experimental_new_quantizer = True
+    converter.experimental_new_quantizer = True
     quantized_tflite_model = converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
     self.assertLess(len(quantized_tflite_model), len(float_tflite_model))
@@ -1913,6 +1918,44 @@ class FromFrozenGraphObjectDetection(LiteTest):
                      output_details[3]['name'])
     self.assertAllEqual([1], output_details[3]['shape'])
 
+  def testModifyIOToUint8(self):
+    # Tests the object detection model that cannot be loaded in TensorFlow.
+    self._initObjectDetectionArgs()
+
+    def representative_dataset_gen():
+      for _ in range(2):
+        yield [np.random.uniform(low=0, high=1, size=(1, 300, 300, 3)).astype(
+            np.float32)]
+    converter = lite.TFLiteConverter.from_frozen_graph(self._graph_def_file,
+                                                       self._input_arrays,
+                                                       self._output_arrays,
+                                                       self._input_shapes)
+    converter.representative_dataset = representative_dataset_gen
+    converter.target_spec.supported_ops = {lite.OpsSet.TFLITE_BUILTINS_INT8}
+    converter.inference_type = dtypes.int8
+    converter.inference_input_type = dtypes.uint8
+    converter.inference_output_type = dtypes.uint8
+    converter.experimental_new_quantizer = True
+    converter.quantized_input_stats = {
+        'normalized_input_image_tensor': (0., 1.)}  # mean, std_dev
+    converter.allow_custom_ops = True
+    tflite_model = converter.convert()
+
+    self.assertIsNotNone(tflite_model)
+
+    model = util._convert_model_from_bytearray_to_object(tflite_model)
+    quant_opcode_idxs = util.get_quantize_opcode_idx(model)
+
+    subgraph = model.subgraphs[0]
+    tensors = subgraph.tensors
+    operators = subgraph.operators
+    for op in operators:
+      if op.opcodeIndex in quant_opcode_idxs:
+        input_type = util._convert_tflite_enum_type_to_tf_type(
+            tensors[op.inputs[0]].type)
+        if op.outputs[0] in subgraph.outputs:
+          self.assertEqual(input_type, dtypes.float32)
+
 
 class FromSavedModelTest(TestModels):
 
@@ -2494,7 +2537,7 @@ class FromKerasFile(TestModels, parameterized.TestCase):
     self.assertEqual((0., 0.), output_details[1]['quantization'])
 
   def testPartialShapeOverriding(self):
-    """Test a Functional tf.keras model with parital input shape overriding."""
+    """Test a Functional tf.keras model with partial input shape overriding."""
     self._getFunctionalModelMultipleInputs()
 
     # Convert to TFLite model.
@@ -2618,11 +2661,21 @@ class FromKerasFile(TestModels, parameterized.TestCase):
       converter.convert()
       self.assertValidDebugInfo(converter._debug_info)
 
-  def testExperimentalSparsifyModel(self):
+  def testSparsifyModel(self):
     self._getSequentialModel()
 
-    converter = lite.TocoConverter.from_keras_model_file(self._keras_file)
-    converter._experimental_sparsify_model = True
+    converter = lite.TFLiteConverter.from_keras_model_file(self._keras_file)
+    converter.optimizations = {lite.Optimize.EXPERIMENTAL_SPARSITY}
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+  def testSparsifyQuantizedModel(self):
+    self._getSequentialModel()
+
+    converter = lite.TFLiteConverter.from_keras_model_file(self._keras_file)
+    converter.optimizations = {
+        lite.Optimize.DEFAULT, lite.Optimize.EXPERIMENTAL_SPARSITY
+    }
     tflite_model = converter.convert()
     self.assertIsNotNone(tflite_model)
 

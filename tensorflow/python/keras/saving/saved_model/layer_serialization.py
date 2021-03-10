@@ -46,7 +46,6 @@ class LayerSavedModelSaver(base_serialization.SavedModelSaver):
     # TODO(kathywu): Synchronize with the keras spec (go/keras-json-spec) once
     # the python config serialization has caught up.
     metadata = dict(
-        class_name=generic_utils.get_registered_name(type(self.obj)),
         name=self.obj.name,
         trainable=self.obj.trainable,
         expects_training_arg=self.obj._expects_training_arg,  # pylint: disable=protected-access
@@ -56,7 +55,7 @@ class LayerSavedModelSaver(base_serialization.SavedModelSaver):
         must_restore_from_config=self.obj._must_restore_from_config,  # pylint: disable=protected-access
     )
 
-    metadata.update(get_config(self.obj))
+    metadata.update(get_serialized(self.obj))
     if self.obj.input_spec is not None:
       # Layer's input_spec has already been type-checked in the property setter.
       metadata['input_spec'] = nest.map_structure(
@@ -110,16 +109,12 @@ class LayerSavedModelSaver(base_serialization.SavedModelSaver):
 
 # TODO(kathywu): Move serialization utils (and related utils from
 # generic_utils.py) to a separate file.
-def get_config(obj):
+def get_serialized(obj):
   with generic_utils.skip_failed_serialization():
     # Store the config dictionary, which may be used when reviving the object.
     # When loading, the program will attempt to revive the object from config,
     # and if that fails, the object will be revived from the SavedModel.
-    config = generic_utils.serialize_keras_object(obj)['config']
-
-  if config is not None:
-    return {'config': config}
-  return {}
+    return generic_utils.serialize_keras_object(obj)
 
 
 class InputLayerSavedModelSaver(base_serialization.SavedModelSaver):
@@ -160,11 +155,13 @@ class RNNSavedModelSaver(LayerSavedModelSaver):
         super(RNNSavedModelSaver, self)._get_serialized_attributes_internal(
             serialization_cache))
     states = data_structures.wrap_or_unwrap(self.obj.states)
-    # Force the tuple into TupleWrapper which is a trackable object. The
-    # save/load code requires all the objects to be trackable.
-    # Tuple is not converted to TupleWrapper by data_structures.wrap_or_unwrap()
-    # if it doesn't contains any trackable objects.
+    # SaveModel require all the objects to be Trackable when saving.
+    # If the states is still a tuple after wrap_or_unwrap, it means it doesn't
+    # contain any trackable item within it, eg empty tuple or (None, None) for
+    # stateless ConvLSTM2D. We convert them to list so that wrap_or_unwrap can
+    # make it a Trackable again for saving. When loaded, ConvLSTM2D is
+    # able to handle the tuple/list conversion.
     if isinstance(states, tuple):
-      states = data_structures._TupleWrapper(states)  # pylint: disable=protected-access
+      states = data_structures.wrap_or_unwrap(list(states))
     objects['states'] = states
     return objects, functions

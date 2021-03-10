@@ -66,6 +66,39 @@ class OperandsSameAsResultsTypeOrRef
   }
 };
 
+namespace detail {
+inline LogicalResult verifySameOperandsAndResultElementTypeResolveRef(
+    Operation* op) {
+  Type element_type;
+  if (op->getNumResults() > 0) {
+    element_type =
+        mlir::TF::GetElementTypeOrSelfResolveRef(op->getResult(0).getType());
+  } else if (op->getNumOperands() > 0) {
+    element_type =
+        mlir::TF::GetElementTypeOrSelfResolveRef(op->getOperand(0).getType());
+  } else {
+    // Nothing to check.
+    return success();
+  }
+  // Verify that all result element types are compatible to `element_type`.
+  for (const auto& result_type : op->getResultTypes()) {
+    if (mlir::TF::GetElementTypeOrSelfResolveRef(result_type) != element_type) {
+      return op->emitOpError(
+          "requires compatible element types for all operands and results");
+    }
+  }
+  // Verify that all operand element types are compatible to `element_type`.
+  for (const auto& operand_type : op->getOperandTypes()) {
+    if (mlir::TF::GetElementTypeOrSelfResolveRef(operand_type) !=
+        element_type) {
+      return op->emitOpError(
+          "requires compatible element types for all operands and results");
+    }
+  }
+  return success();
+}
+}  // namespace detail
+
 // Verifies that op has the same operand and result element types (or type
 // itself, if scalar) after resolving reference types (i.e., after converting
 // reference types to their corresponding TensorFlow or standard types).
@@ -75,34 +108,20 @@ class SameOperandsAndResultElementTypeResolveRef
                        SameOperandsAndResultElementTypeResolveRef> {
  public:
   static LogicalResult verifyTrait(Operation* op) {
-    Type element_type;
-    if (op->getNumResults() > 0) {
-      element_type =
-          mlir::TF::GetElementTypeOrSelfResolveRef(op->getResult(0).getType());
-    } else if (op->getNumOperands() > 0) {
-      element_type =
-          mlir::TF::GetElementTypeOrSelfResolveRef(op->getOperand(0).getType());
-    } else {
-      // Nothing to check.
-      return success();
-    }
-    // Verify that all result element types are compatible to `element_type`.
-    for (const auto& result_type : op->getResultTypes()) {
-      if (mlir::TF::GetElementTypeOrSelfResolveRef(result_type) !=
-          element_type) {
-        return op->emitOpError(
-            "requires compatible element types for all operands and results");
-      }
-    }
-    // Verify that all operand element types are compatible to `element_type`.
-    for (const auto& operand_type : op->getOperandTypes()) {
-      if (mlir::TF::GetElementTypeOrSelfResolveRef(operand_type) !=
-          element_type) {
-        return op->emitOpError(
-            "requires compatible element types for all operands and results");
-      }
-    }
-    return success();
+    return detail::verifySameOperandsAndResultElementTypeResolveRef(op);
+  }
+};
+
+// Verifies that op has the same operand and result types after resolving
+// reference types (i.e., after converting reference types to their
+// corresponding TensorFlow or standard types).
+template <typename ConcreteType>
+class SameOperandsAndResultTypeResolveRef
+    : public TraitBase<ConcreteType, SameOperandsAndResultTypeResolveRef> {
+ public:
+  static LogicalResult verifyTrait(Operation* op) {
+    if (failed(impl::verifySameOperandsAndResultShape(op))) return failure();
+    return detail::verifySameOperandsAndResultElementTypeResolveRef(op);
   }
 };
 

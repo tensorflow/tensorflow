@@ -39,12 +39,12 @@ static Status InitDeviceModule(void* dso_handle) {
 
   DeviceFactory::Register(
       device_type, new PluggableDeviceFactory(device_type, platform_name),
-      /*priority*/ 220, /*is_pluggable_device*/ true);
+      /*priority=*/220, /*is_pluggable_device=*/true);
 
   TF_RETURN_IF_ERROR(CopyTensor::Register(
       DeviceType(device_type), DeviceType(device_type),
       PluggableDeviceUtil::DeviceToDeviceCopy,
-      /*is_pluggable_device*/ true));  // register the Copy tensor
+      /*is_pluggable_device=*/true));  // register the Copy tensor
   return Status::OK();
 }
 

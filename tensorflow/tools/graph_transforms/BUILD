@@ -139,7 +139,6 @@ cc_library(
         "//tensorflow/core/kernels:quantization_utils",
     ] + if_not_windows([
         "//tensorflow/core/kernels:remote_fused_graph_rewriter_transform",
-        "//tensorflow/core/kernels/hexagon:hexagon_rewriter_transform",
         "//tensorflow/core:sparse_ops_op_lib",
         "//tensorflow/core:parsing_ops_op_lib",
         "//tensorflow/core:sendrecv_ops_op_lib",
@@ -334,7 +333,7 @@ tf_cc_binary(
 py_library(
     name = "transform_graph_py",
     srcs = ["__init__.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:errors",

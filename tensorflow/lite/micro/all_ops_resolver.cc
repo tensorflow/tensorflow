@@ -33,6 +33,7 @@ AllOpsResolver::AllOpsResolver() {
   AddDepthwiseConv2D();
   AddDequantize();
   AddDetectionPostprocess();
+  AddElu();
   AddEqual();
   AddEthosU();
   AddFloor();
@@ -41,6 +42,7 @@ AllOpsResolver::AllOpsResolver() {
   AddGreaterEqual();
   AddHardSwish();
   AddL2Normalization();
+  AddLeakyRelu();
   AddLess();
   AddLessEqual();
   AddLog();
@@ -72,6 +74,7 @@ AllOpsResolver::AllOpsResolver() {
   AddSoftmax();
   AddSplit();
   AddSplitV();
+  AddSqueeze();
   AddSqrt();
   AddSquare();
   AddStridedSlice();

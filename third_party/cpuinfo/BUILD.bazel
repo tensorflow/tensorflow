@@ -103,8 +103,10 @@ cc_library(
         ":linux_armeabi": COMMON_SRCS + ARM_SRCS + LINUX_SRCS + LINUX_ARM32_SRCS,
         ":linux_aarch64": COMMON_SRCS + ARM_SRCS + LINUX_SRCS + LINUX_ARM64_SRCS,
         ":linux_mips64": COMMON_SRCS + LINUX_SRCS,
+        ":linux_riscv64": COMMON_SRCS + LINUX_SRCS,
         ":linux_s390x": COMMON_SRCS + LINUX_SRCS,
         ":macos_x86_64": COMMON_SRCS + X86_SRCS + MACH_SRCS + MACH_X86_SRCS,
+        ":macos_arm64": COMMON_SRCS + MACH_SRCS + MACH_ARM_SRCS,
         ":windows_x86_64": COMMON_SRCS + X86_SRCS + WINDOWS_X86_SRCS,
         ":android_armv7": COMMON_SRCS + ARM_SRCS + LINUX_SRCS + LINUX_ARM32_SRCS + ANDROID_ARM_SRCS,
         ":android_arm64": COMMON_SRCS + ARM_SRCS + LINUX_SRCS + LINUX_ARM64_SRCS + ANDROID_ARM_SRCS,
@@ -216,6 +218,11 @@ config_setting(
 )
 
 config_setting(
+    name = "linux_riscv64",
+    values = {"cpu": "riscv64"},
+)
+
+config_setting(
     name = "linux_s390x",
     values = {"cpu": "s390x"},
 )
@@ -290,6 +297,14 @@ config_setting(
     values = {
         "apple_platform_type": "ios",
         "cpu": "ios_arm64e",
+    },
+)
+
+config_setting(
+    name = "macos_arm64",
+    values = {
+        "apple_platform_type": "macos",
+        "cpu": "darwin_arm64",
     },
 )
 

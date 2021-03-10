@@ -71,8 +71,9 @@ class HloOrdering {
 
   // Returns whether the given use is before the given value definition under
   // the given ordering.
-  bool UseIsBeforeValueDefinition(const HloUse& use, const HloValue& value,
-                                  const HloDataflowAnalysis& dataflow) const;
+  bool UsesBeforeValueDefinition(absl::Span<const HloUse* const> uses,
+                                 const HloValue& value,
+                                 const HloDataflowAnalysis& dataflow) const;
   // Returns whether the given values interfere. Two values interfere if they
   // may both be simultaneously live.
   bool MayInterfere(const HloValue& a, const HloValue& b,

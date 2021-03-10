@@ -197,7 +197,7 @@ struct {
     } depthwise_conv_2d;
 ```
 
-Then polulate these new parameters in `GetOpSignature` function in
+Then populate these new parameters in `GetOpSignature` function in
 `lite/tools/versioning/op_version.cc`:
 
 ```

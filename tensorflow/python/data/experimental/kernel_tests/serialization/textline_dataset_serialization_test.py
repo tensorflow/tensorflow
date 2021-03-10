@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the TextLineDataset serialization."""
+"""Tests for checkpointing the TextLineDataset."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -20,17 +20,16 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
-from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
-class TextLineDatasetSerializationTest(
+class TextLineDatasetCheckpointTest(
     reader_dataset_ops_test_base.TextLineDatasetTestBase,
-    dataset_serialization_test_base.DatasetSerializationTestBase,
-    parameterized.TestCase):
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
 
   def _build_iterator_graph(self, test_filenames, compression_type=None):
     return core_readers.TextLineDataset(

@@ -102,13 +102,31 @@ CMake project. Please refer the
 ["Create a CMake project which uses TensorFlow Lite"](#create_a_cmake_project_which_uses_tensorflow_lite)
 section.
 
-### Step 6. Build TensorFlow Lite Benchmark Tool
+### Step 6. Build TensorFlow Lite Benchmark Tool and Label Image Example (Optional)
 
 In the tflite_build directory,
 
 ```sh
 cmake --build . -j -t benchmark_model
 ```
+
+```sh
+cmake --build . -j -t label_image
+```
+
+## Available Options to build TensorFlow Lite
+
+Here is the list of available options. You can override it with
+`-D<option_name>=[ON|OFF]`. For example, `-DTFLITE_ENABLE_XNNPACK=OFF` to
+disable XNNPACK which is enabled by default.
+
+Option Name           | Feature                                  | Default
+--------------------- | ---------------------------------------- | ------------
+TFLITE_ENABLE_RUY     | Enable RUY matrix multiplication library | OFF
+TFLITE_ENABLE_NNAPI   | Enable NNAPI delegate                    | ON (Android)
+TFLITE_ENABLE_GPU     | Enable GPU delegate                      | OFF
+TFLITE_ENABLE_XNNPACK | Enable XNNPACK delegate                  | ON
+TFLITE_ENABLE_MMAP    | Enable MMAP (unsupported on Windows)     | ON
 
 ## Create a CMake project which uses TensorFlow Lite
 

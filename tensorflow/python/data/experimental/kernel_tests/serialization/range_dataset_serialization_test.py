@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the RangeDataset serialization."""
+"""Tests for checkpointing the RangeDataset."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -21,7 +21,7 @@ import os
 
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -35,9 +35,8 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-class RangeDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase,
-    parameterized.TestCase):
+class RangeDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                 parameterized.TestCase):
 
   def _iterator_checkpoint_prefix_local(self):
     return os.path.join(self.get_temp_dir(), "iterator")
@@ -58,6 +57,7 @@ class RangeDatasetSerializationTest(
                                                       iterator_state_variant)
     return restore_op
 
+  # TODO(vikoth18): implement eager mode checkpoint tests
   @combinations.generate(
       combinations.combine(tf_api_version=1, mode=["graph"]))
   def testSaveRestore(self):
@@ -77,7 +77,7 @@ class RangeDatasetSerializationTest(
     break_point = 5
     with ops.Graph().as_default() as g:
       init_op, get_next, save_op, _ = _build_graph(start, stop)
-      with self.session(graph=g) as sess:
+      with self.session(graph=g):
         self.evaluate(variables.global_variables_initializer())
         self.evaluate(init_op)
         for i in range(start, break_point):
@@ -86,7 +86,7 @@ class RangeDatasetSerializationTest(
 
     with ops.Graph().as_default() as g:
       init_op, get_next, _, restore_op = _build_graph(start, stop)
-      with self.session(graph=g) as sess:
+      with self.session(graph=g):
         self.evaluate(init_op)
         self.evaluate(restore_op)
         for i in range(break_point, stop):
@@ -97,7 +97,7 @@ class RangeDatasetSerializationTest(
     # Saving and restoring in same session.
     with ops.Graph().as_default() as g:
       init_op, get_next, save_op, restore_op = _build_graph(start, stop)
-      with self.session(graph=g) as sess:
+      with self.session(graph=g):
         self.evaluate(variables.global_variables_initializer())
         self.evaluate(init_op)
         for i in range(start, break_point):
@@ -116,7 +116,6 @@ class RangeDatasetSerializationTest(
   def testRangeCore(self):
     start = 2
     stop = 10
-    stop_1 = 8
     self.run_core_tests(lambda: self._build_range_dataset(start, stop),
                         stop - start)
 

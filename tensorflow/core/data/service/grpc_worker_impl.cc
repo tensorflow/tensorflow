@@ -31,9 +31,12 @@ GrpcWorkerImpl::GrpcWorkerImpl(const experimental::WorkerConfig& config,
   VLOG(1) << "Registered data service worker";
 }
 
-Status GrpcWorkerImpl::Start(const std::string& worker_address) {
-  return impl_.Start(worker_address);
+Status GrpcWorkerImpl::Start(const std::string& worker_address,
+                             const std::string& transfer_address) {
+  return impl_.Start(worker_address, transfer_address);
 }
+
+void GrpcWorkerImpl::Stop() { impl_.Stop(); }
 
 #define HANDLER(method)                                                 \
   ::grpc::Status GrpcWorkerImpl::method(ServerContext* context,         \

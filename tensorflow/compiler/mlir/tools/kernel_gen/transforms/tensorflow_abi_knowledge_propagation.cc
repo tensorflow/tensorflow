@@ -81,7 +81,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
 
     // Now look at launches and make use of the knowledge we have.
     function.walk([&](gpu::LaunchFuncOp launch) {
-      auto module = launch.getParentOfType<ModuleOp>();
+      auto module = launch->getParentOfType<ModuleOp>();
       auto kernel = module.lookupSymbol<LLVM::LLVMFuncOp>(launch.kernel());
 
       if (!kernel || kernel.isExternal()) return;

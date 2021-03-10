@@ -79,6 +79,8 @@ static std::string TfLiteTensorString(const TfLiteTensor& tensor) {
   switch (tensor.type) {
     case kTfLiteInt32:
       return TfLiteTypedTensorString<int32_t>(tensor);
+    case kTfLiteUInt32:
+      return TfLiteTypedTensorString<uint32_t>(tensor);
     case kTfLiteInt64:
       return TfLiteTypedTensorString<int64_t>(tensor);
     case kTfLiteFloat32:
@@ -100,10 +102,10 @@ int main(int argc, char** argv) {
   }
 
   // Load the MLIR module.
-  mlir::MLIRContext context;
-  context.getDialectRegistry()
-      .insert<mlir::TF::TensorFlowDialect, mlir::TFL::TensorFlowLiteDialect,
-              mlir::StandardOpsDialect>();
+  mlir::DialectRegistry registry;
+  registry.insert<mlir::TF::TensorFlowDialect, mlir::TFL::TensorFlowLiteDialect,
+                  mlir::StandardOpsDialect>();
+  mlir::MLIRContext context(registry);
 
   llvm::SourceMgr source_mgr;
   source_mgr.AddNewSourceBuffer(std::move(*file_or_err), llvm::SMLoc());
@@ -118,9 +120,12 @@ int main(int argc, char** argv) {
 
   // Convert to flatbuffer.
   std::string serialized_flatbuffer;
-  if (tflite::MlirToFlatBufferTranslateFunction(
-          module.get(), &serialized_flatbuffer, emit_builtin_tflite_ops,
-          emit_select_tf_ops, emit_custom_ops))
+  tflite::FlatbufferExportOptions options;
+  options.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
+  options.emit_custom_ops = emit_custom_ops;
+  options.emit_select_tf_ops = emit_select_tf_ops;
+  if (!tflite::MlirToFlatBufferTranslateFunction(module.get(), options,
+                                                 &serialized_flatbuffer))
     return 1;
 
   // Create TFLite interpreter & invoke converted program.

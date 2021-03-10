@@ -62,8 +62,7 @@ FuncOp createLstmCompositeFunc(mlir::Builder* builder, bool ln, bool cifg) {
   auto func_type = builder->getFunctionType(input_types, output_type);
 
   auto func =
-      FuncOp::create(mlir::NameLoc::get(builder->getIdentifier("fused_func"),
-                                        builder->getContext()),
+      FuncOp::create(mlir::NameLoc::get(builder->getIdentifier("fused_func")),
                      "fused_func", func_type, {});
   func.addEntryBlock();
 
@@ -81,7 +80,7 @@ FuncOp createLstmCompositeFunc(mlir::Builder* builder, bool ln, bool cifg) {
   mlir::StringAttr attr_values =
       builder->getStringAttr(llvm::join(attributes, ","));
 
-  func.setAttr(kTFImplements, attr_values);
+  func->setAttr(kTFImplements, attr_values);
   return func;
 }
 
@@ -126,7 +125,7 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimple) {
 
   // verify transpose
   EXPECT_EQ(
-      fused_lstm_func_.getAttrOfType<StringAttr>(kTFImplements).getValue(),
+      fused_lstm_func_->getAttrOfType<StringAttr>(kTFImplements).getValue(),
       convert.GetCompositeOpName());
   EXPECT_EQ(fused_lstm_func_.getNumArguments(), 5);
   EXPECT_EQ(fused_lstm_func_.getType().getNumResults(), 1);
@@ -199,9 +198,9 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimpleToFusedLSTMCoupleInputForget) {
 
   llvm::SmallVector<std::string, 2> attributes{kLstmCellSimple,
                                                kCoupleInputForgetGates};
-  EXPECT_EQ(
-      fused_lstm_func_cifg_.getAttrOfType<StringAttr>(kTFImplements).getValue(),
-      llvm::join(attributes, ","));
+  EXPECT_EQ(fused_lstm_func_cifg_->getAttrOfType<StringAttr>(kTFImplements)
+                .getValue(),
+            llvm::join(attributes, ","));
 
   auto it = fused_lstm_func_cifg_.getBody().back().rbegin();
   EXPECT_EQ(it->getName().getStringRef(), mlir::ReturnOp::getOperationName());
@@ -224,7 +223,7 @@ TEST_F(LstmUtilsTest, ConvertLayerNormLSTMCellSimpleToFusedLSTM) {
   fused_ln_lstm_func_.dump();
 
   EXPECT_EQ(
-      fused_ln_lstm_func_.getAttrOfType<StringAttr>(kTFImplements).getValue(),
+      fused_ln_lstm_func_->getAttrOfType<StringAttr>(kTFImplements).getValue(),
       convert.GetCompositeOpName());
   EXPECT_EQ(fused_ln_lstm_func_.getNumArguments(), 5);
   EXPECT_EQ(fused_ln_lstm_func_.getType().getNumResults(), 1);

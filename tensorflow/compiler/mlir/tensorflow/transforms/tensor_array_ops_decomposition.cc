@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -165,7 +166,7 @@ void ReplaceAllUsesWithCast(Value old_val, Value new_val) {
   if (old_val.use_empty()) return;
   auto cast_op =
       OpBuilder(old_val.getDefiningOp())
-          .create<TensorCastOp>(old_val.getLoc(), old_val.getType(), new_val);
+          .create<tensor::CastOp>(old_val.getLoc(), old_val.getType(), new_val);
   old_val.replaceAllUsesWith(cast_op);
 }
 
@@ -460,10 +461,9 @@ LogicalResult HandleTensorArrayScatterV3Op(
 void UpdateFuncType(FuncOp func) {
   llvm::SmallVector<Type, 8> arg_types;
   for (auto arg : func.getArguments()) arg_types.push_back(arg.getType());
-  func.setType(FunctionType::get(
-      arg_types,
-      llvm::to_vector<8>(func.front().getTerminator()->getOperandTypes()),
-      func.getContext()));
+  func.setType(
+      FunctionType::get(func.getContext(), arg_types,
+                        func.front().getTerminator()->getOperandTypes()));
 }
 
 // Finds the accessed gradient sources for each tensor array argument.
@@ -625,7 +625,7 @@ LogicalResult HandleWhileOp(TF::WhileOp while_op, ModuleOp module,
   OpBuilder builder(while_op);
   auto new_while =
       builder.create<TF::WhileOp>(while_op.getLoc(), body.getType().getInputs(),
-                                  operands, while_op.getAttrs());
+                                  operands, while_op->getAttrs());
   for (int64_t i = 0; i < while_op.getNumOperands(); ++i) {
     if (ta_arg_buffer_type(i)) {
       while_op.getResult(i).replaceAllUsesWith(while_op.getOperand(i));
@@ -692,7 +692,7 @@ LogicalResult HandleIfOp(TF::IfOp if_op, ModuleOp module,
   OpBuilder builder(if_op);
   auto new_if = builder.create<TF::IfOp>(if_op.getLoc(),
                                          then_branch.getType().getResults(),
-                                         operands, if_op.getAttrs());
+                                         operands, if_op->getAttrs());
   auto ret_forwards_input = [](FuncOp f, int64_t ret_ind) -> int64_t {
     auto retval = f.front().getTerminator()->getOperand(ret_ind);
     auto arg = retval.dyn_cast<BlockArgument>();
@@ -751,7 +751,7 @@ LogicalResult HandlePartitionedCallOp(
     OpBuilder builder(call);
     auto new_call = builder.create<CallOp>(
         call.getLoc(), info.decomposed_callee.getType().getResults(),
-        new_operands, call.getAttrs());
+        new_operands, call->getAttrs());
     new_call->setAttr(
         "f", builder.getSymbolRefAttr(
                  const_cast<FuncOp&>(info.decomposed_callee).getName()));

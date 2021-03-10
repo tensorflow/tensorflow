@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import unittest
 
 from absl import logging
 import numpy as np
@@ -35,6 +34,8 @@ from tensorflow.python.platform import test
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training.tracking import util as tracking_util
+
+_BATCH_SIZE = 32
 
 
 class SidecarEvaluatorTest(test.TestCase):
@@ -57,12 +58,18 @@ class SidecarEvaluatorTest(test.TestCase):
 
     # Asserts the content of the summary file.
     event_pb_written = False
-    for event_pb in summary_iterator.summary_iterator(
-        os.path.join(log_dir, summary_files[0])):
-      if event_pb.step > 0:
-        self.assertEqual(event_pb.step, 32)
-        self.assertEqual(event_pb.summary.value[0].tag, 'categorical_accuracy')
-        event_pb_written = True
+    event_tags = []
+    for summary_file in summary_files:
+      for event_pb in summary_iterator.summary_iterator(
+          os.path.join(log_dir, summary_file)):
+        if event_pb.step > 0:
+          self.assertEqual(event_pb.step, 32)
+          event_tags.append(event_pb.summary.value[0].tag)
+          event_pb_written = True
+    self.assertCountEqual(event_tags, [
+        'evaluation_categorical_accuracy_vs_iterations',
+        'evaluation_loss_vs_iterations'
+    ])
 
     # Verifying at least one non-zeroth step is written to summary.
     self.assertTrue(event_pb_written)
@@ -85,7 +92,7 @@ class SidecarEvaluatorTest(test.TestCase):
     checkpoint_manager.save()
 
     sidecar_evaluator = sidecar_evaluator_lib.SidecarEvaluator(
-        model, data=None, checkpoint_dir=checkpoint_dir, log_dir=None)
+        model, data=None, checkpoint_dir=checkpoint_dir)
     with self.assertRaisesRegexp(
         RuntimeError, '`iterations` cannot be loaded '
         'from the checkpoint file.'):
@@ -121,16 +128,15 @@ class SidecarEvaluatorTest(test.TestCase):
         eval_model,
         data=dataset,
         checkpoint_dir=checkpoint_dir,
-        log_dir=log_dir,
-        max_evaluations=1).start()
+        max_evaluations=1,
+        callbacks=[keras.callbacks.TensorBoard(log_dir=log_dir)]).start()
     # Eval model has been restored to the same state as the original model, so
     # their weights should match. If not, restoration of the model didn't
     # work.
     self.assertModelsSameVariables(model, eval_model)
 
-    self.assertSummaryEventsWritten(log_dir)
+    self.assertSummaryEventsWritten(os.path.join(log_dir, 'validation'))
 
-  @unittest.skip('b/172976255')
   def testSidecarEvaluatorOutputsSummarySavedWithCallback(self):
     checkpoint_dir = os.path.join(self.get_temp_dir(), 'checkpoints')
     log_dir = os.path.join(self.get_temp_dir(), 'summary')
@@ -139,7 +145,7 @@ class SidecarEvaluatorTest(test.TestCase):
     data = np.random.random((1000, 32))
     labels = np.random.random((1000, 10))
     dataset = dataset_ops.Dataset.from_tensor_slices((data, labels))
-    dataset = dataset.batch(32)
+    dataset = dataset.batch(_BATCH_SIZE)
     save_callback = keras.callbacks.ModelCheckpoint(
         filepath=os.path.join(checkpoint_dir, 'ckpt-{epoch}'),
         save_weights_only=True)
@@ -152,18 +158,23 @@ class SidecarEvaluatorTest(test.TestCase):
     # Create a new model used for evaluation.
     eval_model = self.createTestModel(compile_model=True)
     # Have an sidecar_evaluator evaluate once.
-    sidecar_evaluator_lib.SidecarEvaluator(
+    sidecar_evaluator = sidecar_evaluator_lib.SidecarEvaluator(
         eval_model,
         data=dataset,
         checkpoint_dir=checkpoint_dir,
-        log_dir=log_dir,
-        max_evaluations=1).start()
+        max_evaluations=1,
+        callbacks=[keras.callbacks.TensorBoard(log_dir=log_dir)])
+    sidecar_evaluator.start()
+
     # Eval model has been restored to the same state as the original model, so
     # their weights should match. If not, restoration of the model didn't
     # work.
     self.assertModelsSameVariables(model, eval_model)
 
-    self.assertSummaryEventsWritten(log_dir)
+    # check the iterations is restored.
+    self.assertEqual(sidecar_evaluator._iterations.numpy(), _BATCH_SIZE)
+
+    self.assertSummaryEventsWritten(os.path.join(log_dir, 'validation'))
 
 
 if __name__ == '__main__':

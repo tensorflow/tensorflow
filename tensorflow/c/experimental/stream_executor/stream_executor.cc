@@ -735,9 +735,15 @@ port::StatusOr<std::unique_ptr<StreamExecutor>> CPlatform::GetUncachedExecutor(
   TF_RETURN_IF_ERROR(StatusFromTF_Status(c_status.get()));
   TF_RETURN_IF_ERROR(ValidateSPDevice(device));
 
+  // Get Device Count
+  int visible_device_count = 0;
+  platform_fns_.get_device_count(&platform_, &visible_device_count,
+                                 c_status.get());
+  TF_RETURN_IF_ERROR(StatusFromTF_Status(c_status.get()));
+
   auto executor = absl::make_unique<CStreamExecutor>(
       std::move(device), &device_fns_, &stream_executor_, &platform_,
-      &platform_fns_, &timer_fns_, name_, platform_.visible_device_count);
+      &platform_fns_, &timer_fns_, name_, visible_device_count);
   auto result = absl::make_unique<StreamExecutor>(this, std::move(executor),
                                                   config.ordinal);
   return result;
@@ -800,10 +806,6 @@ port::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn,
   TF_RETURN_IF_ERROR(ValidateSPStreamExecutor(se, platform));
 
   SP_TimerFns timer_fns{SP_TIMER_FNS_STRUCT_SIZE};
-  platform_fns.create_timer_fns(&platform, &timer_fns, c_status.get());
-  TF_RETURN_IF_ERROR(tensorflow::StatusFromTF_Status(c_status.get()));
-  TF_RETURN_IF_ERROR(ValidateSPTimerFns(timer_fns));
-
   platform_fns.create_timer_fns(&platform, &timer_fns, c_status.get());
   TF_RETURN_IF_ERROR(tensorflow::StatusFromTF_Status(c_status.get()));
   TF_RETURN_IF_ERROR(ValidateSPTimerFns(timer_fns));

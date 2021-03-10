@@ -19,11 +19,13 @@ limitations under the License.
 
 namespace tensorflow {
 namespace functor {
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 template struct BinaryFunctor<GPUDevice, logical_and, 1>;
 template struct BinaryFunctor<GPUDevice, logical_and, 2>;
 template struct BinaryFunctor<GPUDevice, logical_and, 3>;
 template struct BinaryFunctor<GPUDevice, logical_and, 4>;
 template struct BinaryFunctor<GPUDevice, logical_and, 5>;
+#endif
 }  // namespace functor
 }  // namespace tensorflow
 

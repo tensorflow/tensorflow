@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 
@@ -25,8 +26,8 @@ TF_LITE_MICRO_TESTS_BEGIN
 TF_LITE_MICRO_TEST(TestEnsureHeadSizeSimpleAlignment) {
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
-                                          arena_size);
+  tflite::SimpleMemoryAllocator allocator(tflite::GetMicroErrorReporter(),
+                                          arena, arena_size);
 
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteOk, allocator.SetHeadBufferSize(/*size=*/100, /*alignment=*/1));
@@ -47,8 +48,8 @@ TF_LITE_MICRO_TEST(TestEnsureHeadSizeSimpleAlignment) {
 TF_LITE_MICRO_TEST(TestAdjustHeadSizeMisalignment) {
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
-                                          arena_size);
+  tflite::SimpleMemoryAllocator allocator(tflite::GetMicroErrorReporter(),
+                                          arena, arena_size);
 
   // First head adjustment of 100 bytes (aligned 12):
   TF_LITE_MICRO_EXPECT_EQ(
@@ -73,8 +74,8 @@ TF_LITE_MICRO_TEST(TestAdjustHeadSizeMisalignment) {
 TF_LITE_MICRO_TEST(TestAdjustHeadSizeMisalignedHandlesCorrectBytesAvailable) {
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
-                                          arena_size);
+  tflite::SimpleMemoryAllocator allocator(tflite::GetMicroErrorReporter(),
+                                          arena, arena_size);
 
   // First head adjustment of 100 bytes (aligned 12):
   TF_LITE_MICRO_EXPECT_EQ(
@@ -104,8 +105,8 @@ TF_LITE_MICRO_TEST(TestAdjustHeadSizeMisalignedHandlesCorrectBytesAvailable) {
 TF_LITE_MICRO_TEST(TestGetAvailableMemory) {
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
-                                          arena_size);
+  tflite::SimpleMemoryAllocator allocator(tflite::GetMicroErrorReporter(),
+                                          arena, arena_size);
 
   constexpr size_t allocation_size = 100;
   allocator.SetHeadBufferSize(/*size=*/allocation_size,
@@ -120,8 +121,8 @@ TF_LITE_MICRO_TEST(TestGetAvailableMemory) {
 TF_LITE_MICRO_TEST(TestGetAvailableMemoryWithTempAllocations) {
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
-                                          arena_size);
+  tflite::SimpleMemoryAllocator allocator(tflite::GetMicroErrorReporter(),
+                                          arena, arena_size);
 
   constexpr size_t allocation_size = 100;
   allocator.AllocateTemp(/*size=*/allocation_size,
@@ -141,8 +142,8 @@ TF_LITE_MICRO_TEST(TestGetAvailableMemoryWithTempAllocations) {
 TF_LITE_MICRO_TEST(TestGetUsedBytes) {
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
-                                          arena_size);
+  tflite::SimpleMemoryAllocator allocator(tflite::GetMicroErrorReporter(),
+                                          arena, arena_size);
   TF_LITE_MICRO_EXPECT_EQ(allocator.GetUsedBytes(), static_cast<size_t>(0));
 
   constexpr size_t allocation_size = 100;
@@ -157,8 +158,8 @@ TF_LITE_MICRO_TEST(TestGetUsedBytes) {
 TF_LITE_MICRO_TEST(TestGetUsedBytesTempAllocations) {
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
-                                          arena_size);
+  tflite::SimpleMemoryAllocator allocator(tflite::GetMicroErrorReporter(),
+                                          arena, arena_size);
 
   constexpr size_t allocation_size = 100;
   allocator.AllocateTemp(/*size=*/allocation_size,
@@ -176,8 +177,8 @@ TF_LITE_MICRO_TEST(TestGetUsedBytesTempAllocations) {
 TF_LITE_MICRO_TEST(TestJustFits) {
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
-                                          arena_size);
+  tflite::SimpleMemoryAllocator allocator(tflite::GetMicroErrorReporter(),
+                                          arena, arena_size);
 
   uint8_t* result = allocator.AllocateFromTail(arena_size, 1);
   TF_LITE_MICRO_EXPECT(nullptr != result);
@@ -186,8 +187,8 @@ TF_LITE_MICRO_TEST(TestJustFits) {
 TF_LITE_MICRO_TEST(TestAligned) {
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
-                                          arena_size);
+  tflite::SimpleMemoryAllocator allocator(tflite::GetMicroErrorReporter(),
+                                          arena, arena_size);
 
   uint8_t* result = allocator.AllocateFromTail(1, 1);
   TF_LITE_MICRO_EXPECT(nullptr != result);
@@ -201,8 +202,8 @@ TF_LITE_MICRO_TEST(TestAligned) {
 TF_LITE_MICRO_TEST(TestMultipleTooLarge) {
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
-                                          arena_size);
+  tflite::SimpleMemoryAllocator allocator(tflite::GetMicroErrorReporter(),
+                                          arena, arena_size);
 
   uint8_t* result = allocator.AllocateFromTail(768, 1);
   TF_LITE_MICRO_EXPECT(nullptr != result);
@@ -214,8 +215,8 @@ TF_LITE_MICRO_TEST(TestMultipleTooLarge) {
 TF_LITE_MICRO_TEST(TestTempAllocations) {
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
-                                          arena_size);
+  tflite::SimpleMemoryAllocator allocator(tflite::GetMicroErrorReporter(),
+                                          arena, arena_size);
 
   uint8_t* temp1 = allocator.AllocateTemp(100, 1);
   TF_LITE_MICRO_EXPECT(nullptr != temp1);
@@ -230,8 +231,8 @@ TF_LITE_MICRO_TEST(TestTempAllocations) {
 TF_LITE_MICRO_TEST(TestResetTempAllocations) {
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
-                                          arena_size);
+  tflite::SimpleMemoryAllocator allocator(tflite::GetMicroErrorReporter(),
+                                          arena, arena_size);
 
   uint8_t* temp1 = allocator.AllocateTemp(100, 1);
   TF_LITE_MICRO_EXPECT(nullptr != temp1);
@@ -248,8 +249,8 @@ TF_LITE_MICRO_TEST(TestResetTempAllocations) {
 TF_LITE_MICRO_TEST(TestEnsureHeadSizeWithoutResettingTemp) {
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
-                                          arena_size);
+  tflite::SimpleMemoryAllocator allocator(tflite::GetMicroErrorReporter(),
+                                          arena, arena_size);
 
   uint8_t* temp = allocator.AllocateTemp(100, 1);
   TF_LITE_MICRO_EXPECT(nullptr != temp);

@@ -1,5 +1,5 @@
 // RUN: tf-opt %s --test-tf-lower-tf --xla-legalize-tf | \
-// RUN: mlir-hlo-opt --transform-unranked-hlo --hlo-legalize-to-linalg  | \
+// RUN: mlir-hlo-opt --mhlo-transform-unranked-hlo --hlo-legalize-to-linalg  | \
 // RUN: kernel-gen-opt -allow-unregistered-dialect --hlo-bufferize \
 // RUN: --canonicalize --shape-to-descriptors --canonicalize --final-bufferize \
 // RUN: | FileCheck %s

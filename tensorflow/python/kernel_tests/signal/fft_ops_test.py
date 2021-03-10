@@ -87,7 +87,8 @@ class BaseFFTOpsTest(test.TestCase):
     if test.is_built_with_rocm():
       self.skipTest("Complex datatype not yet supported in ROCm.")
       return
-    with self.cached_session(use_gpu=True):
+    with self.cached_session():
+
       def f(inx, iny):
         inx.set_shape(x.shape)
         iny.set_shape(y.shape)
@@ -123,12 +124,12 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
 
   def _tf_fft(self, x, rank, fft_length=None, feed_dict=None):
     # fft_length unused for complex FFTs.
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       return sess.run(self._tf_fft_for_rank(rank)(x), feed_dict=feed_dict)
 
   def _tf_ifft(self, x, rank, fft_length=None, feed_dict=None):
     # fft_length unused for complex FFTs.
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       return sess.run(self._tf_ifft_for_rank(rank)(x), feed_dict=feed_dict)
 
   def _np_fft(self, x, rank, fft_length=None):
@@ -299,12 +300,12 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
 class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
 
   def _tf_fft(self, x, rank, fft_length=None, feed_dict=None):
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       return sess.run(
           self._tf_fft_for_rank(rank)(x, fft_length), feed_dict=feed_dict)
 
   def _tf_ifft(self, x, rank, fft_length=None, feed_dict=None):
-    with self.cached_session(use_gpu=True) as sess:
+    with self.cached_session() as sess:
       return sess.run(
           self._tf_ifft_for_rank(rank)(x, fft_length), feed_dict=feed_dict)
 

@@ -19,7 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import contextlib
 import functools
+import gc
+import io
 import os
 import sys
 import tempfile
@@ -37,6 +40,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function as framework_function
+from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -49,12 +53,10 @@ from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import numpy_ops as tnp
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.saved_model import load
@@ -1966,33 +1968,34 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(self.evaluate(imported.lookup("foo")), 15)
     self.assertEqual(self.evaluate(imported.lookup("idk")), -1)
 
-  def test_saving_ndarray_specs(self, cycles):
-    class NdarrayModule(module.Module):
+  def test_load_resource_with_dependency(self, cycles):
+    # Test with StaticHashTable, which has a _initializer attribute that tracks
+    # the Asset vocab table.
 
-      @def_function.function
-      def plain(self, x):
-        return tnp.add(x, 1)
+    class MyLookupModel(tracking.AutoTrackable):
+
+      def __init__(self, vocab_file):
+
+        vocab_initializer = lookup_ops.TextFileInitializer(
+            vocab_file,
+            key_dtype=dtypes.string,
+            key_index=lookup_ops.TextFileIndex.WHOLE_LINE,
+            value_dtype=dtypes.int64,
+            value_index=lookup_ops.TextFileIndex.LINE_NUMBER)
+        self._vocab_table = lookup_ops.StaticHashTable(vocab_initializer,
+                                                       default_value=-1)
 
       @def_function.function(input_signature=[
-          np_arrays.NdarraySpec(tensor_spec.TensorSpec([], dtypes.float32))])
-      def with_signature(self, x):
-        return tnp.add(x, 1)
+          tensor_spec.TensorSpec((None,), dtypes.string)])
+      def __call__(self, inputs):
+        return self._vocab_table.lookup(inputs)
 
-    m = NdarrayModule()
-    c = tnp.asarray(3.0, tnp.float32)
-    output_plain, output_with_signature = m.plain(c), m.with_signature(c)
-
-    loaded_m = cycle(m, cycles)
-
-    load_output_plain, load_output_with_signature = (
-        loaded_m.plain(c), loaded_m.with_signature(c))
-
-    self.assertIsInstance(output_plain, tnp.ndarray)
-    self.assertIsInstance(load_output_plain, tnp.ndarray)
-    self.assertIsInstance(output_with_signature, tnp.ndarray)
-    self.assertIsInstance(load_output_with_signature, tnp.ndarray)
-    self.assertAllClose(output_plain, load_output_plain)
-    self.assertAllClose(output_with_signature, load_output_with_signature)
+    vocab_file = self._make_asset("\n".join(["a", "b", "c", "d"]))
+    root = MyLookupModel(vocab_file)
+    imported = cycle(root, cycles)
+    file_io.delete_file(vocab_file)
+    self.assertAllEqual(imported(constant_op.constant(["d", "b"])),
+                        [3, 1])
 
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
@@ -2006,6 +2009,25 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
     load.load(path, tags=[tag_constants.SERVING])
     load.load(path, tags=tag_constants.SERVING)
     load.load(path, tags=set([tag_constants.SERVING]))
+
+  def test_single_restore_op_used(self):
+    root = module.Module()
+    root.v1 = variables.Variable(1.)
+    root.v2 = variables.Variable(2.)
+    root.v3 = variables.Variable(3.)
+    path = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    save.save(root, path)
+    restore_count = 0
+
+    def _count_restores(op_type, *unused_args, **unused_kwargs):
+      nonlocal restore_count
+      if op_type == b"RestoreV2":
+        restore_count += 1
+
+    op_callbacks.add_op_callback(_count_restores)
+    load.load(path)
+    op_callbacks.remove_op_callback(_count_restores)
+    self.assertEqual(1, restore_count)
 
   def test_docstring_examples(self):
     path = tempfile.mkdtemp(prefix=self.get_temp_dir())
@@ -2098,7 +2120,6 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
   # allocations at a lower level.
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def test_functions_cleaned(self):
-    self.skipTest("TODO(b/175152958): The test is leaking function definitions")
     if sys.version_info.major < 3:
       self.skipTest("Not working in Python 2")
     root = module.Module()
@@ -2158,6 +2179,74 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(
         ValueError, "Found zero restored functions for caller function."):
       loaded.foo(1)
+
+  def test_restored_function_execute_eagerly(self):
+    try:
+      def_function.run_functions_eagerly(True)
+
+      class MyModel(module.Module):
+
+        @def_function.function
+        def __call__(self, inputs, training=False):
+          return math_ops.multiply(0.5, inputs)
+
+      model = MyModel()
+      model.__call__.get_concrete_function(
+          tensor_spec.TensorSpec([None], dtypes.float32))
+      loaded = cycle(model, 1)
+
+      # Calling the function should not throw an exception.
+      loaded(constant_op.constant([1.0]))
+
+    finally:
+      def_function.run_functions_eagerly(False)
+
+  def test_restored_model_concrete_function_is_deterministic(self):
+    previous_concrete_function = None
+    for _ in range(100):
+
+      class MyModel(module.Module):
+
+        @def_function.function
+        def __call__(self, x):
+          return x * constant_op.constant(3.0)
+
+      model = MyModel()
+      model(array_ops.ones((7, 3), dtype=dtypes.float32))
+      model.__call__.get_concrete_function(
+          tensor_spec.TensorSpec([None, 3], dtypes.float32))
+      loaded = cycle(model, 1)
+
+      # Ensure the newly loaded concrete function is the same as the previous
+      # after a cycle of serialization / deserialization.
+      new_concrete_function = loaded.__call__.get_concrete_function(
+          tensor_spec.TensorSpec([None, 3], dtypes.float32))
+      if previous_concrete_function is not None:
+        self.assertEqual(previous_concrete_function.pretty_printed_signature(),
+                         new_concrete_function.pretty_printed_signature())
+
+      previous_concrete_function = new_concrete_function
+
+  def test_garbage_collection_capturable_resource_doesnt_raise_exception(self):
+    model = module.Module()
+    model.mapping = lookup_ops.StaticHashTable(
+        lookup_ops.KeyValueTensorInitializer(
+            keys=math_ops.range(1, dtype=dtypes.int32),
+            values=["foo"]),
+        "default_value")
+    loaded = cycle(model, 1)
+    del model
+    del loaded
+    # Exceptions raised during garbage collection are simply printed to stderr
+    # and ignored, and we have no way to access them. We'll capture stdout
+    # during the garbage collection process and inspect to see if any
+    # exceptions were raised.
+    stderr = io.StringIO()
+    with contextlib.redirect_stderr(stderr):
+      gc.collect()
+    if "Exception ignored in" in stderr.getvalue():
+      raise Exception(stderr.getvalue())
+
 
 if __name__ == "__main__":
   test.main()

@@ -271,10 +271,6 @@ message OpMetadata {
   //
   // This name is often unique within a computation. Note: some frameworks
   // add auto-generated names if the user does not provide one.
-  //
-  // A dummy name may be assigned if op_name is empty in order to keep track of
-  // where op_name first became empty. Dummy names begin with "DUMMY_" and may
-  // include the current HloPassMetadata.pass_id.
   string op_name = 2;
   // Indicate a file and line that this op is associated to in a user's program.
   //
@@ -288,6 +284,12 @@ message OpMetadata {
   // object. Should never be copied between HLO instructions. Zero if unset and
   // -1 if the instruction was created before HLO passes began.
   int64 creation_pass_id = 6;
+
+  // HloPassMetadata.pass_id of the pass that created the logical functionality
+  // that this HLO instruction represents. Should be copied between HLO
+  // instructions that correspond across compilation passes. Zero if unset and
+  // -1 if the instruction was created before HLO passes began.
+  int64 logical_creation_pass_id = 7;
 }
 
 // Profile data from the execution of a computation.
@@ -661,6 +663,12 @@ message OpSharding {
   // dimensions of tile_assignment(), but replicated across devices along the
   // last dimension. (Experimental)
   bool replicate_on_last_tile_dim = 6;
+  // This field is used to track the source of this sharding, usually derived
+  // from instructions. Multple metadata may be populated if sharding is
+  // combined with other shardings.  Metadata are to not be populated when
+  // type == TUPLE and instead metadata should be set on individual tuple
+  // elements.
+  repeated OpMetadata metadata = 7;
 }
 
 // Describes the replica groups in a cross replica op (e.g., all-reduce and

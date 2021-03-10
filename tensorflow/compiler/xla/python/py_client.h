@@ -94,17 +94,25 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   PjRtClient* pjrt_client() const { return pjrt_client_.get(); }
   std::shared_ptr<PjRtClient> shared_pjrt_client() { return pjrt_client_; }
 
-  const std::string& platform_name() const {
+  absl::string_view platform_name() const {
     return pjrt_client_->platform_name();
+  }
+  absl::string_view platform_version() const {
+    return pjrt_client_->platform_version();
   }
   int addressable_device_count() const {
     return pjrt_client_->addressable_device_count();
   }
   int device_count() const { return pjrt_client_->device_count(); }
-  int host_id() const { return pjrt_client_->host_id(); }
+  int task_id() const { return pjrt_client_->task_id(); }
 
   std::vector<ClientAndPtr<PjRtDevice>> Devices();
   std::vector<ClientAndPtr<PjRtDevice>> LocalDevices();
+
+  std::vector<ClientAndPtr<PyBuffer>> LiveBuffers();
+
+  // TODO(zhangqiaorjc): Remove when we have transparent defragmentation.
+  Status Defragment();
 
   StatusOr<std::vector<std::vector<ClientAndPtr<PjRtDevice>>>>
   GetDefaultDeviceAssignment(int num_replicas, int num_partitions);
@@ -123,11 +131,8 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
     return pjrt_client_->CreateHostToDeviceChannelHandle();
   }
 
-  StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBufferFromPyval(
-      const pybind11::object& argument, PjRtDevice* device, bool force_copy,
-      PjRtClient::HostBufferSemantics host_buffer_semantics);
-  StatusOr<std::unique_ptr<PyBuffer>> BufferFromPyval(
-      const pybind11::object& argument, PjRtDevice* device, bool force_copy,
+  StatusOr<pybind11::object> BufferFromPyval(
+      pybind11::handle argument, PjRtDevice* device, bool force_copy,
       PjRtClient::HostBufferSemantics host_buffer_semantics);
 
   StatusOr<std::shared_ptr<PyExecutable>> Compile(
