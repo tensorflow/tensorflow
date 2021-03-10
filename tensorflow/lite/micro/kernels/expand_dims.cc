@@ -34,10 +34,10 @@ TfLiteStatus ExpandTensorDim(TfLiteContext* context,
   if (axis < 0) {
     axis = input_dims->size + 1 + axis;
   }
-  TF_LITE_ENSURE(context, axis <= input_dims->size);
+  TF_LITE_ENSURE(context, (axis <= input_dims->size));
 
   output_dims->size = input_dims->size + 1;
-  for (int32_t i = 0; i < output_dims->size; ++i) {
+  for (int i = 0; i < output_dims->size; ++i) {
     if (i < axis) {
       output_dims->data[i] = input_dims->data[i];
     } else if (i == axis) {
@@ -90,10 +90,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-template <typename Tin, typename Tout>
-void memCopyN(Tout* out, Tin* in, const int num_elements) {
+template <typename T>
+void memCopyN(T* out, const T* in, const int num_elements) {
   for (int i = 0; i < num_elements; ++i) {
-    out[i] = static_cast<Tout>(in[i]);
+    out[i] = in[i];
   }
 }
 
