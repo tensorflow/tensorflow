@@ -173,6 +173,8 @@ class PjRtClient {
   // Returns a string that identifies the platform (CPU/GPU/TPU).
   virtual absl::string_view platform_name() const = 0;
 
+  virtual absl::string_view platform_version() const = 0;
+
   // Return a device-specific default device assignment, e.g., GPU and TPU may
   // be different.
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
@@ -266,6 +268,11 @@ class PjRtClient {
   virtual StatusOr<ChannelHandle> CreateChannelHandle() = 0;
   virtual StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() = 0;
   virtual StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() = 0;
+
+  // TODO(zhangqiaorjc): Experimental API to be removed.
+  // Defragment device memory.
+  virtual Status Defragment(absl::Span<PjRtBuffer* const> buffers,
+                            absl::Span<PjRtExecutable* const> executables) = 0;
 };
 
 // Holds a reference from Python to a tuple of device buffers. A PjRtBuffer

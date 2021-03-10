@@ -16,10 +16,6 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "experimental_prefetch_to_device"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "experimental_replication_mode"
     mtype: "<type \'property\'>"
   }

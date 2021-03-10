@@ -49,6 +49,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "SHARD_HINT"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "SqlDataset"
     mtype: "<type \'type\'>"
   }

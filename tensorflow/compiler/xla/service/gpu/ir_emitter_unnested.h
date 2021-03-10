@@ -60,16 +60,6 @@ struct MlirBufferSlice : public BufferSlice {
 struct MlirEmitterInput {
   mlir::Operation* op;
   Thunk::ThunkInfo thunk_info;
-
-  // A field to allow plumbing extra information that BufferAssignment has, but
-  // LMHLO/MLIR representation does not have. Specifically, this is for passing
-  // the allocated buffer for tuple outputs (an array of pointers to tuple
-  // elements).
-  //
-  // TODO(timshen): We need a corresponding construct in LMHLO to represent
-  // this, aka an array of pointers to different memrefs. Once we have that, we
-  // can merge this information back to LMHLO graph and remove this field.
-  absl::optional<MlirBufferSlice> extra_slice;
 };
 
 // Convenience struct that contains useful data structures in MLIR emitter.
@@ -661,12 +651,10 @@ class IrEmitterUnnested : public IrEmitter,
 
   StatusOr<std::unique_ptr<KernelThunk>> BuildKernelThunkForMlir(
       mlir::Operation* op, mlir::ValueRange operands,
-      Thunk::ThunkInfo thunk_info, absl::optional<MlirBufferSlice> extra_slice,
-      std::vector<llvm_ir::IrArray>* ir_arrays);
+      Thunk::ThunkInfo thunk_info, std::vector<llvm_ir::IrArray>* ir_arrays);
 
   StatusOr<std::unique_ptr<KernelThunk>> BuildKernelThunkForMlir(
       mlir::Operation* op, Thunk::ThunkInfo thunk_info,
-      absl::optional<MlirBufferSlice> extra_slice,
       std::vector<llvm_ir::IrArray>* ir_arrays);
 
   // Returns a thunk that, given a reduce or select-and-scatter op,

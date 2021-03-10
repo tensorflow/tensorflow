@@ -26,6 +26,7 @@ from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.experimental.ops import readers
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.eager import context
@@ -610,6 +611,51 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     _ = readers.make_csv_dataset(
         filenames, batch_size=1, select_columns=select_cols)
     self.assertAllEqual(select_cols, ['a', 'c'])
+
+
+class CsvDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                               parameterized.TestCase):
+
+  def setUp(self):
+    self._num_cols = 7
+    self._num_rows = 10
+    self._num_epochs = 14
+    self._num_outputs = self._num_rows * self._num_epochs
+
+    inputs = [
+        ','.join(str(self._num_cols * j + i)
+                 for i in range(self._num_cols))
+        for j in range(self._num_rows)
+    ]
+    contents = '\n'.join(inputs).encode('utf-8')
+
+    self._filename = os.path.join(self.get_temp_dir(), 'file.csv')
+    self._compressed = os.path.join(self.get_temp_dir(),
+                                    'comp.csv')  # GZip compressed
+
+    with open(self._filename, 'wb') as f:
+      f.write(contents)
+    with gzip.GzipFile(self._compressed, 'wb') as f:
+      f.write(contents)
+
+  def ds_func(self, **kwargs):
+    compression_type = kwargs.get('compression_type', None)
+    if compression_type == 'GZIP':
+      filename = self._compressed
+    elif compression_type is None:
+      filename = self._filename
+    else:
+      raise ValueError('Invalid compression type:', compression_type)
+
+    return readers.CsvDataset(filename, **kwargs).repeat(self._num_epochs)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testSerializationCore(self):
+    defs = [[0]] * self._num_cols
+    self.run_core_tests(
+        lambda: self.ds_func(record_defaults=defs, buffer_size=2),
+        self._num_outputs)
+
 
 if __name__ == '__main__':
   test.main()

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -222,6 +223,53 @@ Status CpuTransferManager::TransferLiteralFromOutfeed(
                GetByteSizeRequirement(received_shape));
 
   TF_RET_CHECK(ShapeUtil::Equal(literal.shape(), literal.shape()));
+  return Status::OK();
+}
+
+Status CpuTransferManager::ReadDynamicShapes(se::Stream* stream,
+                                             ShapedBuffer* device_buffer,
+                                             Shape* device_shape) {
+  TF_RET_CHECK(device_shape->is_dynamic());
+  Shape original_device_shape = *device_shape;
+  TF_ASSIGN_OR_RETURN(auto platform,
+                      se::MultiPlatformManager::PlatformWithId(PlatformId()));
+  TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
+  TF_RETURN_IF_ERROR(device_buffer->buffers().ForEachMutableElementWithStatus(
+      [&](const ShapeIndex& index, se::DeviceMemoryBase* buffer) {
+        const Shape& buffer_shape =
+            ShapeUtil::GetSubshape(*device_shape, index);
+        if (buffer_shape.IsTuple()) {
+          return Status::OK();
+        }
+        Shape& device_sub_shape =
+            *ShapeUtil::GetMutableSubshape(device_shape, index);
+        if (device_sub_shape.is_static()) {
+          return Status::OK();
+        }
+        void* memory = buffer->opaque();
+
+        // Read the dynamic shape metadata from the device stream.
+        HloCostAnalysis::ShapeSizeFunction shape_size_fn =
+            compiler->ShapeSizeBytesFunction();
+        Shape buffer_shape_static = ShapeUtil::MakeStaticShape(buffer_shape);
+        const int64 offset = shape_size_fn(buffer_shape_static);
+        int64 metadata_size = shape_size_fn(buffer_shape) - offset;
+        if (metadata_size == 0) {
+          return InvalidArgument("Dynamic shape metadata size should not be 0");
+        }
+        auto buffer_8 = static_cast<int8*>(memory);
+        auto metadata_buffer = reinterpret_cast<int32*>(buffer_8 + offset);
+
+        // Update shape size from metadata.
+        for (int64 i = 0; i < device_sub_shape.rank(); ++i) {
+          device_sub_shape.mutable_dimensions()[i] = metadata_buffer[i];
+        }
+        return Status::OK();
+      }));
+  device_shape->clear_dynamic_dimensions();
+
+  TF_RET_CHECK(ShapeUtil::DynamicShapeIsCompatible(*device_shape,
+                                                   original_device_shape));
   return Status::OK();
 }
 

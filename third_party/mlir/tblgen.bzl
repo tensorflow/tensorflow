@@ -321,6 +321,13 @@ def gentbl(
       test: whether to create a shell test that invokes the tool too.
       **kwargs: Extra keyword arguments to pass to all generated rules.
     """
+
+    # TODO(gcmn): Update callers to td_library and explicit includes and
+    # drop this hardcoded include.
+    hardcoded_includes = [
+        "external/llvm-project/mlir/include",
+    ]
+
     for (opts_string, out) in tbl_outs:
         # TODO(gcmn): The API of opts as single string is preserved for backward
         # compatibility. Change to taking a sequence.
@@ -343,11 +350,7 @@ def gentbl(
             td_srcs = td_srcs,
             deps = deps,
             includes = includes + td_relative_includes,
-            # TODO(gcmn): Update callers to td_library and explicit includes and
-            # drop this hardcoded include.
-            td_includes = td_includes + [
-                "external/llvm-project/mlir/include",
-            ],
+            td_includes = td_includes + hardcoded_includes,
             out = out,
             **kwargs
         )
@@ -363,11 +366,7 @@ def gentbl(
                 td_srcs = td_srcs,
                 deps = deps,
                 includes = includes + td_relative_includes,
-                # TODO(gcmn): Update callers to td_library and explicit includes
-                # and drop this hardcoded include.
-                td_includes = td_includes + [
-                    "external/llvm-project/mlir/include",
-                ],
+                td_includes = td_includes + hardcoded_includes,
                 # Shell files not executable on Windows.
                 # TODO(gcmn): Support windows.
                 tags = ["no_windows"],

@@ -50,6 +50,8 @@ class AbstractTensorInterface {
   // Returns if their is sole ownership of this Tensor and thus it can be moved.
   virtual bool CanMove() const = 0;
 
+  virtual std::string SummarizeValue() const = 0;
+
  protected:
   virtual ~AbstractTensorInterface() {}
 };

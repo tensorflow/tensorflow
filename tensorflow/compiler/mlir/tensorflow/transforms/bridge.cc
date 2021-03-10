@@ -113,6 +113,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(CreateTPUClusterCleanupAttributesPass());
   pm.addPass(TFDevice::CreateResourceOpLiftingPass());
   pm.addNestedPass<FuncOp>(createCSEPass());
+  pm.addPass(TFDevice::CreateMergeControlFlowPass());
   pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
   pm.addPass(CreateTPUExtractHeadTailOutsideCompilationPass());
   pm.addPass(CreateTPUExtractOutsideCompilationPass());

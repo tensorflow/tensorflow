@@ -643,6 +643,32 @@ static PyObject* EagerTensor_numpy_internal(EagerTensor* self) {
   }
 }
 
+// Function `_has_custom_summarizer`.
+//
+// A hint that callers should prefer `SummarizeValue` to resolving this handle
+// and formatting the tensor.
+static PyObject* EagerTensor_has_custom_summarizer(EagerTensor* self) {
+  if (tensorflow::unwrap(self->handle)->HasCustomSummarizer()) {
+    Py_RETURN_TRUE;
+  } else {
+    Py_RETURN_FALSE;
+  }
+}
+
+// Function `_summarize_value`.
+//
+// Returns a string PyObject which summarizes the value of this tensor. It does
+// not include a shape or dtype.
+static PyObject* EagerTensor_summarize_value(EagerTensor* self) {
+  std::string summary;
+  tensorflow::Status status =
+      tensorflow::unwrap(self->handle)->SummarizeValue(summary);
+  if (MaybeRaiseExceptionFromStatus(status, nullptr)) {
+    return nullptr;
+  }
+  return PyUnicode_FromString(summary.c_str());
+}
+
 // Getter `device`.
 static PyObject* EagerTensor_device(EagerTensor* self) {
   const char* device = TFE_TensorHandleDeviceName(self->handle, &self->status);
@@ -723,6 +749,11 @@ static PyMethodDef EagerTensor_methods[] = {
      PyDoc_STR("Copies the tensor to the desired device.")},
     {"_num_elements", (PyCFunction)EagerTensor_num_elements, METH_NOARGS,
      PyDoc_STR("Number of elements in the tensor.")},
+    {"_has_custom_summarizer", (PyCFunction)EagerTensor_has_custom_summarizer,
+     METH_NOARGS,
+     PyDoc_STR("Indicates whether _numpy_internal loses information.")},
+    {"_summarize_value", (PyCFunction)EagerTensor_summarize_value, METH_NOARGS,
+     PyDoc_STR("A string which summarizes the value of this tensor.")},
     {nullptr, nullptr},
 };
 

@@ -4,26 +4,26 @@ package tensorflow.data;
 
 // Represents the type of auto-sharding we enable.
 enum AutoShardPolicy {
+  // AUTO: Attempts FILE-based sharding, falling back to DATA-based sharding.
   AUTO = 0;
+  // FILE: Shards by input files (i.e. each worker will get a set of files to
+  // process). When this option is selected, make sure that there is at least as
+  // many files as workers. If there are fewer input files than workers, a
+  // runtime error will be raised.
   FILE = 1;
+  // DATA: Shards by elements produced by the dataset. Each worker will process
+  // the whole dataset and discard the portion that is not for itself. Note that
+  // for this mode to correctly partitions the dataset elements, the dataset
+  // needs to produce elements in a deterministic order.
   DATA = 2;
+  // HINT: Looks for the presence of `shard(SHARD_HINT, ...)` which is treated
+  // as a placeholder to replace with `shard(num_workers, worker_index)`.
+  HINT = 3;
+  // OFF: No sharding will be performed.
   OFF = -1;
 }
 
 message DistributeOptions {
-  // The type of sharding that auto-shard should attempt. If this is set to
-  // FILE, then we will attempt to shard by files (each worker will get a set of
-  // files to process). If we cannot find a set of files to shard for at least
-  // one file per worker, we will error out. When this option is selected, make
-  // sure that you have enough files so that each worker gets at least one file.
-  // There will be a runtime error thrown if there are insufficient files. If
-  // this is set to DATA, then we will shard by elements produced by the
-  // dataset, and each worker will process the whole dataset and discard the
-  // portion that is not for itself. If this is set to OFF, then we will not
-  // autoshard, and each worker will receive a copy of the full dataset. This
-  // option is set to AUTO by default, AUTO will attempt to first shard by FILE,
-  // and fall back to sharding by DATA if we cannot find a set of files to
-  // shard.
   AutoShardPolicy auto_shard_policy = 1;
   // The number of devices attached to this input pipeline.
   oneof optional_num_devices {

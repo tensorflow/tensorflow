@@ -144,6 +144,11 @@ struct EngineContext {
     return Status::OK();
   }
 
+  int GetNumContexts() {
+    mutex_lock lock(mu);
+    return execution_context.size();
+  }
+
   // In explicit batch mode, we maintain a vector of contexts for each engine,
   // where each context is created for a specific profile. This is because it is
   // either not possible or non-trivial to change the profile of a context for

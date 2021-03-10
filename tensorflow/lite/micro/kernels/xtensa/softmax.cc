@@ -260,59 +260,29 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
   TFLITE_DCHECK(node->user_data != nullptr);
 
-#if defined(HIFIMINI)
-  auto* op_data = static_cast<OpData*>(node->user_data);
-
   if (input->type == kTfLiteInt8 && output->type == kTfLiteInt16) {
-    return SoftmaxHifimini(*op_data, tflite::micro::GetTensorShape(input),
+#if defined(HIFIMINI)
+    return SoftmaxHifimini(*static_cast<OpData*>(node->user_data),
+                           tflite::micro::GetTensorShape(input),
                            tflite::micro::GetTensorData<int8_t>(input),
                            tflite::micro::GetTensorShape(output),
                            tflite::micro::GetTensorData<int16_t>(output));
+#elif defined(FUSION_F1)
+    return EvalHifi4(static_cast<OpData*>(node->user_data), input, output,
+                     context);
+#else
+    SoftmaxParams op_data = *static_cast<SoftmaxParams*>(node->user_data);
+    tflite::reference_ops::Softmax(
+        op_data, tflite::micro::GetTensorShape(input),
+        tflite::micro::GetTensorData<int8_t>(input),
+        tflite::micro::GetTensorShape(output),
+        tflite::micro::GetTensorData<int16_t>(output));
+#endif
   } else {
     TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
                        TfLiteTypeGetName(input->type), input->type);
     return kTfLiteError;
   }
-#else  // !defined(HIFIMINI)
-  switch (input->type) {
-    case kTfLiteFloat32: {
-      SoftmaxParams op_data = *static_cast<SoftmaxParams*>(node->user_data);
-      tflite::reference_ops::Softmax(
-          op_data, tflite::micro::GetTensorShape(input),
-          tflite::micro::GetTensorData<float>(input),
-          tflite::micro::GetTensorShape(output),
-          tflite::micro::GetTensorData<float>(output));
-      return kTfLiteOk;
-    }
-    case kTfLiteInt8: {
-      if (output->type == kTfLiteInt16) {
-#if defined(FUSION_F1)
-        return EvalHifi4(static_cast<OpData*>(node->user_data), input, output,
-                         context);
-#else
-        SoftmaxParams op_data = *static_cast<SoftmaxParams*>(node->user_data);
-        tflite::reference_ops::Softmax(
-            op_data, tflite::micro::GetTensorShape(input),
-            tflite::micro::GetTensorData<int8_t>(input),
-            tflite::micro::GetTensorShape(output),
-            tflite::micro::GetTensorData<int16_t>(output));
-#endif
-      } else {
-        SoftmaxParams op_data = *static_cast<SoftmaxParams*>(node->user_data);
-        tflite::reference_ops::Softmax(
-            op_data, tflite::micro::GetTensorShape(input),
-            tflite::micro::GetTensorData<int8_t>(input),
-            tflite::micro::GetTensorShape(output),
-            tflite::micro::GetTensorData<int8_t>(output));
-      }
-      return kTfLiteOk;
-    }
-    default:
-      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
-                         TfLiteTypeGetName(input->type), input->type);
-      return kTfLiteError;
-  }
-#endif  // !defined(HIFIMINI)
 }
 
 }  // namespace

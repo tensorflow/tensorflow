@@ -224,7 +224,7 @@ inline bool array_cmp(const T* a1, const T* a2, size_t size) {
 
 inline mkldnn::stream* CreateStream(MklDnnThreadPool* eigen_tp,
                                     const engine& engine) {
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#ifndef ENABLE_ONEDNN_OPENMP
   stream_attr tp_stream_attr(engine::kind::cpu);
   if (eigen_tp != nullptr) {
     tp_stream_attr.set_threadpool(eigen_tp);
@@ -238,7 +238,7 @@ inline mkldnn::stream* CreateStream(MklDnnThreadPool* eigen_tp,
 #else
   stream* tp_stream = new stream(engine);
   return tp_stream;
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
 }
 
 class MklDnnShape {
@@ -996,11 +996,7 @@ memory::data_type MklDnnType<qint32>() {
 }
 template <>
 memory::data_type MklDnnType<bfloat16>() {
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
   return memory::data_type::bf16;
-#else
-  return memory::data_type::f32;
-#endif
 }
 
 // Map MklTensorFormat to MKL-DNN format tag
@@ -1390,11 +1386,11 @@ class MklDnnData {
                                   std::shared_ptr<stream> t_stream = nullptr) {
     CHECK_NOTNULL(user_memory_);
     CHECK_NOTNULL(data_buffer);
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#ifndef ENABLE_ONEDNN_OPENMP
     user_memory_->set_data_handle(data_buffer, *t_stream);
 #else
     user_memory_->set_data_handle(data_buffer);
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
   }
 
   /// Set function for data buffer of user memory primitive.
@@ -2034,7 +2030,6 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
 
 #define REGISTER_TEST_FLOAT32(TEST) REGISTER_TEST(TEST, DT_FLOAT, Float32Input);
 
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
 #define REGISTER_TEST_BFLOAT16(TEST) \
   REGISTER_TEST(TEST, DT_BFLOAT16, BFloat16Input);
 
@@ -2043,7 +2038,6 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
   REGISTER_TEST_BFLOAT16(TEST);
 #else
 #define REGISTER_TEST_ALL_TYPES(TEST) REGISTER_TEST_FLOAT32(TEST);
-#endif  // ENABLE_INTEL_MKL_BFLOAT16
 
 #endif  // INTEL_MKL
 #endif  // TENSORFLOW_CORE_UTIL_MKL_UTIL_H_

@@ -19,11 +19,10 @@ config_setting(
 )
 
 config_setting(
-    name = "build_with_mkldnn_threadpool",
+    name = "build_with_mkldnn_openmp",
     define_values = {
         "build_with_mkl": "true",
-        "build_with_mkl_opensource": "true",
-        "build_with_mkldnn_threadpool": "true",
+        "build_with_openmp": "true",
     },
     visibility = ["//visibility:public"],
 )

@@ -35,7 +35,7 @@ constexpr size_t k2MiB{2 << 20};
 
 // Creates an allocator with 8 MiB of virtual address space.
 std::unique_ptr<GpuVirtualMemAllocator> CreateAllocator() {
-  PlatformGpuId gpu_id(0);
+  PlatformDeviceId gpu_id(0);
   auto executor =
       DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
           .ValueOrDie();
@@ -48,7 +48,7 @@ std::unique_ptr<GpuVirtualMemAllocator> CreateAllocator() {
 }
 
 TEST(GpuVirtualMemAllocatorTest, SimpleAlloc) {
-  PlatformGpuId gpu_id(0);
+  PlatformDeviceId gpu_id(0);
   auto executor =
       DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
           .ValueOrDie();

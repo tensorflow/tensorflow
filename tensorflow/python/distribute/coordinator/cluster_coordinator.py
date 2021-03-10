@@ -1390,9 +1390,15 @@ class _PerWorkerDistributedDataset(object):
 
   @property
   def element_spec(self):
-    """The type specification of an element of this dataset."""
-    raise NotImplementedError("Passing `AsyncDistributedDataset` to a "
-                              "tf.function is not supported.")
+    """The type specification of an element of this dataset.
+
+    This property is subject to change without notice.
+    """
+    if not isinstance(self._dataset_fn, tf_function.ConcreteFunction):
+      raise NotImplementedError(
+          "`element_spec` is not supported when the `dataset_fn` is not "
+          "a `ConcreteFunction`.")
+    return self._dataset_fn.structured_outputs.element_spec
 
 
 class _PerWorkerDistributedIterator(PerWorkerValues):

@@ -438,6 +438,7 @@ tf_py_test(
     srcs = ["map_test.py"],
     shard_count = 4,
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",

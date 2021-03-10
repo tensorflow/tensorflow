@@ -6,7 +6,10 @@ load(
 )
 
 package(
-    default_visibility = ["//tensorflow/tools/api:__subpackages__"],
+    default_visibility = [
+        "//tensorflow/tools/api:__subpackages__",
+        "//third_party/py/keras/api:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 

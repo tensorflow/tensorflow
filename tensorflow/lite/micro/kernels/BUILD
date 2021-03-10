@@ -37,6 +37,16 @@ cc_library(
 )
 
 cc_library(
+    name = "circular_buffer_flexbuffers_generated_data",
+    srcs = [
+        "circular_buffer_flexbuffers_generated_data.cc",
+    ],
+    hdrs = [
+        "circular_buffer_flexbuffers_generated_data.h",
+    ],
+)
+
+cc_library(
     name = "conv",
     srcs = [
         "conv_common.cc",
@@ -166,12 +176,12 @@ cc_library(
 )
 
 cc_library(
-    name = "flexbuffers_generated_data",
+    name = "detection_postprocess_flexbuffers_generated_data",
     srcs = [
-        "flexbuffers_generated_data.cc",
+        "detection_postprocess_flexbuffers_generated_data.cc",
     ],
     hdrs = [
-        "flexbuffers_generated_data.h",
+        "detection_postprocess_flexbuffers_generated_data.h",
     ],
 )
 
@@ -248,6 +258,7 @@ cc_library(
         "activations.cc",
         "hard_swish.cc",
         "add.cc",
+        "add_n.cc",
         "arg_min_max.cc",
         "batch_to_space_nd.cc",
         "cast.cc",
@@ -264,6 +275,7 @@ cc_library(
         "fill.cc",
         "floor.cc",
         "l2norm.cc",
+        "leaky_relu.cc",
         "logical.cc",
         "logistic.cc",
         "maximum_minimum.cc",
@@ -283,6 +295,7 @@ cc_library(
         "space_to_batch_nd.cc",
         "split.cc",
         "split_v.cc",
+        "squeeze.cc",
         "strided_slice.cc",
         "sub.cc",
         "svdf_common.cc",
@@ -383,6 +396,21 @@ cc_test(
 )
 
 cc_test(
+    name = "add_n_test",
+    srcs = [
+        "add_n_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
     name = "add_test",
     srcs = [
         "add_test.cc",
@@ -457,6 +485,7 @@ cc_test(
         "circular_buffer_test.cc",
     ],
     deps = [
+        "circular_buffer_flexbuffers_generated_data",
         ":kernel_runner",
         ":micro_ops",
         "//tensorflow/lite/c:common",
@@ -540,7 +569,7 @@ cc_test(
         "detection_postprocess_test.cc",
     ],
     deps = [
-        ":flexbuffers_generated_data",
+        ":detection_postprocess_flexbuffers_generated_data",
         ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:tensor",
@@ -667,6 +696,21 @@ cc_test(
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "leaky_relu_test",
+    srcs = [
+        "leaky_relu_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -914,7 +958,6 @@ cc_test(
         "space_to_batch_nd_test.cc",
     ],
     deps = [
-        ":conv_test_common",
         ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_utils",
@@ -947,6 +990,18 @@ cc_test(
         ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "squeeze_test",
+    srcs = ["squeeze_test.cc"],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",

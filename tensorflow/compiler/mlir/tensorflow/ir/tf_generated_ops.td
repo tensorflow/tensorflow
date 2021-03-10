@@ -13275,8 +13275,6 @@ but its first dimension must match the size of `condition`.}]>:$t,
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 
-  let hasCanonicalizer = 1;
-
   let verifier = [{
     return Verify(*this);
   }];
@@ -15674,7 +15672,7 @@ Computes the gradient function for function f via backpropagation.
   TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
 }
 
-def TF_TPUCompilationResultOp : TF_Op<"TPUCompilationResult", [NoSideEffect]> {
+def TF_TPUCompilationResultOp : TF_Op<"TPUCompilationResult", []> {
   let summary = "Returns the result of a TPU compilation.";
 
   let description = [{

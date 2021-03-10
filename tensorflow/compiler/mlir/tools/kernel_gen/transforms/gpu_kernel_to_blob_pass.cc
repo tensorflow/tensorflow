@@ -152,6 +152,8 @@ class GpuKernelToBlobPass
     xla::HloModuleConfig config;
     xla::DebugOptions options = xla::GetDebugOptionsFromFlags();
     options.set_xla_gpu_ftz(enable_ftz_);
+    // Make sure we use full precision division operations.
+    (*options.mutable_xla_backend_extra_options())["-nvptx-prec-divf32"] = "2";
     config.set_debug_options(options);
 
     auto enable_fusion = [](llvm::TargetMachine* target) {

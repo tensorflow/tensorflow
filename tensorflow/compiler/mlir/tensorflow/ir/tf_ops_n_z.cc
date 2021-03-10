@@ -334,8 +334,16 @@ struct ConvertPackToReshape : public OpRewritePattern<PackOp> {
     auto shape_attr = DenseIntElementsAttr::get(type, output_ty.getShape());
     auto shape = rewriter.create<ConstOp>(pack_op.getLoc(), shape_attr);
 
-    rewriter.replaceOpWithNewOp<ReshapeOp>(pack_op, output_ty,
-                                           pack_op.getOperand(0), shape);
+    auto reshape_op = rewriter.create<ReshapeOp>(pack_op.getLoc(), output_ty,
+                                                 pack_op.getOperand(0), shape);
+    // Preserve unregistered attributes. Outside compilation relies on
+    // unregistered attribute `_xla_outside_compilation` to form clusters, so
+    // they must be preserved during canonicalization.
+    // TODO(b/173622615): Remove after fixed.
+    CopyUnderscoredAttributes(pack_op.getOperation(),
+                              reshape_op.getOperation());
+
+    rewriter.replaceOp(pack_op, reshape_op.getResult());
     return success();
   }
 };
@@ -763,11 +771,6 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 // SelectOp
 //===----------------------------------------------------------------------===//
-
-void SelectOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                           MLIRContext *context) {
-  results.insert<SelectToSelectV2>(context);
-}
 
 // Verifies a few extra requirements on SelectOp:
 // (1) `then` and `else` must have same shape

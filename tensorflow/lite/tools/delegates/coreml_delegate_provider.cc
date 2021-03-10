@@ -18,8 +18,9 @@ limitations under the License.
 #include "tensorflow/lite/tools/evaluation/utils.h"
 #if defined(__APPLE__)
 #include "TargetConditionals.h"
-#if TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR
-// Only enable metal delegate when using a real iPhone device.
+#if (TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR) || \
+    (TARGET_OS_OSX && TARGET_CPU_ARM64)
+// Only enable coreml delegate when using a real iPhone device or Apple Silicon.
 #define REAL_IPHONE_DEVICE
 #include "tensorflow/lite/delegates/coreml/coreml_delegate.h"
 #endif

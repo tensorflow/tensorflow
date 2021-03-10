@@ -82,6 +82,7 @@ def tflite_linkopts_unstripped():
     # negligible, and created potential compatibility problems.
     return select({
         clean_dep("//tensorflow:android"): [
+            "-latomic",  # Required for some uses of ISO C++11 <atomic> in x86.
             "-Wl,--no-export-dynamic",  # Only inc syms referenced by dynamic obj.
             "-Wl,--gc-sections",  # Eliminate unused code and data.
             "-Wl,--as-needed",  # Don't link unused libs.
@@ -103,6 +104,7 @@ def tflite_jni_linkopts_unstripped():
     # negligible, and created potential compatibility problems.
     return select({
         clean_dep("//tensorflow:android"): [
+            "-latomic",  # Required for some uses of ISO C++11 <atomic> in x86.
             "-Wl,--gc-sections",  # Eliminate unused code and data.
             "-Wl,--as-needed",  # Don't link unused libs.
         ],
@@ -112,11 +114,6 @@ def tflite_jni_linkopts_unstripped():
 def tflite_symbol_opts():
     """Defines linker flags whether to include symbols or not."""
     return select({
-        clean_dep("//tensorflow:android"): [
-            "-latomic",  # Required for some uses of ISO C++11 <atomic> in x86.
-        ],
-        "//conditions:default": [],
-    }) + select({
         clean_dep("//tensorflow:debug"): [],
         "//conditions:default": [
             "-s",  # Omit symbol table, for all non debug builds
