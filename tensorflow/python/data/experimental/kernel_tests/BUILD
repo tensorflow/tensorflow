@@ -305,13 +305,13 @@ tf_py_test(
 tf_py_test(
     name = "ignore_errors_test",
     srcs = ["ignore_errors_test.py"],
-    tags = ["noasan"],  # b/182370073
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:io_ops",
         "//tensorflow/python:util",
+        "//tensorflow/python/data/experimental/ops:distribute_options",
         "//tensorflow/python/data/experimental/ops:error_ops",
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
