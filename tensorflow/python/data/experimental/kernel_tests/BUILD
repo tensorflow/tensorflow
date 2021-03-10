@@ -305,6 +305,7 @@ tf_py_test(
 tf_py_test(
     name = "ignore_errors_test",
     srcs = ["ignore_errors_test.py"],
+    tags = ["noasan"],  # b/182370073
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
