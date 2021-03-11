@@ -111,10 +111,11 @@ else
   $(error "TOOLCHAIN=$(TOOLCHAIN) is not supported.")
 endif
 
-# TODO: fix CMSIS-NN related warnings.
+# TODO(#47718): resolve warnings.
 OMIT_ERRORS = \
   -Wno-implicit-fallthrough \
-  -Wno-strict-aliasing
+  -Wno-strict-aliasing \
+  -Wno-unused-variable
 
 PLATFORM_FLAGS = \
   -DTF_LITE_MCU_DEBUG_LOG \
@@ -125,7 +126,6 @@ PLATFORM_FLAGS = \
    ${OMIT_ERRORS} \
   -Wno-type-limits \
   -Wno-unused-private-field \
-  -Wno-unused-variable \
   -fomit-frame-pointer \
   -MD \
   -DCPU_$(CORE)=1 \
