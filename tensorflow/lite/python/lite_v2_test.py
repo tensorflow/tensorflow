@@ -32,6 +32,7 @@ from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_v2_test_util
 from tensorflow.lite.python.convert import mlir_quantize
 from tensorflow.lite.python.interpreter import Interpreter
+from tensorflow.lite.python.interpreter import OpResolver
 from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -695,7 +696,9 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
         np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32))
 
     def examine_tflite_model(tflite_content, input_data):
-      interpreter = Interpreter(model_content=tflite_content)
+      interpreter = Interpreter(
+          model_content=tflite_content,
+          experimental_op_resolver=OpResolver.BUILTIN_WITHOUT_DEFAULT_DELEGATES)
       interpreter.allocate_tensors()
       input_details = interpreter.get_input_details()
       interpreter.set_tensor(input_details[0]['index'], input_data.numpy())
@@ -732,9 +735,8 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       if 'NumericVerify' in output_tensor_name:
         pos_end_prefix = len('NumericVerify/')
         pos_colon = output_tensor_name.rfind(':')
-        self.assertEqual('NumericVerify/',
-                         output_tensor_name[:pos_end_prefix])
-        tensor_id = int(output_tensor_name[pos_colon+1:])
+        self.assertEqual('NumericVerify/', output_tensor_name[:pos_end_prefix])
+        tensor_id = int(output_tensor_name[pos_colon + 1:])
         original_tensor_name = output_tensor_name[pos_end_prefix:pos_colon]
         self.assertEqual(original_tensor_name,
                          debug_tensor_details[tensor_id]['name'])

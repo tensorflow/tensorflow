@@ -105,37 +105,53 @@ class InterpreterTest(test_util.TensorFlowTestCase):
               'testdata/permute_float.tflite'),
           num_threads=4.2)
 
-  def testFloat(self):
-    interpreter = interpreter_wrapper.Interpreter(
-        model_path=resource_loader.get_path_to_datafile(
-            'testdata/permute_float.tflite'))
-    interpreter.allocate_tensors()
+  def testNotSupportedOpResolver(self):
+    with self.assertRaisesRegex(ValueError,
+                                'Unrecognized passed in op resolver: test'):
+      interpreter_wrapper.Interpreter(
+          model_path=resource_loader.get_path_to_datafile(
+              'testdata/permute_float.tflite'),
+          experimental_op_resolver='test')
 
-    input_details = interpreter.get_input_details()
-    self.assertEqual(1, len(input_details))
-    self.assertEqual('input', input_details[0]['name'])
-    self.assertEqual(np.float32, input_details[0]['dtype'])
-    self.assertTrue(([1, 4] == input_details[0]['shape']).all())
-    self.assertEqual((0.0, 0), input_details[0]['quantization'])
-    self.assertQuantizationParamsEqual(
-        [], [], 0, input_details[0]['quantization_parameters'])
+  def testFloatWithDifferentOpResolvers(self):
+    op_resolvers = [
+        interpreter_wrapper.OpResolver.BUILTIN,
+        interpreter_wrapper.OpResolver.BUILTIN_REF,
+        interpreter_wrapper.OpResolver.BUILTIN_WITHOUT_DEFAULT_DELEGATES
+    ]
 
-    output_details = interpreter.get_output_details()
-    self.assertEqual(1, len(output_details))
-    self.assertEqual('output', output_details[0]['name'])
-    self.assertEqual(np.float32, output_details[0]['dtype'])
-    self.assertTrue(([1, 4] == output_details[0]['shape']).all())
-    self.assertEqual((0.0, 0), output_details[0]['quantization'])
-    self.assertQuantizationParamsEqual(
-        [], [], 0, output_details[0]['quantization_parameters'])
+    for op_resolver in op_resolvers:
+      interpreter = interpreter_wrapper.Interpreter(
+          model_path=resource_loader.get_path_to_datafile(
+              'testdata/permute_float.tflite'),
+          experimental_op_resolver=op_resolver)
+      interpreter.allocate_tensors()
 
-    test_input = np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32)
-    expected_output = np.array([[4.0, 3.0, 2.0, 1.0]], dtype=np.float32)
-    interpreter.set_tensor(input_details[0]['index'], test_input)
-    interpreter.invoke()
+      input_details = interpreter.get_input_details()
+      self.assertEqual(1, len(input_details))
+      self.assertEqual('input', input_details[0]['name'])
+      self.assertEqual(np.float32, input_details[0]['dtype'])
+      self.assertTrue(([1, 4] == input_details[0]['shape']).all())
+      self.assertEqual((0.0, 0), input_details[0]['quantization'])
+      self.assertQuantizationParamsEqual(
+          [], [], 0, input_details[0]['quantization_parameters'])
 
-    output_data = interpreter.get_tensor(output_details[0]['index'])
-    self.assertTrue((expected_output == output_data).all())
+      output_details = interpreter.get_output_details()
+      self.assertEqual(1, len(output_details))
+      self.assertEqual('output', output_details[0]['name'])
+      self.assertEqual(np.float32, output_details[0]['dtype'])
+      self.assertTrue(([1, 4] == output_details[0]['shape']).all())
+      self.assertEqual((0.0, 0), output_details[0]['quantization'])
+      self.assertQuantizationParamsEqual(
+          [], [], 0, output_details[0]['quantization_parameters'])
+
+      test_input = np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32)
+      expected_output = np.array([[4.0, 3.0, 2.0, 1.0]], dtype=np.float32)
+      interpreter.set_tensor(input_details[0]['index'], test_input)
+      interpreter.invoke()
+
+      output_data = interpreter.get_tensor(output_details[0]['index'])
+      self.assertTrue((expected_output == output_data).all())
 
   def testFloatWithTwoThreads(self):
     interpreter = interpreter_wrapper.Interpreter(

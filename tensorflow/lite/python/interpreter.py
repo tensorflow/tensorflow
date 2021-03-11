@@ -23,6 +23,7 @@ import platform
 import sys
 import os
 
+import enum
 import numpy as np
 
 # pylint: disable=g-import-not-at-top
@@ -238,6 +239,50 @@ class SignatureRunner(object):
     return result
 
 
+@_tf_export('lite.experimental.OpResolver')
+@enum.unique
+class OpResolver(enum.Enum):
+  """Different types of op resolvers for Tensorflow Lite.
+
+  * `AUTO`: Indicates the op resolver that is chosen by default in TfLite
+     Python, which is the "BUILTIN" as described below.
+  * `BUILTIN`: Indicates the op resolver for built-in ops with optimized kernel
+    implementation.
+  * `BUILTIN_REF`: Indicates the op resolver for built-in ops with reference
+    kernel implementation. It's generally used for testing and debugging.
+  * `BUILTIN_WITHOUT_DEFAULT_DELEGATES`: Indicates the op resolver for
+    built-in ops with optimized kernel implementation, but it will disable
+    the application of default TfLite delegates (like the XNNPACK delegate) to
+    the model graph. Generally this should not be used unless there are issues
+    with the default configuration.
+  """
+  # Corresponds to an op resolver chosen by default in TfLite Python.
+  AUTO = 0
+
+  # Corresponds to tflite::ops::builtin::BuiltinOpResolver in C++.
+  BUILTIN = 1
+
+  # Corresponds to tflite::ops::builtin::BuiltinRefOpResolver in C++.
+  BUILTIN_REF = 2
+
+  # Corresponds to
+  # tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates in C++.
+  BUILTIN_WITHOUT_DEFAULT_DELEGATES = 3
+
+
+def _get_op_resolver_id(op_resolver=OpResolver.AUTO):
+  """Get a integer identifier for the op resolver."""
+
+  # Note: the integer identifier value needs to be same w/ op resolver ids
+  # defined in interpreter_wrapper/interpreter_wrapper.cc.
+  return {
+      OpResolver.AUTO: 1,  # Note the identifier is same with that of BUILTIN
+      OpResolver.BUILTIN: 1,
+      OpResolver.BUILTIN_REF: 2,
+      OpResolver.BUILTIN_WITHOUT_DEFAULT_DELEGATES: 3
+  }.get(op_resolver, None)
+
+
 @_tf_export('lite.Interpreter')
 class Interpreter(object):
   """Interpreter interface for TensorFlow Lite Models.
@@ -257,7 +302,8 @@ class Interpreter(object):
                model_path=None,
                model_content=None,
                experimental_delegates=None,
-               num_threads=None):
+               num_threads=None,
+               experimental_op_resolver=OpResolver.AUTO):
     """Constructor.
 
     Args:
@@ -270,12 +316,22 @@ class Interpreter(object):
         available to CPU kernels. If not set, the interpreter will use an
         implementation-dependent default number of threads. Currently, only a
         subset of kernels, such as conv, support multi-threading.
+      experimental_op_resolver: The op resolver used by the interpreter. It must
+        be an instance of OpResolver. By default, we use the built-in op
+        resolver which corresponds to tflite::ops::builtin::BuiltinOpResolver
+        in C++.
 
     Raises:
       ValueError: If the interpreter was unable to create.
     """
     if not hasattr(self, '_custom_op_registerers'):
       self._custom_op_registerers = []
+
+    op_resolver_id = _get_op_resolver_id(experimental_op_resolver)
+    if op_resolver_id is None:
+      raise ValueError('Unrecognized passed in op resolver: {}'.format(
+          experimental_op_resolver))
+
     if model_path and not model_content:
       custom_op_registerers_by_name = [
           x for x in self._custom_op_registerers if isinstance(x, str)
@@ -285,7 +341,7 @@ class Interpreter(object):
       ]
       self._interpreter = (
           _interpreter_wrapper.CreateWrapperFromFile(
-              model_path, custom_op_registerers_by_name,
+              model_path, op_resolver_id, custom_op_registerers_by_name,
               custom_op_registerers_by_func))
       if not self._interpreter:
         raise ValueError('Failed to open {}'.format(model_path))
@@ -302,7 +358,7 @@ class Interpreter(object):
       self._model_content = model_content
       self._interpreter = (
           _interpreter_wrapper.CreateWrapperFromBuffer(
-              model_content, custom_op_registerers_by_name,
+              model_content, op_resolver_id, custom_op_registerers_by_name,
               custom_op_registerers_by_func))
     elif not model_content and not model_path:
       raise ValueError('`model_path` or `model_content` must be specified.')
