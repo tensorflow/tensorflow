@@ -897,7 +897,6 @@ tf_py_test(
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/training:server_lib",
-        "@absl_py//absl/logging",
         "@absl_py//absl/testing:parameterized",
     ],
 )

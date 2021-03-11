@@ -22,7 +22,6 @@ from __future__ import print_function
 import random
 import tempfile
 
-from absl import logging
 from absl.testing import parameterized
 import numpy as np
 
@@ -55,6 +54,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.server_lib import ClusterSpec
 
 
