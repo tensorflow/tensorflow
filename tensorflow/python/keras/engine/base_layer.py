@@ -1869,12 +1869,14 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           (self.name, len(weights), expected_num_weights, str(weights)[:50]))
 
     for index, item in enumerate(weights):
-        if not (isinstance(item, np.ndarray)):
+        if isinstance(item, tf_variables.Variable):
+             weights[index] = np.array(item)
+        elif not isinstance(item, np.ndarray):
             raise TypeError(
-              'You called `set_weights(weights)` on layer "%s" '
-              'with a weight list of type %s, but the method was '
+              'You called `set_weights(weights)` on layer '
+              'with a weight list of type %s, but the set_weights() method was '
               'expecting a list of Numpy arrays.' %
-              (self.name, type(weights[index])))
+              (type(weights[index])))
 
     weight_index = 0
     weight_value_tuples = []
