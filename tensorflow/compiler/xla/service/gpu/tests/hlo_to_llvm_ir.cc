@@ -17,7 +17,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
+#if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
+#endif
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -77,6 +79,7 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
   if (!generate_ptx) {
     llvm_module->print(llvm::outs(), nullptr);
   } else {
+#if GOOGLE_CUDA
     std::pair<int, int> gpu_version = std::make_pair(
         cuda_compute_capability.cc_major, cuda_compute_capability.cc_minor);
     std::string libdevice_dir = xla::gpu::GetLibdeviceDir(hlo_module->config());
@@ -85,6 +88,10 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
         xla::gpu::nvptx::CompileToPtx(llvm_module.get(), gpu_version,
                                       hlo_module->config(), libdevice_dir));
     std::cout << ptx << std::endl;
+#else
+    return xla::Status(tensorflow::error::UNIMPLEMENTED,
+                       "Feature not yet implemented in ROCm");
+#endif
   }
   return xla::Status::OK();
 }
