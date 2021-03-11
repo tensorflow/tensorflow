@@ -31,43 +31,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "choose_fastest_branch_dataset_serialization_test",
-    size = "medium",
-    srcs = ["choose_fastest_branch_dataset_serialization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python/data/experimental/ops:batching",
-        "//tensorflow/python/data/experimental/ops:optimization",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-    ],
-)
-
-tf_py_test(
-    name = "choose_fastest_dataset_serialization_test",
-    size = "medium",
-    srcs = ["choose_fastest_dataset_serialization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/data/experimental/ops:optimization",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-    ],
-)
-
-tf_py_test(
     name = "sample_from_datasets_serialization_test",
     size = "medium",
     srcs = ["sample_from_datasets_serialization_test.py"],
