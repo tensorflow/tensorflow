@@ -88,7 +88,10 @@ void DatasetToGraphOp::Compute(OpKernelContext* ctx) {
         external_state_policy_ =
             SerializationContext::ExternalStatePolicy::kWarn;
         break;
-      case ExternalStatePolicy::IGNORE:
+      case 1:
+        // TODO(wilsin): case 1 here should be case ExternalStatePolicy::IGNORE,
+        // but it causes a compilation error on Windows. Change IGNORE to
+        // something else.
         external_state_policy_ =
             SerializationContext::ExternalStatePolicy::kIgnore;
         break;
