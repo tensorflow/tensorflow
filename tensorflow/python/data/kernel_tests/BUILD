@@ -679,6 +679,7 @@ tf_py_test(
     size = "small",
     srcs = ["repeat_test.py"],
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -728,6 +729,7 @@ tf_py_test(
     size = "small",
     srcs = ["skip_test.py"],
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -743,6 +745,7 @@ tf_py_test(
     size = "small",
     srcs = ["take_test.py"],
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
