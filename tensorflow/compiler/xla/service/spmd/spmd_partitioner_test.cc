@@ -7456,6 +7456,39 @@ ENTRY entry {
                           op::Shape("f32[32,16,24,512]")));
 }
 
+TEST_F(SpmdPartitioningTest, PartitionPassthroughScatterCorrectOutputSharding) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+%scatter_add (parameter.0: bf16[], parameter.1: bf16[]) -> bf16[] {
+  %parameter.0 = bf16[] parameter(0)
+  %parameter.1 = bf16[] parameter(1)
+  ROOT %add = bf16[] add(bf16[] %parameter.0, bf16[] %parameter.1)
+}
+
+ENTRY entry {
+  %operand = bf16[2,1024]{1,0} parameter(0),
+    sharding={devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
+  %indices = s32[8,512,1]{2,1,0} parameter(1),
+    sharding={devices=[2,1,1,2]0,2,1,3 last_tile_dim_replicate}
+  %updates = bf16[8,512,1024]{2,1,0} parameter(2),
+    sharding={devices=[2,1,2]0,2,1,3}
+  ROOT %scatter = bf16[2,1024]{1,0} scatter(bf16[2,1024]{1,0} %operand,
+    s32[8,512,1]{2,1,0} %indices,
+    bf16[8,512,1024]{2,1,0} %updates), update_window_dims={2},
+    inserted_window_dims={0}, scatter_dims_to_operand_dims={0},
+    index_vector_dim=2, to_apply=%scatter_add,
+    sharding={devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  auto scatter = AllOf(op::Shape("bf16[2,512]"), op::Scatter(_, _, _));
+  EXPECT_THAT(root, scatter);
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla
