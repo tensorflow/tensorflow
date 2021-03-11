@@ -28,12 +28,73 @@ from tensorflow.python.platform import test
 
 
 @keras_parameterized.run_all_keras_modes
-class ConvLSTMTest(keras_parameterized.TestCase):
-
+class ConvLSTM1DTest(keras_parameterized.TestCase):
   @parameterized.named_parameters(
-      *testing_utils.generate_combinations_with_testcase_name(
-          data_format=['channels_first', 'channels_last'],
-          return_sequences=[True, False]))
+    *testing_utils.generate_combinations_with_testcase_name(
+      data_format=['channels_first', 'channels_last'],
+        return_sequences=[True, False],
+    )
+  )
+  def test_conv_lstm(self, data_format, return_sequences):
+    num_row = 3
+    filters = 3
+    num_samples = 1
+    input_channel = 2
+    input_num_row = 5
+    sequence_len = 2
+    if data_format == 'channels_first':
+      inputs = np.random.rand(
+        num_samples, sequence_len, input_channel, input_num_row
+      )
+    else:
+      inputs = np.random.rand(
+        num_samples, sequence_len, input_num_row, input_channel
+      )
+
+    # test for return state:
+    x = keras.Input(batch_shape=inputs.shape)
+    kwargs = {
+      'data_format': data_format,
+      'return_sequences': return_sequences,
+      'return_state': True,
+      'stateful': True,
+      'filters': filters,
+      'kernel_size': num_row,
+      'padding': 'valid',
+    }
+    layer = keras.layers.ConvLSTM1D(**kwargs)
+    layer.build(inputs.shape)
+    outputs = layer(x)
+    _, states = outputs[0], outputs[1:]
+    self.assertEqual(len(states), 2)
+    model = keras.models.Model(x, states[0])
+
+    state = model.predict(inputs)
+
+    self.assertAllClose(keras.backend.eval(layer.states[0]), state, atol=1e-4)
+
+    # test for output shape:
+    testing_utils.layer_test(
+      keras.layers.ConvLSTM1D,
+      kwargs={
+        'data_format': data_format,
+        'return_sequences': return_sequences,
+        'filters': filters,
+        'kernel_size': num_row,
+        'padding': 'valid',
+      },
+      input_shape=inputs.shape,
+    )
+
+
+@keras_parameterized.run_all_keras_modes
+class ConvLSTM2DTest(keras_parameterized.TestCase):
+  @parameterized.named_parameters(
+    *testing_utils.generate_combinations_with_testcase_name(
+      data_format=['channels_first', 'channels_last'],
+      return_sequences=[True, False],
+    )
+  )
   def test_conv_lstm(self, data_format, return_sequences):
     num_row = 3
     num_col = 3
@@ -44,23 +105,25 @@ class ConvLSTMTest(keras_parameterized.TestCase):
     input_num_col = 5
     sequence_len = 2
     if data_format == 'channels_first':
-      inputs = np.random.rand(num_samples, sequence_len,
-                              input_channel,
-                              input_num_row, input_num_col)
+      inputs = np.random.rand(
+        num_samples, sequence_len, input_channel, input_num_row, input_num_col
+      )
     else:
-      inputs = np.random.rand(num_samples, sequence_len,
-                              input_num_row, input_num_col,
-                              input_channel)
+      inputs = np.random.rand(
+        num_samples, sequence_len, input_num_row, input_num_col, input_channel
+      )
 
     # test for return state:
     x = keras.Input(batch_shape=inputs.shape)
-    kwargs = {'data_format': data_format,
-              'return_sequences': return_sequences,
-              'return_state': True,
-              'stateful': True,
-              'filters': filters,
-              'kernel_size': (num_row, num_col),
-              'padding': 'valid'}
+    kwargs = {
+      'data_format': data_format,
+      'return_sequences': return_sequences,
+      'return_state': True,
+      'stateful': True,
+      'filters': filters,
+      'kernel_size': (num_row, num_col),
+      'padding': 'valid',
+    }
     layer = keras.layers.ConvLSTM2D(**kwargs)
     layer.build(inputs.shape)
     outputs = layer(x)
@@ -69,18 +132,20 @@ class ConvLSTMTest(keras_parameterized.TestCase):
     model = keras.models.Model(x, states[0])
     state = model.predict(inputs)
 
-    self.assertAllClose(
-        keras.backend.eval(layer.states[0]), state, atol=1e-4)
+    self.assertAllClose(keras.backend.eval(layer.states[0]), state, atol=1e-4)
 
     # test for output shape:
     testing_utils.layer_test(
-        keras.layers.ConvLSTM2D,
-        kwargs={'data_format': data_format,
-                'return_sequences': return_sequences,
-                'filters': filters,
-                'kernel_size': (num_row, num_col),
-                'padding': 'valid'},
-        input_shape=inputs.shape)
+      keras.layers.ConvLSTM2D,
+      kwargs={
+        'data_format': data_format,
+        'return_sequences': return_sequences,
+        'filters': filters,
+        'kernel_size': (num_row, num_col),
+        'padding': 'valid',
+      },
+      input_shape=inputs.shape,
+    )
 
   def test_conv_lstm_statefulness(self):
     # Tests for statefulness
@@ -92,19 +157,21 @@ class ConvLSTMTest(keras_parameterized.TestCase):
     input_num_row = 5
     input_num_col = 5
     sequence_len = 2
-    inputs = np.random.rand(num_samples, sequence_len,
-                            input_num_row, input_num_col,
-                            input_channel)
+    inputs = np.random.rand(
+      num_samples, sequence_len, input_num_row, input_num_col, input_channel
+    )
 
     with self.cached_session():
       model = keras.models.Sequential()
-      kwargs = {'data_format': 'channels_last',
-                'return_sequences': False,
-                'filters': filters,
-                'kernel_size': (num_row, num_col),
-                'stateful': True,
-                'batch_input_shape': inputs.shape,
-                'padding': 'same'}
+      kwargs = {
+        'data_format': 'channels_last',
+        'return_sequences': False,
+        'filters': filters,
+        'kernel_size': (num_row, num_col),
+        'stateful': True,
+        'batch_input_shape': inputs.shape,
+        'padding': 'same',
+      }
       layer = keras.layers.ConvLSTM2D(**kwargs)
 
       model.add(layer)
@@ -112,8 +179,7 @@ class ConvLSTMTest(keras_parameterized.TestCase):
       out1 = model.predict(np.ones_like(inputs))
 
       # train once so that the states change
-      model.train_on_batch(np.ones_like(inputs),
-                           np.random.random(out1.shape))
+      model.train_on_batch(np.ones_like(inputs), np.random.random(out1.shape))
       out2 = model.predict(np.ones_like(inputs))
 
       # if the state is not reset, output should be different
@@ -144,25 +210,27 @@ class ConvLSTMTest(keras_parameterized.TestCase):
     input_num_row = 5
     input_num_col = 5
     sequence_len = 2
-    inputs = np.random.rand(num_samples, sequence_len,
-                            input_num_row, input_num_col,
-                            input_channel)
+    inputs = np.random.rand(
+      num_samples, sequence_len, input_num_row, input_num_col, input_channel
+    )
 
     with self.cached_session():
-      kwargs = {'data_format': 'channels_last',
-                'return_sequences': False,
-                'kernel_size': (num_row, num_col),
-                'stateful': True,
-                'filters': filters,
-                'batch_input_shape': inputs.shape,
-                'kernel_regularizer': keras.regularizers.L1L2(l1=0.01),
-                'recurrent_regularizer': keras.regularizers.L1L2(l1=0.01),
-                'activity_regularizer': 'l2',
-                'bias_regularizer': 'l2',
-                'kernel_constraint': 'max_norm',
-                'recurrent_constraint': 'max_norm',
-                'bias_constraint': 'max_norm',
-                'padding': 'same'}
+      kwargs = {
+        'data_format': 'channels_last',
+        'return_sequences': False,
+        'kernel_size': (num_row, num_col),
+        'stateful': True,
+        'filters': filters,
+        'batch_input_shape': inputs.shape,
+        'kernel_regularizer': keras.regularizers.L1L2(l1=0.01),
+        'recurrent_regularizer': keras.regularizers.L1L2(l1=0.01),
+        'activity_regularizer': 'l2',
+        'bias_regularizer': 'l2',
+        'kernel_constraint': 'max_norm',
+        'recurrent_constraint': 'max_norm',
+        'bias_constraint': 'max_norm',
+        'padding': 'same',
+      }
 
       layer = keras.layers.ConvLSTM2D(**kwargs)
       layer.build(inputs.shape)
@@ -174,15 +242,18 @@ class ConvLSTMTest(keras_parameterized.TestCase):
     # check dropout
     with self.cached_session():
       testing_utils.layer_test(
-          keras.layers.ConvLSTM2D,
-          kwargs={'data_format': 'channels_last',
-                  'return_sequences': False,
-                  'filters': 2,
-                  'kernel_size': (3, 3),
-                  'padding': 'same',
-                  'dropout': 0.1,
-                  'recurrent_dropout': 0.1},
-          input_shape=(1, 2, 5, 5, 2))
+        keras.layers.ConvLSTM2D,
+        kwargs={
+          'data_format': 'channels_last',
+          'return_sequences': False,
+          'filters': 2,
+          'kernel_size': (3, 3),
+          'padding': 'same',
+          'dropout': 0.1,
+          'recurrent_dropout': 0.1,
+        },
+        input_shape=(1, 2, 5, 5, 2),
+      )
 
   def test_conv_lstm_cloning(self):
     with self.cached_session():
@@ -206,29 +277,103 @@ class ConvLSTMTest(keras_parameterized.TestCase):
     sequence_len = 5
     encoder_inputs = keras.layers.Input((None, 32, 32, 3))
     encoder = keras.layers.ConvLSTM2D(
-        filters=32, kernel_size=(3, 3), padding='same',
-        return_sequences=False, return_state=True)
+      filters=32,
+      kernel_size=(3, 3),
+      padding='same',
+      return_sequences=False,
+      return_state=True,
+    )
     _, state_h, state_c = encoder(encoder_inputs)
     encoder_states = [state_h, state_c]
 
     decoder_inputs = keras.layers.Input((None, 32, 32, 4))
     decoder_lstm = keras.layers.ConvLSTM2D(
-        filters=32, kernel_size=(3, 3), padding='same',
-        return_sequences=False, return_state=False)
+      filters=32,
+      kernel_size=(3, 3),
+      padding='same',
+      return_sequences=False,
+      return_state=False,
+    )
     decoder_outputs = decoder_lstm(decoder_inputs, initial_state=encoder_states)
-    output = keras.layers.Conv2D(
-        1, (3, 3), padding='same', activation='relu')(decoder_outputs)
+    output = keras.layers.Conv2D(1, (3, 3), padding='same', activation='relu')(
+      decoder_outputs
+    )
     model = keras.Model([encoder_inputs, decoder_inputs], output)
 
     model.compile(
-        optimizer='sgd', loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly())
+      optimizer='sgd', loss='mse', run_eagerly=testing_utils.should_run_eagerly()
+    )
     x_1 = np.random.rand(num_samples, sequence_len, 32, 32, 3)
     x_2 = np.random.rand(num_samples, sequence_len, 32, 32, 4)
     y = np.random.rand(num_samples, 32, 32, 1)
     model.fit([x_1, x_2], y)
 
     model.predict([x_1, x_2])
+
+
+@keras_parameterized.run_all_keras_modes
+class ConvLSTM3DTest(keras_parameterized.TestCase):
+  @parameterized.named_parameters(
+    *testing_utils.generate_combinations_with_testcase_name(
+      data_format=['channels_first', 'channels_last'],
+      return_sequences=[True, False],
+    )
+  )
+
+  def test_conv_lstm(self, data_format, return_sequences):
+    num_height = 3
+    num_width = 3
+    num_depth = 3
+    filters = 3
+    num_samples = 1
+    inp_channel = 2
+    inp_height = 5
+    inp_width = 5
+    inp_depth = 5
+    sequence_len = 2
+    if data_format == 'channels_first':
+      inputs = np.random.rand(
+        num_samples, sequence_len, inp_channel, inp_height, inp_width, inp_depth
+      )
+    else:
+      inputs = np.random.rand(
+        num_samples, sequence_len, inp_height, inp_width, inp_depth, inp_channel
+      )
+
+    # test for return state:
+    x = keras.Input(batch_shape=inputs.shape)
+    kwargs = {
+      'data_format': data_format,
+      'return_sequences': return_sequences,
+      'return_state': True,
+      'stateful': True,
+      'filters': filters,
+      'kernel_size': (num_height, num_width, num_depth),
+      'padding': 'same',
+    }
+    layer = keras.layers.ConvLSTM3D(**kwargs)
+    layer.build(inputs.shape)
+    outputs = layer(x)
+    _, states = outputs[0], outputs[1:]
+    self.assertEqual(len(states), 2)
+    model = keras.models.Model(x, states[0])
+
+    state = model.predict(inputs)
+
+    self.assertAllClose(keras.backend.eval(layer.states[0]), state, atol=1e-4)
+
+    # test for output shape:
+    testing_utils.layer_test(
+      keras.layers.ConvLSTM3D,
+      kwargs={
+        'data_format': data_format,
+        'return_sequences': return_sequences,
+        'filters': filters,
+        'kernel_size': (num_height, num_width, num_depth),
+        'padding': 'valid',
+      },
+      input_shape=inputs.shape,
+    )
 
 
 if __name__ == '__main__':

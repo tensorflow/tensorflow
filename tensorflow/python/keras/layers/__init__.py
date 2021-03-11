@@ -248,7 +248,9 @@ else:
   LSTMCellV1 = LSTMCell
 
 # Convolutional-recurrent layers.
+from tensorflow.python.keras.layers.convolutional_recurrent import ConvLSTM1D
 from tensorflow.python.keras.layers.convolutional_recurrent import ConvLSTM2D
+from tensorflow.python.keras.layers.convolutional_recurrent import ConvLSTM3D
 
 # CuDNN recurrent layers.
 from tensorflow.python.keras.layers.cudnn_recurrent import CuDNNLSTM
