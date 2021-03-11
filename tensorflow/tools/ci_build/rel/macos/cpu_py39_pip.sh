@@ -24,7 +24,8 @@ export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
 sudo xcode-select -s "${DEVELOPER_DIR}"
 
 # Set up py39 via pyenv and check it worked
-setup_python_from_pyenv_macos
+PY_VERSION=3.9.1
+setup_python_from_pyenv_macos "${PY_VERSION}"
 
 # Set up and install MacOS pip dependencies.
 install_macos_pip_deps
@@ -40,7 +41,8 @@ export PYTHON_BIN_PATH=$(which python)
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
 # Export optional variables for running pip.sh
-export TF_BUILD_FLAGS="--config=release_cpu_macos"
+# Pass PYENV_VERSION since we're using pyenv. See b/182399580
+export TF_BUILD_FLAGS="--config=release_cpu_macos --action_env PYENV_VERSION='${PY_VERSION}'"
 export TF_TEST_FLAGS="--define=no_tensorflow_py_deps=true --test_lang_filters=py --test_output=errors --verbose_failures=true --keep_going --test_env=TF2_BEHAVIOR=1"
 export TF_TEST_TARGETS="//tensorflow/python/..."
 export TF_PIP_TESTS="test_pip_virtualenv_non_clean test_pip_virtualenv_clean"
