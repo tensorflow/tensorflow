@@ -45,7 +45,10 @@ bool IsShapeOfOpMovable(Value arg) {
 
 struct ShapeOfOpConversion : public OpConversionPattern<shape::ShapeOfOp> {
   explicit ShapeOfOpConversion(MLIRContext *context)
-      : OpConversionPattern<shape::ShapeOfOp>(context) {}
+      : OpConversionPattern<shape::ShapeOfOp>(context) {
+    // Recursively reify until we hit an op that doesn't support it.
+    setHasBoundedRewriteRecursion();
+  }
 
   LogicalResult matchAndRewrite(
       shape::ShapeOfOp op, ArrayRef<Value> operands,

@@ -21,7 +21,8 @@ func @shape_of_nary(%arg0 : tensor<?x32xf16>, %arg1 : tensor<?x32xf16>) {
   // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[ARG0]] : tensor<?x32xf16> -> tensor<2xindex>
   // CHECK: "use"(%[[SHAPE]])
   %0 = mhlo.subtract %arg0, %arg1 : tensor<?x32xf16>
-  %1 = shape.shape_of %0 : tensor<?x32xf16> -> tensor<?xindex>
-  "use"(%1) : (tensor<?xindex>) -> ()
+  %1 = mhlo.subtract %0, %arg1 : tensor<?x32xf16>
+  %2 = shape.shape_of %1 : tensor<?x32xf16> -> tensor<?xindex>
+  "use"(%2) : (tensor<?xindex>) -> ()
   return
 }
