@@ -307,18 +307,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
       raise ValueError("`output_sequence_length` must not be set if "
                        "`output_mode` is not 'int'.")
 
-    # If max_tokens is set, the value must be greater than 1 - otherwise we
-    # are creating a 0-element vocab, which doesn't make sense.
-    if max_tokens is not None and max_tokens < 1:
-      raise ValueError("max_tokens must be > 1.")
-
     self._max_tokens = max_tokens
-
-    # In INT mode, the zero value is reserved for padding (per Keras standard
-    # padding approaches). In non-INT modes, there is no padding so we can set
-    # the OOV value to zero instead of one.
-    self._oov_value = 1 if output_mode == INT else 0
-
     self._standardize = standardize
     self._split = split
     self._ngrams_arg = ngrams
@@ -343,10 +332,8 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     base_preprocessing_layer.keras_kpl_gauge.get_cell(
         "TextVectorization").set(True)
 
-    mask_token = "" if output_mode in [None, INT] else None
     self._index_lookup_layer = self._get_index_lookup_class()(
         max_tokens=max_tokens,
-        mask_token=mask_token,
         vocabulary=vocabulary,
         pad_to_max_tokens=pad_to_max_tokens,
         output_mode=output_mode if output_mode is not None else INT,
