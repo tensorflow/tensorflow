@@ -19,6 +19,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -53,6 +54,31 @@ PyBuffer::~PyBuffer() {
   if (next_) {
     next_->prev_ = prev_;
   }
+}
+
+StatusOr<int64> PyBuffer::size() {
+  Shape max_buffer_shape = buffer()->on_device_shape();
+  if (max_buffer_shape.is_dynamic()) {
+    TF_ASSIGN_OR_RETURN(auto dynamic_shape, xla_dynamic_shape());
+    return ShapeUtil::ElementsIn(dynamic_shape);
+  }
+  return ShapeUtil::ElementsIn(max_buffer_shape);
+}
+
+StatusOr<Shape> PyBuffer::xla_dynamic_shape() {
+  DCHECK(PyGILState_Check());
+  if (buffer_->on_device_shape().is_static()) {
+    return buffer_->on_device_shape();
+  }
+  if (!dynamic_shape_) {
+    Shape dynamic_shape;
+    {
+      py::gil_scoped_release gil_release;
+      TF_ASSIGN_OR_RETURN(dynamic_shape, buffer_->logical_on_device_shape());
+    }
+    dynamic_shape_ = dynamic_shape;
+  }
+  return dynamic_shape_.value();
 }
 
 pybind11::tuple PyBuffer::python_shape() const {
@@ -99,9 +125,14 @@ Status PyBuffer::CopyToHostAsync() {
   if (!buffer_->IsOnCpu() && !host_value_) {
     std::shared_ptr<HostValue> host_value = std::make_shared<HostValue>();
     host_value_ = host_value;
+    // TODO(b/182461453): This is a blocking call. If we further implemented
+    // populating dynamic shape metadata while fetching the literal, we wouldn't
+    // need this static approach.
+    TF_ASSIGN_OR_RETURN(Shape dynamic_shape, xla_dynamic_shape());
+
     py::gil_scoped_release gil;
     host_value->value = std::make_shared<Literal>(
-        ShapeUtil::DeviceShapeToHostShape(buffer_->on_device_shape()));
+        ShapeUtil::DeviceShapeToHostShape(dynamic_shape));
     Literal* literal = host_value->value.get();
     buffer_->ToLiteral(literal,
                        [host_value{std::move(host_value)}](Status status) {
@@ -119,9 +150,12 @@ StatusOr<pybind11::object> PyBuffer::AsNumPyArray(py::handle this_obj) {
   TF_RET_CHECK(buffer_->on_device_shape().IsArray());
   // On CPU, we can return the value in a zero-copy way.
   if (buffer_->IsOnCpu()) {
-    TF_ASSIGN_OR_RETURN(
-        py::dtype dtype,
-        PrimitiveTypeToDtype(buffer_->on_device_shape().element_type()));
+    Shape shape = buffer_->on_device_shape();
+    if (shape.is_dynamic()) {
+      return Unimplemented("DynamicShape not implemented for CPU device.");
+    }
+    TF_ASSIGN_OR_RETURN(py::dtype dtype,
+                        PrimitiveTypeToDtype(shape.element_type()));
     // Objects that must be kept alive while the array is alive.
     struct Hold {
       py::object buffer;
@@ -134,8 +168,7 @@ StatusOr<pybind11::object> PyBuffer::AsNumPyArray(py::handle this_obj) {
     void* data = hold->external_reference_hold->OpaqueDeviceMemoryDataPointer();
     py::capsule hold_capsule(hold.release(),
                              [](void* h) { delete static_cast<Hold*>(h); });
-    py::array array(dtype, buffer_->on_device_shape().dimensions(),
-                    ByteStridesForShape(buffer_->on_device_shape()), data,
+    py::array array(dtype, shape.dimensions(), ByteStridesForShape(shape), data,
                     hold_capsule);
     array.attr("flags").attr("writeable") = Py_False;
     {
@@ -160,7 +193,7 @@ StatusOr<std::uintptr_t> PyBuffer::UnsafeBufferPointer() const {
   return client_->pjrt_client()->UnsafeBufferPointer(buffer_.get());
 }
 
-StatusOr<py::dict> PyBuffer::CudaArrayInterface() const {
+StatusOr<py::dict> PyBuffer::CudaArrayInterface() {
   // TODO(zhangqiaorjc): Differentiate between NVidia and other GPUs.
   if (buffer_->client()->platform_id() != kGpuId) {
     return InvalidArgument(
@@ -178,7 +211,8 @@ StatusOr<py::dict> PyBuffer::CudaArrayInterface() const {
       buffer_->on_device_shape().layout()));
 
   py::dict result;
-  result["shape"] = IntSpanToTuple(buffer_->on_device_shape().dimensions());
+  TF_ASSIGN_OR_RETURN(Shape dynamic_shape, xla_dynamic_shape());
+  result["shape"] = IntSpanToTuple(dynamic_shape.dimensions());
   TF_ASSIGN_OR_RETURN(py::str typestr,
                       TypeDescriptorForPrimitiveType(
                           buffer_->on_device_shape().element_type()));
@@ -226,6 +260,10 @@ int PjRtBufferGetBuffer(PyObject* exporter, Py_buffer* view, int flags) {
     if (!buffer.IsOnCpu()) {
       return InvalidArgument(
           "Python buffer protocol is only defined for CPU buffers.");
+    }
+    if (buffer.on_device_shape().is_dynamic()) {
+      return InvalidArgument(
+          "Dynamic shape is not supported for Python buffer protocol.");
     }
     if (!buffer.on_device_shape().IsArray()) {
       return InvalidArgument(
