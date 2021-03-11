@@ -567,6 +567,23 @@ cc_test(
 )
 
 cc_test(
+    name = "split_test",
+    srcs = ["split_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:split_test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "strided_slice_test",
     srcs = ["strided_slice_test.cc"],
     linkstatic = True,
@@ -665,6 +682,7 @@ test_suite(
         "resize_test",
         "softmax1x1_test",
         "softmax_test",
+        "split_test",
         "strided_slice_test",
         "transpose_test",
         "winograd_test",

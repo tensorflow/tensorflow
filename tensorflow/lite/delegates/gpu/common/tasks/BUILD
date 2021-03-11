@@ -875,6 +875,19 @@ cc_library(
 )
 
 cc_library(
+    name = "split_test_util",
+    testonly = 1,
+    srcs = ["split_test_util.cc"],
+    hdrs = ["split_test_util.h"],
+    deps = [
+        ":split",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "strided_slice",
     srcs = ["strided_slice.cc"],
     hdrs = ["strided_slice.h"],
