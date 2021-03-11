@@ -473,6 +473,24 @@ func @transpose(%arg0: tensor<2x3x9x5xi32>) -> tensor<3x2x5x9xi32> {
 
 // -----
 
+// CHECK-LABEL: func @reshape_0D_1D
+func @reshape_0D_1D(%arg0: tensor<i32>) -> tensor<1xi32> {
+  %0 = "mhlo.reshape"(%arg0) : (tensor<i32>) -> tensor<1xi32>
+  return %0 : tensor<1xi32>
+}
+// CHECK: linalg.tensor_reshape %{{.*}} [] : tensor<i32> into tensor<1xi32>
+
+// -----
+
+// CHECK-LABEL: func @reshape_1D_0D
+func @reshape_1D_0D(%arg0: tensor<1xi32>) -> tensor<i32> {
+  %0 = "mhlo.reshape"(%arg0) : (tensor<1xi32>) -> tensor<i32>
+  return %0 : tensor<i32>
+}
+// CHECK: linalg.tensor_reshape %{{.*}} [] : tensor<1xi32> into tensor<i32>
+
+// -----
+
 // CHECK-DAG: #[[RESHAPE_MAP1:.*]] = affine_map<(d0, d1, d2) -> (d0, d1)>
 // CHECK-DAG: #[[RESHAPE_MAP2:.*]] = affine_map<(d0, d1, d2) -> (d2)>
 // CHECK-LABEL: func @reshape_3D_2D

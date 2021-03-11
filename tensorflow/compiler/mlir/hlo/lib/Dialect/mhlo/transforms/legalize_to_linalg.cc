@@ -792,7 +792,9 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
       }
       curr_dst_dim++;
     }
-    if (curr_src_dim != src_shape.size() || curr_dst_dim != dst_shape.size())
+    // Rank 0 can always use the direct lowering.
+    if (!src_shape.empty() && !dst_shape.empty() &&
+        (curr_src_dim != src_shape.size() || curr_dst_dim != dst_shape.size()))
       is_collapsing_source = false;
 
     // Otherwise, we need to first reduce all source dimensions into one and
