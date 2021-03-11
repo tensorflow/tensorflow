@@ -319,6 +319,29 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset, expected_output=list(range(1, 6)))
 
   @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(set_env=[True, False])))
+  def testOptimizationUsePrivateThreadPool(self, set_env):
+    if set_env:
+      os.environ["TF_DATA_EXPERIMENT_OPT_IN"] = "use_private_thread_pool"
+      os.environ["TF_JOB_NAME"] = "test_job"
+
+    dataset = dataset_ops.Dataset.range(6)
+    if set_env:
+      dataset = dataset.apply(
+          testing.assert_next(
+              ["MaxIntraOpParallelism", "PrivateThreadPool", "Model"]))
+    else:
+      dataset = dataset.apply(
+          testing.assert_next(["MaxIntraOpParallelism", "Model"]))
+
+    self.assertDatasetProduces(dataset, expected_output=list(range(6)))
+
+    if set_env:
+      del os.environ["TF_DATA_EXPERIMENT_OPT_IN"]
+      del os.environ["TF_JOB_NAME"]
+
+  @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(autotune=False, autotune_buffers=False) +
