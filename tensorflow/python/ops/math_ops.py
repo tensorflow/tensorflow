@@ -918,7 +918,8 @@ def cast(x, dtype, name=None):
   types, only the real part of `x` is returned. In case of casting from real
   types to complex types (`complex64`, `complex128`), the imaginary part of the
   returned value is set to `0`. The handling of complex types here matches the
-  behavior of numpy.
+  behavior of numpy. In case of casting from floating-point types to integral
+  types, the number is truncated towards zero.
 
   Note casting nan and inf values to integral types has undefined behavior.
 
