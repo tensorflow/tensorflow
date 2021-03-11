@@ -42,7 +42,6 @@ from tensorflow.python.eager import execute
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -1102,103 +1101,25 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
                                                 args, kwargs)
         training_arg_passed_by_framework = True
 
-    if keras_tensor.keras_tensors_enabled():
-      with call_context.enter(
-          layer=self, inputs=inputs, build_graph=True, training=training_value):
-        # Check input assumptions set after layer building, e.g. input shape.
-        outputs = self._keras_tensor_symbolic_call(
-            inputs, input_masks, args, kwargs)
-
-        if outputs is None:
-          raise ValueError('A layer\'s `call` method should return a '
-                           'Tensor or a list of Tensors, not None '
-                           '(layer: ' + self.name + ').')
-        if training_arg_passed_by_framework:
-          args, kwargs = self._set_call_arg_value(
-              'training', None, args, kwargs, pop_kwarg_if_none=True)
-        if mask_arg_passed_by_framework:
-          kwargs.pop('mask')
-        # Node connectivity does not special-case the first argument.
-        outputs = self._set_connectivity_metadata((inputs,) + args, kwargs,
-                                                  outputs)
-        return outputs
-
-    # Only create Keras history if at least one tensor originates from a
-    # `keras.Input`. Otherwise this Layer may be being used outside the Keras
-    # framework.
-    # TODO(kaftan): make this not special case inputs
-    if base_layer_utils.needs_keras_history(inputs):
-      base_layer_utils.create_keras_history(inputs)
-
     with call_context.enter(
         layer=self, inputs=inputs, build_graph=True, training=training_value):
-      # Symbolic execution on symbolic tensors. We will attempt to build
-      # the corresponding TF subgraph inside `backend.get_graph()`
-      input_spec.assert_input_compatibility(self.input_spec, inputs, self.name)
-      graph = backend.get_graph()
-      # Use `self._name_scope()` to avoid auto-incrementing the name.
-      with graph.as_default(), backend.name_scope(self._name_scope()):
-        # Build layer if applicable (if the `build` method has been
-        # overridden).
-        self._maybe_build(inputs)
-        cast_inputs = self._maybe_cast_inputs(inputs, input_list)
+      # Check input assumptions set after layer building, e.g. input shape.
+      outputs = self._keras_tensor_symbolic_call(
+          inputs, input_masks, args, kwargs)
 
-        if not self.dynamic:
-          # Wrapping `call` function in autograph to allow for dynamic control
-          # flow and control dependencies in call. We are limiting this to
-          # subclassed layers as autograph is strictly needed only for
-          # subclassed layers and models.
-          # tf_convert will respect the value of autograph setting in the
-          # enclosing tf.function, if any.
-          if (base_layer_utils.is_subclassed(self) and
-              not base_layer_utils.from_saved_model(self)):
-            call_fn = autograph.tf_convert(self.call,
-                                           ag_ctx.control_status_ctx())
-          else:
-            call_fn = self.call
-
-          try:
-            with autocast_variable.enable_auto_cast_variables(
-                self._compute_dtype_object):
-              outputs = call_fn(cast_inputs, *args, **kwargs)
-
-          except errors.OperatorNotAllowedInGraphError as e:
-            raise TypeError('You are attempting to use Python control '
-                            'flow in a layer that was not declared to be '
-                            'dynamic. Pass `dynamic=True` to the class '
-                            'constructor.\nEncountered error:\n"""\n' + str(e) +
-                            '\n"""')
-        else:
-          # We will use static shape inference to return symbolic tensors
-          # matching the specifications of the layer outputs.
-          # Since `self.dynamic` is True, we will never attempt to
-          # run the underlying TF graph (which is disconnected).
-          # TODO(fchollet): consider py_func as an alternative, which
-          # would enable us to run the underlying graph if needed.
-          outputs = self._symbolic_call(inputs)
-
-        if outputs is None:
-          raise ValueError('A layer\'s `call` method should return a '
-                           'Tensor or a list of Tensors, not None '
-                           '(layer: ' + self.name + ').')
-        # TODO(kaftan): This should be 'any' and check all args
-        if base_layer_utils.have_all_keras_metadata(inputs):
-          if training_arg_passed_by_framework:
-            args, kwargs = self._set_call_arg_value(
-                'training', None, args, kwargs, pop_kwarg_if_none=True)
-          if mask_arg_passed_by_framework:
-            kwargs.pop('mask')
-          # Node connectivity does not special-case the first argument.
-          outputs = self._set_connectivity_metadata((inputs,) + args, kwargs,
-                                                    outputs)
-        self._handle_activity_regularization(inputs, outputs)
-        self._set_mask_metadata(inputs, outputs, input_masks, True)
-        if hasattr(self, '_set_inputs') and not self.inputs:
-          # Subclassed network: explicitly set metadata normally set by
-          # a call to self._set_inputs().
-          self._set_inputs(cast_inputs, outputs)
-
-    return outputs
+      if outputs is None:
+        raise ValueError('A layer\'s `call` method should return a '
+                         'Tensor or a list of Tensors, not None '
+                         '(layer: ' + self.name + ').')
+      if training_arg_passed_by_framework:
+        args, kwargs = self._set_call_arg_value(
+            'training', None, args, kwargs, pop_kwarg_if_none=True)
+      if mask_arg_passed_by_framework:
+        kwargs.pop('mask')
+      # Node connectivity does not special-case the first argument.
+      outputs = self._set_connectivity_metadata((inputs,) + args, kwargs,
+                                                outputs)
+      return outputs
 
   def _set_training_mode(self, args, kwargs, call_context):
     training_mode = None
@@ -1410,20 +1331,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     warnings.warn('`layer.updates` will be removed in a future version. '
                   'This property should not be used in TensorFlow 2.0, '
                   'as `updates` are applied automatically.')
-    if keras_tensor.keras_tensors_enabled():
-      return []
-
-    collected_updates = []
-    all_layers = self._flatten_layers()
-    with backend.get_graph().as_default():
-      for layer in all_layers:
-        if not layer.trainable and not layer.stateful:
-          continue
-        for u in layer._updates:
-          if callable(u):
-            u = u()
-          collected_updates.append(u)
-    return collected_updates
+    return []
 
   @property
   def losses(self):
@@ -1600,16 +1508,12 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     self._eager_losses.extend(eager_losses)
 
-    if in_call_context and not keras_tensor.keras_tensors_enabled():
-      for symbolic_loss in symbolic_losses:
+    for symbolic_loss in symbolic_losses:
+      if getattr(self, '_is_graph_network', False):
+        self._graph_network_add_loss(symbolic_loss)
+      else:
+        # Possible a loss was added in a Layer's `build`.
         self._losses.append(symbolic_loss)
-    else:
-      for symbolic_loss in symbolic_losses:
-        if getattr(self, '_is_graph_network', False):
-          self._graph_network_add_loss(symbolic_loss)
-        else:
-          # Possible a loss was added in a Layer's `build`.
-          self._losses.append(symbolic_loss)
 
   def _clear_losses(self):
     """Used every step in eager to reset losses."""
@@ -1703,10 +1607,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       raise TypeError('Unknown keyword arguments: ', str(kwargs.keys()))
 
     from_metric_obj = hasattr(value, '_metric_obj')
-    if keras_tensor.keras_tensors_enabled():
-      is_symbolic = isinstance(value, keras_tensor.KerasTensor)
-    else:
-      is_symbolic = tf_utils.is_symbolic_tensor(value)
+    is_symbolic = isinstance(value, keras_tensor.KerasTensor)
     in_call_context = base_layer_utils.call_context().in_call
 
     if name is None and not from_metric_obj:
@@ -2729,12 +2630,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     # Optionally load weight values specified at layer instantiation.
     if self._initial_weights is not None:
-      if ops.executing_eagerly_outside_functions():
-        with ops.init_scope():
-          # Using `init_scope` since we want variable assignment in
-          # `set_weights` to be treated like variable initialization.
-          self.set_weights(self._initial_weights)
-      else:
+      with ops.init_scope():
+        # Using `init_scope` since we want variable assignment in
+        # `set_weights` to be treated like variable initialization.
         self.set_weights(self._initial_weights)
       self._initial_weights = None
 
@@ -3318,31 +3216,11 @@ class AddMetric(Layer):
 
 def _in_functional_construction_mode(layer, inputs, args, kwargs, input_list):  # pylint: disable=unused-argument
   """Check the arguments to see if we are constructing a functional model."""
-  if keras_tensor.keras_tensors_enabled():
-    # We are constructing a functional model if any of the inputs
-    # are KerasTensors
-    return any(
-        isinstance(tensor, keras_tensor.KerasTensor)
-        for tensor in nest.flatten([inputs, args, kwargs]))
-  else:
-    if context.executing_eagerly():
-      all_inputs_symbolic = all(
-          tf_utils.is_symbolic_tensor(t) for t in input_list)
-      if (base_layer_utils.is_subclassed(layer) and
-          any(tf_utils.is_symbolic_tensor(t) for t in nest.flatten(
-              [inputs, args, kwargs])) and not all_inputs_symbolic):
-        raise ValueError('It appears you are trying to construct a '
-                         'functional model, but not all of the inputs in '
-                         'the first positional argument of your layer call '
-                         'are symbolic tensors. '
-                         '(Input objects, or the output of another layer) '
-                         'Functional models cannot correctly track custom '
-                         'layers unless all values in the first call argument '
-                         'are symbolic.')
-      return all_inputs_symbolic
-    else:
-      return (base_layer_utils.is_in_keras_graph() or
-              all(hasattr(t, '_keras_history') for t in input_list))
+  # We are constructing a functional model if any of the inputs
+  # are KerasTensors
+  return any(
+      isinstance(tensor, keras_tensor.KerasTensor)
+      for tensor in nest.flatten([inputs, args, kwargs]))
 
 
 def _convert_numpy_or_python_types(x):

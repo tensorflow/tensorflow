@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend
@@ -178,7 +179,7 @@ class InputLayer(base_layer.Layer):
       ]
       for arg_name, arg in args_that_must_be_none:
         _assert_other_arg_none(arg_name, arg)
-      if not keras_tensor.keras_tensors_enabled():
+      if not ops.executing_eagerly_outside_functions():
         raise ValueError('Creating Keras inputs from a type_spec is only '
                          'supported when eager execution is enabled.')
       input_tensor = keras_tensor.keras_tensor_from_type_spec(type_spec)
@@ -209,7 +210,7 @@ class InputLayer(base_layer.Layer):
       self.is_placeholder = True
       self._batch_input_shape = batch_input_shape
     else:
-      if keras_tensor.keras_tensors_enabled():
+      if ops.executing_eagerly_outside_functions():
         if not isinstance(input_tensor, keras_tensor.KerasTensor):
           input_tensor = keras_tensor.keras_tensor_from_tensor(input_tensor)
       else:
