@@ -839,6 +839,27 @@ func @iota() -> tensor<7x10xf32> {
 
 // -----
 
+// CHECK: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+// CHECK-LABEL: func @iota
+// CHECK-SAME: %[[SHAPE:.*]]: tensor<?xi32>
+func @iota(%shape: tensor<?xi32>) -> tensor<?x?x8xf32> {
+  %result = "mhlo.dynamic_iota"(%shape) {iota_dimension = 1 : i64} : (tensor<?xi32>) -> (tensor<?x?x8xf32>)
+  return %result : tensor<?x?x8xf32>
+}
+// CHECK: %[[E1:.*]] = tensor.extract %[[SHAPE]][%c0] : tensor<?xi32>
+// CHECK: %[[I1:.*]] = index_cast %[[E1]] : i32 to index
+// CHECK: %[[E2:.*]] = tensor.extract %[[SHAPE]][%c1] : tensor<?xi32>
+// CHECK: %[[I2:.*]] = index_cast %[[E2]] : i32 to index
+// CHECK: linalg.init_tensor [%[[I1]], %[[I2]], 8] : tensor<?x?x8xf32>
+// CHECK: linalg.indexed_generic
+// CHECK-SAME: indexing_maps = [#[[RESULT_MAP]]]
+// CHECK-NEXT: ^bb0(%[[D0:.*]]: index, %[[D1:.*]]: index, %[[D2:.*]]: index, %{{.*}}: f32):
+// CHECK-NEXT:   %[[INT_CAST:.*]] = index_cast %[[D1]] : index to i32
+// CHECK-NEXT:   %[[FLOAT_CAST:.*]] = sitofp %[[INT_CAST]] : i32 to f32
+// CHECK-NEXT:   linalg.yield %[[FLOAT_CAST]] : f32
+
+// -----
+
 func @shift_left(%lhs: tensor<2x2xi32>,
                  %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
   %result = "mhlo.shift_left"(%lhs, %rhs)

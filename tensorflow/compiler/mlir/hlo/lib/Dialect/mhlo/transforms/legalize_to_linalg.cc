@@ -93,13 +93,23 @@ Value GetInitTensor(OpBuilder& b, Location loc, ShapedType type,
 }
 
 SmallVector<Value, 2> ExtractDynamicSizes(OpBuilder& b, Location loc,
-                                          Value tensor) {
+                                          Value tensor,
+                                          Value shape_tensor = nullptr) {
   auto tensor_type = tensor.getType().dyn_cast<RankedTensorType>();
   if (!tensor_type) return {};
   SmallVector<Value, 2> dyn_sizes;
   for (auto& en : llvm::enumerate(tensor_type.getShape())) {
     if (en.value() != ShapedType::kDynamicSize) continue;
-    dyn_sizes.push_back(b.create<DimOp>(loc, tensor, en.index()));
+    // If a shape tensor is present extract from there.
+    if (shape_tensor) {
+      Value extract = b.create<tensor::ExtractOp>(
+          loc, shape_tensor,
+          ValueRange{b.create<ConstantIndexOp>(loc, en.index())});
+      dyn_sizes.push_back(
+          b.create<IndexCastOp>(loc, b.getIndexType(), extract));
+    } else {
+      dyn_sizes.push_back(b.create<DimOp>(loc, tensor, en.index()));
+    }
   }
   return dyn_sizes;
 }
@@ -868,17 +878,20 @@ class IotaConverter : public OpConversionPattern<OpTy> {
     unsigned nloops = result_shaped_type.getRank();
 
     Location loc = iota_op.getLoc();
-    auto dyn_sizes = isLHLO
-                         ? SmallVector<Value, 2>()
-                         : ExtractDynamicSizes(rewriter, loc,
-                                               GetResultValue<isLHLO>(iota_op));
+    // If this is a dynamic iota, the first argument will be a shape tensor.
+    Value shape_tensor = args.size() > (isLHLO ? 1 : 0) ? args[0] : nullptr;
+    auto dyn_sizes =
+        isLHLO
+            ? SmallVector<Value, 2>()
+            : ExtractDynamicSizes(
+                  rewriter, loc, GetResultValue<isLHLO>(iota_op), shape_tensor);
     auto linalg_op = rewriter.create<linalg::IndexedGenericOp>(
         loc,
         /*resultTensorTypes=*/
         isLHLO ? ArrayRef<Type>{} : ArrayRef<Type>{result_shaped_type},
         /*inputs=*/ValueRange{},
         /*outputBuffers=*/
-        isLHLO ? ValueRange{args}
+        isLHLO ? ValueRange{args.back()}
                : ValueRange{GetInitTensor(rewriter, loc, result_shaped_type,
                                           dyn_sizes)},
         llvm::makeArrayRef(rewriter.getMultiDimIdentityMap(nloops)),
@@ -1636,6 +1649,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       BroadcastConverter<mhlo::BroadcastOp, false>,
       ConstConverter<mhlo::ConstOp>, HloDynamicBroadcastInDimConverter,
       HloBroadcastInDimConverter, IotaConverter<mhlo::IotaOp, false>,
+      IotaConverter<mhlo::DynamicIotaOp, false>,
       PointwiseToLinalgConverter<mhlo::AbsOp, false>,
       PointwiseToLinalgConverter<mhlo::AddOp, false>,
       PointwiseToLinalgConverter<mhlo::AndOp, false>,
