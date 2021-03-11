@@ -3151,19 +3151,11 @@ LogicalResult deriveShapeFromFirstOperand(
     return failure();
   }
   auto loc = op->getLoc();
-  SmallVector<Value, 4> shape_values;
-  shape_values.reserve(operand_type.getRank());
-  for (auto element : llvm::enumerate(operand_type.getShape())) {
-    if (element.value() == ShapedType::kDynamicSize) {
-      shape_values.push_back(
-          builder->create<DimOp>(loc, operand, element.index()));
-    } else {
-      shape_values.push_back(
-          builder->create<ConstantIndexOp>(loc, element.value()));
-    }
-  }
-  *reifiedReturnShapes = SmallVector<Value, 1>{
-      builder->create<tensor::FromElementsOp>(loc, shape_values)};
+  // Some users rely on the result type being a static shape.
+  auto shape_type =
+      RankedTensorType::get(operand_type.getRank(), builder->getIndexType());
+  reifiedReturnShapes->assign(
+      {builder->create<shape::ShapeOfOp>(loc, shape_type, operand)});
   return success();
 }
 

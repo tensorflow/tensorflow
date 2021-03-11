@@ -4,7 +4,8 @@
 // CHECK-LABEL: @shape_of_unary
 // CHECK-SAME: (%[[ARG:.*]]: tensor<?x32xi16>)
 func @shape_of_unary(%arg : tensor<?x32xi16>) {
-  // CHECK-NOT: shape_of
+  // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[ARG]] : tensor<?x32xi16> -> tensor<2xindex>
+  // CHECK: "use"(%[[SHAPE]])
   %0 = "mhlo.convert"(%arg) : (tensor<?x32xi16>) -> tensor<?x32xf16>
   %1 = shape.shape_of %0 : tensor<?x32xf16> -> tensor<?xindex>
   "use"(%1) : (tensor<?xindex>) -> ()
@@ -17,7 +18,8 @@ func @shape_of_unary(%arg : tensor<?x32xi16>) {
 // CHECK-LABEL: @shape_of_nary
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<?x32xf16>, %[[ARG1:.*]]: tensor<?x32xf16>)
 func @shape_of_nary(%arg0 : tensor<?x32xf16>, %arg1 : tensor<?x32xf16>) {
-  // CHECK-NOT: shape_of
+  // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[ARG0]] : tensor<?x32xf16> -> tensor<2xindex>
+  // CHECK: "use"(%[[SHAPE]])
   %0 = mhlo.subtract %arg0, %arg1 : tensor<?x32xf16>
   %1 = shape.shape_of %0 : tensor<?x32xf16> -> tensor<?xindex>
   "use"(%1) : (tensor<?xindex>) -> ()
