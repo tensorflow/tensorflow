@@ -1195,7 +1195,8 @@ class TextVectorizationOutputTest(
         max_tokens=6,
         standardize=None,
         split=None,
-        output_mode=text_vectorization.COUNT)
+        output_mode=text_vectorization.COUNT,
+        pad_to_max_tokens=True)
     layer.set_vocabulary(vocab_data)
     int_data = layer(input_data)
     self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
