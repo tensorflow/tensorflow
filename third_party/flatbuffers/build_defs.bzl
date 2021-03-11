@@ -375,7 +375,7 @@ def flatbuffer_py_strip_prefix_srcs(name, srcs = [], strip_prefix = ""):
             name = name + "_" + src.replace(".", "_").replace("/", "_"),
             srcs = [src],
             outs = [src.replace(strip_prefix, "")],
-            cmd = "mv $< $@",
+            cmd = "cp $< $@",
         )
 
 def _concat_flatbuffer_py_srcs_impl(ctx):
@@ -454,7 +454,9 @@ def flatbuffer_py_library(
             ":{}".format(concat_py_srcs),
         ],
         srcs_version = "PY3",
-        deps = deps,
+        deps = deps + [
+            "@flatbuffers//:runtime_py",
+        ],
     )
 
 def flatbuffer_java_library(
