@@ -82,8 +82,7 @@ void PrintCantFindCudaMessage(absl::string_view msg,
          "variable XLA_FLAGS=--xla_gpu_cuda_data_dir=/path/to/cuda will work.";
 }
 
-}  // namespace
-
+// Returns the directory containing nvvm libdevice files.
 string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
   for (const string& cuda_root : CandidateCudaRoots(hlo_module_config)) {
     string libdevice_dir =
@@ -104,6 +103,8 @@ string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
   // return it anyway.  Better than returning the empty string.
   return ".";
 }
+
+}  // namespace
 
 Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
