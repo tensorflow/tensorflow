@@ -803,15 +803,23 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
     return result;
   };
 
-  tensorflow::thread::ThreadPool* thread_pool = options.thread_pool;
-
+  tensorflow::thread::ThreadPool* thread_pool;
   absl::optional<tensorflow::thread::ThreadPool> overriding_thread_pool;
-  if (module_config.debug_options().xla_gpu_force_compilation_parallelism() !=
-      0) {
-    overriding_thread_pool.emplace(
-        tensorflow::Env::Default(), "",
-        module_config.debug_options().xla_gpu_force_compilation_parallelism());
-    thread_pool = &*overriding_thread_pool;
+  switch (
+      module_config.debug_options().xla_gpu_force_compilation_parallelism()) {
+    case 0:
+      thread_pool = options.thread_pool;
+      break;
+    case 1:
+      thread_pool = nullptr;
+      break;
+    default:
+      overriding_thread_pool.emplace(
+          tensorflow::Env::Default(), "",
+          module_config.debug_options()
+              .xla_gpu_force_compilation_parallelism());
+      thread_pool = &*overriding_thread_pool;
+      break;
   }
 
   if (!thread_pool) {
