@@ -30,8 +30,12 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/util/cuda_solvers.h"  // For ScratchSpace
+#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+using stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/util/rocm_solvers.h"
+#include "tensorflow/stream_executor/rocm/rocm_activation.h"
+using stream_executor::rocm::ScopedActivateExecutorContext;
 #endif
 
 namespace tensorflow {
@@ -323,6 +327,11 @@ class UniqueOpGPU : public AsyncOpKernel {
                                      sorted_input_unique_ids,
                                      sorted_input_unique_ids_ptr, last_idx_host,
                                      has_count_output, done]() -> void {
+      // Ensure that within the callback, the proper GPU settings are
+      // configured.
+      auto stream = context->op_device_context()->stream();
+      ScopedActivateExecutorContext scoped_activation{stream->parent()};
+
       const GPUDevice& device = context->eigen_gpu_device();
       int64 uniq_size = (*last_idx_host.data()) + 1;
 
