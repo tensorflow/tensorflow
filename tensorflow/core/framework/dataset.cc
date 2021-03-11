@@ -29,6 +29,11 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
+// On Windows, disable some macros that would break compile
+#if defined(PLATFORM_WINDOWS)
+#undef GetMessage
+#endif
+
 namespace tensorflow {
 namespace data {
 namespace {
