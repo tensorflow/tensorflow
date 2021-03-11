@@ -1181,21 +1181,17 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64 bytes) {
 
     if ((void*)dstContext == nullptr) {
       port::StatusOr<GpuContext*> context = GetPointerContext(gpu_dst);
-      if (!context.ok()) {
+      if (context.ok()) {
         dstContext = context.ValueOrDie()->context();
       }
     }
 
     if ((void*)srcContext == nullptr) {
-      port::StatusOr<GpuContext*> context = GetPointerContext(gpu_dst);
+      port::StatusOr<GpuContext*> context = GetPointerContext(gpu_src);
       if (context.ok()) {
         srcContext = context.ValueOrDie()->context();
       }
     }
-
-    VLOG(0) << absl::bit_cast<void*>(gpu_dst) << " " << absl::bit_cast<void*>(gpu_src);
-    VLOG(0) << dstContext << " " << srcContext;
-    VLOG(0) << size;
 
     result = cuMemcpyPeerAsync(gpu_dst, dstContext, gpu_src, srcContext, size, stream);
   }
