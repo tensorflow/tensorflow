@@ -1655,6 +1655,120 @@ struct DepthwiseConvOpOnTensorsConversion
   }
 };
 
+struct ReduceWindowOpOnTensorsConversion
+    : public OpConversionPattern<mhlo::ReduceWindowOp> {
+  using OpConversionPattern<mhlo::ReduceWindowOp>::OpConversionPattern;
+
+  /// mhlo.reduce_window is mapped to a linalg.pooling operation. The type of
+  /// the pooling is determined based on the body of the reduce window
+  /// operation. This class enumerates the different variants.
+  enum class PoolingType {
+    kMin,
+    kMax,
+    kAdd,
+  };
+
+  static PoolingType getPoolingType(Region& region) {
+    assert(region.getBlocks().size() == 1 &&
+           "expected the region has exactlly one block");
+    Block& block = region.front();
+    assert(block.getOperations().size() == 2 &&
+           "expected the block has exactlly two operations");
+    auto op = block.begin();
+    if (isa<mhlo::MinOp>(op)) return PoolingType::kMin;
+    if (isa<mhlo::MaxOp>(op)) return PoolingType::kMax;
+    if (isa<mhlo::AddOp>(op)) return PoolingType::kAdd;
+
+    llvm_unreachable("unknown pooling type");
+  }
+
+  LogicalResult matchAndRewrite(
+      mhlo::ReduceWindowOp op, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const override {
+    auto loc = op.getLoc();
+    auto result_type = op.getResult().getType().cast<ShapedType>();
+    if (result_type.getRank() != 4) {
+      return rewriter.notifyMatchFailure(op, "expected NHWC pooling-based op");
+    }
+
+    // Create a fake window dimension.
+    SmallVector<int64_t, 4> shapes;
+    shapes.push_back(op.window_dimensions().getValue<int64_t>(1));
+    shapes.push_back(op.window_dimensions().getValue<int64_t>(2));
+    auto fake_window_dims = rewriter.create<linalg::InitTensorOp>(
+        loc, shapes, result_type.getElementType());
+
+    if (op.window_strides() &&
+        (op.window_strides().getValue().getValue<int64_t>(0) != 1 ||
+         op.window_strides().getValue().getValue<int64_t>(3) != 1)) {
+      return rewriter.notifyMatchFailure(
+          op, "expected window_strides to be [1,x,y,1]");
+    }
+    if (op.window_dimensions() &&
+        (op.window_dimensions().getValue<int64_t>(0) != 1 ||
+         op.window_dimensions().getValue<int64_t>(3) != 1)) {
+      return rewriter.notifyMatchFailure(
+          op, "expected window_dimensions to be [1,x,y,1]");
+    }
+
+    if (!args[0].getType().cast<ShapedType>().getElementType().isF32()) {
+      return rewriter.notifyMatchFailure(op, "expected element type to be f32");
+    }
+
+    Attribute strides;
+    if (op.window_stridesAttr()) {
+      strides = rewriter.getI64VectorAttr(
+          {op.window_strides().getValue().getValue<int64_t>(1),
+           op.window_strides().getValue().getValue<int64_t>(2)});
+    } else {
+      strides = rewriter.getI64VectorAttr({1, 1});
+    }
+    Attribute dilations;
+    if (op.window_dilations()) {
+      dilations = rewriter.getI64VectorAttr(
+          {op.window_dilations().getValue().getValue<int64_t>(1),
+           op.window_dilations().getValue().getValue<int64_t>(2)});
+    } else {
+      dilations = rewriter.getI64VectorAttr({1, 1});
+    }
+
+    Value init_tensor = rewriter.create<linalg::InitTensorOp>(
+        loc, result_type.getShape(), result_type.getElementType());
+    Value init_value = args[1];
+    init_value = rewriter.create<tensor::ExtractOp>(loc, init_value);
+    Value filled_init_tensor =
+        rewriter.create<linalg::FillOp>(loc, init_tensor, init_value)
+            .getResult(0);
+    auto create_op = [&](auto* type_ptr) -> linalg::LinalgOp {
+      return cast<linalg::LinalgOp>(
+          rewriter
+              .create<std::remove_pointer_t<decltype(type_ptr)>>(
+                  loc, ArrayRef<Type>{result_type},
+                  ValueRange{args[0], fake_window_dims.getResult()},
+                  filled_init_tensor, dilations, strides)
+              .getOperation());
+    };
+    linalg::LinalgOp pooling_op;
+    PoolingType pooling_type = getPoolingType(op.body());
+    switch (pooling_type) {
+      case PoolingType::kMin: {
+        pooling_op = create_op(static_cast<linalg::PoolingNHWCMinOp*>(nullptr));
+        break;
+      }
+      case PoolingType::kMax: {
+        pooling_op = create_op(static_cast<linalg::PoolingNHWCMaxOp*>(nullptr));
+        break;
+      }
+      case PoolingType::kAdd: {
+        pooling_op = create_op(static_cast<linalg::PoolingNHWCSumOp*>(nullptr));
+        break;
+      }
+    }
+    rewriter.replaceOp(op, pooling_op->getResult(0));
+    return success();
+  }
+};
+
 void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                                            OwningRewritePatternList* patterns) {
   // clang-format off
@@ -1846,6 +1960,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
       NormalConvOpOnTensorsConversion,
       DepthwiseConvOpOnTensorsConversion,
       ReduceOnTensorsConversion,
+      ReduceWindowOpOnTensorsConversion,
       PadOpOnTensorsConversion>(context);
   // clang-format on
   patterns->insert<ReduceRegionXLAOpConversion<mhlo::AddOp>,
