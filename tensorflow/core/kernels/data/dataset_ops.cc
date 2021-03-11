@@ -84,18 +84,15 @@ void DatasetToGraphOp::Compute(OpKernelContext* ctx) {
   if (dataset->options().optional_external_state_policy_case() ==
       Options::kExternalStatePolicy) {
     switch (dataset->options().external_state_policy()) {
-      case ExternalStatePolicy::WARN:
+      case ExternalStatePolicy::POLICY_WARN:
         external_state_policy_ =
             SerializationContext::ExternalStatePolicy::kWarn;
         break;
-      case 1:
-        // TODO(wilsin): case 1 here should be case ExternalStatePolicy::IGNORE,
-        // but it causes a compilation error on Windows. Change IGNORE to
-        // something else.
+      case ExternalStatePolicy::POLICY_IGNORE:
         external_state_policy_ =
             SerializationContext::ExternalStatePolicy::kIgnore;
         break;
-      case ExternalStatePolicy::FAIL:
+      case ExternalStatePolicy::POLICY_FAIL:
         external_state_policy_ =
             SerializationContext::ExternalStatePolicy::kFail;
         break;
