@@ -31,23 +31,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "sample_from_datasets_serialization_test",
-    size = "medium",
-    srcs = ["sample_from_datasets_serialization_test.py"],
-    tags = [
-        "no_oss",
-        "no_pip",
-        "no_windows",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/data/experimental/ops:interleave_ops",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-    ],
-)
-
-tf_py_test(
     name = "serialization_integration_test",
     size = "small",
     srcs = ["serialization_integration_test.py"],
