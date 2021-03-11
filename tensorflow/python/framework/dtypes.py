@@ -32,7 +32,6 @@ from tensorflow.python.util.tf_export import tf_export
 _np_bfloat16 = _pywrap_bfloat16.TF_bfloat16_type()
 
 
-# pylint: disable=slots-on-old-class
 @tf_export("dtypes.DType", "DType")
 class DType(_dtypes.DType):
   """Represents the type of the elements in a `Tensor`.
@@ -214,7 +213,6 @@ class DType(_dtypes.DType):
 
   def __reduce__(self):
     return as_dtype, (self.name,)
-# pylint: enable=slots-on-old-class
 
 
 # Define data type range of numpy dtype
