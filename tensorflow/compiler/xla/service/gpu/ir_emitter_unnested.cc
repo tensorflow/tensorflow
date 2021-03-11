@@ -87,6 +87,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_to_all_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_collective_permute_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/outfeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/replica_id_thunk.h"
@@ -3092,12 +3093,6 @@ Status IrEmitterUnnested::EmitCollectivePermuteFromMlir(
     MlirEmitterInput input) {
   auto collective_permute_op =
       mlir::cast<mlir::lmhlo::CollectivePermuteOp>(input.op);
-  if (collective_permute_op.channel_id())
-    return Unimplemented("collective permute with channel_id not implemented");
-  using source_dest_pairs_t = std::vector<std::pair<int64, int64>>;
-  TF_ASSIGN_OR_RETURN(
-      source_dest_pairs_t source_dest_pairs,
-      ConvertNx2Attribute(collective_permute_op.source_target_pairs()));
 
   TF_ASSIGN_OR_RETURN(
       BufferAllocation::Slice source_slice,
@@ -3106,9 +3101,38 @@ Status IrEmitterUnnested::EmitCollectivePermuteFromMlir(
       BufferAllocation::Slice result_slice,
       GetAllocationSliceForMlir(collective_permute_op.output()));
 
-  AddThunkToThunkSequence(absl::make_unique<CollectivePermuteThunk>(
-      input.thunk_info, std::move(source_dest_pairs), source_slice,
-      result_slice));
+  const Shape shape = TypeToShape(collective_permute_op.operand().getType());
+  const int64 replica_count = hlo_module_config_.replica_count();
+  const int64 partition_count = hlo_module_config_.num_partitions();
+
+  if (NcclCollectivePermuteThunk::IsDegenerate(
+          collective_permute_op, replica_count, partition_count)) {
+    // For a degenerate collective permute, just generate a copy thunk.
+    AddThunkToThunkSequence(absl::make_unique<DeviceToDeviceCopyThunk>(
+        input.thunk_info,
+        /*source_address=*/source_slice,
+        /*destination_buffer=*/result_slice,
+        /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
+  } else if (!collective_permute_op.channel_id() && partition_count == 1) {
+    // The non-NCCL based collective permute only works for a single partition
+    // cross replica case.
+    using source_dest_pairs_t = std::vector<std::pair<int64, int64>>;
+    TF_ASSIGN_OR_RETURN(
+        source_dest_pairs_t source_dest_pairs,
+        ConvertNx2Attribute(collective_permute_op.source_target_pairs()));
+
+    AddThunkToThunkSequence(absl::make_unique<CollectivePermuteThunk>(
+        input.thunk_info, std::move(source_dest_pairs), source_slice,
+        result_slice));
+  } else {
+    const NcclCollectivePermuteThunk::Buffer buffer = {
+        /*element_count=*/ShapeUtil::ElementsIn(shape),
+        /*source_buffer=*/source_slice,
+        /*destination_buffer=*/result_slice};
+    AddThunkToThunkSequence(absl::make_unique<NcclCollectivePermuteThunk>(
+        input.thunk_info, collective_permute_op, replica_count, partition_count,
+        buffer));
+  }
   return Status::OK();
 }
 
