@@ -900,15 +900,20 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
 
     cls = _get_cls_definition()
     self.assertEqual(cls.__bases__[0], keras.Model)
-    input_ = keras.layers.Input(shape=(1,))
-    output = keras.layers.Dense(1)(input_)
-    model = cls(input_, output)
-    # `cls` now inherits from `Functional` class.
-    self.assertEqual(cls.__bases__[0], functional.Functional)
 
-    save_format = testing_utils.get_save_format()
-    saved_model_dir = self._save_model_dir()
-    keras.models.save_model(model, saved_model_dir, save_format=save_format)
+    with self.cached_session() as sess:
+      input_ = keras.layers.Input(shape=(1,))
+      output = keras.layers.Dense(1)(input_)
+      model = cls(input_, output)
+      # `cls` now inherits from `Functional` class.
+      self.assertEqual(cls.__bases__[0], functional.Functional)
+
+      if not context.executing_eagerly():
+        sess.run([v.initializer for v in model.variables])
+
+      save_format = testing_utils.get_save_format()
+      saved_model_dir = self._save_model_dir()
+      keras.models.save_model(model, saved_model_dir, save_format=save_format)
 
     loaded_model = keras.models.load_model(
         saved_model_dir, custom_objects={'CustomModel': cls})
