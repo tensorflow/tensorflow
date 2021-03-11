@@ -37,8 +37,8 @@ class UnaryOpsTest : public UnaryOpsTestBase {
 
 // TODO(b/179242253): Re-enable buffer reuse.
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
-    Abs, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
-    test::NearZeroAndExtremeInput<Eigen::half>(), std::abs,
+    Abs, DT_HALF, DT_HALF, DT_HALF, DT_HALF,
+    test::NearZeroAndExtremeInput<Eigen::half>(), Eigen::numext::abs,
     test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
 
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
@@ -81,6 +81,29 @@ GENERATE_DEFAULT_TEST(Sqrt, DT_HALF, DT_HALF, Eigen::numext::sqrt,
 GENERATE_DEFAULT_TEST(Sqrt, DT_FLOAT, DT_FLOAT, Eigen::numext::sqrt,
                       test::OpsTestConfig().NoBufferReuse())
 GENERATE_DEFAULT_TEST(Sqrt, DT_DOUBLE, DT_DOUBLE, Eigen::numext::sqrt,
+                      test::OpsTestConfig().NoBufferReuse())
+
+/// Test `tf.Square`.
+template <typename T>
+T baseline_square(T a) {
+  return a * a;
+}
+
+GENERATE_DEFAULT_TEST(Square, DT_HALF, DT_HALF, baseline_square,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Square, DT_FLOAT, DT_FLOAT, baseline_square,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Square, DT_DOUBLE, DT_DOUBLE, baseline_square,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(
+    Square, DT_INT32, DT_INT32, baseline_square,
+    test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(
+    Square, DT_INT64, DT_INT64, baseline_square,
+    test::OpsTestConfig().NoBufferReuse().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST(Square, DT_COMPLEX64, DT_COMPLEX64, baseline_square,
+                      test::OpsTestConfig().NoBufferReuse())
+GENERATE_DEFAULT_TEST(Square, DT_COMPLEX128, DT_COMPLEX128, baseline_square,
                       test::OpsTestConfig().NoBufferReuse())
 
 }  // namespace
