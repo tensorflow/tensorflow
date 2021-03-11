@@ -79,11 +79,12 @@ bool TpuFingerprintLookup::RegisterIntermediateAndValuePair(uint64 intermediate,
   }
 }
 
-absl::optional<std::string_view> TpuFingerprintLookup::Lookup(uint64 key) {
+absl::optional<::tensorflow::StringPiece> TpuFingerprintLookup::Lookup(
+    uint64 key) {
   absl::MutexLock lock(&mu_);
   auto it = key_to_value_.find(key);
   if (it == key_to_value_.end()) {
-    return absl::optional<std::string_view>{};
+    return absl::optional<::tensorflow::StringPiece>{};
   } else {
     return it->second;
   }

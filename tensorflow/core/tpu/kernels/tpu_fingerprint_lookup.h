@@ -19,12 +19,12 @@ limitations under the License.
 #include <cstddef>
 #include <deque>
 
-#include "absl/base/integral_types.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/platform/stringpiece.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -61,9 +61,10 @@ class TpuFingerprintLookup : public ResourceBase {
   // registering a key-value pair; otherwise, return false.
   bool RegisterIntermediateAndValuePair(uint64 intermediate, std::string value);
 
-  // Look up fingerprint with key. Return absl::optional<std::string_view>{} if
+  // Look up fingerprint with key.
+  // Return absl::optional<::tensorflow::StringPiece>{} if
   // not found.
-  absl::optional<std::string_view> Lookup(uint64 key);
+  absl::optional<::tensorflow::StringPiece> Lookup(uint64 key);
 
   size_t num_valid() {
     absl::MutexLock lock(&mu_);

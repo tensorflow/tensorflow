@@ -988,6 +988,7 @@ cc_library(
     hdrs = ["tpu_fingerprint_lookup.h"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core/platform:stringpiece",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_map",
