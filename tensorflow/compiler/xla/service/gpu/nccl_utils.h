@@ -51,7 +51,6 @@ ncclRedOp_t ToNcclReduction(ReductionKind kind);
 StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type);
 
 bool IsGlobalNcclConfig();
-bool IsNcclLaunchModeParallel();
 
 Status ToStatus(ncclResult_t s, const char* file, int64 line, const char* expr);
 Status ToStatus(cudaError_t s, const char* file, int64 line, const char* expr);
