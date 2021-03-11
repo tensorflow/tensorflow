@@ -172,7 +172,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   if (prealloc_size != 0) {
     void* ptr = AllocateRaw(0, prealloc_size);
     DeallocateRaw(ptr);
-    VLOG(0) << Name() << " GpuCudaMallocAsyncAllocator reserved the pool for "
+    VLOG(2) << Name() << " GpuCudaMallocAsyncAllocator reserved the pool for "
             << prealloc_size << " bytes" << ". First ptr: " << ptr;
     ClearStats();
   }

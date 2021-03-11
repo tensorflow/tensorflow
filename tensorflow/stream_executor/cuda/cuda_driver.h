@@ -70,10 +70,8 @@ class CreatedContexts {
     if (insert_result.second) {
       // context was not present in the map.  Add it.
       it->second = absl::make_unique<GpuContext>(context, next_id_++);
+      (*LiveOrdinal())[device_ordinal].push_back(context);
     }
-    CHECK(LiveOrdinal()->count(device_ordinal) == 0);
-    auto insert_result_ordinal = LiveOrdinal()->insert(
-        std::make_pair(device_ordinal, context));
     return it->second.get();
   }
 
@@ -84,13 +82,16 @@ class CreatedContexts {
     auto it = Live()->find(context);
     CHECK(it != Live()->end()) << context;
     Live()->erase(it);
-  }
-
-  // Return the context associated to that device id.
-  static CUcontext GetContext(int device_ordinal) {
-    absl::ReaderMutexLock lock(&mu_);
-    CHECK(LiveOrdinal()->count(device_ordinal) == 1); // TODO
-    return (*LiveOrdinal())[device_ordinal];
+    for (auto p: (*LiveOrdinal())) {
+      auto it = std::find(p.second.begin(), p.second.end(), context);
+      if (it != p.second.end()) {
+        p.second.erase(it, it++);
+        if (p.second.empty()) {
+          LiveOrdinal()->erase(p.first);
+        }
+        break;
+      }
+    }
   }
 
   // Return the context associated to that ptr.
@@ -104,7 +105,10 @@ class CreatedContexts {
     if (result != CUDA_SUCCESS) {
       LOG(FATAL) << "Not able to get the device_ordinal for ptr: " << ptr;
     }
-    return (*LiveOrdinal())[(int)device_ordinal];
+    CHECK(LiveOrdinal()->count(device_ordinal) == 1);
+    CHECK(LiveOrdinal()->at(device_ordinal).size() == 1)
+        << "Can't use cuda_malloc_async when there is multiple context per device" ;
+    return LiveOrdinal()->at(device_ordinal)[0];
   }
 
  private:
@@ -114,9 +118,9 @@ class CreatedContexts {
         new std::map<CUcontext, std::unique_ptr<GpuContext>>;
     return singleton;
   }
-  static std::map<int, CUcontext>* LiveOrdinal() {
+  static std::map<int, std::vector<CUcontext>>* LiveOrdinal() {
     static auto singleton =
-        new std::map<int, CUcontext>;
+        new std::map<int, std::vector<CUcontext>>;
     return singleton;
   }
 
