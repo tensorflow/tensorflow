@@ -2616,13 +2616,15 @@ Status ConvertTranspose(OpConverterParams* params) {
         "Transpose at batch dimension is not supported.");
   }
 
-  // TensorRT as of version 7.0.0.11 is slow transposing large tensors.
+#if !IS_TRT_VERSION_GE(7, 1, 3, 4)
+  // TensorRT versions before 7.1.3.4 is slow transposing large tensors.
   // So check tensor size, and don't convert if it is too large.
   constexpr int64_t kMaxEfficientTranspose = 2500000;
   int64_t tensor_size = TrtTensorDimsNumElements(input_tensor->getDimensions());
   if (!AllowInefficientTranspose() && tensor_size > kMaxEfficientTranspose) {
     return errors::Unimplemented(StrCat("Transpose too large:", tensor_size));
   }
+#endif
 
   if (params->validation_only) return Status::OK();
 
