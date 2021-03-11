@@ -90,10 +90,7 @@ cc_library(
     hdrs = glob(["include/*"]),
     copts = select({
         "@org_tensorflow//tensorflow:windows": [],
-        "//conditions:default": [
-            "-fexceptions",
-            "-DDNNL_ENABLE_MAX_CPU_ISA",
-        ],
+        "//conditions:default": ["-fexceptions"],
     }) + [
         "-UUSE_MKL",
         "-UUSE_CBLAS",
