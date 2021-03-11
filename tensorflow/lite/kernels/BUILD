@@ -2431,6 +2431,20 @@ cc_test(
 )
 
 cc_test(
+    name = "cumsum_ref_test",
+    size = "small",
+    srcs = ["cumsum_ref_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "cumsum_test",
     size = "small",
     srcs = ["cumsum_test.cc"],
