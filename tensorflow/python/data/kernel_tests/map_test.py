@@ -1582,7 +1582,7 @@ class ParallelMapDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testCaptureDefunInMapFn(self):
-    num_outputs = 100
+    num_outputs = 10
 
     def _build_ds():
 
@@ -1597,7 +1597,7 @@ class ParallelMapDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testBuildDefunInMapFn(self):
-    num_outputs = 100
+    num_outputs = 10
 
     def _build_ds():
 
