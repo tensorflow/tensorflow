@@ -39,8 +39,10 @@ namespace tpu {
 // Example:
 //  TpuFingerprintLookup fingerprint_lookup;
 //
-//  // Register value with key.
-//  fingerprint_lookup.RegisterKeyValuePair("key1", "program1");
+//  // Register key-intermediate pair.
+//  fingerprint_lookup.RegisterKeyValuePair("key1", "intermediate1");
+//  // Register intermediate-value pair.
+//  fingerprint_lookup.RegisterKeyValuePair("intermediate1", "value1");
 //
 //  // Lookup fingerprint with key.
 //  std::string fingerprint = fingerprint_lookup.Lookup("key1");
@@ -51,9 +53,13 @@ class TpuFingerprintLookup : public ResourceBase {
   // Creates an instance of TpuFingerprintLookup.
   static TpuFingerprintLookup* Create();
 
-  // Register value with tag. Return true if successfully registering a
-  // key-value pair; otherwise, return false.
-  bool RegisterKeyValuePair(uint64 key, std::string value);
+  // Register key-intermediate pair
+  void RegisterKeyAndIntermediatePair(uint64 key, uint64 intermediate);
+
+  // Register intermediate-value pair. A successful registration requires a
+  // preceding RegisterKeyAndIntermediatePair. Return true if successfully
+  // registering a key-value pair; otherwise, return false.
+  bool RegisterIntermediateAndValuePair(uint64 intermediate, std::string value);
 
   // Look up fingerprint with key. Return absl::optional<std::string_view>{} if
   // not found.
@@ -75,6 +81,9 @@ class TpuFingerprintLookup : public ResourceBase {
 
   // An auxiliary storage to ensure 1-to-1 and invariant key-value pair
   absl::node_hash_map<std::string, uint64> value_to_key_ ABSL_GUARDED_BY(mu_);
+
+  // An auxiliary storage to keep intermediate-key pairs.
+  absl::flat_hash_map<uint64, uint64> intermediate_to_key_ ABSL_GUARDED_BY(mu_);
 
   TpuFingerprintLookup(const TpuFingerprintLookup&) = delete;
   TpuFingerprintLookup& operator=(const TpuFingerprintLookup&) = delete;

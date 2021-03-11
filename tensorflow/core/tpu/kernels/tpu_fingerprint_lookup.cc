@@ -21,41 +21,62 @@ TpuFingerprintLookup* TpuFingerprintLookup::Create() {
   return new TpuFingerprintLookup();
 }
 
-bool TpuFingerprintLookup::RegisterKeyValuePair(uint64 key, std::string value) {
+void TpuFingerprintLookup::RegisterKeyAndIntermediatePair(uint64 key,
+                                                          uint64 intermediate) {
   absl::MutexLock lock(&mu_);
-  bool is_successful = false;
-  VLOG(2) << "registering key (" << key << ") with value: " << value;
-  auto it = key_to_value_.find(key);
-  if (it == key_to_value_.end()) {
-    // A new key. If the value is not seen before, register key-value and
-    // value-key pairs. Otherwise, skip registration.
-    auto maybe_existing_key = value_to_key_.find(value);
-    if (maybe_existing_key == value_to_key_.end()) {
-      key_to_value_.emplace(key, value);
-      value_to_key_.emplace(value, key);
-      is_successful = true;
+  auto [it, emplaced] = intermediate_to_key_.try_emplace(intermediate, key);
+  if (it->second != key) {
+    VLOG(2) << "The key (" << it->second
+            << ") is associated with an existing intermediate ( " << it->first
+            << "), which does not match the requesting key (" << key << ").";
+  }
+}
+
+bool TpuFingerprintLookup::RegisterIntermediateAndValuePair(uint64 intermediate,
+                                                            std::string value) {
+  absl::MutexLock lock(&mu_);
+  auto it = intermediate_to_key_.find(intermediate);
+  if (it == intermediate_to_key_.end()) {
+    VLOG(2) << "Cannot find the intermediate ( " << intermediate
+            << "). A RegisterKeyAndIntermediatePair must precedes.";
+    return false;
+  } else {
+    uint64 key = it->second;
+    bool is_successful = false;
+    VLOG(2) << "registering key (" << key << ") with value: " << value;
+    auto it = key_to_value_.find(key);
+    if (it == key_to_value_.end()) {
+      // A new key. If the value is not seen before, register key-value and
+      // value-key pairs. Otherwise, skip registration.
+      auto maybe_existing_key = value_to_key_.find(value);
+      if (maybe_existing_key == value_to_key_.end()) {
+        key_to_value_.emplace(key, value);
+        value_to_key_.emplace(value, key);
+        is_successful = true;
+      } else {
+        // The value is registered before with a different key. Skip
+        // registration.
+        if (maybe_existing_key->second != key) {
+          VLOG(2) << "The value (" << value
+                  << ") is associated with an existing key ( "
+                  << maybe_existing_key->second
+                  << "), which does not match the requesting key (" << key
+                  << ").";
+        }
+      }
     } else {
-      // The value is registered before with a different key. Skip registration.
-      if (maybe_existing_key->second != key) {
-        VLOG(2) << "The value (" << value
-                << ") is associated with an existing key ( "
-                << maybe_existing_key->second
-                << "), which does not match the requesting key (" << key
-                << ").";
+      // The key is registered before, no actions needed. For debugging purpose,
+      // check if existing value agrees with the value.
+      if (it->second != value) {
+        VLOG(2) << "The key (" << key
+                << ") has been registered and the requesting value ( " << value
+                << " and the existing" << it->second << ") doesn't match.";
       }
     }
-  } else {
-    // The key is registered before, no actions needed. For debugging purpose,
-    // check if existing value agrees with the value.
-    if (it->second != value) {
-      VLOG(2) << "The key (" << key
-              << ") has been registered and the requesting value ( " << value
-              << " and the existing" << it->second << ") doesn't match.";
-    }
-  }
-  DCHECK(key_to_value_.size() == value_to_key_.size());
+    DCHECK(key_to_value_.size() == value_to_key_.size());
 
-  return is_successful;
+    return is_successful;
+  }
 }
 
 absl::optional<std::string_view> TpuFingerprintLookup::Lookup(uint64 key) {
