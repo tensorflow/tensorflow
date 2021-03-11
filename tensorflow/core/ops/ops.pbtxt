@@ -16650,6 +16650,36 @@ op {
   }
 }
 op {
+  name: "FinalizeDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "has_captured_ref"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
   name: "Fingerprint"
   input_arg {
     name: "data"
@@ -18427,6 +18457,17 @@ op {
     minimum: 1
   }
   is_stateful: true
+}
+op {
+  name: "GetOptions"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "serialized_options"
+    type: DT_STRING
+  }
 }
 op {
   name: "GetSessionHandle"
@@ -27001,6 +27042,33 @@ op {
   output_arg {
     name: "optional"
     type: DT_VARIANT
+  }
+}
+op {
+  name: "OptionsDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "serialized_options"
+    type: "string"
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
   }
 }
 op {

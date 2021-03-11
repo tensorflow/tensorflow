@@ -13275,8 +13275,6 @@ but its first dimension must match the size of `condition`.}]>:$t,
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 
-  let hasCanonicalizer = 1;
-
   let verifier = [{
     return Verify(*this);
   }];

@@ -569,6 +569,15 @@ def TestFactory(xla_backend, cloud_tpu=False):
       self.assertGreaterEqual(arg1_buffer.unsafe_buffer_pointer(), 0)
       self.assertGreaterEqual(arg2_buffer.unsafe_buffer_pointer(), 0)
 
+    @unittest.skipIf(cloud_tpu, "not implemented")
+    def testClone(self):
+      x = np.array([[3., 4., 5.]], np.float32)
+      y = self.backend.buffer_from_pyval(x)
+      z = y.clone()
+      self.assertNotEqual(id(x), id(y))
+      np.testing.assert_array_equal(y.to_py(), z.to_py())
+      self.assertEqual(y.unsafe_buffer_pointer(), z.unsafe_buffer_pointer())
+
   tests.append(BufferTest)
 
   class SingleOpTest(ComputationTest):

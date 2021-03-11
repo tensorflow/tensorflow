@@ -24,7 +24,6 @@ import numpy as np
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
@@ -1612,8 +1611,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
 
   @test_util.disable_mlir_bridge("Error handling")
   def testBroadcastArgsError(self):
-    with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
-                                             "Incompatible shapes"):
+    with self.assertRaisesIncompatibleShapesError():
       self._testBinary(array_ops.broadcast_dynamic_shape,
                        np.array([1, 2, 3], dtype=np.int32),
                        np.array([4, 5, 6], dtype=np.int32),

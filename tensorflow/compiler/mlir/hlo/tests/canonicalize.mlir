@@ -440,6 +440,29 @@ func @dynamic_broadcast_in_dim_to_same_shape_2(%arg0: tensor<?xf32>) -> tensor<?
   return %2 : tensor<?xf32>
 }
 
+// CHECK-LABEL: func @dynamic_broadcast_in_dim_to_same_shape_3
+func @dynamic_broadcast_in_dim_to_same_shape_3(%arg0: tensor<*xf32>) -> tensor<?xf32> {
+  // CHECK-SAME: %[[ARG:.*]]: tensor<*xf32>
+  %0 = shape.shape_of %arg0 : tensor<*xf32> -> tensor<?xindex>
+  %1 = tensor.cast %0 : tensor<?xindex> to tensor<1xindex>
+  %2 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %1) { broadcast_dimensions = dense<0> : tensor<1xi64> } : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
+  // CHECK: %[[RES:.*]] = tensor.cast %[[ARG]] : tensor<*xf32> to tensor<?xf32>
+  // CHECK: return %[[RES]] : tensor<?xf32>
+  return %2 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @dynamic_broadcast_in_dim_to_same_shape_4
+func @dynamic_broadcast_in_dim_to_same_shape_4(%arg0: tensor<*xf32>) -> tensor<?xf32> {
+  // CHECK-SAME: %[[ARG:.*]]: tensor<*xf32>
+  %0 = shape.shape_of %arg0 : tensor<*xf32> -> !shape.shape
+  %1 = shape.to_extent_tensor %0 : !shape.shape -> tensor<?xindex>
+  %2 = tensor.cast %1 : tensor<?xindex> to tensor<1xindex>
+  %3 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %2) { broadcast_dimensions = dense<0> : tensor<1xi64> } : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
+  // CHECK: %[[RES:.*]] = tensor.cast %[[ARG]] : tensor<*xf32> to tensor<?xf32>
+  // CHECK: return %[[RES]] : tensor<?xf32>
+  return %3 : tensor<?xf32>
+}
+
 // CHECK-LABEL: func @broadcast_in_dim_constant_fold_0d
 func @broadcast_in_dim_constant_fold_0d() -> tensor<1x64x224x224xf32> {
   %cst = mhlo.constant dense<0.000000e+00> : tensor<f32>

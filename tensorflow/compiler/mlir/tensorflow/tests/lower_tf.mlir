@@ -380,35 +380,44 @@ func @fake_quant_with_min_max_args(%arg0 : tensor<?x?xf32>) -> tensor<?x?xf32> {
 }
 
 func @fake_quant_with_min_max_vars(%arg0 : tensor<?x?xf32>, %arg1 : tensor<f32>, %arg2 : tensor<f32>) -> tensor<?x?xf32> {
-  // CHECK-DAG: [[VAL0:%.+]] = "tf.Const"() {value = dense<0.000000e+00>
-  // CHECK-DAG: [[VAL1:%.+]] = "tf.Const"() {value = dense<2.550000e+02>
-  // CHECK-DAG: [[VAL2:%.+]] = "tf.Const"() {value = dense<1.000000e+00>
-  // CHECK-DAG: [[VAL3:%.+]] = "tf.Const"() {value = dense<5.000000e-01>
-  // CHECK-DAG: [[VAL4:%.+]] = "tf.Sub"(%arg2, %arg1)
-  // CHECK-DAG: [[VAL5:%.+]] = "tf.Div"([[VAL4]], [[VAL1]])
-  // CHECK-DAG: [[VAL6:%.+]] = "tf.Div"([[VAL1]], [[VAL4]])
-  // CHECK-DAG: [[VAL7:%.+]] = "tf.Div"(%arg1, [[VAL5]])
-  // CHECK-DAG: [[VAL8:%.+]] = "tf.Sub"([[VAL0]], [[VAL7]])
-  // CHECK-DAG: [[VAL9:%.+]] = "tf.Floor"([[VAL8]])
-  // CHECK-DAG: [[VAL10:%.+]] = "tf.Sub"([[VAL8]], [[VAL9]])
-  // CHECK-DAG: [[VAL11:%.+]] = "tf.Less"([[VAL10]], [[VAL3]])
-  // CHECK-DAG: [[VAL12:%.+]] = "tf.AddV2"([[VAL9]], [[VAL2]])
-  // CHECK-DAG: [[VAL13:%.+]] = "tf.Select"([[VAL11]], [[VAL9]], [[VAL12]])
-  // CHECK-DAG: [[VAL14:%.+]] = "tf.ClipByValue"([[VAL13]], [[VAL0]], [[VAL1]]) :
-  // CHECK-DAG: [[VAL15:%.+]] = "tf.Sub"([[VAL0]], [[VAL14]])
-  // CHECK-DAG: [[VAL16:%.+]] = "tf.Sub"([[VAL1]], [[VAL14]])
-  // CHECK-DAG: [[VAL17:%.+]] = "tf.Mul"([[VAL15]], [[VAL5]])
-  // CHECK-DAG: [[VAL18:%.+]] = "tf.Mul"([[VAL16]], [[VAL5]])
-  // CHECK-DAG: [[VAL19:%.+]] = "tf.ClipByValue"(%arg0, [[VAL17]], [[VAL18]])
-  // CHECK-DAG: [[VAL20:%.+]] = "tf.Sub"([[VAL19]], [[VAL17]])
-  // CHECK-DAG: [[VAL21:%.+]] = "tf.Mul"([[VAL20]], [[VAL6]])
-  // CHECK-DAG: [[VAL22:%.+]] = "tf.AddV2"([[VAL21]], [[VAL3]])
-  // CHECK-DAG: [[VAL23:%.+]] = "tf.Floor"([[VAL22]])
-  // CHECK-DAG: [[VAL24:%.+]] = "tf.Mul"([[VAL23]], [[VAL5]])
-  // CHECK-DAG: [[VAL25:%.+]] = "tf.AddV2"([[VAL24]], [[VAL17]])
+  // CHECK-DAG: %[[VAL0:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK-DAG: %[[VAL1:.*]] = "tf.Const"() {value = dense<2.550000e+02> : tensor<f32>} : () -> tensor<f32>
+  // CHECK-DAG: %[[VAL2:.*]] = "tf.Const"() {value = dense<2.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK-DAG: %[[VAL3:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK-DAG: %[[VAL4:.*]] = "tf.Const"() {value = dense<5.000000e-01> : tensor<f32>} : () -> tensor<f32>
+  // CHECK-DAG: %[[VAL5:.*]] = "tf.Sub"(%arg2, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK-DAG: %[[VAL6:.*]] = "tf.Div"(%[[VAL5]], %[[VAL1]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK-DAG: %[[VAL7:.*]] = "tf.Div"(%[[VAL1]], %[[VAL5]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK-DAG: %[[VAL8:.*]] = "tf.Div"(%arg1, %[[VAL6]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK-DAG: %[[VAL9:.*]] = "tf.Sub"(%[[VAL0]], %[[VAL8]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK-DAG: %[[VAL10:.*]] = "tf.Floor"(%[[VAL9]]) : (tensor<f32>) -> tensor<f32>
+  // CHECK-DAG: %[[VAL11:.*]] = "tf.Sub"(%[[VAL9]], %[[VAL10]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK-DAG: %[[VAL12:.*]] = "tf.Greater"(%[[VAL11]], %[[VAL4]]) : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  // CHECK-DAG: %[[VAL13:.*]] = "tf.Equal"(%[[VAL11]], %[[VAL4]]) {incompatible_shape_error = true} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  // CHECK-DAG: %[[VAL14:.*]] = "tf.Mul"(%[[VAL9]], %[[VAL4]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK-DAG: %[[VAL15:.*]] = "tf.Floor"(%[[VAL14]]) : (tensor<f32>) -> tensor<f32>
+  // CHECK-DAG: %[[VAL16:.*]] = "tf.Mul"(%[[VAL15]], %[[VAL2]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK-DAG: %[[VAL17:.*]] = "tf.Sub"(%[[VAL10]], %[[VAL16]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK-DAG: %[[VAL18:.*]] = "tf.Equal"(%[[VAL17]], %[[VAL3]]) {incompatible_shape_error = true} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  // CHECK-DAG: %[[VAL19:.*]] = "tf.LogicalAnd"(%[[VAL13]], %[[VAL18]]) : (tensor<i1>, tensor<i1>) -> tensor<i1>
+  // CHECK-DAG: %[[VAL20:.*]] = "tf.LogicalOr"(%[[VAL12]], %[[VAL19]]) : (tensor<i1>, tensor<i1>) -> tensor<i1>
+  // CHECK-DAG: %[[VAL21:.*]] = "tf.AddV2"(%[[VAL10]], %[[VAL3]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK-DAG: %[[VAL22:.*]] = "tf.Select"(%[[VAL20]], %[[VAL21]], %[[VAL10]]) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK-DAG: %[[VAL23:.*]] = "tf.ClipByValue"(%[[VAL22]], %[[VAL0]], %[[VAL1]]) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK-DAG: %[[VAL24:.*]] = "tf.Sub"(%[[VAL0]], %[[VAL23]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK-DAG: %[[VAL25:.*]] = "tf.Sub"(%[[VAL1]], %[[VAL23]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK-DAG: %[[VAL26:.*]] = "tf.Mul"(%[[VAL24]], %[[VAL6]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK-DAG: %[[VAL27:.*]] = "tf.Mul"(%[[VAL25]], %[[VAL6]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK-DAG: %[[VAL28:.*]] = "tf.ClipByValue"(%arg0, %[[VAL26]], %[[VAL27]]) : (tensor<?x?xf32>, tensor<f32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK-DAG: %[[VAL29:.*]] = "tf.Sub"(%[[VAL28]], %[[VAL26]]) : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK-DAG: %[[VAL30:.*]] = "tf.Mul"(%[[VAL29]], %[[VAL7]]) : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK-DAG: %[[VAL31:.*]] = "tf.AddV2"(%[[VAL30]], %[[VAL4]]) : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK-DAG: %[[VAL32:.*]] = "tf.Floor"(%[[VAL31]]) : (tensor<?x?xf32>) -> tensor<?x?xf32>
+  // CHECK-DAG: %[[VAL33:.*]] = "tf.Mul"(%[[VAL32]], %[[VAL6]]) : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK-DAG: %[[VAL34:.*]] = "tf.AddV2"(%[[VAL33]], %[[VAL26]]) : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
   %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {narrow_range = false, num_bits = 8 : i64} : (tensor<?x?xf32>, tensor<f32>, tensor<f32>) -> tensor<?x?xf32>
 
-  // CHECK: return [[VAL25]]
+  // CHECK: return %[[VAL34]]
   return %0 : tensor<?x?xf32>
 }
 
@@ -775,51 +784,62 @@ func @round_int(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 
 // CHECK-LABEL: @round
 func @round(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK-DAG: [[FLOOR:%.+]] = "tf.Floor"(%arg0)
-  // CHECK-DAG: [[SUB:%.+]] = "tf.Sub"(%arg0, [[FLOOR]])
-  // CHECK-DAG: [[HALF:%.+]] = "tf.Const"() {value = dense<5.000000e-01> : tensor<f32>}
-  // CHECK-DAG: [[CMP:%.+]] = "tf.Less"([[SUB]], [[HALF]])
-  // CHECK-DAG: [[ONE:%.+]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
-  // CHECK-DAG: [[ADD:%.+]] = "tf.AddV2"([[FLOOR]], [[ONE]])
-  // CHECK-DAG: [[SELECT:%.+]] = "tf.Select"([[CMP]], [[FLOOR]], [[ADD]])
+  // CHECK-DAG: %[[HALF:.*]] = "tf.Const"() {value = dense<5.000000e-01> : tensor<f32>} : () -> tensor<f32>
+  // CHECK-DAG: %[[TWO:.*]] = "tf.Const"() {value = dense<2.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK-DAG: %[[ONE:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK: %[[ROUND_VAL:.*]] = "tf.Floor"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK: %[[FRACTION:.*]] = "tf.Sub"(%arg0, %[[ROUND_VAL]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  // CHECK: %[[GT:.*]] = "tf.Greater"(%[[FRACTION]], %[[HALF]]) : (tensor<2xf32>, tensor<f32>) -> tensor<2xi1>
+  // CHECK: %[[EQ:.*]] = "tf.Equal"(%[[FRACTION]], %[[HALF]]) {incompatible_shape_error = true} : (tensor<2xf32>, tensor<f32>) -> tensor<2xi1>
+  // CHECK: %[[MUL1:.*]] = "tf.Mul"(%arg0, %[[HALF]]) : (tensor<2xf32>, tensor<f32>) -> tensor<2xf32>
+  // CHECK: %[[FLOOR:.*]] = "tf.Floor"(%[[MUL1]]) : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK: %[[MUL2:.*]] = "tf.Mul"(%[[FLOOR]], %[[TWO]]) : (tensor<2xf32>, tensor<f32>) -> tensor<2xf32>
+  // CHECK: %[[NEAREST_EVEN_INT:.*]] = "tf.Sub"(%[[ROUND_VAL]], %[[MUL2]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  // CHECK: %[[IS_ODD:.*]] = "tf.Equal"(%[[NEAREST_EVEN_INT]], %[[ONE]]) {incompatible_shape_error = true} : (tensor<2xf32>, tensor<f32>) -> tensor<2xi1>
+  // CHECK: %[[AND:.*]] = "tf.LogicalAnd"(%[[EQ]], %[[IS_ODD]]) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
+  // CHECK: %[[OR:.*]] = "tf.LogicalOr"(%[[GT]], %[[AND]]) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
+  // CHECK: %[[ADD:.*]] = "tf.AddV2"(%[[ROUND_VAL]], %[[ONE]]) : (tensor<2xf32>, tensor<f32>) -> tensor<2xf32>
+  // CHECK: %[[SELECT:.*]] = "tf.Select"(%[[OR]], %[[ADD]], %[[ROUND_VAL]]) : (tensor<2xi1>, tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   %0 = "tf.Round"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
 
-  // CHECK: return [[SELECT]]
+  // CHECK: return %[[SELECT]]
   return %0 : tensor<2xf32>
 }
 
 // CHECK-LABEL: func @round_dynamic
 func @round_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
-  // CHECK-DAG: [[FLOOR:%.+]] = "tf.Floor"(%arg0)
-  // CHECK-DAG: [[SUB:%.+]] = "tf.Sub"(%arg0, [[FLOOR]])
-  // CHECK-DAG: [[HALF:%.+]] = "tf.Const"() {value = dense<5.000000e-01> : tensor<f32>}
-  // CHECK-DAG: [[CMP:%.+]] = "tf.Less"([[SUB]], [[HALF]])
-  // CHECK-DAG: [[ONE:%.+]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
-  // CHECK-DAG: [[ADD:%.+]] = "tf.AddV2"([[FLOOR]], [[ONE]])
-  // CHECK-DAG: [[SELECT:%.+]] = "tf.Select"([[CMP]], [[FLOOR]], [[ADD]])
+  // CHECK-NOT: tf.Round
   %0 = "tf.Round"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
-
-  // CHECK: return [[SELECT]]
   return %0 : tensor<?xf32>
 }
 
 // CHECK-LABEL: func @rint_dynamic
 func @rint_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
-  // CHECK-DAG: [[FLOOR:%.+]] = "tf.Floor"(%arg0)
-  // CHECK-DAG: [[SUB:%.+]] = "tf.Sub"(%arg0, [[FLOOR]])
-  // CHECK-DAG: [[HALF:%.+]] = "tf.Const"() {value = dense<5.000000e-01> : tensor<f32>}
-  // CHECK-DAG: [[CMP:%.+]] = "tf.Less"([[SUB]], [[HALF]])
-  // CHECK-DAG: [[ONE:%.+]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
-  // CHECK-DAG: [[ADD:%.+]] = "tf.AddV2"([[FLOOR]], [[ONE]])
-  // CHECK-DAG: [[SELECT:%.+]] = "tf.Select"([[CMP]], [[FLOOR]], [[ADD]])
+  // CHECK-DAG: %[[HALF:.*]] = "tf.Const"() {value = dense<5.000000e-01> : tensor<f32>} : () -> tensor<f32>
+  // CHECK-DAG: %[[TWO:.*]] = "tf.Const"() {value = dense<2.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK-DAG: %[[ONE:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK: %[[ROUND_VAL:.*]] = "tf.Floor"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  // CHECK: %[[FRACTION:.*]] = "tf.Sub"(%arg0, %[[ROUND_VAL]]) : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+  // CHECK: %[[GT:.*]] = "tf.Greater"(%[[FRACTION]], %[[HALF]]) : (tensor<?xf32>, tensor<f32>) -> tensor<?xi1>
+  // CHECK: %[[EQ:.*]] = "tf.Equal"(%[[FRACTION]], %[[HALF]]) {incompatible_shape_error = true} : (tensor<?xf32>, tensor<f32>) -> tensor<?xi1>
+  // CHECK: %[[MUL1:.*]] = "tf.Mul"(%arg0, %[[HALF]]) : (tensor<?xf32>, tensor<f32>) -> tensor<?xf32>
+  // CHECK: %[[FLOOR:.*]] = "tf.Floor"(%[[MUL1]]) : (tensor<?xf32>) -> tensor<?xf32>
+  // CHECK: %[[MUL2:.*]] = "tf.Mul"(%[[FLOOR]], %[[TWO]]) : (tensor<?xf32>, tensor<f32>) -> tensor<?xf32>
+  // CHECK: %[[NEAREST_EVEN_INT:.*]] = "tf.Sub"(%[[ROUND_VAL]], %[[MUL2]]) : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+  // CHECK: %[[IS_ODD:.*]] = "tf.Equal"(%[[NEAREST_EVEN_INT]], %[[ONE]]) {incompatible_shape_error = true} : (tensor<?xf32>, tensor<f32>) -> tensor<?xi1>
+  // CHECK: %[[AND:.*]] = "tf.LogicalAnd"(%[[EQ]], %[[IS_ODD]]) : (tensor<?xi1>, tensor<?xi1>) -> tensor<?xi1>
+  // CHECK: %[[OR:.*]] = "tf.LogicalOr"(%[[GT]], %[[AND]]) : (tensor<?xi1>, tensor<?xi1>) -> tensor<?xi1>
+  // CHECK: %[[ADD:.*]] = "tf.AddV2"(%[[ROUND_VAL]], %[[ONE]]) : (tensor<?xf32>, tensor<f32>) -> tensor<?xf32>
+  // CHECK: %[[SELECT:.*]] = "tf.Select"(%[[OR]], %[[ADD]], %[[ROUND_VAL]]) : (tensor<?xi1>, tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
   %0 = "tf.Rint"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
 
-  // CHECK: return [[SELECT]]
+  // CHECK: return %[[SELECT]]
   return %0 : tensor<?xf32>
 }
 
 // CHECK-LABEL: func @round_unranked
 func @round_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK-NOT: tf.Round
   %0 = "tf.Round"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }

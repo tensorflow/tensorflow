@@ -46,9 +46,128 @@ namespace data {
 /* static */ constexpr const char* const OptimizeDatasetOp::kOptimizeDatasetV1;
 /* static */ constexpr const char* const OptimizeDatasetOp::kOptimizeDatasetV2;
 
+namespace {
+
 constexpr char kOptimizerName[] = "tf_data_meta_optimizer";
 constexpr char kOptimizers[] = "optimizers";
 constexpr char kOptimizerConfigs[] = "optimizer_configs";
+
+// A wrapper around `SelectOptimizations` responsible for configuring which
+// tf.data experiments to apply.
+std::vector<tstring> SelectOptimizationsHelper(
+    const std::vector<tstring>& optimizations_enabled,
+    const std::vector<tstring>& optimizations_disabled,
+    const std::vector<tstring>& optimizations_default) {
+  string job_name = port::JobName();
+  // The map that stores the live experiment names and for how much percentage
+  // of the Borg jobs, the experiments will be randomly turned on.
+  // clang-format off
+  absl::flat_hash_map<string, uint64> live_experiments = {
+    {"enable_gradient_descent", 0}
+  };
+  // clang-format on
+  auto hash_func = [](const string& str) { return Hash64(str); };
+  auto optimizations = SelectOptimizations(
+      job_name, live_experiments, optimizations_enabled, optimizations_disabled,
+      optimizations_default, hash_func);
+
+  // Log and record the live experiments that will be applied.
+  if (!job_name.empty() && !live_experiments.empty()) {
+    VLOG(1) << "The input pipeline is subject to tf.data experiment. "
+               "Please see `go/tf-data-experiments` for more details.";
+
+    for (auto& pair : live_experiments) {
+      string experiment = pair.first;
+      if (std::find(optimizations.begin(), optimizations.end(), experiment) !=
+          optimizations.end()) {
+        VLOG(1) << "The live experiment \"" << experiment << "\" is applied.";
+        metrics::RecordTFDataExperiment(experiment);
+      }
+    }
+  }
+  return optimizations;
+}
+
+RewriterConfig CreateConfig(const std::vector<tstring>& optimizations,
+                            const std::vector<string>& optimizations_configs) {
+  RewriterConfig rewriter_config;
+  rewriter_config.add_optimizers(kOptimizerName);
+  rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);
+  rewriter_config.set_fail_on_optimizer_errors(true);
+  auto custom_optimizer = rewriter_config.add_custom_optimizers();
+  custom_optimizer->set_name(kOptimizerName);
+  auto* custom_optimizations_list =
+      (*custom_optimizer->mutable_parameter_map())[kOptimizers].mutable_list();
+  for (const auto& opt : optimizations) {
+    custom_optimizations_list->add_s(opt.data(), opt.size());
+  }
+  auto* config_list =
+      (*custom_optimizer->mutable_parameter_map())[kOptimizerConfigs]
+          .mutable_list();
+  for (const auto& config : optimizations_configs) {
+    config_list->add_s(config.data(), config.size());
+  }
+  return rewriter_config;
+}
+
+// Applies given optimizations and optimizatin_config in dataset graph rewrite
+// to return the OptimizeDataset.
+void MakeDatasetHelper(OpKernelContext* ctx,
+                       std::vector<tstring>& optimizations,
+                       const std::vector<string>& optimization_configs,
+                       DatasetBase* input, DatasetBase** output) {
+  // The vector stores the graduated experiment names which will be turned on
+  // for all input pipelines.
+  // clang-format off
+  std::vector<string> graduated_experiments = {"disable_intra_op_parallelism"};
+  // clang-format on
+
+  // Add the graduated experiments to the optimization list and log them.
+  for (auto& experiment : graduated_experiments) {
+    if (std::find(optimizations.begin(), optimizations.end(), experiment) ==
+        optimizations.end()) {
+      optimizations.push_back(experiment);
+    }
+    VLOG(1) << "The graduated experiment \"" << experiment << "\" is applied.";
+  }
+
+  // If there are no optimizations to be applied, directly return the input.
+  if (optimizations.empty()) {
+    *output = input;
+    input->Ref();
+    return;
+  }
+
+  auto config_factory = [&optimizations, &optimization_configs]() {
+    return CreateConfig(optimizations, optimization_configs);
+  };
+  Status s = RewriteDataset(ctx, input, std::move(config_factory),
+                            /*record_fingerprint=*/true, output);
+  if (errors::IsDeadlineExceeded(s)) {
+    // Ignore DeadlineExceeded as it implies that the attempted rewrite took too
+    // long which should not prevent further computation.
+    LOG(WARNING) << s.ToString();
+
+    *output = input;
+    input->Ref();
+    return;
+  }
+  OP_REQUIRES_OK(ctx, s);
+}
+
+}  // namespace
+
+// static
+void OptimizeDatasetOp::MakeDatasetFromOptions(
+    OpKernelContext* ctx, DatasetBase* input,
+    const std::vector<tstring>& optimizations_enabled,
+    const std::vector<tstring>& optimizations_disabled,
+    const std::vector<tstring>& optimizations_default,
+    const std::vector<string>& optimization_configs, DatasetBase** output) {
+  std::vector<tstring> optimizations = SelectOptimizationsHelper(
+      optimizations_enabled, optimizations_disabled, optimizations_default);
+  MakeDatasetHelper(ctx, optimizations, optimization_configs, input, output);
+}
 
 OptimizeDatasetOp::OptimizeDatasetOp(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx) {
@@ -78,96 +197,11 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                                 &optimizations_disabled));
     OP_REQUIRES_OK(ctx, ParseVectorArgument<tstring>(ctx, kOptimizationsDefault,
                                                      &optimizations_default));
-
-    string job_name = port::JobName();
-    // The map that stores the live experiment names and for how much percentage
-    // of the Borg jobs, the experiments will be randomly turned on.
-    // clang-format off
-    absl::flat_hash_map<string, uint64> live_experiments = {
-        {"enable_gradient_descent", 0}
-    };
-    // clang-format on
-    auto hash_func = [](const string& str) { return Hash64(str); };
-    optimizations = SelectOptimizations(
-        job_name, live_experiments, optimizations_enabled,
-        optimizations_disabled, optimizations_default, hash_func);
-
-    // Log and record the live experiments that will be applied.
-    if (!job_name.empty() && !live_experiments.empty()) {
-      VLOG(1) << "The input pipeline is subject to tf.data experiment. "
-                 "Please see `go/tf-data-experiments` for more details.";
-
-      for (auto& pair : live_experiments) {
-        string experiment = pair.first;
-        if (std::find(optimizations.begin(), optimizations.end(), experiment) !=
-            optimizations.end()) {
-          VLOG(1) << "The live experiment \"" << experiment << "\" is applied.";
-          metrics::RecordTFDataExperiment(experiment);
-        }
-      }
-    }
+    optimizations = SelectOptimizationsHelper(
+        optimizations_enabled, optimizations_disabled, optimizations_default);
   }
 
-  // The vector stores the graduated experiment names which will be turned on
-  // for all input pipelines.
-  // clang-format off
-  std::vector<string> graduated_experiments = {"disable_intra_op_parallelism"};
-  // clang-format on
-
-  // Add the graduated experiments to the optimization list and log them.
-  for (auto& experiment : graduated_experiments) {
-    if (std::find(optimizations.begin(), optimizations.end(), experiment) ==
-        optimizations.end()) {
-      optimizations.push_back(experiment);
-    }
-    VLOG(1) << "The graduated experiment \"" << experiment << "\" is applied.";
-  }
-
-  // If there are no optimizations to be applied, directly return the input.
-  if (optimizations.empty()) {
-    *output = input;
-    input->Ref();
-    return;
-  }
-
-  auto config_factory = [this, &optimizations]() {
-    return CreateConfig(optimizations, optimization_configs_);
-  };
-  Status s = RewriteDataset(ctx, input, std::move(config_factory),
-                            /*record_fingerprint=*/true, output);
-  if (errors::IsDeadlineExceeded(s)) {
-    // Ignore DeadlineExceeded as it implies that the attempted rewrite took too
-    // long which should not prevent further computation.
-    LOG(WARNING) << s.ToString();
-
-    *output = input;
-    input->Ref();
-    return;
-  }
-  OP_REQUIRES_OK(ctx, s);
-}
-
-RewriterConfig OptimizeDatasetOp::CreateConfig(
-    std::vector<tstring> optimizations,
-    std::vector<string> optimizations_configs) {
-  RewriterConfig rewriter_config;
-  rewriter_config.add_optimizers(kOptimizerName);
-  rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);
-  rewriter_config.set_fail_on_optimizer_errors(true);
-  auto custom_optimizer = rewriter_config.add_custom_optimizers();
-  custom_optimizer->set_name(kOptimizerName);
-  auto* custom_optimizations_list =
-      (*custom_optimizer->mutable_parameter_map())[kOptimizers].mutable_list();
-  for (const auto& opt : optimizations) {
-    custom_optimizations_list->add_s(opt.data(), opt.size());
-  }
-  auto* config_list =
-      (*custom_optimizer->mutable_parameter_map())[kOptimizerConfigs]
-          .mutable_list();
-  for (const auto& config : optimizations_configs) {
-    config_list->add_s(config.data(), config.size());
-  }
-  return rewriter_config;
+  MakeDatasetHelper(ctx, optimizations, optimization_configs_, input, output);
 }
 
 namespace {
@@ -178,9 +212,20 @@ REGISTER_KERNEL_BUILDER(Name("OptimizeDatasetV2").Device(DEVICE_CPU),
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow
-#else  // !IS_MOBILE_PLATFORM
+#else   // !IS_MOBILE_PLATFORM
 namespace tensorflow {
 namespace data {
+
+// static
+void OptimizeDatasetOp::MakeDatasetFromOptions(
+    OpKernelContext* ctx, DatasetBase* input,
+    const std::vector<tstring>& optimizations_enabled,
+    const std::vector<tstring>& optimizations_disabled,
+    const std::vector<tstring>& optimizations_default,
+    const std::vector<string>& optimization_configs, DatasetBase** output) {
+  input->Ref();
+  *output = input;
+}
 
 OptimizeDatasetOp::OptimizeDatasetOp(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx) {}

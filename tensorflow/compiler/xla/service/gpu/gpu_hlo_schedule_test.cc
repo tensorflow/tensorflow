@@ -142,7 +142,7 @@ TEST_F(GpuHloScheduleTest, SequentialAdd) {
 }
 
 // Test of two streams.
-TEST_F(GpuHloScheduleTest, ConcurrentMatMul) {
+TEST_F(GpuHloScheduleTest, DISABLED_ConcurrentMatMul) {
   HloComputation::Builder builder("entry_computation");
   HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0, f32_2x2_, /*name=*/"x"));
@@ -198,7 +198,7 @@ TEST_F(GpuHloScheduleTest, ConcurrentMatMul) {
 }
 
 // Test of multiple streams.
-TEST_F(GpuHloScheduleTest, LatticeMatMul) {
+TEST_F(GpuHloScheduleTest, DISABLED_LatticeMatMul) {
   //      d00      -- layer 0
   //     /   \
   //   d10   d11   -- layer 1

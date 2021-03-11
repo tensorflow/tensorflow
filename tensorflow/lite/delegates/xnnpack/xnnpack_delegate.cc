@@ -3323,6 +3323,15 @@ TfLiteDelegate* TfLiteXNNPackDelegateCreate(
   return xnnpack_delegate ? xnnpack_delegate->tflite_delegate() : nullptr;
 }
 
+void* TfLiteXNNPackDelegateGetThreadPool(TfLiteDelegate* delegate) {
+  if (delegate != nullptr) {
+    return nullptr;
+  }
+
+  return static_cast<void*>(
+      static_cast<::tflite::xnnpack::Delegate*>(delegate->data_)->threadpool());
+}
+
 void TfLiteXNNPackDelegateDelete(TfLiteDelegate* delegate) {
   if (delegate != nullptr) {
     delete static_cast<::tflite::xnnpack::Delegate*>(delegate->data_);

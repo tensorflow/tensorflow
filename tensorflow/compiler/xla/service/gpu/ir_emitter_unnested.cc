@@ -87,6 +87,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_to_all_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_collective_permute_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/outfeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/replica_id_thunk.h"
@@ -811,10 +812,9 @@ Status IrEmitterUnnested::EmitPadToStaticFromMlir(MlirEmitterInput mlir_input) {
   std::string ir_name = mlir::GetNameFromLoc(pad_to_static.getLoc());
 
   std::vector<llvm_ir::IrArray> ir_arrays;
-  TF_ASSIGN_OR_RETURN(
-      auto kernel_thunk,
-      BuildKernelThunkForMlir(pad_to_static, mlir_input.thunk_info,
-                              mlir_input.extra_slice, &ir_arrays));
+  TF_ASSIGN_OR_RETURN(auto kernel_thunk,
+                      BuildKernelThunkForMlir(
+                          pad_to_static, mlir_input.thunk_info, &ir_arrays));
 
   const llvm_ir::IrArray source_array = ir_arrays[0];
   const llvm_ir::IrArray output_array = ir_arrays[1];
@@ -940,10 +940,9 @@ Status IrEmitterUnnested::EmitSliceToDynamicFromMlir(
   std::string ir_name = mlir::GetNameFromLoc(slice_to_dynamic.getLoc());
 
   std::vector<llvm_ir::IrArray> ir_arrays;
-  TF_ASSIGN_OR_RETURN(
-      auto kernel_thunk,
-      BuildKernelThunkForMlir(slice_to_dynamic, mlir_input.thunk_info,
-                              mlir_input.extra_slice, &ir_arrays));
+  TF_ASSIGN_OR_RETURN(auto kernel_thunk,
+                      BuildKernelThunkForMlir(
+                          slice_to_dynamic, mlir_input.thunk_info, &ir_arrays));
 
   const Shape& input_shape =
       TypeToShape(slice_to_dynamic.args().front().getType());
@@ -1149,8 +1148,7 @@ Status IrEmitterUnnested::EmitConvolutionThunkFromMlir(MlirEmitterInput input) {
     descriptor.result_shape = apply_layout(TypeToShape(conv_result.getType()),
                                            op.backend_config().result_layout());
     descriptor.dnums = ConvertConvDimensionNumbers(op.dimension_numbers());
-    descriptor.scratch_size =
-        input.extra_slice->shape.tuple_shapes(1).dimensions(0);
+    descriptor.scratch_size = scratch_slice.size();
     mlir::DenseIntElementsAttr window_strides = op.window_strides().getValue();
     mlir::DenseIntElementsAttr padding = op.padding().getValue();
     mlir::DenseIntElementsAttr lhs_dilation = op.lhs_dilation().getValue();
@@ -1776,14 +1774,6 @@ StatusOr<MlirEmitterInput> IrEmitterUnnested::GetMlirEmitterInput(
   MlirEmitterInput input;
   TF_ASSIGN_OR_RETURN(input.op, lhlo_scratch_emitter_->EmitOp(hlo));
   input.thunk_info = GetThunkInfo(hlo);
-  if (hlo->shape().IsTuple()) {
-    const auto& buffer_assignment = ir_emitter_context_->buffer_assignment();
-    auto& slice = input.extra_slice.emplace();
-    TF_ASSIGN_OR_RETURN(slice.buffer_slice,
-                        buffer_assignment.GetUniqueSlice(hlo, {}));
-    slice.written = true;
-    slice.shape = hlo->shape();
-  }
   return input;
 }
 
@@ -1800,9 +1790,9 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(
   std::vector<llvm_ir::IrArray> ir_arrays;
   Thunk* kernel_thunk;
   {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<KernelThunk> kernel_thunk_ptr,
-                        BuildKernelThunkForMlir(fusion, input.thunk_info,
-                                                input.extra_slice, &ir_arrays));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<KernelThunk> kernel_thunk_ptr,
+        BuildKernelThunkForMlir(fusion, input.thunk_info, &ir_arrays));
     kernel_thunk = kernel_thunk_ptr.get();
     thunk_sequence_.emplace_back(std::move(kernel_thunk_ptr));
   }
@@ -1811,12 +1801,6 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(
       absl::MakeSpan(ir_arrays).subspan(0, context.operand_shapes.size());
   auto output_element_arrays = absl::MakeSpan(ir_arrays).subspan(
       context.operand_shapes.size(), context.output_shapes.size());
-  const llvm_ir::IrArray* tuple_output_array = nullptr;
-  if (ir_arrays.size() ==
-      context.operand_shapes.size() + context.output_shapes.size() + 1) {
-    tuple_output_array = &ir_arrays[context.operand_shapes.size() +
-                                    context.output_shapes.size()];
-  }
 
   TF_ASSIGN_OR_RETURN(const HloComputation* fused_computation,
                       GetOrCreateSubComputationFromRegion(&fusion.region(),
@@ -1879,13 +1863,6 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(
       fusion, launch_dimensions.launch_bound(), &b_);
 
   if (context.output_shapes.size() > 1) {
-    // Emit the tuple pointers in one thread.  We could do this at any point in
-    // the kernel, but we do it at the beginning in the hopes of reducing
-    // register pressure, since we touch threadIdx.x and blockIdx.x at the
-    // beginning of the kernel *anyway*.
-    KernelSupportLibrary{&b_}.If("emit_mof_tuple", IsBlock0Thread0(&b_), [&] {
-      llvm_ir::EmitTuple(*tuple_output_array, output_element_arrays, &b_);
-    });
     // For multioutput fusion, we need to emit each operand and the root.
     TF_RETURN_IF_ERROR(
         ParallelLoopEmitter(element_generator, output_element_arrays,
@@ -1916,7 +1893,13 @@ Status IrEmitterUnnested::EmitFusionFromMlir(MlirEmitterInput mlir_input) {
     // In the case of root tuple, it can be either reduce or slice input
     // fusion.
     if (IsInputFusibleSlices(mlir_input.op, /*verify_no_strides=*/true)) {
-      return EmitInputFusibleNonStridedSlices(mlir_input);
+      // The emitter doesn't support all cases. If it's not supported, fallback
+      // to ElementalIrEmitter.
+      auto status = EmitInputFusibleNonStridedSlices(mlir_input);
+      if (status.code() == tensorflow::error::FAILED_PRECONDITION) {
+        return EmitLoopFusionFromMlir(mlir_input);
+      }
+      return status;
     }
 
     const bool is_parallel_reduce =
@@ -1944,10 +1927,9 @@ Status IrEmitterUnnested::EmitFusionFromMlir(MlirEmitterInput mlir_input) {
     // the output buffer.
     {
       std::vector<llvm_ir::IrArray> ir_arrays;
-      TF_ASSIGN_OR_RETURN(
-          auto operand_thunk,
-          BuildKernelThunkForMlir(mlir_input.op, Thunk::ThunkInfo(),
-                                  mlir_input.extra_slice, &ir_arrays));
+      TF_ASSIGN_OR_RETURN(auto operand_thunk,
+                          BuildKernelThunkForMlir(
+                              mlir_input.op, Thunk::ThunkInfo(), &ir_arrays));
       thunks.push_back(std::move(operand_thunk));
 
       GpuElementalIrEmitter operand_elemental_emitter(
@@ -1988,10 +1970,9 @@ Status IrEmitterUnnested::EmitFusionFromMlir(MlirEmitterInput mlir_input) {
     // filled output buffer.
     {
       std::vector<llvm_ir::IrArray> ir_arrays;
-      TF_ASSIGN_OR_RETURN(
-          auto scatter_thunk,
-          BuildKernelThunkForMlir(mlir_input.op, Thunk::ThunkInfo(),
-                                  mlir_input.extra_slice, &ir_arrays));
+      TF_ASSIGN_OR_RETURN(auto scatter_thunk,
+                          BuildKernelThunkForMlir(
+                              mlir_input.op, Thunk::ThunkInfo(), &ir_arrays));
       thunks.push_back(std::move(scatter_thunk));
       // Spin up a new fused emitter for the scatter kernel and emit it.
       GpuElementalIrEmitter scatter_elemental_emitter(
@@ -2061,8 +2042,7 @@ Status IrEmitterUnnested::EmitFusionFromMlir(MlirEmitterInput mlir_input) {
     std::vector<llvm_ir::IrArray> ir_arrays;
     TF_ASSIGN_OR_RETURN(
         auto fusion_thunk,
-        BuildKernelThunkForMlir(fusion_op, mlir_input.thunk_info,
-                                mlir_input.extra_slice, &ir_arrays));
+        BuildKernelThunkForMlir(fusion_op, mlir_input.thunk_info, &ir_arrays));
 
     TF_ASSIGN_OR_RETURN(
         const HloComputation* fused_computation,
@@ -2248,13 +2228,12 @@ Status IrEmitterUnnested::EmitSelectAndScatterFromMlir(
   std::vector<llvm_ir::IrArray> ir_arrays;
   thunks.emplace_back();
   // Init value is not needed in IR emission.
-  TF_ASSIGN_OR_RETURN(
-      thunks.back(),
-      BuildKernelThunkForMlir(
-          select_and_scatter_op,
-          {select_and_scatter_op.operand(), select_and_scatter_op.source(),
-           select_and_scatter_op.out()},
-          Thunk::ThunkInfo(), mlir_input.extra_slice, &ir_arrays));
+  TF_ASSIGN_OR_RETURN(thunks.back(),
+                      BuildKernelThunkForMlir(select_and_scatter_op,
+                                              {select_and_scatter_op.operand(),
+                                               select_and_scatter_op.source(),
+                                               select_and_scatter_op.out()},
+                                              Thunk::ThunkInfo(), &ir_arrays));
 
   CHECK_EQ(ir_arrays.size(), 3);
   const IrArray& operand_array = ir_arrays[0];
@@ -2499,7 +2478,7 @@ Status IrEmitterUnnested::EmitRngGetAndUpdateState(
   TF_ASSIGN_OR_RETURN(
       auto kernel_thunk,
       BuildKernelThunkForMlir(rng_op, rng_op.state(), mlir_input.thunk_info,
-                              mlir_input.extra_slice, &ir_arrays));
+                              &ir_arrays));
   AddThunkToThunkSequence(std::move(kernel_thunk));
 
   llvm::Value* old_state =
@@ -2558,8 +2537,7 @@ Status IrEmitterUnnested::EmitScatterFromMlir(MlirEmitterInput mlir_input) {
   TF_ASSIGN_OR_RETURN(
       thunks.back(),
       BuildKernelThunkForMlir(scatter_op, scatter_op.getOperands().drop_front(),
-                              mlir_input.thunk_info, mlir_input.extra_slice,
-                              &ir_arrays));
+                              mlir_input.thunk_info, &ir_arrays));
 
   CHECK_EQ(ir_arrays.size(), 3);
   const IrArray& scatter_indices = ir_arrays[0];
@@ -3026,9 +3004,8 @@ Status IrEmitterUnnested::EmitSortFromMlir(MlirEmitterInput mlir_input) {
         }));
     thunks.emplace_back();
     TF_ASSIGN_OR_RETURN(
-        thunks.back(),
-        BuildKernelThunkForMlir(sort_op, sort_op.output(), Thunk::ThunkInfo(),
-                                mlir_input.extra_slice, &ir_arrays));
+        thunks.back(), BuildKernelThunkForMlir(sort_op, sort_op.output(),
+                                               Thunk::ThunkInfo(), &ir_arrays));
     LaunchDimensions launch_dimensions = xor_masks.size() > 1
                                              ? tiled_launch_dimensions
                                              : standard_launch_dimensions;
@@ -3116,12 +3093,6 @@ Status IrEmitterUnnested::EmitCollectivePermuteFromMlir(
     MlirEmitterInput input) {
   auto collective_permute_op =
       mlir::cast<mlir::lmhlo::CollectivePermuteOp>(input.op);
-  if (collective_permute_op.channel_id())
-    return Unimplemented("collective permute with channel_id not implemented");
-  using source_dest_pairs_t = std::vector<std::pair<int64, int64>>;
-  TF_ASSIGN_OR_RETURN(
-      source_dest_pairs_t source_dest_pairs,
-      ConvertNx2Attribute(collective_permute_op.source_target_pairs()));
 
   TF_ASSIGN_OR_RETURN(
       BufferAllocation::Slice source_slice,
@@ -3130,9 +3101,38 @@ Status IrEmitterUnnested::EmitCollectivePermuteFromMlir(
       BufferAllocation::Slice result_slice,
       GetAllocationSliceForMlir(collective_permute_op.output()));
 
-  AddThunkToThunkSequence(absl::make_unique<CollectivePermuteThunk>(
-      input.thunk_info, std::move(source_dest_pairs), source_slice,
-      result_slice));
+  const Shape shape = TypeToShape(collective_permute_op.operand().getType());
+  const int64 replica_count = hlo_module_config_.replica_count();
+  const int64 partition_count = hlo_module_config_.num_partitions();
+
+  if (NcclCollectivePermuteThunk::IsDegenerate(
+          collective_permute_op, replica_count, partition_count)) {
+    // For a degenerate collective permute, just generate a copy thunk.
+    AddThunkToThunkSequence(absl::make_unique<DeviceToDeviceCopyThunk>(
+        input.thunk_info,
+        /*source_address=*/source_slice,
+        /*destination_buffer=*/result_slice,
+        /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
+  } else if (!collective_permute_op.channel_id() && partition_count == 1) {
+    // The non-NCCL based collective permute only works for a single partition
+    // cross replica case.
+    using source_dest_pairs_t = std::vector<std::pair<int64, int64>>;
+    TF_ASSIGN_OR_RETURN(
+        source_dest_pairs_t source_dest_pairs,
+        ConvertNx2Attribute(collective_permute_op.source_target_pairs()));
+
+    AddThunkToThunkSequence(absl::make_unique<CollectivePermuteThunk>(
+        input.thunk_info, std::move(source_dest_pairs), source_slice,
+        result_slice));
+  } else {
+    const NcclCollectivePermuteThunk::Buffer buffer = {
+        /*element_count=*/ShapeUtil::ElementsIn(shape),
+        /*source_buffer=*/source_slice,
+        /*destination_buffer=*/result_slice};
+    AddThunkToThunkSequence(absl::make_unique<NcclCollectivePermuteThunk>(
+        input.thunk_info, collective_permute_op, replica_count, partition_count,
+        buffer));
+  }
   return Status::OK();
 }
 
@@ -3178,7 +3178,7 @@ Status IrEmitterUnnested::EmitNcclThunkFromMlir(MlirEmitterInput input) {
     return Status::OK();
   }
 
-  if (replica_count != 1) {
+  if (!is_degenerate) {
     CollectiveOpGroupMode group_mode = NcclThunkType::GetGroupMode(op);
 
     string message = absl::StrFormat(
@@ -3566,7 +3566,6 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunkForMlirImpl(
 StatusOr<std::unique_ptr<KernelThunk>>
 IrEmitterUnnested::BuildKernelThunkForMlir(
     mlir::Operation* op, mlir::ValueRange operands, Thunk::ThunkInfo thunk_info,
-    absl::optional<MlirBufferSlice> extra_slice,
     std::vector<llvm_ir::IrArray>* ir_arrays) {
   TF_RET_CHECK(!mlir::isa<mlir::lmhlo::FusionOp>(op));
 
@@ -3578,9 +3577,6 @@ IrEmitterUnnested::BuildKernelThunkForMlir(
     slice.written = WritesMlirBuffer(op, operand);
     slice.shape = TypeToShape(operand.getType());
   }
-  if (extra_slice) {
-    slices.push_back(*extra_slice);
-  }
   std::string name = mlir::GetNameFromLoc(op->getLoc());
   return BuildKernelThunkForMlirImpl(name, thunk_info, slices, ir_arrays);
 }
@@ -3588,7 +3584,6 @@ IrEmitterUnnested::BuildKernelThunkForMlir(
 StatusOr<std::unique_ptr<KernelThunk>>
 IrEmitterUnnested::BuildKernelThunkForMlir(
     mlir::Operation* op, Thunk::ThunkInfo thunk_info,
-    absl::optional<MlirBufferSlice> extra_slice,
     std::vector<llvm_ir::IrArray>* ir_arrays) {
   if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
     auto operands = GetHloOperands(op);
@@ -3612,13 +3607,9 @@ IrEmitterUnnested::BuildKernelThunkForMlir(
       slice.shape = TypeToShape(output.getType());
     }
     std::string name = mlir::GetNameFromLoc(op->getLoc());
-    if (extra_slice) {
-      slices.push_back(*extra_slice);
-    }
     return BuildKernelThunkForMlirImpl(name, thunk_info, slices, ir_arrays);
   }
-  return BuildKernelThunkForMlir(op, op->getOperands(), thunk_info, extra_slice,
-                                 ir_arrays);
+  return BuildKernelThunkForMlir(op, op->getOperands(), thunk_info, ir_arrays);
 }
 
 std::unique_ptr<Thunk> IrEmitterUnnested::BuildConstantInitializerThunk(
@@ -3715,10 +3706,9 @@ IrEmitterUnnested::BuildInitializerThunkForMlir(mlir::Operation* op,
   // Otherwise fall back to our slow initializer code. The thunk in this case
   // will just need the IR arrays for the initial value and the destination.
   std::vector<llvm_ir::IrArray> ir_arrays;
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<KernelThunk> kernel_thunk,
-      BuildKernelThunkForMlir(op, {init_value, dest}, Thunk::ThunkInfo(), {},
-                              &ir_arrays));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<KernelThunk> kernel_thunk,
+                      BuildKernelThunkForMlir(op, {init_value, dest},
+                                              Thunk::ThunkInfo(), &ir_arrays));
   const llvm_ir::IrArray init_array = ir_arrays[0];
   const llvm_ir::IrArray dest_array = ir_arrays[1];
 
@@ -3763,7 +3753,7 @@ IrEmitterUnnested::BuildFusedInitializerThunkForMlir(
   std::vector<llvm_ir::IrArray> ir_arrays;
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<KernelThunk> kernel_thunk,
-      BuildKernelThunkForMlir(fusion, Thunk::ThunkInfo(), {}, &ir_arrays));
+      BuildKernelThunkForMlir(fusion, Thunk::ThunkInfo(), &ir_arrays));
   const llvm_ir::IrArray dest_array =
       ir_arrays[input_buffers.size() + output_index];
 
@@ -4262,8 +4252,8 @@ void IrEmitterUnnested::EmitTileElementForFusion(
   if (output_arrays.size() > 1) {
     DCHECK(output_value->getType()->isStructTy());
     DCHECK_EQ(output_value->getType()->getStructNumElements(),
-              output_arrays.size() - 1);
-    for (int64 i = 0; i < output_arrays.size() - 1; ++i) {
+              output_arrays.size());
+    for (int64 i = 0; i < output_arrays.size(); ++i) {
       output_arrays[i].EmitWriteArrayElement(
           untiled_index, ExtractValue(output_value, i), &b_);
     }
@@ -5025,20 +5015,6 @@ void IrEmitterUnnested::EmitHlo021Tile(
         }
       };
 
-  // For multioutput fusion, one thread needs to output a tuple
-  // with pointers to all the individual outputs.  We could do this
-  // at any point in the kernel, but we do it at the beginning in
-  // the hopes of reducing register pressure, since we touch
-  // threadIdx.x and blockIdx.x at the beginning of the kernel
-  // *anyway*.
-  if (output_arrays.size() > 1) {
-    KernelSupportLibrary{&b_}.If("emit_mof_tuple", IsBlock0Thread0(&b_), [&] {
-      llvm_ir::EmitTuple(output_arrays.back(),
-                         output_arrays.subspan(0, output_arrays.size() - 1),
-                         &b_);
-    });
-  }
-
   EmitTilingKernel(mapping_scheme, index_type, tile_generator);
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk,
                          ir_emitter_context_->llvm_module());
@@ -5246,9 +5222,9 @@ StatusOr<bool> IrEmitterUnnested::CheckAndEmitHloWithTile021(
   }
 
   std::vector<llvm_ir::IrArray> ir_arrays;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<KernelThunk> kernel_thunk,
-                      BuildKernelThunkForMlir(input.op, input.thunk_info,
-                                              input.extra_slice, &ir_arrays));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<KernelThunk> kernel_thunk,
+      BuildKernelThunkForMlir(input.op, input.thunk_info, &ir_arrays));
   EmitHlo021Tile(
       input.op, kernel_thunk.get(), context,
       absl::MakeSpan(ir_arrays).subspan(0, context.operand_shapes.size()),
@@ -5669,9 +5645,9 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
                                   << MlirToString(first_reduce);
 
   std::vector<llvm_ir::IrArray> ir_arrays;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<KernelThunk> kernel_thunk,
-                      BuildKernelThunkForMlir(unnested_hlo, Thunk::ThunkInfo(),
-                                              {}, &ir_arrays));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<KernelThunk> kernel_thunk,
+      BuildKernelThunkForMlir(unnested_hlo, Thunk::ThunkInfo(), &ir_arrays));
 
   HloComputation* fused_computation = nullptr;
   if (fusion) {
@@ -5874,8 +5850,7 @@ Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
   std::vector<llvm_ir::IrArray> ir_arrays;
   TF_ASSIGN_OR_RETURN(
       auto kernel_thunk,
-      BuildKernelThunkForMlir(fusion, mlir_input.thunk_info,
-                              mlir_input.extra_slice, &ir_arrays));
+      BuildKernelThunkForMlir(fusion, mlir_input.thunk_info, &ir_arrays));
 
   TF_ASSIGN_OR_RETURN(const HloComputation* fused_computation,
                       GetOrCreateSubComputationFromRegion(&fusion.region(),

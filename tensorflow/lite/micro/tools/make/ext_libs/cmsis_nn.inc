@@ -21,6 +21,7 @@ THIRD_PARTY_CC_SRCS += \
 THIRD_PARTY_CC_HDRS += \
   $(call recursive_find,$(CMSIS_PATH)/CMSIS/NN/Include,*.h)
 THIRD_PARTY_CC_HDRS += \
+  $(CMSIS_PATH)/LICENSE.txt \
   $(CMSIS_PATH)/CMSIS/Core/Include/cmsis_compiler.h \
   $(CMSIS_PATH)/CMSIS/DSP/Include/arm_common_tables.h \
   $(CMSIS_PATH)/CMSIS/DSP/Include/arm_helium_utils.h \

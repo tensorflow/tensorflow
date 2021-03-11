@@ -958,10 +958,8 @@ class ComparisonOpTest(test.TestCase):
     y = np.arange(0, 10).reshape([5, 2])
     for t in dtypes:
       for f in funcs:
-        with self.assertRaisesRegex(
-            (ValueError, errors.InvalidArgumentError),
-            "Incompatible shapes|Dimensions must be equal|"
-            "required broadcastable shapes"):
+        with self.assertRaisesIncompatibleShapesError(
+            (ValueError, errors.InvalidArgumentError)):
           f(x.astype(t), y.astype(t))
 
   def testEqualDType(self):

@@ -311,6 +311,9 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
     return GetOrCreateEventMetadata(absl::string_view(name));
   }
 
+  // Returns event metadata with the given name. Returns nullptr if not found.
+  XEventMetadata* GetEventMetadata(absl::string_view name);
+
   // Returns a new stat metadata with an automatically generated metadata_id.
   // WARNING: If calling this function, don't call GetOrCreateEventMetadata.
   XStatMetadata* CreateStatMetadata();

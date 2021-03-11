@@ -249,11 +249,10 @@ Status UseGradientAccumulation(const OptimizationParameters& params,
 Status GetOptimizationAlgorithmStateVariables(
     const OptimizationParameters& params,
     std::vector<StateVariableSpecification>* state_variables) {
-  // The order of the returned parameters needs to match the offsets used by
-  // the algorithm implementations in test_util.cc and
-  // address_handler_program_creator_xla.cc.
   // The parameter set for the weights themselves is required to be named
-  // "parameters".
+  // "parameters". The rest should stay stable for compatibility. There is an
+  // internal function, GetOptimizationAlgorithmStateVariableInternalIndices,
+  // that needs to be updated along with this one.
   bool use_gradient_accumulation;
   TF_RETURN_IF_ERROR(
       UseGradientAccumulation(params, &use_gradient_accumulation));
@@ -384,7 +383,7 @@ Status GetOptimizationAlgorithmStateVariables(
         "already has too many other accumulators");
   }
   return Status::OK();
-}  // namespace tpu
+}
 
 std::vector<OptimizationAlgorithm> GetOptimizationAlgorithms() {
   return {

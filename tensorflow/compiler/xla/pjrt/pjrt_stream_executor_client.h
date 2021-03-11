@@ -212,6 +212,12 @@ class PjRtStreamExecutorClient : public PjRtClient {
     return client()->CreateHostToDeviceChannelHandle();
   }
 
+  // TODO(zhangqiaorjc): Experimental. Will be removed.
+  Status Defragment(absl::Span<PjRtBuffer* const> buffers,
+                    absl::Span<PjRtExecutable* const> executables) override {
+    return Unimplemented("Defragment not implemented");
+  }
+
   LocalDeviceState& device_state(int device_ordinal) const {
     return *tensorflow::down_cast<PjRtStreamExecutorDevice*>(
                 addressable_devices_.at(device_ordinal))

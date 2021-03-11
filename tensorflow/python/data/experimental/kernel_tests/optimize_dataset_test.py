@@ -26,10 +26,12 @@ import numpy as np
 
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import grouping
+from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import scan_ops
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.experimental.ops import threadpool
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -618,6 +620,36 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     else:
       self.assertEqual(cpu_budget, 0)
       self.assertEqual(ram_budget, 0)
+
+
+class OptimizeDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                    parameterized.TestCase):
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCore(self):
+
+    def build_dataset(num_elements, batch_size):
+      return dataset_ops.Dataset.range(num_elements).map(lambda x: x * x).batch(
+          batch_size).apply(
+              optimization.optimize(["map_and_batch_fusion"], None, None))
+
+    self.run_core_tests(lambda: build_dataset(200, 10), 20)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testWithNewFunction(self):
+    """Tests that optimized datasets with new functions work."""
+
+    def build_dataset():
+      dataset = dataset_ops.Dataset.range(100)
+      dataset = dataset.map(lambda x: x)
+      dataset = dataset.batch(5)
+      # map_vectorization adds a new vectorized function to the function
+      # library.
+      dataset = dataset.apply(
+          optimization.optimize(["map_vectorization"], None, None))
+      return dataset
+
+    self.run_core_tests(build_dataset, 20)
 
 
 if __name__ == "__main__":

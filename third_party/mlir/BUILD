@@ -96,8 +96,26 @@ gentbl(
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/IR/BuiltinAttributes.td",
+    deps = [":BuiltinDialectTdFiles"],
+)
+
+gentbl(
+    name = "BuiltinLocationAttributesIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "--gen-attrdef-decls",
+            "include/mlir/IR/BuiltinLocationAttributes.h.inc",
+        ),
+        (
+            "--gen-attrdef-defs",
+            "include/mlir/IR/BuiltinLocationAttributes.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/IR/BuiltinLocationAttributes.td",
     td_srcs = [
-        "include/mlir/IR/BuiltinAttributes.td",
+        "include/mlir/IR/BuiltinLocationAttributes.td",
         "include/mlir/IR/BuiltinDialect.td",
         ":OpBaseTdFiles",
     ],
@@ -158,6 +176,7 @@ cc_library(
     deps = [
         ":BuiltinAttributesIncGen",
         ":BuiltinDialectIncGen",
+        ":BuiltinLocationAttributesIncGen",
         ":BuiltinOpsIncGen",
         ":BuiltinTypesIncGen",
         ":CallOpInterfacesIncGen",
@@ -545,7 +564,10 @@ td_library(
     name = "ArmNeonTdFiles",
     srcs = ["include/mlir/Dialect/ArmNeon/ArmNeon.td"],
     includes = ["include"],
-    deps = [":SideEffectInterfacesTdFiles"],
+    deps = [
+        ":LLVMOpsTdFiles",
+        ":SideEffectInterfacesTdFiles",
+    ],
 )
 
 gentbl(
@@ -589,92 +611,18 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "ArmNeonToLLVM",
-    srcs = glob([
-        "lib/Conversion/ArmNeonToLLVM/*.cpp",
-    ]) + ["lib/Conversion/PassDetail.h"],
-    hdrs = glob([
-        "include/mlir/Conversion/ArmNeonToLLVM/*.h",
-    ]),
-    includes = ["include"],
-    deps = [
-        ":ArmNeon",
-        ":ConversionPassIncGen",
-        ":EDSC",
-        ":IR",
-        ":LLVMArmNeon",
-        ":LLVMDialect",
-        ":Pass",
-        ":StandardOps",
-        ":StandardToLLVM",
-        ":Support",
-        ":Transforms",
-        ":VectorOps",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-td_library(
-    name = "LLVMArmNeonTdFiles",
-    srcs = ["include/mlir/Dialect/LLVMIR/LLVMArmNeon.td"],
-    includes = ["include"],
-    deps = [":LLVMOpsTdFiles"],
-)
-
 gentbl(
-    name = "LLVMArmNeonIncGen",
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            "-gen-dialect-decls -dialect=llvm_arm_neon",
-            "include/mlir/Dialect/LLVMIR/LLVMArmNeonDialect.h.inc",
-        ),
-        (
-            "-gen-op-decls",
-            "include/mlir/Dialect/LLVMIR/LLVMArmNeon.h.inc",
-        ),
-        (
-            "-gen-op-defs",
-            "include/mlir/Dialect/LLVMIR/LLVMArmNeon.cpp.inc",
-        ),
-        (
-            "-gen-op-doc",
-            "g3doc/Dialects/LLVMIR/LLVMArmNeon.md",
-        ),
-    ],
-    tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/LLVMIR/LLVMArmNeon.td",
-    deps = [":LLVMArmNeonTdFiles"],
-)
-
-cc_library(
-    name = "LLVMArmNeon",
-    srcs = ["lib/Dialect/LLVMIR/IR/LLVMArmNeonDialect.cpp"],
-    hdrs = ["include/mlir/Dialect/LLVMIR/LLVMArmNeonDialect.h"],
-    includes = ["include"],
-    deps = [
-        ":IR",
-        ":LLVMArmNeonIncGen",
-        ":LLVMDialect",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-gentbl(
-    name = "LLVMArmNeonConversionIncGen",
+    name = "ArmNeonConversionIncGen",
     strip_include_prefix = "include",
     tbl_outs = [
         (
             "-gen-llvmir-conversions",
-            "include/mlir/Dialect/LLVMIR/LLVMArmNeonConversions.inc",
+            "include/mlir/Dialect/ArmNeon/ArmNeonConversions.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/LLVMIR/LLVMArmNeon.td",
-    deps = [":LLVMArmNeonTdFiles"],
+    td_file = "include/mlir/Dialect/ArmNeon/ArmNeon.td",
+    deps = [":ArmNeonTdFiles"],
 )
 
 ##---------------------------------------------------------------------------##
@@ -1269,7 +1217,6 @@ cc_library(
     deps = [
         ":AVX512ToLLVM",
         ":AffineToStandard",
-        ":ArmNeonToLLVM",
         ":AsyncToLLVM",
         ":ComplexToLLVM",
         ":ConversionPassIncGen",
@@ -1767,6 +1714,24 @@ gentbl(
     deps = [":LLVMOpsTdFiles"],
 )
 
+gentbl(
+    name = "LLVMDialectAttributesIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "--gen-attrdef-decls",
+            "include/mlir/Dialect/LLVMIR/LLVMOpsAttrDefs.h.inc",
+        ),
+        (
+            "--gen-attrdef-defs",
+            "include/mlir/Dialect/LLVMIR/LLVMOpsAttrDefs.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/LLVMIR/LLVMAttrDefs.td",
+    deps = [":LLVMOpsTdFiles"],
+)
+
 cc_library(
     name = "LLVMDialect",
     srcs = glob(
@@ -1777,8 +1742,6 @@ cc_library(
         exclude = [
             "lib/Dialect/LLVMIR/IR/*AVX512*.cpp",
             "lib/Dialect/LLVMIR/IR/*AVX512*.h",
-            "lib/Dialect/LLVMIR/IR/*ArmNeon*.cpp",
-            "lib/Dialect/LLVMIR/IR/*ArmNeon*.h",
             "lib/Dialect/LLVMIR/IR/*ArmSVE*.cpp",
             "lib/Dialect/LLVMIR/IR/*ArmSVE*.h",
             "lib/Dialect/LLVMIR/IR/NVVM*.cpp",
@@ -1791,7 +1754,6 @@ cc_library(
         ["include/mlir/Dialect/LLVMIR/*.h"],
         exclude = [
             "include/mlir/Dialect/LLVMIR/*AVX512*.h",
-            "include/mlir/Dialect/LLVMIR/*ArmNeon*.h",
             "include/mlir/Dialect/LLVMIR/*ArmSVE*.h",
             "include/mlir/Dialect/LLVMIR/NVVM*.h",
             "include/mlir/Dialect/LLVMIR/ROCDL*.h",
@@ -1801,6 +1763,7 @@ cc_library(
     deps = [
         ":ControlFlowInterfaces",
         ":IR",
+        ":LLVMDialectAttributesIncGen",
         ":LLVMDialectInterfaceIncGen",
         ":LLVMOpsIncGen",
         ":SideEffectInterfaces",
@@ -2869,6 +2832,7 @@ cc_library(
         ":SPIRVUtils",
         ":StandardOps",
         ":Support",
+        ":TensorDialect",
         ":Transforms",
         ":VectorOps",
         "@llvm-project//llvm:Support",
@@ -3695,15 +3659,15 @@ cc_library(
 )
 
 cc_library(
-    name = "LLVMArmNeonToLLVMIRTranslation",
-    srcs = glob(["lib/Target/LLVMIR/Dialect/LLVMArmNeon/*.cpp"]),
-    hdrs = glob(["include/mlir/Target/LLVMIR/Dialect/LLVMArmNeon/*.h"]),
+    name = "ArmNeonToLLVMIRTranslation",
+    srcs = glob(["lib/Target/LLVMIR/Dialect/ArmNeon/*.cpp"]),
+    hdrs = glob(["include/mlir/Target/LLVMIR/Dialect/ArmNeon/*.h"]),
     includes = ["include"],
     deps = [
+        ":ArmNeon",
+        ":ArmNeonConversionIncGen",
+        ":ArmNeonIncGen",
         ":IR",
-        ":LLVMArmNeon",
-        ":LLVMArmNeonConversionIncGen",
-        ":LLVMArmNeonIncGen",
         ":Support",
         ":ToLLVMIRTranslation",
         "@llvm-project//llvm:Core",
@@ -3796,8 +3760,8 @@ cc_library(
     hdrs = ["include/mlir/Target/LLVMIR/Dialect/All.h"],
     includes = ["include"],
     deps = [
+        ":ArmNeonToLLVMIRTranslation",
         ":LLVMAVX512ToLLVMIRTranslation",
-        ":LLVMArmNeonToLLVMIRTranslation",
         ":LLVMArmSVEToLLVMIRTranslation",
         ":LLVMToLLVMIRTranslation",
         ":NVVMToLLVMIRTranslation",
@@ -3825,7 +3789,7 @@ cc_library(
     srcs = [
         "lib/Target/LLVMIR/ConvertFromLLVMIR.cpp",
     ],
-    hdrs = ["include/mlir/Target/LLVMIR.h"],
+    hdrs = ["include/mlir/Target/LLVMIR/Import.h"],
     includes = ["include"],
     deps = [
         ":IR",
@@ -3949,7 +3913,6 @@ cc_library(
         "include/mlir/InitAllDialects.h",
         "include/mlir/InitAllPasses.h",
     ],
-    defines = ["MLIR_CUDA_CONVERSIONS_ENABLED"],
     deps = [
         ":AVX512",
         ":AVX512ToLLVM",
@@ -3958,7 +3921,6 @@ cc_library(
         ":AffineToStandard",
         ":AffineTransforms",
         ":ArmNeon",
-        ":ArmNeonToLLVM",
         ":ArmSVE",
         ":ArmSVEToLLVM",
         ":Async",
@@ -3978,7 +3940,6 @@ cc_library(
         ":GPUTransforms",
         ":IR",
         ":LLVMAVX512",
-        ":LLVMArmNeon",
         ":LLVMArmSVE",
         ":LLVMDialect",
         ":LLVMIRTransforms",
@@ -4208,6 +4169,11 @@ cc_binary(
 cc_binary(
     name = "mlir-cuda-runner",
     srcs = ["tools/mlir-cuda-runner/mlir-cuda-runner.cpp"],
+    # Avoid duplicate definitions that prevent the ThreadPoolExecutor d'tor to
+    # join all threads. The details are unclear. This is a temporary solution
+    # because we will replace the mlir-cuda-runner with cuda-opt, mlir-opt, and
+    # mlir-cpu-runner.
+    linkstatic = False,
     deps = [
         ":Async",
         ":AsyncTransforms",
@@ -5070,7 +5036,6 @@ cc_library(
         ":AVX512",
         ":AVX512ToLLVM",
         ":ArmNeon",
-        ":ArmNeonToLLVM",
         ":ArmSVE",
         ":ArmSVEToLLVM",
         ":ConversionPassIncGen",
@@ -5078,7 +5043,6 @@ cc_library(
         ":EDSC",
         ":IR",
         ":LLVMAVX512",
-        ":LLVMArmNeon",
         ":LLVMArmSVE",
         ":LLVMDialect",
         ":Pass",

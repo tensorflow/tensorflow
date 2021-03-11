@@ -584,6 +584,7 @@ def LHLO_CollectivePermuteOp: LHLO_Op<"collective_permute", [SameTypeOperands]>,
     I64ElementsAttr:$source_target_pairs,
     OptionalAttr<ChannelHandle>:$channel_id
   );
+  let verifier = [{ return Verify(*this); }];
 }
 
 def LHLO_FftOp: LHLO_Op<"fft", []>, BASE_HLO_FftOp {

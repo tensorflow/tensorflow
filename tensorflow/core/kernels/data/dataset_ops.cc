@@ -81,6 +81,28 @@ DatasetToGraphOp::DatasetToGraphOp(OpKernelConstruction* ctx)
 void DatasetToGraphOp::Compute(OpKernelContext* ctx) {
   DatasetBase* dataset;
   OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
+  if (dataset->options().optional_external_state_policy_case() ==
+      Options::kExternalStatePolicy) {
+    switch (dataset->options().external_state_policy()) {
+      case ExternalStatePolicy::WARN:
+        external_state_policy_ =
+            SerializationContext::ExternalStatePolicy::kWarn;
+        break;
+      case ExternalStatePolicy::IGNORE:
+        external_state_policy_ =
+            SerializationContext::ExternalStatePolicy::kIgnore;
+        break;
+      case ExternalStatePolicy::FAIL:
+        external_state_policy_ =
+            SerializationContext::ExternalStatePolicy::kFail;
+        break;
+      default: {
+        LOG(ERROR) << "Dataset " << dataset->type_string()
+                   << " has an unknown external_state_policy enum value: "
+                   << dataset->options().external_state_policy();
+      }
+    }
+  }
   SerializationContext::Params params;
   params.external_state_policy = external_state_policy_;
 
@@ -119,8 +141,7 @@ void DatasetCardinalityOp::Compute(OpKernelContext* ctx) {
 
 void DatasetFromGraphOp::Compute(OpKernelContext* ctx) {
   tstring graph_def_string;
-  OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument(ctx, kGraphDef, &graph_def_string));
+  OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kGraphDef, &graph_def_string));
   GraphDef graph_def;
   OP_REQUIRES(ctx, graph_def.ParseFromString(graph_def_string),
               errors::InvalidArgument("Could not parse GraphDef"));

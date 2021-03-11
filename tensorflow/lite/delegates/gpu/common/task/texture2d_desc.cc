@@ -26,6 +26,8 @@ GPUResources Texture2DDescriptor::GetGPUResources() const {
   GPUResources resources;
   GPUImage2DDescriptor desc;
   desc.data_type = element_type;
+  desc.normalized = normalized;
+  desc.normalized_type = normalized_type;
   desc.access_type = access_type_;
   resources.images2d.push_back({"tex2d", desc});
   return resources;

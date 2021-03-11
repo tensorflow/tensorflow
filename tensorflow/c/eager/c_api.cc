@@ -507,6 +507,25 @@ class CAPICustomDeviceTensorHandle
     return s.status;
   }
 
+  bool HasCustomSummarizer() const override {
+    return methods_.summarize != nullptr;
+  }
+
+  Status SummarizeValue(std::string& summary) const override {
+    if (methods_.summarize == nullptr) {
+      return tensorflow::CustomDeviceTensorHandle::SummarizeValue(summary);
+    }
+    TF_Status c_status;
+    std::unique_ptr<TF_Buffer, decltype(&TF_DeleteBuffer)> summary_buffer(
+        methods_.summarize(data_, &c_status), TF_DeleteBuffer);
+    if (!c_status.status.ok()) {
+      return c_status.status;
+    }
+    summary = std::string(reinterpret_cast<const char*>(summary_buffer->data),
+                          summary_buffer->length);
+    return Status::OK();
+  }
+
  private:
   void* const data_;
   const TFE_CustomDeviceTensorHandleMethods methods_;

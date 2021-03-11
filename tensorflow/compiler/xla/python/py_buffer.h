@@ -52,7 +52,7 @@ class DeviceArrayBase {
 // `DeviceArray` object, at the condition there is no associated LazyExpr.
 class PyBuffer : public DeviceArrayBase {
  public:
-  PyBuffer(std::shared_ptr<PyClient> client, std::unique_ptr<PjRtBuffer> buffer,
+  PyBuffer(std::shared_ptr<PyClient> client, std::shared_ptr<PjRtBuffer> buffer,
            std::shared_ptr<Traceback> traceback);
   ~PyBuffer();
 
@@ -74,6 +74,11 @@ class PyBuffer : public DeviceArrayBase {
     buffer_->Delete();
     host_value_ = nullptr;
   }
+
+  // Makes a copy of this PyBuffer object that shares the underlying PjRtBuffer.
+  // This is useful because we may wish to change JAX metadata (e.g., the sticky
+  // device) without copying the buffer.
+  std::unique_ptr<PyBuffer> Clone() const;
 
   // Returns xla::InvalidArgument if the buffer has been deleted.
   Status BlockHostUntilReady();
@@ -118,7 +123,7 @@ class PyBuffer : public DeviceArrayBase {
     std::shared_ptr<xla::Literal> value;
   };
   std::shared_ptr<PyClient> client_;
-  std::unique_ptr<PjRtBuffer> buffer_;
+  std::shared_ptr<PjRtBuffer> buffer_;
   std::shared_ptr<Traceback> traceback_;
   std::shared_ptr<HostValue> host_value_;  // Protected by the GIL.
 
@@ -126,8 +131,9 @@ class PyBuffer : public DeviceArrayBase {
   // TODO(jblespiau): It's currently there for convenience but maybe we can do
   // without it (adding `weak_type` instead).
   absl::optional<pybind11::object> aval_ = absl::nullopt;
-  // Doubly-linked list of all buffers known to the client. Protected by the
-  // GIL.
+  // Doubly-linked list of all PyBuffers known to the client. Protected by the
+  // GIL. Since multiple PyBuffers may share the same PjRtBuffer, there may be
+  // duplicate PjRtBuffers in this list.
   PyBuffer* next_;
   PyBuffer* prev_;
 };
