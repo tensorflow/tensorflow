@@ -17,18 +17,14 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/function.h"
 
 namespace tensorflow {
 namespace data {
 
-// Thread-safe data structure for caching function instantiations that uses LRU
-// policy for replacement.
 class FunctionHandleCache {
  public:
   explicit FunctionHandleCache(FunctionLibraryRuntime* lib);
-  FunctionHandleCache(FunctionLibraryRuntime* lib, int64 capacity);
 
   ~FunctionHandleCache();
 
@@ -44,23 +40,11 @@ class FunctionHandleCache {
   Status Clear();
 
  private:
-  struct Entry {
-    FunctionLibraryRuntime::Handle handle;
-    std::list<string>::iterator lru_iterator;
-  };
-
-  // If the given key exists, returns true, updates the LRU state, and sets
-  // `handle` to point to the cached handle. Otherwise, returns false and the
-  // LRU state and `handle` are unchanged.
-  bool Lookup(const string& key, FunctionLibraryRuntime::Handle* handle)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
   mutex mu_;
   FunctionLibraryRuntime* lib_ = nullptr;  // not owned
   const string state_handle_;
-  absl::flat_hash_map<string, Entry> handles_ TF_GUARDED_BY(mu_);
-  std::list<string> lru_list_ TF_GUARDED_BY(mu_);
-  const int64 capacity_;
+  std::unordered_map<string, FunctionLibraryRuntime::Handle> handles_
+      TF_GUARDED_BY(mu_);
 };
 
 }  // namespace data
