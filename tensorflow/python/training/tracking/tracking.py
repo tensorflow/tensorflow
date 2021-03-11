@@ -262,18 +262,24 @@ class CapturableResource(base.Trackable):
     }
 
   def __del__(self):
-    with self._destruction_context():
-      # There is a race condition between this and `ScopedTFFunction`
-      # whereby if an entire garbage collection chain containing both
-      # objects is moved to unreachable during the same garbage collection
-      # cycle, the __del__ for `ScopedTFFunction` can be collected before
-      # this method is called. In that case, we can't do much but
-      # continue.
-      try:
-        self._destroy_resource()
+    try:
+      # Outer race condition: on program exit, the destruction context may be
+      # deleted before this __del__ is called. At this point we can safely
+      # exit without calling _destroy_resource() and let Python handle things.
+      with self._destruction_context():
+        # Inner race condition: possible between this and `ScopedTFFunction`
+        # whereby if an entire garbage collection chain containing both
+        # objects is moved to unreachable during the same garbage collection
+        # cycle, the __del__ for `ScopedTFFunction` can be collected before
+        # this method is called. In that case, we can't do much but
+        # continue.
+        try:
+          self._destroy_resource()
 
-      except defun.FunctionAlreadyGarbageCollectedError:
-        pass
+        except defun.FunctionAlreadyGarbageCollectedError:
+          pass
+    except TypeError:
+      pass
 
 
 class TrackableResource(CapturableResource):
