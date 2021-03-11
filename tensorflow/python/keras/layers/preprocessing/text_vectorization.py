@@ -51,7 +51,7 @@ COUNT = index_lookup.COUNT
 # This is an explicit regex of all the tokens that will be stripped if
 # LOWER_AND_STRIP_PUNCTUATION is set. If an application requires other
 # stripping, a Callable should be passed into the 'standardize' arg.
-DEFAULT_STRIP_REGEX = r'[!"#$%&()\*\+,-\./:;<=>?@\[\\\]^_`{|}~\']'
+DEFAULT_STRIP_REGEX = r'[!"\r\n#$%&()\*\+,-\./:;<=>?@\[\\\]^_`{|}~\']'
 
 # The string tokens in the extracted vocabulary
 _VOCAB_NAME = "vocab"
