@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -51,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/resource.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/public/session_options.h"
@@ -651,8 +654,21 @@ class ToSingleElementOp : public AsyncOpKernel {
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
 
     IteratorContext::Params params(ctx);
-    FunctionHandleCache function_handle_cache(params.flr);
-    params.function_handle_cache = &function_handle_cache;
+    {
+      mutex_lock l(mu_);
+      auto cache =
+          gtl::FindOrNull(function_handle_caches_, ctx->function_library());
+      if (cache == nullptr) {
+        // TODO(jsimsa): Support configuring the cache capacity.
+        auto result = function_handle_caches_.emplace(
+            std::make_pair(ctx->function_library(),
+                           absl::make_unique<FunctionHandleCache>(
+                               ctx->function_library(), /*capacity=*/1000)));
+        cache = &result.first->second;
+      }
+      params.function_handle_cache = cache->get();
+    }
+
     ResourceMgr resource_mgr;
     params.resource_mgr = &resource_mgr;
     CancellationManager cancellation_manager(ctx->cancellation_manager());
@@ -688,6 +704,10 @@ class ToSingleElementOp : public AsyncOpKernel {
     return Status::OK();
   }
 
+  mutex mu_;
+  absl::flat_hash_map<FunctionLibraryRuntime*,
+                      std::unique_ptr<FunctionHandleCache>>
+      function_handle_caches_ TF_GUARDED_BY(mu_);
   UnboundedThreadPool unbounded_threadpool_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
