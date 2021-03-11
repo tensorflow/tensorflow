@@ -4448,11 +4448,16 @@ DistributedTPURewritePass::PerformHostTrainingLoopOptimization(
       TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
           *function_def, AttrSlice(&function_attr.value()), flib_def, &fbody));
       Graph* function_graph = fbody->graph;
+      // TODO(b/181902456) Bring ReshardOp back once libtpu supports it.
+#ifndef LIBTPU_ON_GCE
       TF_RETURN_IF_ERROR(tpu::AddReshardOp(function_graph, host_loop));
+#endif
       TF_RETURN_IF_ERROR(UpdateFunctionLibDefinition(*function_graph,
                                                      *function_name, flib_def));
     } else {
+#ifndef LIBTPU_ON_GCE
       TF_RETURN_IF_ERROR(tpu::AddReshardOp(graph, host_loop));
+#endif
     }
   }
   return Status::OK();
@@ -4577,14 +4582,8 @@ bool DistributedTPURewritePass::distribute_vars_ = false;
 bool DistributedTPURewritePass::allow_xla_spmd_partition_ = true;
 bool DistributedTPURewritePass::
     replicate_inputs_outputs_by_default_for_xla_spmd_ = false;
-// TODO(b/182404662) - re-enable once resolved.
-#ifndef LIBTPU_ON_GCE
-bool DistributedTPURewritePass::
-    enable_cross_replica_sharding_mirrored_variables_ = false;
-#else
 bool DistributedTPURewritePass::
     enable_cross_replica_sharding_mirrored_variables_ = true;
-#endif
 bool DistributedTPURewritePass::enable_automatic_model_parallelism_ = false;
 bool DistributedTPURewritePass::enable_xla_param_broadcast_ = false;
 
