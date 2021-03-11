@@ -70,7 +70,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pluggable_device_runtime_impl",
-        "//tensorflow/c/experimental/stream_executor:stream_executor",
+        "//tensorflow/c/experimental/stream_executor",
     ],
 )
 
