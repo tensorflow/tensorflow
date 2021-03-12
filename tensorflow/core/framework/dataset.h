@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/dataset_stateful_op_allowlist.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -57,6 +58,15 @@ class Node;
 
 namespace data {
 
+namespace internal {
+// Merges Options from source to destination. If there is a conflict on a field,
+// the field value from the source takes precedence.
+void MergeOptions(const protobuf::Message& source,
+                  protobuf::Message* destination);
+void MergeOptions(const protobuf::MessageLite& source,
+                  protobuf::MessageLite* destination);
+}  // namespace internal
+
 using TraceMeMetadata = std::vector<std::pair<StringPiece, string>>;
 
 constexpr char kTFDataFunction[] = "_tf_data_function";
@@ -71,6 +81,7 @@ constexpr char kPipe[] = "|";
 constexpr char kColon[] = ":";
 
 constexpr char kTFDataResourceTag[] = "tfdata";
+constexpr char kTraceInfoUnavailable[] = "unavailable";
 
 class DatasetBase;
 class SerializationContext;
@@ -319,7 +330,7 @@ class SplitProvider {
   // Saves the state of this split provider.
   virtual Status Save(std::function<std::string(std::string)> full_name,
                       IteratorStateWriter* writer) = 0;
-  // Saves the state of this split provider.
+  // Restores the state of this split provider.
   virtual Status Restore(std::function<std::string(std::string)> full_name,
                          IteratorStateReader* reader) = 0;
 };
@@ -665,7 +676,11 @@ class IteratorBase {
 
   // Saves the state of this iterator.
   virtual Status Save(SerializationContext* ctx, IteratorStateWriter* writer) {
-    return SaveInternal(ctx, writer);
+    int64 start_us = EnvTime::NowMicros();
+    TF_RETURN_IF_ERROR(SaveInternal(ctx, writer));
+    VLOG(1) << "Saved " << prefix() << " in "
+            << (EnvTime::NowMicros() - start_us) << "us";
+    return Status::OK();
   }
 
  protected:
@@ -675,21 +690,38 @@ class IteratorBase {
 
   // Restores the state of this iterator.
   Status Restore(IteratorContext* ctx, IteratorStateReader* reader) {
-    return RestoreInternal(ctx, reader);
+    int64 start_us = EnvTime::NowMicros();
+    TF_RETURN_IF_ERROR(RestoreInternal(ctx, reader));
+    VLOG(1) << "Restored " << prefix() << " in "
+            << (EnvTime::NowMicros() - start_us) << "us";
+    return Status::OK();
   }
 
   // This is needed so that sub-classes of IteratorBase can call
   // `SaveInternal` on their input iterators.
   Status SaveInput(SerializationContext* ctx, IteratorStateWriter* writer,
                    const std::unique_ptr<IteratorBase>& input) {
-    return input->SaveInternal(ctx, writer);
+    int64 start_us = EnvTime::NowMicros();
+    TF_RETURN_IF_ERROR(input->SaveInternal(ctx, writer));
+    VLOG(2) << "Saved " << input->prefix() << " in "
+            << (EnvTime::NowMicros() - start_us) << "us";
+    return Status::OK();
   }
 
   // This is needed so that sub-classes of IteratorBase can call
   // `RestoreInternal` on their input iterators.
   Status RestoreInput(IteratorContext* ctx, IteratorStateReader* reader,
                       const std::unique_ptr<IteratorBase>& input) {
-    return input->RestoreInternal(ctx, reader);
+    int64 start_us = EnvTime::NowMicros();
+    TF_RETURN_IF_ERROR(input->RestoreInternal(ctx, reader));
+    VLOG(2) << "Restored " << input->prefix() << " in "
+            << (EnvTime::NowMicros() - start_us) << "us";
+    return Status::OK();
+  }
+
+  Status RestoreInput(IteratorContext&& ctx, IteratorStateReader* reader,
+                      const std::unique_ptr<IteratorBase>& input) {
+    return RestoreInput(&ctx, reader, input);
   }
 
   // Saves the state of this iterator.
@@ -798,6 +830,14 @@ class DatasetBase : public core::RefCounted {
   // Graph node name of this dataset op, uniquely identifying the dataset in
   // the graph.
   const string& node_name() const { return node_name_; }
+
+  // Merges options from inputs to this dataset. If there is a conflict in a
+  // field value, the options set on this dataset takes precedence over those in
+  // the inputs. The order of precedence on the inputs is in the same order as
+  // how they appear for this dataset.
+  Status MergeOptionsFromInputs();
+
+  const Options& options() const { return options_; }
 
   // Returns a new iterator for iterating over the range of elements in
   // this dataset.
@@ -919,9 +959,12 @@ class DatasetBase : public core::RefCounted {
   virtual std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const = 0;
 
- private:
+  void set_options(const Options& options) { options_ = options; }
+
+ public:
   const string type_string_;
   const string node_name_;
+  Options options_;
 };
 
 // Represents an iterator that is associated with a particular dataset.
@@ -1061,12 +1104,19 @@ class DatasetBaseIterator : public IteratorBase {
     }
   }
 
+  // Returns whether work is currently being recorded, i.e. whether we are
+  // currently between a `RecordStart` and a `RecordStop`.
+  bool IsRecording(IteratorContext* ctx) {
+    return collect_resource_usage(ctx) && node_->is_recording();
+  }
+
  private:
   bool collect_resource_usage(IteratorContext* ctx) {
     auto model = ctx->model();
     return model && model->collect_resource_usage() && node_;
   }
 
+  string traceme_metadata_;
   BaseParams params_;
 };
 

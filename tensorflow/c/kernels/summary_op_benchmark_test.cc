@@ -49,14 +49,12 @@ Graph* BM_ScalarSummaryOp(TensorShape shape, std::string tag, float value) {
 constexpr char longTagParam[] = "LONGTAG____________________________";
 constexpr float largeValueParam = 2352352.2623433;
 
-#define BM_ScalarSummaryDev(device, dims, name, tag, value) \
-  void BM_ScalarSummary##name##device(int iters) {          \
-    testing::StopTiming();                                  \
-    TensorShape tensorshape(DIMARGS dims);                  \
-    auto g = BM_ScalarSummaryOp(tensorshape, #tag, value);  \
-    testing::StartTiming();                                 \
-    test::Benchmark("cpu", g).Run(iters);                   \
-  }                                                         \
+#define BM_ScalarSummaryDev(device, dims, name, tag, value)                 \
+  void BM_ScalarSummary##name##device(::testing::benchmark::State& state) { \
+    TensorShape tensorshape(DIMARGS dims);                                  \
+    auto g = BM_ScalarSummaryOp(tensorshape, #tag, value);                  \
+    test::Benchmark("cpu", g, /*old_benchmark_api=*/false).Run(state);      \
+  }                                                                         \
   BENCHMARK(BM_ScalarSummary##name##device);
 
 BM_ScalarSummaryDev(Cpu, (5, 10, 100), Base, Tag, 5.2);

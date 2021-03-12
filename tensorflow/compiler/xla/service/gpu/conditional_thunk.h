@@ -39,8 +39,8 @@ struct ConditionalThunkConfig {
 
 ConditionalThunkConfig GetConditionalThunkConfig(
     const HloInstruction* instr,
-    std::vector<ThunkSequence>&& branch_thunk_sequences,
-    std::vector<absl::optional<size_t>>&& branch_profile_indices);
+    std::vector<ThunkSequence> branch_thunk_sequences,
+    std::vector<absl::optional<size_t>> branch_profile_indices);
 
 // ConditionalThunk implements the conditional instruction on GPU by reading the
 // predicate of the conditional and executing the true or the false computation
@@ -55,7 +55,7 @@ ConditionalThunkConfig GetConditionalThunkConfig(
 class ConditionalThunk : public Thunk {
  public:
   ConditionalThunk(
-      ThunkInfo thunk_info, ConditionalThunkConfig&& config,
+      ThunkInfo thunk_info, ConditionalThunkConfig config,
       const BufferAllocation::Slice& branch_index_buffer_index,
       absl::Span<const BufferAllocation::Slice> branch_operand_buffer_indexes);
 

@@ -1,4 +1,5 @@
-// RUN: tf-opt %s -tf-layout-optimization=force-data-format=NHWC -verify-diagnostics | FileCheck %s --dump-input=always
+// RUN: tf-opt %s -tf-layout-optimization=force-data-format=NHWC -verify-diagnostics | FileCheck %s
+// RUN: tf-opt %s -tf-layout-optimization="force-data-format=NHWC skip-fold-transpose-in-ops=true" -verify-diagnostics | FileCheck %s --check-prefix=NOFOLD
 
 // CHECK-LABEL: func @transpose_resnet_layer
 func @transpose_resnet_layer(%arg0: tensor<?x224x224x3xf32>, // input
@@ -30,10 +31,14 @@ func @transpose_resnet_layer(%arg0: tensor<?x224x224x3xf32>, // input
 
   // Shuffled paddings.
   // CHECK: %[[PADDINGS:[0-9]*]] = "tf.Const"(){{.*}}[0, 0], [3, 3], [3, 3], [0, 0]
+  // NOFOLD: %[[PADDING:[0-9]*]] = "tf.Const"(){{.*}}[0, 0], [0, 0], [3, 3], [3, 3]
+  // NOFOLD: %[[CST:[0-9]*]] = "tf.Const"() {value = dense<[0, 3, 1, 2]> : tensor<4xi32>} : () -> tensor<4xi32>
+  // NOFOLD: %[[TRANSPOSE:[0-9]*]] = "tf.Transpose"(%arg0, %[[CST]]) : (tensor<?x224x224x3xf32>, tensor<4xi32>) -> tensor<?x3x224x224xf32>
 
   // Pad input with new paddings.
   // CHECK: %[[PAD:[0-9]*]] = "tf.Pad"(%arg0, %[[PADDINGS]])
   // CHECK-SAME: (tensor<?x224x224x3xf32>, tensor<4x2xi32>) -> tensor<?x230x230x3xf32>
+  // NOFOLD: %[[PAD:[0-9]*]] = "tf.Pad"(%[[TRANSPOSE]], %[[PADDING]])
 
   // ------------------------------------------------------------------------ //
   // Convolution layer #0.

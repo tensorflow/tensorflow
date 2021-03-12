@@ -19,8 +19,6 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/no_op.h"
 
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
-
 namespace tensorflow {
 
 // This file contains temporary registrations for some of the Eigen CPU backend
@@ -56,13 +54,9 @@ namespace tensorflow {
                               .TypeConstraint<float>("U"),                    \
                           NoOp);                                              \
   REGISTER_KERNEL_BUILDER(                                                    \
-      Name("_FusedMatMul").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);  \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("BatchMatMulV2").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);
+      Name("_FusedMatMul").Device(DEVICE_CPU).TypeConstraint<T>("T"), NoOp);
 
 TF_CALL_bfloat16(REGISTER_CPU);
 #undef REGISTER_CPU
 
 }  // namespace tensorflow
-
-#endif  // ENABLE_INTEL_MKL_BFLOAT16

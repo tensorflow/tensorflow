@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 
+#include "absl/strings/match.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
@@ -85,9 +86,31 @@ double GetFlopMaxThroughputPerSM(const DeviceCapabilities& device_cap) {
          device_cap.clock_rate_in_ghz();
 }
 
+absl::string_view GpuModelName(const DeviceCapabilities& device_cap) {
+  switch (device_cap.compute_capability().major()) {
+    case 2:
+      return "Nvidia GPU (Fermi)";
+    case 3:
+      return "Nvidia GPU (Kepler)";
+    case 5:
+      return "Nvidia GPU (Maxwell)";
+    case 6:
+      return "Nvidia GPU (Pascal)";
+    case 7:
+      if (device_cap.compute_capability().minor() < 5) {
+        return "Nvidia GPU (Volta)";
+      } else {
+        return "Nvidia GPU (Turing)";
+      }
+    case 8:
+      return "Nvidia GPU (Ampere)";
+    default:
+      return "Nvidia GPU";
+  }
+}
+
 HardwareType ParseHardwareType(absl::string_view device_type) {
-  if (device_type == "GPU" || device_type == "Nvidia GPU")
-    return HardwareType::GPU;
+  if (absl::StrContains(device_type, "GPU")) return HardwareType::GPU;
   if (device_type == "CPU") return HardwareType::CPU_ONLY;
   if (device_type == "TPU") return HardwareType::TPU;
   return HardwareType::UNKNOWN_HARDWARE;

@@ -43,13 +43,13 @@ limitations under the License.
 #include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 using tensorflow::string;
 
 namespace {
 
-void BM_InitOp(int iters) {
-  tensorflow::testing::StopTiming();
+void BM_InitOp(::testing::benchmark::State& state) {
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_Context* ctx = TFE_NewContext(opts, status);
@@ -57,12 +57,10 @@ void BM_InitOp(int iters) {
   TFE_DeleteContextOptions(opts);
 
   TFE_TensorHandle* m = TestMatrixTensorHandle(ctx);
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     TFE_Op* matmul = MatMulOp(ctx, m, m);
     TFE_DeleteOp(matmul);
   }
-  tensorflow::testing::StopTiming();
   TFE_DeleteTensorHandle(m);
   TFE_DeleteContext(ctx);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
@@ -70,8 +68,8 @@ void BM_InitOp(int iters) {
 }
 BENCHMARK(BM_InitOp);
 
-void BM_Execute(int iters, int async) {
-  tensorflow::testing::StopTiming();
+void BM_Execute(::testing::benchmark::State& state) {
+  const int async = state.range(0);
   tensorflow::testing::SetLabel(async ? "ExecuteAsync" : "Execute");
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
@@ -85,8 +83,7 @@ void BM_Execute(int iters, int async) {
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_TensorHandle* retvals[1];
   int num_retvals = 1;
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     TFE_OpReset(matmul, "MatMul", nullptr, status);
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     TFE_OpAddInput(matmul, m, status);
@@ -95,14 +92,13 @@ void BM_Execute(int iters, int async) {
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     TFE_Execute(matmul, &retvals[0], &num_retvals, status);
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    if (state.iterations() >= state.max_iterations && async) {
+      TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
+      TFE_ExecutorWaitForAllPendingNodes(executor, status);
+      ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+      TFE_DeleteExecutor(executor);
+    }
   }
-  if (async) {
-    TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
-    TFE_ExecutorWaitForAllPendingNodes(executor, status);
-    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-    TFE_DeleteExecutor(executor);
-  }
-  tensorflow::testing::StopTiming();
   TFE_DeleteOp(matmul);
   TFE_DeleteTensorHandle(m);
   TFE_DeleteContext(ctx);
@@ -111,8 +107,8 @@ void BM_Execute(int iters, int async) {
 }
 BENCHMARK(BM_Execute)->Arg(0)->Arg(1);
 
-void BM_Execute_Identity(int iters, int async) {
-  tensorflow::testing::StopTiming();
+void BM_Execute_Identity(::testing::benchmark::State& state) {
+  const int async = state.range(0);
   tensorflow::testing::SetLabel(async ? "ExecuteIdentityAsync"
                                       : "ExecuteIdentity");
   TF_Status* status = TF_NewStatus();
@@ -126,22 +122,20 @@ void BM_Execute_Identity(int iters, int async) {
   TFE_Op* identity = TFE_NewOp(ctx, "Identity", status);
   TFE_TensorHandle* retvals[1];
   int num_retvals = 1;
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
     TFE_OpReset(identity, "Identity", nullptr, status);
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     TFE_OpAddInput(identity, m, status);
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     TFE_Execute(identity, &retvals[0], &num_retvals, status);
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    if (state.iterations() >= state.max_iterations && async) {
+      TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
+      TFE_ExecutorWaitForAllPendingNodes(executor, status);
+      ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+      TFE_DeleteExecutor(executor);
+    }
   }
-  if (async) {
-    TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
-    TFE_ExecutorWaitForAllPendingNodes(executor, status);
-    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-    TFE_DeleteExecutor(executor);
-  }
-  tensorflow::testing::StopTiming();
   TFE_DeleteOp(identity);
   TFE_DeleteTensorHandle(m);
   TFE_DeleteContext(ctx);
@@ -423,7 +417,7 @@ void TensorHandleSilentCopy(bool async,
         tensorflow::TensorHandleFromInterface(tensorflow::unwrap(hcpu));
     auto gpu_arg =
         tensorflow::TensorHandleFromInterface(tensorflow::unwrap(hgpu));
-    auto gpu_device = absl::get<tensorflow::Device*>(gpu_arg->device());
+    auto gpu_device = gpu_arg->device();
     ASSERT_FALSE(cpu_arg->HasLocalMirror(gpu_device));
 
     TFE_Op* matmul = MatMulOp(ctx, hcpu, hgpu);
@@ -650,10 +644,19 @@ void ExecuteAdd(bool async, bool forward_input, bool tfrt) {
   TFE_DeleteOp(add_op);
 
   TF_Tensor* t = TFE_TensorHandleResolve(retval, status);
-  if (forward_input || async) {
-    EXPECT_EQ(orig_ptr, TF_TensorData(t));
+  if (async) {
+    if (forward_input) {
+      EXPECT_EQ(orig_ptr, TF_TensorData(t));
+    } else {
+      // TODO(b/156981931): Flaky test. Very occasionally the following is false
+      // EXPECT_EQ(orig_ptr, TF_TensorData(t));
+    }
   } else {
-    EXPECT_NE(orig_ptr, TF_TensorData(t));
+    if (forward_input) {
+      EXPECT_EQ(orig_ptr, TF_TensorData(t));
+    } else {
+      EXPECT_NE(orig_ptr, TF_TensorData(t));
+    }
   }
 
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
@@ -697,7 +700,8 @@ TEST(CAPI, ExecuteAddForwardAsync) {
 }
 #ifdef PLATFORM_GOOGLE
 // TODO(b/153349425): Add forwarding tests for TFRT
-TEST(CAPI, ExecuteAddTfrt) {
+// TODO(b/178003466): Fix and re-enable.
+TEST(CAPI, DISABLED_ExecuteAddTfrt) {
   ExecuteAdd(
       /*async=*/false,
       /*forward_input*/ false,
@@ -955,6 +959,41 @@ string MatMulFunction() {
   return def.SerializeAsString();
 }
 
+// a + a
+string AddFunction() {
+  tensorflow::FunctionDef def;
+  CHECK(tensorflow::protobuf::TextFormat::ParseFromString(
+      "    signature {"
+      "      name: 'AddFunction'"
+      "      input_arg {"
+      "        name: 'a'"
+      "        type: DT_FLOAT"
+      "      }"
+      "      output_arg {"
+      "        name: 'o'"
+      "        type: DT_FLOAT"
+      "      }"
+      "    }"
+      "    node_def {"
+      "      name: 'output'"
+      "      op: 'Add'"
+      "      input: 'a'"
+      "      input: 'a'"
+      "      attr {"
+      "        key: 'T'"
+      "        value {"
+      "          type: DT_FLOAT"
+      "        }"
+      "      }"
+      "    }"
+      "    ret {"
+      "      key: 'o'"
+      "      value: 'output:z'"
+      "    }",
+      &def));
+  return def.SerializeAsString();
+}
+
 void FunctionDefAndExecute(bool async) {
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
@@ -1005,8 +1044,108 @@ void FunctionDefAndExecute(bool async) {
 TEST(CAPI, FunctionDefAndExecute) { FunctionDefAndExecute(false); }
 TEST(CAPI, FunctionDefAndExecuteAsync) { FunctionDefAndExecute(true); }
 
-void BM_ExecuteFunction(int iters, int async) {
-  tensorflow::testing::StopTiming();
+void RunAddFunction(bool use_tfrt, bool enable_grappler) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_ContextOptionsSetTfrt(opts, use_tfrt);
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  string function_def = AddFunction();
+  TFE_ContextAddFunctionDef(ctx, function_def.data(), function_def.size(),
+                            status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  TFE_TensorHandle* m = TestMatrixTensorHandle(ctx);
+  TFE_TensorHandle* retval[1] = {nullptr};
+  int num_retvals = 1;
+  TFE_Op* op = TFE_NewOp(ctx, "AddFunction", status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  // Add a config_proto attr, to trigger grappler graph rewrites in the current
+  // eager runtime.
+  if (enable_grappler) {
+    tensorflow::ConfigProto config;
+    // Do not skip grappler optimization even for small graphs.
+    config.mutable_graph_options()
+        ->mutable_rewrite_options()
+        ->set_min_graph_nodes(-1);
+    string serialized_config;
+    ASSERT_TRUE(config.SerializeToString(&serialized_config));
+    TFE_OpSetAttrString(
+        op, "config_proto",
+        reinterpret_cast<const void*>(serialized_config.c_str()),
+        serialized_config.length());
+  }
+
+  if (use_tfrt) {
+    // Set some test-only graph compiler options.
+    TFE_OpSetAttrBool(op, "TFRT_TEST_enable_native_ops", false);
+    TFE_OpSetAttrBool(op, "TFRT_TEST_enable_grappler", enable_grappler);
+  }
+
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  TFE_OpAddInput(op, m, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_Execute(op, &retval[0], &num_retvals, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  ASSERT_EQ(1, num_retvals);
+  TFE_DeleteOp(op);
+  TFE_DeleteTensorHandle(m);
+  TF_Tensor* t = TFE_TensorHandleResolve(retval[0], status);
+  TFE_DeleteTensorHandle(retval[0]);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  float product[4] = {0};
+  EXPECT_EQ(sizeof(product), TF_TensorByteSize(t));
+  memcpy(&product[0], TF_TensorData(t), TF_TensorByteSize(t));
+  TF_DeleteTensor(t);
+  EXPECT_EQ(2, product[0]);
+  EXPECT_EQ(4, product[1]);
+  EXPECT_EQ(6, product[2]);
+  EXPECT_EQ(8, product[3]);
+
+  // When we turn on grappler, confirm that the tf.Add has been rewritten into a
+  // tf.Mul.
+  // This capability of checking the executed op names is currently only enabled
+  // for TFRT debug build, for performance and simplicity reasons.
+  if (use_tfrt) {
+    TF_Buffer* buf = TF_NewBuffer();
+    TFE_GetExecutedOpNames(ctx, buf, status);
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+#ifndef NDEBUG
+    if (enable_grappler)
+      EXPECT_NE(strstr(static_cast<const char*>(buf->data), "tf.Mul"), nullptr);
+    else
+      EXPECT_NE(strstr(static_cast<const char*>(buf->data), "tf.Add"), nullptr);
+#endif
+    TF_DeleteBuffer(buf);
+  }
+
+  TFE_ContextRemoveFunction(ctx, "AddFunction", status);
+  ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+  TFE_DeleteContext(ctx);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
+}
+
+TEST(CAPI, RunAddFunctionWithGrappler) {
+  RunAddFunction(/*use_tfrt=*/false, /*enable_grappler=*/true);
+}
+
+#ifdef PLATFORM_GOOGLE
+TEST(CAPI, RunAddFunction_TFRT) {
+  RunAddFunction(/*use_tfrt=*/true, /*enable_grappler=*/false);
+}
+
+TEST(CAPI, RunAddFunctionWithGrappler_TFRT) {
+  RunAddFunction(/*use_tfrt=*/true, /*enable_grappler=*/true);
+}
+#endif
+
+void BM_ExecuteFunction(::testing::benchmark::State& state) {
+  const int async = state.range(0);
   tensorflow::testing::SetLabel(async ? "ExecuteFunctionAsync"
                                       : "ExecuteFunction");
   TF_Status* status = TF_NewStatus();
@@ -1022,24 +1161,23 @@ void BM_ExecuteFunction(int iters, int async) {
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   TFE_TensorHandle* m = TestMatrixTensorHandle(ctx);
-  TFE_Op* matmul = TFE_NewOp(ctx, "MatMulFunction", status);
-  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TFE_OpAddInput(matmul, m, status);
-  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_TensorHandle* retval[1] = {nullptr};
   int num_retvals = 1;
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
+    TFE_Op* matmul = TFE_NewOp(ctx, "MatMulFunction", status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_OpAddInput(matmul, m, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     TFE_Execute(matmul, &retval[0], &num_retvals, status);
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_DeleteOp(matmul);
+    if (state.iterations() >= state.max_iterations && async) {
+      TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
+      TFE_ExecutorWaitForAllPendingNodes(executor, status);
+      ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+      TFE_DeleteExecutor(executor);
+    }
   }
-  if (async) {
-    TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
-    TFE_ExecutorWaitForAllPendingNodes(executor, status);
-    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-    TFE_DeleteExecutor(executor);
-  }
-  tensorflow::testing::StopTiming();
   TFE_DeleteTensorHandle(m);
   TFE_DeleteTensorHandle(retval[0]);
   TFE_ContextRemoveFunction(ctx, "MatMulFunction", status);
@@ -1092,8 +1230,7 @@ TEST(CAPI, Variables) {
   TF_DeleteStatus(status);
 }
 
-void BM_ReadVariable(int iters) {
-  tensorflow::testing::StopTiming();
+void BM_ReadVariable(::testing::benchmark::State& state) {
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_Context* ctx = TFE_NewContext(opts, status);
@@ -1103,16 +1240,14 @@ void BM_ReadVariable(int iters) {
   TFE_TensorHandle* var_handle = TestVariable(ctx, 5.0);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
-  TFE_Op* op = TFE_NewOp(ctx, "ReadVariableOp", status);
-  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
-  TFE_OpAddInput(op, var_handle, status);
-  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-
   int num_retvals = 1;
   TFE_TensorHandle* h = nullptr;
-  tensorflow::testing::StartTiming();
-  for (int i = 0; i < iters; ++i) {
+  for (auto s : state) {
+    TFE_Op* op = TFE_NewOp(ctx, "ReadVariableOp", status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
+    TFE_OpAddInput(op, var_handle, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     TFE_Execute(op, &h, &num_retvals, status);
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     CHECK_EQ(1, num_retvals);
@@ -1121,11 +1256,8 @@ void BM_ReadVariable(int iters) {
     CHECK_EQ(0, TFE_TensorHandleNumDims(h, status));
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     h = nullptr;
-    TFE_OpAddInput(op, var_handle, status);
-    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_DeleteOp(op);
   }
-  tensorflow::testing::StopTiming();
-  TFE_DeleteOp(op);
 
   TFE_DeleteTensorHandle(var_handle);
   TFE_DeleteContext(ctx);
@@ -1134,7 +1266,8 @@ void BM_ReadVariable(int iters) {
 }
 BENCHMARK(BM_ReadVariable);
 
-TEST(CAPI, StringAttributes) {
+// TODO(b/178003466): Fix and re-enable.
+TEST(CAPI, DISABLED_StringAttributes) {
   // Test that TFE_OpSetAttrString doesn't hold on to the value after it
   // returns.
   TF_Status* status = TF_NewStatus();

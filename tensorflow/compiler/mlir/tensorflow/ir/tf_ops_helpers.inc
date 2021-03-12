@@ -203,39 +203,6 @@ static LogicalResult VerifyTypesCompatibility(
   return success();
 }
 
-// This is a helper for the Select to SelectV2 canonicalization. The `data` rank
-// refers to the rank of `t`/`e` (these two inputs have equal rank; this is
-// checked in the verifier).
-//
-// In most cases, the predicate for Select can be used directly as the predicate
-// for SelectV2. However, there is one case that varies, which is when the
-// predicate is a tensor and the data is multidimensional. In this case, Select
-// op semantics dictate that the predicate tensor length must match the size of
-// the first data dimension. This varies from normal broadcasting semantics
-// (which are used in SelectV2), so we must reshape the tensor in this case to
-// be compatible.
-static Value ReshapeSelectPredIfNecessary(OpBuilder *builder, Location loc,
-                                          Value cond, int data_rank) {
-  auto cond_tensor = cond.getType().cast<RankedTensorType>();
-  // Reshape is only needed in the case that the cond rank is 1 (i.e. it is
-  // a vector) AND t/e rank is > 1.
-  if (cond_tensor.getRank() != 1 || data_rank <= 1) {
-    // No reshape necessary. Leave cond as it is.
-    return cond;
-  }
-
-  // This is the case where a reshape is needed. We want to construct the
-  // shape [x,1,...1], where x is the value in the pred tensor and the
-  // length of the shape is equal to data_rank.
-  SmallVector<int64_t, 8> shape(data_rank, 1);
-  shape[0] = cond_tensor.getShape().front();
-  auto new_shape_type =
-      RankedTensorType::get({data_rank}, builder->getIntegerType(64));
-  auto shape_attr = DenseIntElementsAttr::get(new_shape_type, shape);
-  auto new_shape = builder->create<ConstOp>(loc, shape_attr);
-  return builder->create<ReshapeOp>(loc, cond, new_shape);
-}
-
 //===----------------------------------------------------------------------===//
 // Helper functions detect device capabilities from RuntimeDevices.
 //===----------------------------------------------------------------------===//
@@ -322,7 +289,7 @@ ArrayAttr ShuffleArrayAttr(ArrayAttr attr, ArrayRef<int64_t> permutation,
     }
   }
 
-  return ArrayAttr::get(shuffled, attr.getContext());
+  return ArrayAttr::get(attr.getContext(), shuffled);
 }
 
 // Shuffle ranked tensor dimensions according to the permutation.
@@ -370,7 +337,7 @@ LogicalResult UpdateDataFormat(StringRef data_format, Op *op) {
   if (perm.empty()) return failure();
 
   // Update data format attribute.
-  op->setAttr("data_format", StringAttr::get(data_format, op->getContext()));
+  (*op)->setAttr("data_format", StringAttr::get(op->getContext(), data_format));
 
   // Update types for all layout sensitive results.
   auto layout_sensitive = cast<LayoutSensitiveInterface>(op->getOperation());
@@ -388,7 +355,7 @@ template <typename Op>
 LogicalResult FoldOperandsPermutation(
     ArrayRef<int64_t> permutation, Op *op,
     ArrayRef<std::pair<StringRef, ArrayAttr>> shuffle_attrs = {}) {
-  MLIRContext *context = op->template getParentOfType<ModuleOp>().getContext();
+  MLIRContext *context = (*op)->template getParentOfType<ModuleOp>().getContext();
 
   // We only support NHWC <-> NCHW permutations.
   static constexpr std::array<int64_t, 4> kNchwToNhwc = {0, 2, 3, 1};
@@ -421,12 +388,12 @@ LogicalResult FoldOperandsPermutation(
       GetDataFormatPermutation(op->data_format(), target_data_format);
   if (reverse_permutation.empty()) return failure();
 
-  op->setAttr("data_format", StringAttr::get(target_data_format, context));
+  (*op)->setAttr("data_format", StringAttr::get(context, target_data_format));
 
   for (auto pair : shuffle_attrs) {
     StringRef attr_name = pair.first;
     ArrayAttr attr_value = pair.second;
-    op->setAttr(attr_name, ShuffleArrayAttr(attr_value, reverse_permutation));
+    (*op)->setAttr(attr_name, ShuffleArrayAttr(attr_value, reverse_permutation));
   }
 
   auto fold = cast<FoldOperandsTransposeInterface>(op->getOperation());
@@ -581,8 +548,7 @@ struct DropAttributes : public OpRewritePattern<Op> {
   // Drop the "output_shapes" attribute.
   LogicalResult matchAndRewrite(Op op,
                                 PatternRewriter &rewriter) const override {
-    bool found = op.removeAttr("output_shapes") ==
-                 MutableDictionaryAttr::RemoveResult::Removed;
+    bool found = !!op.removeAttr("output_shapes");
     return success(found);
   }
 };

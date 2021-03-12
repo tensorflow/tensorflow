@@ -593,6 +593,18 @@ message ConfigProto {
       MLIR_BRIDGE_ROLLOUT_ENABLED = 1;
       // Disabling the MLIR bridge disables it for all graphs in this session.
       MLIR_BRIDGE_ROLLOUT_DISABLED = 2;
+      // Enable the MLIR bridge on a per graph basis based on an analysis of
+      // the features used in the graph. If the features used by the graph are
+      // supported by the MLIR bridge, the MLIR bridge will be used to run the
+      // graph.
+      MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED = 3;
+      // Enable the MLIR bridge in a fallback mode on a per graph basis based
+      // on an analysis of the features used in the graph.
+      // Running the MLIR bridge in the fallback mode means that it is
+      // executed and it commits all the changes to the TF graph in case
+      // of success. And it does not in case of failures and let the old bridge
+      // to process the TF graph.
+      MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED = 4;
     }
     // This field is underdevelopment, for now use enable_mlir_bridge
     // (b/166038521).
@@ -620,6 +632,11 @@ message ConfigProto {
     // The XLA fusion autotuner can improve performance by executing a heuristic
     // search on the compiler parameters.
     int64 xla_fusion_autotuner_thresh = 15;
+
+    // Whether runtime execution uses TFRT.
+    bool use_tfrt = 18;
+
+    // Next: 19
   }
 
   Experimental experimental = 16;

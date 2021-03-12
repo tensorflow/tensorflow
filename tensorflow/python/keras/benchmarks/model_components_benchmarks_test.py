@@ -25,9 +25,9 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.python.eager import context
-from tensorflow.python.eager import profiler
 from tensorflow.python.eager.context import get_executor
 from tensorflow.python.platform import test
+from tensorflow.python.profiler import profiler_v2 as profiler
 
 
 class SubclassedKerasModel(tf.keras.Model):
@@ -213,12 +213,11 @@ class KerasComponentsBenchmarks(test.Benchmark):
       self._benchmark_keras_model_fit(model)
 
   def benchmark_keras_model_functional_fit_graph_mode_with_profiler(self):
-    profiler.start()
+    profiler.start("")
     with context.graph_mode():
       model = make_keras_model(initializer="glorot_uniform")
       self._benchmark_keras_model_fit(model)
-    result = profiler.stop()
-    assert result is not None
+    profiler.stop(save=False)
 
   def benchmark_keras_model_functional_fit_run_model_eagerly(self):
     model = make_keras_model(initializer="glorot_uniform")
@@ -226,11 +225,10 @@ class KerasComponentsBenchmarks(test.Benchmark):
 
   def benchmark_keras_model_functional_fit_run_model_eagerly_with_profiler(
       self):
-    profiler.start()
+    profiler.start("")
     model = make_keras_model(initializer="glorot_uniform")
     self._benchmark_keras_model_fit(model, run_eagerly=True)
-    result = profiler.stop()
-    assert result is not None
+    profiler.stop(save=False)
 
   def benchmark_keras_model_sequential_fit(self):
     model = make_sequential_keras_model(initializer="glorot_uniform")

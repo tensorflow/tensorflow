@@ -42,6 +42,9 @@ tf_proto {
       label: LABEL_OPTIONAL
       type: TYPE_MESSAGE
       type_name: ".tensorflow.LogMessage"
+      options {
+        deprecated: true
+      }
       oneof_index: 0
     }
     field {

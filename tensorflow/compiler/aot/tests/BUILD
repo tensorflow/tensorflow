@@ -61,6 +61,7 @@ test_suite(
         ":test_graph_tfvariable_test",
         ":tfcompile_test",
     ],
+    visibility = ["//visibility:public"],
 )
 
 py_binary(
@@ -82,6 +83,7 @@ py_binary(
         "//tensorflow/python:session",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "@absl_py//absl:app",
         "@six_archive//:six",
     ],
 )
@@ -115,8 +117,8 @@ genrule(
     # have control of the full GPU.
     cmd = "CUDA_VISIBLE_DEVICES='' " +
           "$(location :make_test_graphs) --out_dir $(@D)",
-    exec_tools = [":make_test_graphs"],
     tags = ["manual"],
+    tools = [":make_test_graphs"],
 )
 
 tf_library(

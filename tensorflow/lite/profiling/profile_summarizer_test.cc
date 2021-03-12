@@ -119,11 +119,12 @@ TEST(ProfileSummarizerTest, Interpreter) {
   profiler.StopProfiling();
   ProfileSummarizer summarizer;
   auto events = profiler.GetProfileEvents();
-  EXPECT_EQ(1, events.size());
+  EXPECT_EQ(2, events.size());
   summarizer.ProcessProfiles(profiler.GetProfileEvents(), *interpreter);
   auto output = summarizer.GetOutputString();
   // TODO(shashishekhar): Add a better test here.
   ASSERT_TRUE(output.find("SimpleOpEval") != std::string::npos) << output;
+  ASSERT_TRUE(output.find("Invoke") == std::string::npos) << output;  // NOLINT
 }
 
 TEST(ProfileSummarizerTest, InterpreterPlusProfilingDetails) {
@@ -140,7 +141,7 @@ TEST(ProfileSummarizerTest, InterpreterPlusProfilingDetails) {
   profiler.StopProfiling();
   ProfileSummarizer summarizer;
   auto events = profiler.GetProfileEvents();
-  EXPECT_EQ(1, events.size());
+  EXPECT_EQ(2, events.size());
   summarizer.ProcessProfiles(profiler.GetProfileEvents(), *interpreter);
   auto output = summarizer.GetOutputString();
   // TODO(shashishekhar): Add a better test here.
@@ -182,7 +183,7 @@ TEST_F(ProfileSummarizerIfOpTest, TestIfTrue) {
   subgraph_test_util::CheckIntTensor(output, {1, 2}, {6, 9});
 
   auto events = profiler.GetProfileEvents();
-  EXPECT_EQ(2, events.size());
+  EXPECT_EQ(4, events.size());
   int event_count_of_subgraph_zero = std::count_if(
       events.begin(), events.end(),
       [](auto event) { return event->extra_event_metadata == 0; });
@@ -192,8 +193,8 @@ TEST_F(ProfileSummarizerIfOpTest, TestIfTrue) {
   int event_count_of_subgraph_two = std::count_if(
       events.begin(), events.end(),
       [](auto event) { return event->extra_event_metadata == 2; });
-  EXPECT_EQ(1, event_count_of_subgraph_zero);
-  EXPECT_EQ(1, event_count_of_subgraph_one);
+  EXPECT_EQ(2, event_count_of_subgraph_zero);
+  EXPECT_EQ(2, event_count_of_subgraph_one);
   EXPECT_EQ(0, event_count_of_subgraph_two);
 }
 
@@ -209,7 +210,7 @@ TEST_F(ProfileSummarizerIfOpTest, TestIfFalse) {
   subgraph_test_util::CheckIntTensor(output, {1, 2}, {5, 14});
 
   auto events = profiler.GetProfileEvents();
-  EXPECT_EQ(2, events.size());
+  EXPECT_EQ(4, events.size());
   int event_count_of_subgraph_zero = std::count_if(
       events.begin(), events.end(),
       [](auto event) { return event->extra_event_metadata == 0; });
@@ -219,9 +220,9 @@ TEST_F(ProfileSummarizerIfOpTest, TestIfFalse) {
   int event_count_of_subgraph_two = std::count_if(
       events.begin(), events.end(),
       [](auto event) { return event->extra_event_metadata == 2; });
-  EXPECT_EQ(1, event_count_of_subgraph_zero);
+  EXPECT_EQ(2, event_count_of_subgraph_zero);
   EXPECT_EQ(0, event_count_of_subgraph_one);
-  EXPECT_EQ(1, event_count_of_subgraph_two);
+  EXPECT_EQ(2, event_count_of_subgraph_two);
 }
 
 }  // namespace

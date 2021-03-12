@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -137,6 +137,7 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
 Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
     bool emit_select_tf_ops, bool emit_custom_ops,
+    const std::unordered_set<std::string>& select_user_tf_ops,
     const mlir::TFL::QuantizationSpecs& quant_specs,
     const std::unordered_set<std::string>& saved_model_tags,
     std::string* result, mlir::PassManager* pass_manager) {
@@ -169,19 +170,31 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   }
 
   // Write MLIR TFLite dialect into FlatBuffer
+  OpOrArgLocNameMapper op_or_arg_name_mapper;
   if (!quant_specs.RunWeightQuantization()) {
-    if (tflite::MlirToFlatBufferTranslateFunction(
-            module, result, emit_builtin_tflite_ops, emit_select_tf_ops,
-            emit_custom_ops, saved_model_tags)) {
+    tflite::FlatbufferExportOptions options;
+    options.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
+    options.emit_select_tf_ops = emit_select_tf_ops;
+    options.select_user_tf_ops = select_user_tf_ops;
+    options.emit_custom_ops = emit_custom_ops;
+    options.saved_model_tags = saved_model_tags;
+    options.op_or_arg_name_mapper = &op_or_arg_name_mapper;
+    if (!tflite::MlirToFlatBufferTranslateFunction(module, options, result)) {
       return statusHandler.ConsumeStatus();
     }
   } else {
     // Post-training weight quantization path. Once MLIR has support for this,
     // we can remove this else statement.
     std::string pre_quantized_result;
-    if (tflite::MlirToFlatBufferTranslateFunction(
-            module, &pre_quantized_result, emit_builtin_tflite_ops,
-            emit_select_tf_ops, emit_custom_ops, saved_model_tags)) {
+    tflite::FlatbufferExportOptions options;
+    options.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
+    options.emit_select_tf_ops = emit_select_tf_ops;
+    options.select_user_tf_ops = select_user_tf_ops;
+    options.emit_custom_ops = emit_custom_ops;
+    options.saved_model_tags = saved_model_tags;
+    options.op_or_arg_name_mapper = &op_or_arg_name_mapper;
+    if (!tflite::MlirToFlatBufferTranslateFunction(module, options,
+                                                   &pre_quantized_result)) {
       return statusHandler.ConsumeStatus();
     }
     flatbuffers::FlatBufferBuilder q_builder(/*initial_size=*/10240);
@@ -225,8 +238,10 @@ StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     if (!module_or.status().ok()) return module_or.status();
     return module_or.ConsumeValueOrDie();
   } else if (saved_model_version == 1) {
+    MLIRImportOptions options;
+    options.upgrade_legacy = specs.upgrade_legacy;
     auto module_or = tensorflow::SavedModelSignatureDefsToMlirImport(
-        input_filename, tags, exported_names, context, specs.upgrade_legacy);
+        input_filename, tags, exported_names, context, options);
 
     if (!module_or.status().ok()) return module_or.status();
     return module_or.ConsumeValueOrDie();

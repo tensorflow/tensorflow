@@ -1000,148 +1000,163 @@ TEST(DynamicFloatMaxOpTest, Scale) {
   EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({9.527})));
 }
 
-TEST(ConstUint8MaxOpTest, NotKeepDims) {
-  float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
+template <TensorType tensor_type, typename integer_dtype>
+void ConstMaxOpTestNotKeepDims() {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<integer_dtype>::max() /
+      static_cast<float>(std::numeric_limits<integer_dtype>::max() + 1);
+  const float kQuantizedTolerance = GetTolerance<integer_dtype>(-1.0, 1.0);
   std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
-  MaxOpConstModel m({TensorType_UINT8, {1, 3, 2}, -1.0, 1.0},
-                    {TensorType_UINT8, {2}, -1.0, 1.0}, {1}, {1}, false);
-  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
+  MaxOpConstModel m({tensor_type, {1, 3, 2}, 1.0f * kMin, 1.0f * kMax},
+                    {tensor_type, {2}, 1.0f * kMin, 1.0f * kMax}, {1}, {1},
+                    false);
+  m.QuantizeAndPopulate<integer_dtype>(m.Input(), data);
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
-  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
-              ElementsAreArray(
-                  ArrayFloatNear({0.501961, 0.603922}, kQuantizedTolerance)));
+  EXPECT_THAT(
+      m.GetDequantizedOutput<integer_dtype>(),
+      ElementsAreArray(ArrayFloatNear({0.5, 0.6}, kQuantizedTolerance)));
+}
+
+TEST(ConstUint8MaxOpTest, NotKeepDims) {
+  ConstMaxOpTestNotKeepDims<TensorType_UINT8, uint8_t>();
 }
 
 TEST(ConstInt8MaxOpTest, NotKeepDims) {
-  float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
+  ConstMaxOpTestNotKeepDims<TensorType_INT8, int8_t>();
+}
+
+TEST(ConstInt16MaxOpTest, NotKeepDims) {
+  ConstMaxOpTestNotKeepDims<TensorType_INT16, int16_t>();
+}
+
+template <TensorType tensor_type, typename integer_dtype>
+void ConstMaxOpTestKeepDims() {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<integer_dtype>::max() /
+      static_cast<float>(std::numeric_limits<integer_dtype>::max() + 1);
+  const float kQuantizedTolerance = GetTolerance<integer_dtype>(-1.0, 1.0);
   std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
-  MaxOpConstModel m({TensorType_INT8, {1, 3, 2}, -1.0, 1.0},
-                    {TensorType_INT8, {2}, -1.0, 1.0}, {1}, {1}, false);
-  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
+  MaxOpConstModel m({tensor_type, {3, 2}, 1.0f * kMin, 1.0f * kMax},
+                    {tensor_type, {3}, 1.0f * kMin, 1.0f * kMax}, {1}, {1},
+                    true);
+  m.QuantizeAndPopulate<integer_dtype>(m.Input(), data);
   m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
-  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
-              ElementsAreArray(
-                  ArrayFloatNear({0.501961, 0.603922}, kQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1}));
+  EXPECT_THAT(
+      m.GetDequantizedOutput<integer_dtype>(),
+      ElementsAreArray(ArrayFloatNear({0.4, 0.4, 0.6}, kQuantizedTolerance)));
 }
 
 TEST(ConstUint8MaxOpTest, KeepDims) {
-  float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
-  std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
-  MaxOpConstModel m({TensorType_UINT8, {3, 2}, -1.0, 1.0},
-                    {TensorType_UINT8, {3}, -1.0, 1.0}, {1}, {1}, true);
-  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
-  m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1}));
-  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
-              ElementsAreArray(
-                  ArrayFloatNear({0.4, 0.4, 0.603922}, kQuantizedTolerance)));
+  ConstMaxOpTestKeepDims<TensorType_UINT8, uint8_t>();
 }
 
 TEST(ConstInt8MaxOpTest, KeepDims) {
-  float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
-  std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
-  MaxOpConstModel m({TensorType_INT8, {3, 2}, -1.0, 1.0},
-                    {TensorType_INT8, {3}, -1.0, 1.0}, {1}, {1}, true);
-  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
+  ConstMaxOpTestKeepDims<TensorType_INT8, int8_t>();
+}
+
+TEST(ConstInt16MaxOpTest, KeepDims) {
+  ConstMaxOpTestKeepDims<TensorType_INT16, int16_t>();
+}
+
+template <TensorType tensor_type, typename integer_dtype>
+void DynamicMaxOpTestNotKeepDims() {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<integer_dtype>::max() /
+      static_cast<float>(std::numeric_limits<integer_dtype>::max() + 1);
+  const float kQuantizedTolerance = GetTolerance<integer_dtype>(-5.0, 5.0);
+  std::vector<float> data = {1.3, -4.8, -3.6, 0.24};
+  MaxOpDynamicModel m({tensor_type, {2, 2}, 5.0f * kMin, 5.0f * kMax},
+                      {tensor_type, {2}, 5.0f * kMin, 5.0f * kMax},
+                      {TensorType_INT32, {1}}, false);
+  std::vector<int> axis = {1};
+  m.SetAxis(axis);
+  m.QuantizeAndPopulate<integer_dtype>(m.Input(), data);
   m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1}));
-  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
-              ElementsAreArray(
-                  ArrayFloatNear({0.4, 0.4, 0.603922}, kQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(
+      m.GetDequantizedOutput<integer_dtype>(),
+      ElementsAreArray(ArrayFloatNear({1.3, 0.24}, kQuantizedTolerance)));
 }
 
 TEST(DynamicUint8MaxOpTest, NotKeepDims) {
-  float kQuantizedTolerance = GetTolerance(-5.0, 2.0);
-  std::vector<float> data = {1.3, -4.8, -3.6, 0.24};
-  MaxOpDynamicModel m({TensorType_UINT8, {2, 2}, -5.0, 2.0},
-                      {TensorType_UINT8, {2}, -5.0, 2.0},
-                      {TensorType_INT32, {1}}, false);
-  std::vector<int> axis = {1};
-  m.SetAxis(axis);
-  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
-  m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
-  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
-              ElementsAreArray(
-                  ArrayFloatNear({1.2902, 0.247059}, kQuantizedTolerance)));
+  DynamicMaxOpTestNotKeepDims<TensorType_UINT8, uint8_t>();
 }
 
 TEST(DynamicInt8MaxOpTest, NotKeepDims) {
-  float kQuantizedTolerance = GetTolerance(-5.0, 2.0);
-  std::vector<float> data = {1.3, -4.8, -3.6, 0.24};
-  MaxOpDynamicModel m({TensorType_INT8, {2, 2}, -5.0, 2.0},
-                      {TensorType_INT8, {2}, -5.0, 2.0},
-                      {TensorType_INT32, {1}}, false);
-  std::vector<int> axis = {1};
+  DynamicMaxOpTestNotKeepDims<TensorType_INT8, int8_t>();
+}
+
+TEST(DynamicInt16MaxOpTest, NotKeepDims) {
+  DynamicMaxOpTestNotKeepDims<TensorType_INT16, int16_t>();
+}
+
+template <TensorType tensor_type, typename integer_dtype>
+void DynamicMaxOpTestKeepDims() {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<integer_dtype>::max() /
+      static_cast<float>(std::numeric_limits<integer_dtype>::max() + 1);
+  const float kQuantizedTolerance = GetTolerance<integer_dtype>(-12.0, 12.0);
+  std::vector<float> data = {11.14, -0.14, 7.423, 0.879};
+  MaxOpDynamicModel m({tensor_type, {2, 2}, 12.0f * kMin, 12.0f * kMax},
+                      {tensor_type, {2}, 12.0f * kMin, 12.0f * kMax},
+                      {TensorType_INT32, {1}}, true);
+  std::vector<int> axis = {0};
   m.SetAxis(axis);
-  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
+  m.QuantizeAndPopulate<integer_dtype>(m.Input(), data);
   m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
-  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
-              ElementsAreArray(
-                  ArrayFloatNear({1.2902, 0.247059}, kQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
+  EXPECT_THAT(
+      m.GetDequantizedOutput<integer_dtype>(),
+      ElementsAreArray(ArrayFloatNear({11.14, 0.879}, kQuantizedTolerance)));
 }
 
 TEST(DynamicUint8MaxOpTest, KeepDims) {
-  float kQuantizedTolerance = GetTolerance(-10.0, 12.0);
-  std::vector<float> data = {11.14, -0.14, 7.423, 0.879};
-  MaxOpDynamicModel m({TensorType_UINT8, {2, 2}, -10.0, 12.0},
-                      {TensorType_UINT8, {2}, -10.0, 12.0},
-                      {TensorType_INT32, {1}}, true);
-  std::vector<int> axis = {0};
-  m.SetAxis(axis);
-  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
-  m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
-  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
-              ElementsAreArray(
-                  ArrayFloatNear({11.1294, 0.862745}, kQuantizedTolerance)));
+  DynamicMaxOpTestKeepDims<TensorType_UINT8, uint8_t>();
 }
 
 TEST(DynamicInt8MaxOpTest, KeepDims) {
-  float kQuantizedTolerance = GetTolerance(-10.0, 12.0);
-  std::vector<float> data = {11.14, -0.14, 7.423, 0.879};
-  MaxOpDynamicModel m({TensorType_INT8, {2, 2}, -10.0, 12.0},
-                      {TensorType_INT8, {2}, -10.0, 12.0},
+  DynamicMaxOpTestKeepDims<TensorType_INT8, int8_t>();
+}
+
+TEST(DynamicInt16MaxOpTest, KeepDims) {
+  DynamicMaxOpTestKeepDims<TensorType_INT16, int16_t>();
+}
+
+template <TensorType tensor_type, typename integer_dtype>
+void DynamicMaxOpTestScalar() {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<integer_dtype>::max() /
+      static_cast<float>(std::numeric_limits<integer_dtype>::max() + 1);
+  const float kQuantizedTolerance = GetTolerance<integer_dtype>(-12.0, 12.0);
+  std::vector<float> data = {11.14};
+  MaxOpDynamicModel m({tensor_type, {}, 12.0f * kMin, 12.0f * kMax},
+                      {tensor_type, {}, 12.0f * kMin, 12.0f * kMax},
                       {TensorType_INT32, {1}}, true);
   std::vector<int> axis = {0};
-  m.SetAxis(axis);
-  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
+  m.QuantizeAndPopulate<integer_dtype>(m.Input(), data);
   m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
-  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
-              ElementsAreArray(
-                  ArrayFloatNear({11.1294, 0.862745}, kQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
+  EXPECT_THAT(m.GetDequantizedOutput<integer_dtype>(),
+              ElementsAreArray(ArrayFloatNear({11.14}, kQuantizedTolerance)));
 }
 
 TEST(DynamicUint8MaxOpTest, Scalar) {
-  float kQuantizedTolerance = GetTolerance(-10.0, 12.0);
-  std::vector<float> data = {11.14};
-  MaxOpDynamicModel m({TensorType_UINT8, {}, -10.0, 12.0},
-                      {TensorType_UINT8, {}, -10.0, 12.0},
-                      {TensorType_INT32, {1}}, true);
-  std::vector<int> axis = {0};
-  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
-  m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
-  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
-              ElementsAreArray(ArrayFloatNear({11.1294}, kQuantizedTolerance)));
+  DynamicMaxOpTestScalar<TensorType_UINT8, uint8_t>();
 }
 
 TEST(DynamicInt8MaxOpTest, Scalar) {
-  float kQuantizedTolerance = GetTolerance(-10.0, 12.0);
-  std::vector<float> data = {11.14};
-  MaxOpDynamicModel m({TensorType_INT8, {}, -10.0, 12.0},
-                      {TensorType_INT8, {}, -10.0, 12.0},
-                      {TensorType_INT32, {1}}, true);
-  std::vector<int> axis = {0};
-  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
-  m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
-  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
-              ElementsAreArray(ArrayFloatNear({11.1294}, kQuantizedTolerance)));
+  DynamicMaxOpTestScalar<TensorType_INT8, int8_t>();
+}
+
+TEST(DynamicInt16MaxOpTest, Scalar) {
+  DynamicMaxOpTestScalar<TensorType_INT16, int16_t>();
 }
 
 // Tests for reduce_min
@@ -1223,148 +1238,163 @@ TEST(DynamicFloatMinOpTest, Scalar) {
   EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({9.527})));
 }
 
-TEST(ConstUint8MinOpTest, NotKeepDims) {
-  float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
+template <TensorType tensor_type, typename integer_dtype>
+void ConstMinOpTestNotKeepDims() {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<integer_dtype>::max() /
+      static_cast<float>(std::numeric_limits<integer_dtype>::max() + 1);
+  const float kQuantizedTolerance = GetTolerance<integer_dtype>(-1.0, 1.0);
   std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
-  MinOpConstModel m({TensorType_UINT8, {1, 3, 2}, -1.0, 1.0},
-                    {TensorType_UINT8, {2}, -1.0, 1.0}, {1}, {1}, false);
-  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
+  MinOpConstModel m({tensor_type, {1, 3, 2}, 1.0f * kMin, 1.0f * kMax},
+                    {tensor_type, {2}, 1.0f * kMin, 1.0f * kMax}, {1}, {1},
+                    false);
+  m.QuantizeAndPopulate<integer_dtype>(m.Input(), data);
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
   EXPECT_THAT(
-      m.GetDequantizedOutput<uint8_t>(),
-      ElementsAreArray(ArrayFloatNear({0.294117, 0.2}, kQuantizedTolerance)));
+      m.GetDequantizedOutput<integer_dtype>(),
+      ElementsAreArray(ArrayFloatNear({0.3, 0.2}, kQuantizedTolerance)));
+}
+
+TEST(ConstUint8MinOpTest, NotKeepDims) {
+  ConstMinOpTestNotKeepDims<TensorType_UINT8, uint8_t>();
 }
 
 TEST(ConstInt8MinOpTest, NotKeepDims) {
-  float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
+  ConstMinOpTestNotKeepDims<TensorType_INT8, int8_t>();
+}
+
+TEST(ConstInt16MinOpTest, NotKeepDims) {
+  ConstMinOpTestNotKeepDims<TensorType_INT16, int16_t>();
+}
+
+template <TensorType tensor_type, typename integer_dtype>
+void ConstMinOpTestKeepDims() {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<integer_dtype>::max() /
+      static_cast<float>(std::numeric_limits<integer_dtype>::max() + 1);
+  const float kQuantizedTolerance = GetTolerance<integer_dtype>(-1.0, 1.0);
   std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
-  MinOpConstModel m({TensorType_INT8, {1, 3, 2}, -1.0, 1.0},
-                    {TensorType_INT8, {2}, -1.0, 1.0}, {1}, {1}, false);
-  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
+  MinOpConstModel m({tensor_type, {3, 2}, 1.0f * kMin, 1.0f * kMax},
+                    {tensor_type, {3}, 1.0f * kMin, 1.0f * kMax}, {1}, {1},
+                    true);
+  m.QuantizeAndPopulate<integer_dtype>(m.Input(), data);
   m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1}));
   EXPECT_THAT(
-      m.GetDequantizedOutput<int8_t>(),
-      ElementsAreArray(ArrayFloatNear({0.294117, 0.2}, kQuantizedTolerance)));
+      m.GetDequantizedOutput<integer_dtype>(),
+      ElementsAreArray(ArrayFloatNear({0.2, 0.3, 0.5}, kQuantizedTolerance)));
 }
 
 TEST(ConstUint8MinOpTest, KeepDims) {
-  float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
-  std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
-  MinOpConstModel m({TensorType_UINT8, {3, 2}, -1.0, 1.0},
-                    {TensorType_UINT8, {3}, -1.0, 1.0}, {1}, {1}, true);
-  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
-  m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1}));
-  EXPECT_THAT(
-      m.GetDequantizedOutput<uint8_t>(),
-      ElementsAreArray(ArrayFloatNear({0.2, 0.3, 0.5}, kQuantizedTolerance)));
+  ConstMinOpTestKeepDims<TensorType_UINT8, uint8_t>();
 }
 
 TEST(ConstInt8MinOpTest, KeepDims) {
-  float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
-  std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
-  MinOpConstModel m({TensorType_INT8, {3, 2}, -1.0, 1.0},
-                    {TensorType_INT8, {3}, -1.0, 1.0}, {1}, {1}, true);
-  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
+  ConstMinOpTestKeepDims<TensorType_INT8, int8_t>();
+}
+
+TEST(ConstInt16MinOpTest, KeepDims) {
+  ConstMinOpTestKeepDims<TensorType_INT16, int16_t>();
+}
+
+template <TensorType tensor_type, typename integer_dtype>
+void DynamicMinOpTestNotKeepDims() {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<integer_dtype>::max() /
+      static_cast<float>(std::numeric_limits<integer_dtype>::max() + 1);
+  const float kQuantizedTolerance = GetTolerance<integer_dtype>(-5.0, 5.0);
+  std::vector<float> data = {1.3, -4.8, -3.6, 0.24};
+  MinOpDynamicModel m({tensor_type, {2, 2}, 5.0f * kMin, 5.0f * kMax},
+                      {tensor_type, {2}, 5.0f * kMin, 5.0f * kMax},
+                      {TensorType_INT32, {1}}, false);
+  std::vector<int> axis = {1};
+  m.SetAxis(axis);
+  m.QuantizeAndPopulate<integer_dtype>(m.Input(), data);
   m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
   EXPECT_THAT(
-      m.GetDequantizedOutput<int8_t>(),
-      ElementsAreArray(ArrayFloatNear({0.2, 0.3, 0.5}, kQuantizedTolerance)));
+      m.GetDequantizedOutput<integer_dtype>(),
+      ElementsAreArray(ArrayFloatNear({-4.8, -3.6}, kQuantizedTolerance)));
 }
 
 TEST(DynamicUint8MinOpTest, NotKeepDims) {
-  float kQuantizedTolerance = GetTolerance(-5.0, 2.0);
-  std::vector<float> data = {1.3, -4.8, -3.6, 0.24};
-  MinOpDynamicModel m({TensorType_UINT8, {2, 2}, -5.0, 2.0},
-                      {TensorType_UINT8, {2}, -5.0, 2.0},
-                      {TensorType_INT32, {1}}, false);
-  std::vector<int> axis = {1};
-  m.SetAxis(axis);
-  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
-  m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
-  EXPECT_THAT(
-      m.GetDequantizedOutput<uint8_t>(),
-      ElementsAreArray(ArrayFloatNear({-4.807843, -3.6}, kQuantizedTolerance)));
+  DynamicMinOpTestNotKeepDims<TensorType_UINT8, uint8_t>();
 }
 
 TEST(DynamicInt8MinOpTest, NotKeepDims) {
-  float kQuantizedTolerance = GetTolerance(-5.0, 2.0);
-  std::vector<float> data = {1.3, -4.8, -3.6, 0.24};
-  MinOpDynamicModel m({TensorType_INT8, {2, 2}, -5.0, 2.0},
-                      {TensorType_INT8, {2}, -5.0, 2.0},
-                      {TensorType_INT32, {1}}, false);
-  std::vector<int> axis = {1};
+  DynamicMinOpTestNotKeepDims<TensorType_INT8, int8_t>();
+}
+
+TEST(DynamicInt16MinOpTest, NotKeepDims) {
+  DynamicMinOpTestNotKeepDims<TensorType_INT16, int16_t>();
+}
+
+template <TensorType tensor_type, typename integer_dtype>
+void DynamicMinOpTestKeepDims() {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<integer_dtype>::max() /
+      static_cast<float>(std::numeric_limits<integer_dtype>::max() + 1);
+  const float kQuantizedTolerance = GetTolerance<integer_dtype>(-12.0, 12.0);
+  std::vector<float> data = {11.14, -0.14, 7.423, 0.879};
+  MinOpDynamicModel m({tensor_type, {2, 2}, 12.0f * kMin, 12.0f * kMax},
+                      {tensor_type, {2}, 12.0f * kMin, 12.0f * kMax},
+                      {TensorType_INT32, {1}}, true);
+  std::vector<int> axis = {0};
   m.SetAxis(axis);
-  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
+  m.QuantizeAndPopulate<integer_dtype>(m.Input(), data);
   m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
   EXPECT_THAT(
-      m.GetDequantizedOutput<int8_t>(),
-      ElementsAreArray(ArrayFloatNear({-4.807843, -3.6}, kQuantizedTolerance)));
+      m.GetDequantizedOutput<integer_dtype>(),
+      ElementsAreArray(ArrayFloatNear({7.423, -0.14}, kQuantizedTolerance)));
 }
 
 TEST(DynamicUint8MinOpTest, KeepDims) {
-  float kQuantizedTolerance = GetTolerance(-10.0, 12.0);
-  std::vector<float> data = {11.14, -0.14, 7.423, 0.879};
-  MinOpDynamicModel m({TensorType_UINT8, {2, 2}, -10.0, 12.0},
-                      {TensorType_UINT8, {2}, -10.0, 12.0},
-                      {TensorType_INT32, {1}}, true);
-  std::vector<int> axis = {0};
-  m.SetAxis(axis);
-  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
-  m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
-  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
-              ElementsAreArray(
-                  ArrayFloatNear({7.427451, -0.164706}, kQuantizedTolerance)));
+  DynamicMinOpTestKeepDims<TensorType_UINT8, uint8_t>();
 }
 
 TEST(DynamicInt8MinOpTest, KeepDims) {
-  float kQuantizedTolerance = GetTolerance(-10.0, 12.0);
-  std::vector<float> data = {11.14, -0.14, 7.423, 0.879};
-  MinOpDynamicModel m({TensorType_INT8, {2, 2}, -10.0, 12.0},
-                      {TensorType_INT8, {2}, -10.0, 12.0},
+  DynamicMinOpTestKeepDims<TensorType_INT8, int8_t>();
+}
+
+TEST(DynamicInt16MinOpTest, KeepDims) {
+  DynamicMinOpTestKeepDims<TensorType_INT16, int16_t>();
+}
+
+template <TensorType tensor_type, typename integer_dtype>
+void DynamicMinOpTestScalar() {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<integer_dtype>::max() /
+      static_cast<float>(std::numeric_limits<integer_dtype>::max() + 1);
+  const float kQuantizedTolerance = GetTolerance<integer_dtype>(-12.0, 12.0);
+  std::vector<float> data = {11.14};
+  MinOpDynamicModel m({tensor_type, {}, 12.0f * kMin, 12.0f * kMax},
+                      {tensor_type, {}, 12.0f * kMin, 12.0f * kMax},
                       {TensorType_INT32, {1}}, true);
   std::vector<int> axis = {0};
-  m.SetAxis(axis);
-  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
+  m.QuantizeAndPopulate<integer_dtype>(m.Input(), data);
   m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
-  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
-              ElementsAreArray(
-                  ArrayFloatNear({7.427451, -0.164706}, kQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
+  EXPECT_THAT(m.GetDequantizedOutput<integer_dtype>(),
+              ElementsAreArray(ArrayFloatNear({11.14}, kQuantizedTolerance)));
 }
 
 TEST(DynamicUint8MinOpTest, Scalar) {
-  float kQuantizedTolerance = GetTolerance(-10.0, 12.0);
-  std::vector<float> data = {11.14};
-  MinOpDynamicModel m({TensorType_UINT8, {}, -10.0, 12.0},
-                      {TensorType_UINT8, {}, -10.0, 12.0},
-                      {TensorType_INT32, {1}}, true);
-  std::vector<int> axis = {0};
-  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
-  m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
-  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
-              ElementsAreArray(ArrayFloatNear({11.1294}, kQuantizedTolerance)));
+  DynamicMinOpTestScalar<TensorType_UINT8, uint8_t>();
 }
 
 TEST(DynamicInt8MinOpTest, Scalar) {
-  float kQuantizedTolerance = GetTolerance(-10.0, 12.0);
-  std::vector<float> data = {11.14};
-  MinOpDynamicModel m({TensorType_INT8, {}, -10.0, 12.0},
-                      {TensorType_INT8, {}, -10.0, 12.0},
-                      {TensorType_INT32, {1}}, true);
-  std::vector<int> axis = {0};
-  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
-  m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
-  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
-              ElementsAreArray(ArrayFloatNear({11.1294}, kQuantizedTolerance)));
+  DynamicMinOpTestScalar<TensorType_INT8, int8_t>();
+}
+
+TEST(DynamicInt16MinOpTest, Scalar) {
+  DynamicMinOpTestScalar<TensorType_INT16, int16_t>();
 }
 
 // Tests for reduce_any

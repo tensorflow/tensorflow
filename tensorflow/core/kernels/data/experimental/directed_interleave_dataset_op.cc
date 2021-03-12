@@ -82,6 +82,26 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
+  int64 Cardinality() const override {
+    // As long as one of input dataset has infinite cardinality, the output
+    // cardinality is infinite.
+    for (const auto& input : data_inputs_) {
+      int64 n = input->Cardinality();
+      if (n == kInfiniteCardinality) {
+        return n;
+      }
+    }
+    return kUnknownCardinality;
+  }
+
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(selector_input_);
+    for (const auto& data_input : data_inputs_) {
+      inputs->push_back(data_input);
+    }
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override {
     for (const auto& input : data_inputs_) {
       TF_RETURN_IF_ERROR(input->CheckExternalState());

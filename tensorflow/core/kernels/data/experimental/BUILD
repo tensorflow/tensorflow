@@ -5,12 +5,22 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
 package(
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
+
+# A file group which contains all operators which are known to work on mobile.
+filegroup(
+    name = "android_all_op_kernels",
+    srcs = ("threadpool_dataset_op.h", "threadpool_dataset_op.cc"),
+    visibility = ["//tensorflow:__subpackages__"],
+)
 
 tf_kernel_library(
     name = "assert_cardinality_dataset_op",
@@ -166,12 +176,15 @@ tf_kernel_library(
         "//tensorflow/core/data:compression_utils",
         "//tensorflow/core/data:dataset_proto_cc",
         "//tensorflow/core/data/service:data_service",
+        "//tensorflow/core/data/service:dispatcher_proto_cc",
         "//tensorflow/core/data/service:grpc_util",
+        "//tensorflow/core/data/service:worker_proto_cc",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/kernels/data:dataset_utils",
         "//tensorflow/core/kernels/data:name_utils",
         "//tensorflow/core/kernels/data:serialization_utils",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
@@ -680,6 +693,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "threadpool_dataset_op",
     srcs = ["threadpool_dataset_op.cc"],
+    hdrs = ["threadpool_dataset_op.h"],
     deps = [
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",

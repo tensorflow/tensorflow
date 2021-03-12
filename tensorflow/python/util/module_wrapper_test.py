@@ -1,4 +1,4 @@
-# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import logging
 import pickle
 import types
 
@@ -78,8 +77,13 @@ class LazyLoadingWrapperTest(test.TestCase):
         module, 'test', public_apis=apis, deprecation=False)
     import cmd as _cmd  # pylint: disable=g-import-not-at-top
     from abc import ABCMeta as _ABCMeta  # pylint: disable=g-import-not-at-top, g-importing-member
+    self.assertFalse(wrapped_module._fastdict_key_in('cmd'))
     self.assertEqual(wrapped_module.cmd, _cmd)
+    # Verify that the APIs are added to the cache of FastModuleType object
+    self.assertTrue(wrapped_module._fastdict_key_in('cmd'))
+    self.assertFalse(wrapped_module._fastdict_key_in('ABCMeta'))
     self.assertEqual(wrapped_module.ABCMeta, _ABCMeta)
+    self.assertTrue(wrapped_module._fastdict_key_in('ABCMeta'))
 
   def testLazyLoadLocalOverride(self):
     # Test that we can override and add fields to the wrapped module.
@@ -92,7 +96,11 @@ class LazyLoadingWrapperTest(test.TestCase):
     setattr(wrapped_module, 'cmd', 1)
     setattr(wrapped_module, 'cgi', 2)
     self.assertEqual(wrapped_module.cmd, 1)  # override
+    # Verify that the values are also updated in the cache
+    # of the FastModuleType object
+    self.assertEqual(wrapped_module._fastdict_get('cmd'), 1)
     self.assertEqual(wrapped_module.cgi, 2)  # add
+    self.assertEqual(wrapped_module._fastdict_get('cgi'), 2)
 
   def testLazyLoadDict(self):
     # Test that we can override and add fields to the wrapped module.
@@ -131,6 +139,13 @@ class LazyLoadingWrapperTest(test.TestCase):
     wrapped_module = module_wrapper.TFModuleWrapper(
         module, 'test', public_apis=apis, deprecation=False, has_lite=True)
     self.assertEqual(wrapped_module.lite, _cmd)
+
+  def testInitCachesAttributes(self):
+    module = MockModule('test')
+    wrapped_module = module_wrapper.TFModuleWrapper(module, 'test')
+    self.assertTrue(wrapped_module._fastdict_key_in('_fastdict_key_in'))
+    self.assertTrue(wrapped_module._fastdict_key_in('_tfmw_module_name'))
+    self.assertTrue(wrapped_module._fastdict_key_in('__all__'))
 
 
 class PickleTest(test.TestCase):

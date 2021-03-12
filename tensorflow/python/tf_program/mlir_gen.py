@@ -100,14 +100,14 @@ class ProcessType(ast.NodeVisitor):
     attr = getattr(value, node.attr)
 
     if attr == core.Tensor:
-      return tfp.UnrankedTensorType.get(tfp.IntegerType.get(32, self.prog.ctx))
+      return tfp.UnrankedTensorType.get(tfp.IntegerType.get(self.prog.ctx, 32))
     return attr
 
   def visit_Name(self, node):
     if node.id == 'int':
-      return tfp.IntegerType.get(32, self.prog.ctx)
+      return tfp.IntegerType.get(self.prog.ctx, 32)
     if node.id == 'bool':
-      return tfp.IntegerType.get(1, self.prog.ctx)
+      return tfp.IntegerType.get(self.prog.ctx, 1)
     if node.id in self.ctx.info.namespace:
       return self.ctx.info.namespace[node.id]
 
@@ -203,7 +203,7 @@ class MLIRGen(ast.NodeVisitor):
       value = tfp.Tf_ConstOp.create(
           opb, opb.getUnknownLoc(),
           tfp.IntegerAttr.get(
-              tfp.IntegerType.get(32, self.prog.ctx), node.value)).getResult(0)
+              tfp.IntegerType.get(self.prog.ctx, 32), node.value)).getResult(0)
     return value
 
   def visit_FunctionDef(self, node):

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_ARGUMENT_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_ARGUMENT_H_
 
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
@@ -38,6 +39,9 @@ struct XlaArgument {
     // Argument is a Variable, TensorArray, or Stack resource. Has an
     // associated runtime parameter iff `initialized` is true.
     kResource,
+
+    // A resource variable with a constant value known at compile time.
+    kConstantResource,
 
     // Argument is a run-time parameter.
     kParameter,
@@ -71,6 +75,9 @@ struct XlaArgument {
   // The value of the argument, if it is a compile-time constant. Must be a
   // host-memory tensor.
   Tensor constant_value;
+
+  // The upper bounds of the value.
+  absl::optional<Tensor> value_bound;
 
   // The name of this argument, used for debugging.
   string name;
@@ -115,6 +122,9 @@ struct XlaArgument {
   // Returns the human-readable string for either TensorShape or xla::Shape.
   string ShapeHumanString() const;
 };
+
+// Returns true if any of `args` is an uninitialized resource variable.
+bool AnyUninitializedResourceArg(absl::Span<const XlaArgument> args);
 
 }  // end namespace tensorflow
 

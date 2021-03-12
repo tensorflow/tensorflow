@@ -128,8 +128,7 @@ cc_library(
         "//tensorflow/stream_executor/platform:dso_loader",
     ] + tf_additional_cuda_driver_deps()) + select({
         # include dynamic loading implementation only when if_cuda_is_configured and build dynamically
-        "//tensorflow:build_oss_using_cuda_nvcc": ["cudart_stub"],
-        "//tensorflow:build_oss_using_cuda_clang": ["cudart_stub"],
+        "//tensorflow:is_cuda_enabled_and_oss": ["cudart_stub"],
         "//conditions:default": ["//tensorflow/core:cuda"],
     }) + [
         "@com_google_absl//absl/base:core_headers",
@@ -170,20 +169,13 @@ cc_library(
     name = "cudart_stub",
     srcs = select({
         # include dynamic loading implementation only when if_cuda_is_configured and build dynamically
-        "//tensorflow:build_oss_using_cuda_nvcc": ["cudart_stub.cc"],
-        "//tensorflow:build_oss_using_cuda_clang": ["cudart_stub.cc"],
+        "//tensorflow:is_cuda_enabled_and_oss": ["cudart_stub.cc"],
         "//conditions:default": [],
     }),
     textual_hdrs = glob(["cuda_runtime_*.inc"]),
     visibility = ["//visibility:public"],
     deps = select({
-        "//tensorflow:build_oss_using_cuda_nvcc": [
-            ":cuda_stub",
-            "@local_config_cuda//cuda:cuda_headers",
-            "//tensorflow/stream_executor/lib",
-            "//tensorflow/stream_executor/platform:dso_loader",
-        ],
-        "//tensorflow:build_oss_using_cuda_clang": [
+        "//tensorflow:is_cuda_enabled_and_oss": [
             ":cuda_stub",
             "@local_config_cuda//cuda:cuda_headers",
             "//tensorflow/stream_executor/lib",
@@ -599,6 +591,16 @@ cc_library(
 )
 
 cc_library(
+    name = "cuda_asm_compiler",
+    srcs = if_cuda_is_configured(["cuda_asm_compiler.cc"]),
+    deps = if_cuda_is_configured([
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/stream_executor/gpu:asm_compiler",
+        "//tensorflow/stream_executor/gpu:gpu_driver_header",
+    ]),
+)
+
+cc_library(
     name = "cuda_gpu_executor",
     srcs = if_cuda_is_configured(["cuda_gpu_executor.cc"]),
     hdrs = if_cuda_is_configured(["cuda_gpu_executor.h"]),
@@ -611,6 +613,7 @@ cc_library(
         ":cuda_platform_id",
         ":cuda_stream",
         ":cuda_timer",
+        ":cuda_asm_compiler",
         "@com_google_absl//absl/strings",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:plugin_registry",

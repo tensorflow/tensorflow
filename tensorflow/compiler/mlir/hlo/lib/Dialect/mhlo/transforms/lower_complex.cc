@@ -70,7 +70,7 @@ void LowerComplexPass::runOnFunction() {
   OwningRewritePatternList patterns;
   mlir::mhlo::PopulateComplexLoweringPatterns(&getContext(), &patterns);
 
-  applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
 }
 
 std::unique_ptr<FunctionPass> mlir::mhlo::createLowerComplexPass() {

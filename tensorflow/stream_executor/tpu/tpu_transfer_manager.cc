@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_executor.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
+#include "tensorflow/stream_executor/tpu/tpu_platform_id.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -45,7 +46,7 @@ TpuTransferManager::~TpuTransferManager() {
 }
 
 stream_executor::Platform::Id TpuTransferManager::PlatformId() const {
-  return TpuPlatform::kId;
+  return GetTpuPlatformId();
 }
 
 xla::Shape TpuTransferManager::HostShapeToDeviceShape(
@@ -77,7 +78,7 @@ Status TpuTransferManager::TransferLiteralToDeviceAsync(
 
   tpu::ExecutorApiFn()->TpuTransferManager_TransferLiteralToDeviceAsyncFn(
       manager_,
-      TpuPlatform::GetRegisteredPlatform()->stream_map()->at(
+      TpuPlatform::GetRegisteredPlatform()->LookupStream(
           stream->implementation()),
       &c_literal, &c_device_buffer, status.c_status);
   ApiConverter::Free(&c_device_buffer);
@@ -126,14 +127,14 @@ Status TpuTransferManager::TransferBuffersToInfeed(
 }
 
 Status TpuTransferManager::TransferLiteralFromOutfeed(
-    stream_executor::StreamExecutor* executor, const xla::Shape& literal_shape,
+    stream_executor::StreamExecutor* executor,
     xla::MutableBorrowingLiteral literal) {
   StatusHelper status;
   XLA_Shape c_shape;
   XLA_Literal c_literal;
   auto* tpu_executor = static_cast<TpuExecutor*>(executor->implementation());
 
-  ApiConverter::ToC(literal_shape, &c_shape);
+  ApiConverter::ToC(literal.shape(), &c_shape);
   ApiConverter::ToC(literal, &c_literal);
 
   tpu::ExecutorApiFn()->TpuTransferManager_TransferLiteralFromOutfeedFn(
@@ -283,7 +284,7 @@ Status TpuTransferManager::WriteSingleTupleIndexTable(
 
   tpu::ExecutorApiFn()->TpuTransferManager_WriteSingleTupleIndexTableFn(
       manager_,
-      TpuPlatform::GetRegisteredPlatform()->stream_map()->at(
+      TpuPlatform::GetRegisteredPlatform()->LookupStream(
           stream->implementation()),
       elements_bases, elements.size(), &c_shape, &region_base, status.c_status);
 

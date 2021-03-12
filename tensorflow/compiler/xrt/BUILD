@@ -34,6 +34,25 @@ tf_proto_library(
 )
 
 cc_library(
+    name = "xrt_tpu_utils",
+    srcs = [
+        "xrt_tpu_device.cc",
+    ],
+    hdrs = [
+        "xrt_tpu_device.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/jit:xla_device",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/tpu:tpu_configuration",
+        "//tensorflow/stream_executor/tpu:tpu_node_context",
+    ],
+)
+
+cc_library(
     name = "xrt_utils",
     srcs = [
         "xrt_compilation_cache.cc",
@@ -124,3 +143,12 @@ cc_library(
         "//tensorflow/compiler/xrt/kernels:xrt_ops",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "xrt_proto_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":xrt_proto"],
+# )
+# copybara:uncomment_end

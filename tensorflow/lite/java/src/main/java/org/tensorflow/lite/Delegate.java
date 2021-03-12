@@ -33,7 +33,8 @@ public interface Delegate {
    * <p>Note: The Java {@link Delegate} maintains ownership of the native delegate instance, and
    * must ensure its existence for the duration of usage with any {@link Interpreter}.
    *
-   * @return The native delegate handle.
+   * @return The native delegate handle. In C/C++, this should be a pointer to
+   *     'TfLiteOpaqueDelegate'.
    */
   public long getNativeHandle();
 }

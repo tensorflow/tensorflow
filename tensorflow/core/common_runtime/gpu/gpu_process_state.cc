@@ -18,14 +18,17 @@ limitations under the License.
 #include <cstring>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/common_runtime/device/device_host_allocator.h"
+#include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_cudamallocasync_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_host_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_virtual_mem_allocator.h"
 #include "tensorflow/core/common_runtime/pool_allocator.h"
 #include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -39,21 +42,35 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
-namespace {
 
-bool useCudaMallocAllocator() {
-  const char* debug_allocator_str = std::getenv("TF_GPU_ALLOCATOR");
-  return debug_allocator_str != nullptr &&
-         std::strcmp(debug_allocator_str, "cuda_malloc") == 0;
+// NOLINTNEXTLINE(clang-diagnostic-unused-function)
+static bool UseCudaMallocAllocator() {
+  const char* allocator_env = std::getenv("TF_GPU_ALLOCATOR");
+  return allocator_env != nullptr &&
+         std::strcmp(allocator_env, "cuda_malloc") == 0;
 }
 
-bool useCudaMemoryGuardAllocator() {
-  const char* debug_allocator_str = std::getenv("TF_GPU_ALLOCATOR");
-  return debug_allocator_str != nullptr &&
-         std::strcmp(debug_allocator_str, "memory_guard") == 0;
+// NOLINTNEXTLINE(clang-diagnostic-unused-function)
+static bool UseCudaMemoryGuardAllocator() {
+  const char* allocator_env = std::getenv("TF_GPU_ALLOCATOR");
+  return allocator_env != nullptr &&
+         std::strcmp(allocator_env, "memory_guard") == 0;
 }
 
-}  // namespace
+// NOLINTNEXTLINE(clang-diagnostic-unused-function)
+static bool UseCudaMallocAsyncAllocator() {
+  const char* allocator_env = std::getenv("TF_GPU_ALLOCATOR");
+  auto result = allocator_env != nullptr &&
+                std::strcmp(allocator_env, "cuda_malloc_async") == 0;
+#if TF_CUDA_MALLOC_ASYNC_SUPPORTED
+  return result;
+#else
+  if (result)
+    LOG(ERROR) << "TF_GPU_ALLOCATOR=cuda_malloc_async environment found, "
+               << "but TensorFlow was not compiled with CUDA 11.2+.";
+  return false;
+#endif
+}
 
 /*static*/ GPUProcessState* GPUProcessState::singleton(GPUProcessState* ps) {
   static GPUProcessState* instance = ps ? ps : new GPUProcessState;
@@ -66,31 +83,87 @@ GPUProcessState::GPUProcessState() : gpu_device_enabled_(false) {
   process_state_ = ProcessState::singleton();
 }
 
-int GPUProcessState::BusIdForGPU(TfGpuId tf_gpu_id) {
+int GPUProcessState::BusIdForGPU(TfDeviceId tf_device_id) {
   // Return the NUMA node associated with the GPU's StreamExecutor.
-  se::StreamExecutor* se =
-      GpuIdUtil::ExecutorForTfGpuId(tf_gpu_id).ValueOrDie();
+  se::StreamExecutor* se = DeviceIdUtil::ExecutorForTfDeviceId(
+                               DEVICE_GPU, GPUMachineManager(), tf_device_id)
+                               .ValueOrDie();
   int numa_node = se->GetDeviceDescription().numa_node();
   // bus_id must be non-negative.  If the numa_node is not known,
   // use 0.
   return numa_node >= 0 ? numa_node : 0;
 }
 
-Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
-                                            TfGpuId tf_gpu_id,
-                                            size_t total_bytes) {
+// NOLINTNEXTLINE: clang-tidy complains this is unused because of build flags.
+static SubAllocator* CreateSubAllocator(
+    const GPUOptions& options, PlatformDeviceId platform_device_id,
+    const std::vector<SubAllocator::Visitor>& alloc_visitors,
+    size_t total_bytes, const std::vector<TfDeviceId>& peer_gpu_ids) {
+  auto executor = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
+                                                            platform_device_id)
+                      .ValueOrDie();
+
+  // FIXME(imintz): Observed OOM issues when using the virtual memory
+  // allocators. This should be reenabled when resolved.
+#if 0 && defined(GOOGLE_CUDA) && CUDA_VERSION >= 10020
+  // Use the old allocator when unified memory is required.
+  // TODO(imintz): Remove the cuMemAlloc capability of this allocator.
+  if (options.per_process_gpu_memory_fraction() > 1.0 ||
+      options.experimental().use_unified_memory()) {
+    return new DeviceMemAllocator(executor, platform_device_id,
+                                  /*use_unified_memory=*/true, alloc_visitors,
+                                  {});
+  } else {
+    auto* gpu_context = reinterpret_cast<stream_executor::gpu::GpuContext*>(
+        executor->implementation()->GpuContextHack());
+
+    absl::flat_hash_set<PlatformDeviceId> platform_peer_gpu_ids;
+    platform_peer_gpu_ids.reserve(peer_gpu_ids.size());
+    for (const TfDeviceId tf_device_id : peer_gpu_ids) {
+      PlatformDeviceId platform_device_id;
+      TF_CHECK_OK(GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id));
+      platform_peer_gpu_ids.insert(platform_device_id);
+    }
+    std::vector<PlatformDeviceId> platform_peer_gpu_ids_vec(
+        platform_peer_gpu_ids.begin(), platform_peer_gpu_ids.end());
+
+    // Adjust virtual address space to be slightly larger than the physical
+    // address space in case the BFC allocator performs suboptimal garbage
+    // collection.
+    // TODO(imintz): Update BFC allocator to ensure it doesn't create holes in
+    // the va space.
+    return GpuVirtualMemAllocator::Create(
+               alloc_visitors, {}, *gpu_context, platform_device_id,
+               /*virtual_address_space_size=*/total_bytes * 2,
+               platform_peer_gpu_ids_vec)
+        .ValueOrDie()
+        .release();
+  }
+#else
+  return new DeviceMemAllocator(
+      executor, platform_device_id,
+      (options.per_process_gpu_memory_fraction() > 1.0 ||
+       options.experimental().use_unified_memory()),
+      alloc_visitors, {});
+#endif
+}
+
+Allocator* GPUProcessState::GetGPUAllocator(
+    const GPUOptions& options, TfDeviceId tf_device_id, size_t total_bytes,
+    const std::vector<TfDeviceId>& peer_gpu_ids) {
   CHECK(process_state_);
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   const string& allocator_type = options.allocator_type();
   mutex_lock lock(mu_);
-  GpuIdUtil::CheckValidTfGpuId(tf_gpu_id);
+  DeviceIdUtil::CheckValidTfDeviceId(DEVICE_GPU, GPUMachineManager(),
+                                     tf_device_id);
 
-  if (tf_gpu_id.value() >= static_cast<int64>(gpu_allocators_.size())) {
-    gpu_allocators_.resize(tf_gpu_id.value() + 1);
+  if (tf_device_id.value() >= static_cast<int64>(gpu_allocators_.size())) {
+    gpu_allocators_.resize(tf_device_id.value() + 1);
   }
 
-  AllocatorParts& allocator_parts = gpu_allocators_[tf_gpu_id.value()];
+  AllocatorParts& allocator_parts = gpu_allocators_[tf_device_id.value()];
   if (allocator_parts.allocator == nullptr) {
     // Validate allocator types.
     if (!allocator_type.empty() && allocator_type != "BFC") {
@@ -98,22 +171,20 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
       return nullptr;
     }
 
-    PlatformGpuId platform_gpu_id;
-    TF_CHECK_OK(GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id));
-    int bus_id = BusIdForGPU(tf_gpu_id);
+    PlatformDeviceId platform_device_id;
+    TF_CHECK_OK(
+        GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id));
+    int bus_id = BusIdForGPU(tf_device_id);
     DCHECK_GE(bus_id, 0);
     while (bus_id >= gpu_visitors_.size()) {
       gpu_visitors_.push_back({});
     }
-    GPUMemAllocator* sub_allocator = new GPUMemAllocator(
-        GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
-        platform_gpu_id,
-        (options.per_process_gpu_memory_fraction() > 1.0 ||
-         options.experimental().use_unified_memory()),
-        gpu_visitors_[bus_id], {});
-    GPUBFCAllocator* gpu_bfc_allocator =
-        new GPUBFCAllocator(sub_allocator, total_bytes, options,
-                            strings::StrCat("GPU_", tf_gpu_id.value(), "_bfc"));
+    auto* sub_allocator =
+        CreateSubAllocator(options, platform_device_id, gpu_visitors_[bus_id],
+                           total_bytes, peer_gpu_ids);
+    GPUBFCAllocator* gpu_bfc_allocator = new GPUBFCAllocator(
+        sub_allocator, total_bytes, options,
+        strings::StrCat("GPU_", tf_device_id.value(), "_bfc"));
     Allocator* gpu_allocator = gpu_bfc_allocator;
     SharedCounter* timing_counter = nullptr;
     if (options.experimental().timestamped_allocator()) {
@@ -123,24 +194,32 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
 
     // If true, checks for memory overwrites by writing
     // distinctive patterns on both ends of allocated memory.
-    if (useCudaMemoryGuardAllocator()) {
+    if (UseCudaMemoryGuardAllocator()) {
       LOG(INFO) << "Using memory guard allocator for GPU.";
-      gpu_allocator = new GPUDebugAllocator(gpu_allocator, platform_gpu_id);
-      gpu_allocator = new GPUNanResetAllocator(gpu_allocator, platform_gpu_id);
-    } else if (useCudaMallocAllocator()) {
+      gpu_allocator = new GPUDebugAllocator(gpu_allocator, platform_device_id);
+      gpu_allocator =
+          new GPUNanResetAllocator(gpu_allocator, platform_device_id);
+    } else if (UseCudaMallocAllocator()) {
       LOG(INFO) << "Using CUDA malloc allocator for GPU.";
       // If true, passes all allocation requests through to cudaMalloc
       // useful for doing memory debugging with tools like cuda-memcheck
       // **WARNING** probably will not work in a multi-gpu scenario
       gpu_allocator =
-          new GPUcudaMallocAllocator(gpu_allocator, platform_gpu_id);
+          new GPUcudaMallocAllocator(gpu_allocator, platform_device_id);
+    } else if (UseCudaMallocAsyncAllocator()) {
+      LOG(INFO) << "Using CUDA malloc Async allocator for GPU.";
+      // If true, passes all allocation requests through to cudaMallocAsync
+      // TODO: useful for doing memory debugging with tools like cuda-memcheck
+      // TODO: **WARNING** probably will not work in a multi-gpu scenario
+      gpu_allocator =
+          new GpuCudaMallocAsyncAllocator(platform_device_id, total_bytes);
     }
 
     Allocator* recording_allocator = nullptr;
     if (process_state_->ProcessState::FLAGS_brain_gpu_record_mem_types) {
       ProcessState::MemDesc md;
       md.loc = ProcessState::MemDesc::GPU;
-      md.dev_index = platform_gpu_id.value();
+      md.dev_index = platform_device_id.value();
       md.gpu_registered = false;
       md.nic_registered = true;
       recording_allocator = new internal::RecordingAllocator(
@@ -163,19 +242,20 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
-SharedCounter* GPUProcessState::GPUAllocatorCounter(TfGpuId tf_gpu_id) {
+SharedCounter* GPUProcessState::GPUAllocatorCounter(TfDeviceId tf_device_id) {
   DCHECK(process_state_);
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
-  GpuIdUtil::CheckValidTfGpuId(tf_gpu_id);
+  DeviceIdUtil::CheckValidTfDeviceId(DEVICE_GPU, GPUMachineManager(),
+                                     tf_device_id);
   mutex_lock l(mu_);
-  if (tf_gpu_id.value() >= static_cast<int64>(gpu_allocators_.size())) {
-    LOG(ERROR) << "Asked for counter for GPU allocator " << tf_gpu_id.value()
+  if (tf_device_id.value() >= static_cast<int64>(gpu_allocators_.size())) {
+    LOG(ERROR) << "Asked for counter for GPU allocator " << tf_device_id.value()
                << " but only have " << gpu_allocators_.size();
     return nullptr;
   }
 
-  AllocatorParts& allocator_parts = gpu_allocators_[tf_gpu_id.value()];
+  AllocatorParts& allocator_parts = gpu_allocators_[tf_device_id.value()];
   if (allocator_parts.counter.get() == nullptr) {
     SharedCounter* timing_counter = new SharedCounter;
     allocator_parts.bfc_allocator->SetTimingCounter(timing_counter);
@@ -224,7 +304,9 @@ Allocator* GPUProcessState::GetGpuHostAllocator(int numa_node) {
   se::StreamExecutor* se = nullptr;
   for (int i = 0; i < static_cast<int>(gpu_allocators_.size()); ++i) {
     if (gpu_allocators_[i].allocator != nullptr) {
-      se = GpuIdUtil::ExecutorForTfGpuId(TfGpuId(i)).ValueOrDie();
+      se = DeviceIdUtil::ExecutorForTfDeviceId(DEVICE_GPU, GPUMachineManager(),
+                                               TfDeviceId(i))
+               .ValueOrDie();
       break;
     }
   }
@@ -238,9 +320,9 @@ Allocator* GPUProcessState::GetGpuHostAllocator(int numa_node) {
     while (gpu_host_free_visitors_.size() <= numa_node) {
       gpu_host_free_visitors_.push_back({});
     }
-    SubAllocator* sub_allocator =
-        new GpuHostAllocator(se, numa_node, gpu_host_alloc_visitors_[numa_node],
-                             gpu_host_free_visitors_[numa_node]);
+    SubAllocator* sub_allocator = new DeviceHostAllocator(
+        se, numa_node, gpu_host_alloc_visitors_[numa_node],
+        gpu_host_free_visitors_[numa_node]);
     // TODO(zheng-xq): evaluate whether 64GB by default is the best choice.
     int64 gpu_host_mem_limit_in_mb = -1;
     Status status = ReadInt64FromEnvVar("TF_GPU_HOST_MEM_LIMIT_IN_MB",
@@ -253,7 +335,7 @@ Allocator* GPUProcessState::GetGpuHostAllocator(int numa_node) {
 
     Allocator* allocator =
         new BFCAllocator(sub_allocator, gpu_host_mem_limit,
-                         true /*allow_growth*/, "gpu_host_bfc" /*name*/);
+                         /*allow_growth=*/true, /*name=*/"gpu_host_bfc");
 
     if (LogMemory::IsEnabled() && !allocator->TracksAllocationSizes()) {
       // Wrap the allocator to track allocation ids for better logging

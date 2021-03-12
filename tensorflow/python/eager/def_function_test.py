@@ -47,6 +47,9 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.saved_model import save_options
+from tensorflow.python.saved_model.load import load
+from tensorflow.python.saved_model.save import save
+from tensorflow.python.training.tracking.util import Checkpoint
 
 
 def undecorated_function(x):
@@ -920,37 +923,50 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertLen(logs.output, 1)
     self.assertIn('Tracing is expensive', logs.output[0])
 
-  def test_experimental_get_tracing_count_function(self):
+  def test_restored_function_retracing_warning(self):
 
-    @def_function.function
-    def double(a):
-      return a + a
-
-    double(constant_op.constant(1))
-    double(constant_op.constant(2))
-    self.assertAllEqual(double.experimental_get_tracing_count(), 1)
-    double(constant_op.constant('a'))
-    self.assertAllEqual(double.experimental_get_tracing_count(), 2)
-
-  def test_experimental_get_tracing_count_method(self):
-
-    class TestClass():
+    class Foo(Checkpoint):
 
       @def_function.function
-      def testDouble(self, a):
-        return a + a
+      def __call__(self, x):
+        return x
 
-    obj1 = TestClass()
-    obj1.testDouble(constant_op.constant(1))
-    obj1.testDouble(constant_op.constant(2))
-    obj1.testDouble(constant_op.constant(1.1))
-    self.assertAllEqual(obj1.testDouble.experimental_get_tracing_count(), 2)
-    obj2 = TestClass()
-    obj2.testDouble(constant_op.constant(1))
-    obj2.testDouble(constant_op.constant(1.1))
-    obj2.testDouble(constant_op.constant('a'))
-    self.assertAllEqual(obj2.testDouble.experimental_get_tracing_count(), 3)
-    self.assertAllEqual(obj1.testDouble.experimental_get_tracing_count(), 2)
+    f_flexible = Foo()
+    _ = f_flexible.__call__.get_concrete_function(
+        tensor_spec.TensorSpec(shape=[None], dtype=dtypes.int32))
+    tmp_dir = self.create_tempdir()
+    save(f_flexible, tmp_dir.full_path)
+    restored_f_flexible = load(tmp_dir.full_path)
+
+    f_fixed_shape = Foo()
+
+    with self.assertLogs(level='WARN') as logs:
+      restored_f_flexible(constant_op.constant([1], dtypes.int32))
+      restored_f_flexible(constant_op.constant([1, 2], dtypes.int32))
+      restored_f_flexible(constant_op.constant([1, 2, 3], dtypes.int32))
+      restored_f_flexible(constant_op.constant([1, 2, 3, 4], dtypes.int32))
+      restored_f_flexible(constant_op.constant([1, 2, 3, 4, 5], dtypes.int32))
+      self.assertEmpty(logs.output)
+
+      f_fixed_shape(constant_op.constant([1], dtypes.int32))
+      f_fixed_shape(constant_op.constant([1, 2], dtypes.int32))
+      f_fixed_shape(constant_op.constant([1, 2, 3], dtypes.int32))
+      f_fixed_shape(constant_op.constant([1, 2, 3, 4], dtypes.int32))
+      f_fixed_shape(constant_op.constant([1, 2, 3, 4, 5], dtypes.int32))
+      self.assertLen(logs.output, 1)
+      self.assertIn('Tracing is expensive', logs.output[0])
+
+  def test_retracing_warning_limits(self):
+
+    @def_function.function
+    def my_func(x):
+      return x
+
+    with self.assertLogs(level='WARN') as logs:
+      for i in range(10):
+        my_func(i)
+
+      self.assertLen(logs.output, 2)
 
   def test_experimental_get_tracing_count_function(self):
 

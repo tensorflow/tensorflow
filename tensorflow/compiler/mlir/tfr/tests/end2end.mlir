@@ -159,7 +159,7 @@ tfr.func @tf__my_pack(%values: !tfr.tensor_list,
                       %axis: i32 {tfr.name="axis"}) -> !tfr.tensor {
   %index = constant 0 : index
   %cst = constant 1 : i32
-  %eq = cmpi "eq", %n, %cst : i32
+  %eq = cmpi eq, %n, %cst : i32
   %v1 = tfr.get_element %values[%index] : (!tfr.tensor_list, index) -> !tfr.tensor
   %temp = tfr.call @tf__my_expand_dims(%v1, %axis) : (!tfr.tensor, i32) -> !tfr.tensor
   %res = scf.if %eq -> !tfr.tensor {
@@ -182,7 +182,7 @@ tfr.func @tf__my_add_n(%values: !tfr.tensor_list,
                        %n: i32 {tfr.name="N"}) -> !tfr.tensor {
   %index = constant 0 : index
   %cst = constant 1 : i32
-  %eq = cmpi "eq", %n, %cst : i32
+  %eq = cmpi eq, %n, %cst : i32
   %v1 = tfr.get_element %values[%index] : (!tfr.tensor_list, index) -> !tfr.tensor
   %res = scf.if %eq -> !tfr.tensor {
     scf.yield %v1 : !tfr.tensor

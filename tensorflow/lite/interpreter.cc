@@ -15,20 +15,22 @@ limitations under the License.
 
 #include "tensorflow/lite/interpreter.h"
 
-#include <cassert>
-#include <cstdarg>
-#include <cstdint>
-#include <cstring>
-#include <utility>
+#include <stddef.h>
+#include <stdlib.h>
 
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/context_util.h"
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/delegates/status.h"
-#include "tensorflow/lite/graph_info.h"
-#include "tensorflow/lite/memory_planner.h"
+#include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/minimal_logging.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/util.h"
 
 // TODO(b/139446230): Move to portable platform header.
@@ -385,6 +387,9 @@ bool Interpreter::IsCancelled() { return primary_subgraph().IsCancelled(); }
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   TfLiteStatus status = kTfLiteOk;
   for (auto& subgraph : subgraphs_) {
+    if (IsValidationSubgraph(subgraph->GetName().c_str())) {
+      continue;
+    }
     status = subgraph->ModifyGraphWithDelegate(delegate);
     if (status != kTfLiteOk) {
       break;
@@ -411,8 +416,7 @@ TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
                                           TfLiteBufferHandle buffer_handle,
                                           TfLiteDelegate* delegate) {
   TF_LITE_ENSURE(context_, tensor_index < tensors_size());
-  std::vector<TfLiteTensor>& tensors = primary_subgraph().tensors();
-  TfLiteTensor* tensor = &tensors[tensor_index];
+  TfLiteTensor* tensor = primary_subgraph().tensor(tensor_index);
 
   TF_LITE_ENSURE(context_,
                  tensor->delegate == nullptr || tensor->delegate == delegate);
@@ -431,8 +435,7 @@ TfLiteStatus Interpreter::GetBufferHandle(int tensor_index,
                                           TfLiteBufferHandle* buffer_handle,
                                           TfLiteDelegate** delegate) {
   TF_LITE_ENSURE(context_, tensor_index < tensors_size());
-  std::vector<TfLiteTensor>& tensors = primary_subgraph().tensors();
-  TfLiteTensor* tensor = &tensors[tensor_index];
+  TfLiteTensor* tensor = primary_subgraph().tensor(tensor_index);
 
   *delegate = tensor->delegate;
   *buffer_handle = tensor->buffer_handle;

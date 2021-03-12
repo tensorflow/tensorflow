@@ -15,9 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.h"
 
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions

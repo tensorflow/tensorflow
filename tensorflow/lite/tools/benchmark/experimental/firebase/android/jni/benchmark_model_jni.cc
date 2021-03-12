@@ -247,9 +247,7 @@ void RunScenario(const string& library_dir, int scenario, int report_fd) {
 }  // namespace benchmark
 }  // namespace tflite
 
-#ifdef __cplusplus
 extern "C" {
-#endif
 
 JNIEXPORT void JNICALL
 Java_org_tensorflow_lite_benchmark_firebase_BenchmarkModel_nativeRun(
@@ -263,6 +261,4 @@ Java_org_tensorflow_lite_benchmark_firebase_BenchmarkModel_nativeRun(
   env->ReleaseStringUTFChars(library_dir, lib_dir);
 }
 
-#ifdef __cplusplus
 }  // extern "C"
-#endif  // __cplusplus

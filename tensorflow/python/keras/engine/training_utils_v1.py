@@ -37,7 +37,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
-from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -56,6 +55,7 @@ from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.platform import tf_logging as logging
@@ -96,7 +96,7 @@ class Aggregator(object):
   def create(self, batch_outs):
     """Creates the initial results from the first batch outputs.
 
-    Arguments:
+    Args:
       batch_outs: A list of batch-level outputs.
     """
     raise NotImplementedError('Must be implemented in subclasses.')
@@ -105,7 +105,7 @@ class Aggregator(object):
   def aggregate(self, batch_outs, batch_start=None, batch_end=None):
     """Aggregates batch-level results into total results.
 
-    Arguments:
+    Args:
       batch_outs: A list of batch-level outputs.
       batch_start: The start index of this batch. Always `None` if `use_steps`
         is `True`.
@@ -155,6 +155,119 @@ class MetricsAggregator(Aggregator):
     self.results[0] /= (self.num_samples or self.steps)
 
 
+def _append_sparse_tensor_value(target, to_append):
+  """Append sparse tensor value objects."""
+  # Make sure the sparse tensors are of the same size (except for the 0th dim).
+  if len(target.dense_shape) != len(to_append.dense_shape):
+    raise RuntimeError(
+        'Unable to concatenate %s and %s. The inner dense shapes do not '
+        'have the same number of dimensions (%s vs %s)' %
+        (target, to_append, target.dense_shape, to_append.dense_shape))
+
+  if target.dense_shape[1:] != to_append.dense_shape[1:]:
+    raise RuntimeError(
+        'Unable to concatenate %s and %s. The inner dense shapes do not '
+        'match inner dimensions (%s vs %s)' %
+        (target, to_append, target.dense_shape[1:], to_append.dense_shape[1:]))
+
+  # Add the to_append indices to target, updating the 0th value, and keeping
+  # track of the maximum so we know the final dense_shape of this tensor.
+  base_dim0_value = target.dense_shape[0]
+  max_dim0_value = target.dense_shape[0]
+  new_indices = target.indices
+  for index in to_append.indices:
+    # Here, we iterate through the sparse indices of the tensor to append. For
+    # each index, we update its zeroth value (the batch index) by adding the
+    # number of batch items in the tensor we are appending to (so an index
+    # of [0, 0, 1] for a value that is being appended to a tensor with 0th dim
+    # size 3 would become [3, 0, 1].)
+    index[0] += base_dim0_value
+    max_dim0_value = max(max_dim0_value, index[0])
+    new_indices = np.append(new_indices, [index], axis=0)
+
+  # Extend the values array to contain all of the appended values. These will
+  # be in the same order as the indices added above.
+  new_values = np.concatenate((target.values, to_append.values), axis=0)
+
+  # Create a new dense shape by replacing the value for the 0th dimension
+  # with the new max dim0 value.
+  new_dense_shape = list(target.dense_shape)
+  new_dense_shape[0] = max_dim0_value + 1
+  new_dense_shape = tuple(new_dense_shape)
+
+  return sparse_tensor.SparseTensorValue(
+      indices=new_indices, values=new_values, dense_shape=new_dense_shape)
+
+
+def _append_ragged_tensor_value(target, to_append):
+  """Append ragged tensor value objects."""
+  # Make sure the ragged tensors are of the same size (save for the 0th dim).
+  if len(target.shape) != len(to_append.shape):
+    raise RuntimeError('Unable to concatenate %s and %s' % (target, to_append))
+
+  if target.shape[1:] != to_append.shape[1:]:
+    raise RuntimeError('Unable to concatenate %s and %s' % (target, to_append))
+
+  adjusted_row_splits = to_append.row_splits[1:] + target.row_splits[-1]
+  new_row_splits = np.append(target.row_splits, adjusted_row_splits)
+  if isinstance(target.values, ragged_tensor_value.RaggedTensorValue):
+    new_values = _append_ragged_tensor_value(target.values, to_append.values)
+  else:
+    new_values = np.concatenate((target.values, to_append.values), axis=0)
+
+  return ragged_tensor_value.RaggedTensorValue(new_values, new_row_splits)
+
+
+def _append_composite_tensor(target, to_append):
+  """Helper function to append composite tensors to each other in the 0 axis.
+
+  In order to support batching within a fit/evaluate/predict call, we need
+  to be able to aggregate within a CompositeTensor. Unfortunately, the CT
+  API currently does not make this easy - especially in V1 mode, where we're
+  working with CompositeTensor Value objects that have no connection with the
+  CompositeTensors that created them.
+
+  Args:
+    target: CompositeTensor or CompositeTensor value object that will be
+      appended to.
+    to_append: CompositeTensor or CompositeTensor value object to append to.
+      'target'.
+
+  Returns:
+    A CompositeTensor or CompositeTensor value object.
+
+  Raises:
+    RuntimeError: if concatenation is not possible.
+  """
+  if type(target) is not type(to_append):
+    raise RuntimeError('Unable to concatenate %s and %s' %
+                       (type(target), type(to_append)))
+
+  # Perform type-specific concatenation.
+  # TODO(b/125094323): This should be replaced by a simple call to
+  # target.append() that should work on all of the below classes.
+
+  # If we're seeing a CompositeTensor here, we know it's because we're in
+  # Eager mode (or else we'd have evaluated the CT to a CT Value object
+  # already). Therefore, it's safe to call concat() on it without evaluating
+  # the result any further. If not - that is, if we're seeing a
+  # SparseTensorValue or a RaggedTensorValue - we need to hand-update it
+  # since we're outside of the graph anyways.
+  if isinstance(target, sparse_tensor.SparseTensor):
+    # We need to invoke the sparse version of concatenate here - tf.concat
+    # won't work.
+    return sparse_ops.sparse_concat(sp_inputs=[target, to_append], axis=0)
+  elif isinstance(target, ragged_tensor.RaggedTensor):
+    return array_ops.concat([target, to_append], axis=0)
+  elif isinstance(target, sparse_tensor.SparseTensorValue):
+    return _append_sparse_tensor_value(target, to_append)
+  elif isinstance(target, ragged_tensor_value.RaggedTensorValue):
+    return _append_ragged_tensor_value(target, to_append)
+  else:
+    raise RuntimeError('Attempted to concatenate unsupported object %s.' %
+                       type(target))
+
+
 class ConcatAggregator(Aggregator):
   """Combine tensor-likes which cannot be merged on the fly.
 
@@ -191,7 +304,7 @@ class ConcatAggregator(Aggregator):
       # TODO(taylorrobie): efficiently concatenate.
       results = self.results[0]
       for r in self.results[1:]:
-        results = composite_tensor_utils.append_composite_tensor(results, r)
+        results = _append_composite_tensor(results, r)
       self.results = results
 
     else:
@@ -374,7 +487,7 @@ def check_num_samples(ins, batch_size=None, steps=None, steps_name='steps'):
   The number of samples is not defined when running with `steps`,
   in which case the number of samples is set to `None`.
 
-  Arguments:
+  Args:
       ins: List of tensors to be fed to the Keras function.
       batch_size: Integer batch size or `None` if not defined.
       steps: Total number of steps (batches of samples) before declaring
@@ -418,11 +531,20 @@ def standardize_single_array(x, expected_shape=None):
 
   if (x.shape is not None and len(x.shape) == 1 and
       (expected_shape is None or len(expected_shape) != 1)):
-    if tensor_util.is_tensor(x):
+    if tensor_util.is_tf_type(x):
       x = array_ops.expand_dims(x, axis=1)
     else:
       x = np.expand_dims(x, 1)
   return x
+
+
+def get_composite_shape(tensor):
+  """Returns the shape of the passed composite tensor."""
+  if isinstance(tensor, sparse_tensor.SparseTensorValue):
+    # SparseTensorValues use a 'dense_shape' attribute
+    return tensor.dense_shape
+  else:
+    return tensor.shape
 
 
 def standardize_input_data(data,
@@ -437,7 +559,7 @@ def standardize_input_data(data,
   arrays (same order as `names`), while checking that the provided
   arrays have shapes that match the network's expectations.
 
-  Arguments:
+  Args:
       data: User-provided input data (polymorphic).
       names: List of expected array names.
       shapes: Optional list of expected array shapes.
@@ -522,13 +644,13 @@ def standardize_input_data(data,
   if shapes:
     for i in range(len(names)):
       if shapes[i] is not None:
-        if tensor_util.is_tensor(data[i]):
+        if tensor_util.is_tf_type(data[i]):
           tensorshape = data[i].shape
           if not tensorshape:
             continue
           data_shape = tuple(tensorshape.as_list())
         elif is_composite_or_composite_value(data[i]):
-          tensorshape = composite_tensor_utils.get_shape(data[i])
+          tensorshape = get_composite_shape(data[i])
           data_shape = tuple(tensorshape.as_list())
         else:
           data_shape = data[i].shape
@@ -554,7 +676,7 @@ def standardize_input_data(data,
 def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
   """Maps `sample_weight` or `class_weight` to model outputs.
 
-  Arguments:
+  Args:
       x_weight: User-provided `sample_weight` or `class_weight` argument.
       output_names: List of output names (strings) in the model.
       weight_type: A string used purely for exception printing.
@@ -610,7 +732,7 @@ def standardize_sample_weights(sample_weight, output_names):
 def check_array_lengths(inputs, targets, weights=None):
   """Does user input validation for numpy arrays.
 
-  Arguments:
+  Args:
       inputs: list of Numpy arrays of inputs.
       targets: list of Numpy arrays of targets.
       weights: list of Numpy arrays of sample weights.
@@ -620,7 +742,7 @@ def check_array_lengths(inputs, targets, weights=None):
   """
 
   def is_tensor_or_composite_tensor(x):
-    return tensor_util.is_tensor(x) or is_composite_or_composite_value(x)
+    return tensor_util.is_tf_type(x) or is_composite_or_composite_value(x)
 
   def set_of_lengths(x):
     # Returns a set with the variation between
@@ -667,7 +789,7 @@ def check_loss_and_target_compatibility(targets, loss_fns, output_shapes):
   This helps prevent users from using loss functions incorrectly. This check
   is purely for UX purposes.
 
-  Arguments:
+  Args:
       targets: list of Numpy arrays of targets.
       loss_fns: list of loss functions.
       output_shapes: list of shapes of model outputs.
@@ -683,7 +805,7 @@ def check_loss_and_target_compatibility(targets, loss_fns, output_shapes):
   key_loss_classes = (losses.MeanSquaredError, losses.BinaryCrossentropy,
                       losses.CategoricalCrossentropy)
   for y, loss, shape in zip(targets, loss_fns, output_shapes):
-    if y is None or loss is None or tensor_util.is_tensor(y):
+    if y is None or loss is None or tensor_util.is_tf_type(y):
       continue
     if losses.is_categorical_crossentropy(loss):
       if y.shape[-1] == 1:
@@ -724,14 +846,17 @@ def collect_per_output_metric_info(metrics,
                                    output_names,
                                    output_shapes,
                                    loss_fns,
+                                   from_serialized=False,
                                    is_weighted=False):
   """Maps metric names and functions to model outputs.
 
-  Arguments:
+  Args:
       metrics: a list or a list of lists or a dict of metric functions.
       output_names: a list of the names (strings) of model outputs.
       output_shapes: a list of the shapes (strings) of model outputs.
       loss_fns: a list of the loss functions corresponding to the model outputs.
+      from_serialized: whether the model the metrics are being sourced from is
+        being initialized from a serialized format.
       is_weighted: Boolean indicating whether the given metrics are weighted.
 
   Returns:
@@ -788,11 +913,16 @@ def collect_per_output_metric_info(metrics,
       metric_name = get_metric_name(metric, is_weighted)
       metric_fn = get_metric_function(
           metric, output_shape=output_shapes[i], loss_fn=loss_fns[i])
+      metric_fn._from_serialized = from_serialized  # pylint: disable=protected-access
 
       # If the metric function is not stateful, we create a stateful version.
       if not isinstance(metric_fn, metrics_module.Metric):
         metric_fn = metrics_module.MeanMetricWrapper(
             metric_fn, name=metric_name)
+        # If the metric is being revived from something stateless, such as a
+        # string (e.g. "accuracy"), we may need to later reapply transformations
+        # such as renaming.
+        metric_fn._from_serialized = False  # pylint: disable=protected-access
       metrics_dict[metric_name] = metric_fn
     per_output_metrics.append(metrics_dict)
 
@@ -805,7 +935,7 @@ def batch_shuffle(index_array, batch_size):
   Useful for shuffling HDF5 arrays
   (where one cannot access arbitrary indices).
 
-  Arguments:
+  Args:
       index_array: array of indices to be shuffled.
       batch_size: integer.
 
@@ -833,7 +963,7 @@ def standardize_weights(y,
   weight array. If both `sample_weight` and `class_weight` are provided,
   the weights are multiplied.
 
-  Arguments:
+  Args:
       y: Numpy array or Tensor of model targets to be weighted.
       sample_weight: User-provided `sample_weight` argument.
       class_weight: User-provided `class_weight` argument.
@@ -885,7 +1015,7 @@ def standardize_weights(y,
                        'Expected sample_weight with rank '
                        'less than or equal to ' + str(len(y.shape)))
 
-    if (not tensor_util.is_tensor(sample_weight) and
+    if (not tensor_util.is_tf_type(sample_weight) and
         y.shape[:sample_weight.ndim] != sample_weight.shape):
       raise ValueError('Found a sample_weight array with shape ' +
                        str(sample_weight.shape) + ' for an input with shape ' +
@@ -899,7 +1029,7 @@ def standardize_weights(y,
       raise ValueError('`class_weight` not supported for '
                        '3+ dimensional targets.')
 
-    if tensor_util.is_tensor(y):
+    if tensor_util.is_tf_type(y):
       # Few classes are expected, so densifying is reasonable.
       keys = np.array(sorted(class_weight.keys()))
       values = np.array([class_weight[i] for i in keys])
@@ -963,21 +1093,21 @@ def has_tensors(ls):
   # which would then require a steps_per_epoch argument.
   if isinstance(ls, (list, tuple)):
     return any(
-        tensor_util.is_tensor(v) and
+        tensor_util.is_tf_type(v) and
         not isinstance(v, ragged_tensor.RaggedTensor) for v in ls)
   if isinstance(ls, dict):
     return any(
-        tensor_util.is_tensor(v) and
+        tensor_util.is_tf_type(v) and
         not isinstance(v, ragged_tensor.RaggedTensor)
         for _, v in six.iteritems(ls))
-  return tensor_util.is_tensor(ls) and not isinstance(
+  return tensor_util.is_tf_type(ls) and not isinstance(
       ls, ragged_tensor.RaggedTensor)
 
 
 def get_metric_name(metric, weighted=False):
   """Returns the name corresponding to the given metric input.
 
-  Arguments:
+  Args:
     metric: Metric function name or reference.
     weighted: Boolean indicating if the given metric is weighted.
 
@@ -1012,7 +1142,7 @@ def get_metric_name(metric, weighted=False):
 def get_metric_function(metric, output_shape=None, loss_fn=None):
   """Returns the metric function corresponding to the given metric input.
 
-  Arguments:
+  Args:
       metric: Metric function name or reference.
       output_shape: The shape of the output that this metric will be calculated
         for.
@@ -1110,7 +1240,7 @@ def get_loss_function(loss):
 def validate_dataset_input(x, y, sample_weight, validation_split=None):
   """Validates user input arguments when a dataset iterator is passed.
 
-  Arguments:
+  Args:
     x: Input data. A `tf.data` dataset or iterator.
     y: Target data. It could be either Numpy array(s) or TensorFlow tensor(s).
       Expected to be `None` when `x` is a dataset iterator.
@@ -1149,7 +1279,7 @@ def validate_input_types(inp, orig_inp, allow_dict=True, field_name='inputs'):
   """Helper function to validate either inputs or targets."""
   if isinstance(inp, (list, tuple)):
     if not all(isinstance(v, np.ndarray) or
-               tensor_util.is_tensor(v) for v in inp):
+               tensor_util.is_tf_type(v) for v in inp):
       raise ValueError(
           'Please provide as model inputs either a single array or a list of '
           'arrays. You passed: {}={}'.format(field_name, str(orig_inp)))
@@ -1157,7 +1287,7 @@ def validate_input_types(inp, orig_inp, allow_dict=True, field_name='inputs'):
     if not allow_dict:
       raise ValueError(
           'You cannot pass a dictionary as model {}.'.format(field_name))
-  elif not isinstance(inp, np.ndarray) and not tensor_util.is_tensor(inp):
+  elif not isinstance(inp, np.ndarray) and not tensor_util.is_tf_type(inp):
     raise ValueError(
         'Please provide as model inputs either a single array or a list of '
         'arrays. You passed: {}={}'.format(field_name, orig_inp))
@@ -1188,7 +1318,7 @@ def check_steps_argument(input_data, steps, steps_name):
        required and is `None`.
     3. input data passed is a symbolic tensor.
 
-  Arguments:
+  Args:
       input_data: Input data. Can be Numpy array(s) or TensorFlow tensor(s) or
         tf.data.Dataset iterator or `None`.
       steps: Integer or `None`. Total number of steps (batches of samples) to
@@ -1249,7 +1379,7 @@ def cast_if_floating_dtype_and_mismatch(targets, outputs):
   Returns:
     Targets in appropriate datatype.
   """
-  if tensor_util.is_tensor(targets):
+  if tensor_util.is_tf_type(targets):
     # There is one target, so output[0] should be the only output.
     return cast_single_tensor(targets, dtype=outputs[0].dtype)
   new_targets = []
@@ -1336,7 +1466,7 @@ def prepare_sample_weight_modes(training_endpoints, sample_weight_mode):
 def prepare_loss_functions(loss, output_names):
   """Converts loss to a list of loss functions.
 
-  Arguments:
+  Args:
       loss: String (name of objective function), objective function or
         `tf.losses.Loss` instance. See `tf.losses`. If the model has multiple
         outputs, you can use a different loss on each output by passing a
@@ -1380,7 +1510,7 @@ def prepare_loss_weights(training_endpoints, loss_weights=None):
 
   The result loss weights will be populated on the training endpoint.
 
-  Arguments:
+  Args:
       training_endpoints: List of model training endpoints.
       loss_weights: Optional list or dictionary specifying scalar coefficients
         (Python floats) to weight the loss contributions of different model
@@ -1487,7 +1617,7 @@ def initialize_iterator(iterator):
 def extract_tensors_from_dataset(dataset):
   """Extract a tuple of tensors `inputs, targets, sample_weight` from a dataset.
 
-  Arguments:
+  Args:
     dataset: Dataset instance.
 
   Returns:
@@ -1501,7 +1631,7 @@ def extract_tensors_from_dataset(dataset):
 def unpack_iterator_input(iterator):
   """Convert a dataset iterator to a tuple of tensors `x, y, sample_weights`.
 
-  Arguments:
+  Args:
     iterator: Instance of a dataset iterator.
 
   Returns:
@@ -1539,7 +1669,7 @@ def infer_steps_for_dataset(model,
                             steps_name='steps'):
   """Infers steps_per_epoch needed to loop through a dataset.
 
-  Arguments:
+  Args:
       model: Keras model instance.
       dataset: Input data of type tf.data.Dataset.
       steps: Number of steps to draw from the dataset (may be None if unknown).
@@ -1683,7 +1813,7 @@ def generic_output_names(outputs_list):
 def should_run_validation(validation_freq, epoch):
   """Checks if validation should be run this epoch.
 
-  Arguments:
+  Args:
     validation_freq: Integer or list. If an integer, specifies how many training
       epochs to run before a new validation run is performed. If a list,
       specifies the epochs on which to run validation.

@@ -166,6 +166,13 @@ def broadcast_weights(weights, values):
         weights_shape.is_compatible_with(values_shape)):
       return weights
 
+    # Skip the assert_broadcastable on TPU/GPU because asserts are not
+    # supported so it only causes unnecessary ops. Also skip it because it uses
+    # a DenseToDenseSetOperation op that is incompatible with the TPU/GPU when
+    # the shape(s) are dynamic.
+    if control_flow_ops.get_enclosing_xla_context() is not None:
+      return math_ops.multiply(
+          weights, array_ops.ones_like(values), name=scope)
     with ops.control_dependencies((assert_broadcastable(weights, values),)):
       return math_ops.multiply(
           weights, array_ops.ones_like(values), name=scope)

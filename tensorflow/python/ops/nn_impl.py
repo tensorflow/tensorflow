@@ -88,7 +88,7 @@ def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
     log_input = ops.convert_to_tensor(log_input, name="log_input")
     targets = ops.convert_to_tensor(targets, name="targets")
     try:
-      targets.get_shape().merge_with(log_input.get_shape())
+      targets.get_shape().assert_is_compatible_with(log_input.get_shape())
     except ValueError:
       raise ValueError(
           "log_input and targets must have the same shape (%s vs %s)" %
@@ -168,7 +168,7 @@ def sigmoid_cross_entropy_with_logits(  # pylint: disable=invalid-name
     logits = ops.convert_to_tensor(logits, name="logits")
     labels = ops.convert_to_tensor(labels, name="labels")
     try:
-      labels.get_shape().merge_with(logits.get_shape())
+      labels.get_shape().assert_is_compatible_with(logits.get_shape())
     except ValueError:
       raise ValueError("logits and labels must have the same shape (%s vs %s)" %
                        (logits.get_shape(), labels.get_shape()))
@@ -304,7 +304,7 @@ def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight,
     logits = ops.convert_to_tensor(logits, name="logits")
     labels = ops.convert_to_tensor(labels, name="labels")
     try:
-      labels.get_shape().merge_with(logits.get_shape())
+      labels.get_shape().assert_is_compatible_with(logits.get_shape())
     except ValueError:
       raise ValueError("logits and labels must have the same shape (%s vs %s)" %
                        (logits.get_shape(), labels.get_shape()))
@@ -526,7 +526,6 @@ def swish(features):
 
   Args:
     features: A `Tensor` representing preactivation values.
-    name: A name for the operation (optional).
 
   Returns:
     The activation value.
@@ -645,6 +644,22 @@ def l2_normalize_v2(x, axis=None, epsilon=1e-12, name=None):
 
   For `x` with more dimensions, independently normalizes each 1-D slice along
   dimension `axis`.
+
+  * 1-D tensor example:
+  >>> x = tf.constant([3.0, 4.0])
+  >>> tf.math.l2_normalize(x).numpy()
+  array([0.6, 0.8], dtype=float32)
+
+  * 2-D tensor example:
+  >>> x = tf.constant([[3.0], [4.0]])
+  >>> tf.math.l2_normalize(x, 0).numpy()
+  array([[0.6],
+       [0.8]], dtype=float32)
+
+  >>> x = tf.constant([[3.0], [4.0]])
+  >>> tf.math.l2_normalize(x, 1).numpy()
+  array([[1.],
+       [1.]], dtype=float32)
 
   Args:
     x: A `Tensor`.

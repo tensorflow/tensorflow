@@ -27,7 +27,9 @@ void init_basic_classes(py::module& m) {
   py::class_<mlir::Location>(m, "Location");
 
   py::class_<mlir::UnknownLoc>(m, "UnknownLoc")
-      .def("get", &mlir::UnknownLoc::get);
+      .def("get", [](mlir::MLIRContext* context) -> mlir::Location {
+        return mlir::UnknownLoc::get(context);
+      });
 
   py::class_<mlir::Region>(m, "Region")
       .def("back", &mlir::Region::back, py::return_value_policy::reference)

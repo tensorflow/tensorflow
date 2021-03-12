@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the dataset constructors serialization."""
+"""Tests for checkpointing the dataset constructors."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -20,7 +20,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -28,9 +28,8 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.platform import test
 
 
-class FromTensorsSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase,
-    parameterized.TestCase):
+class FromTensorsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                parameterized.TestCase):
 
   def _build_tensor_dataset(self, variable_array):
     components = (variable_array, np.array([1, 2, 3]), np.array(37.0))
@@ -46,9 +45,8 @@ class FromTensorsSerializationTest(
                         num_outputs)
 
 
-class FromTensorSlicesSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase,
-    parameterized.TestCase):
+class FromTensorSlicesCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                     parameterized.TestCase):
 
   def _build_tensor_slices_dataset(self, components):
     return dataset_ops.Dataset.from_tensor_slices(components)
@@ -68,9 +66,8 @@ class FromTensorSlicesSerializationTest(
         lambda: self._build_tensor_slices_dataset(dict_components), 3)
 
 
-class FromSparseTensorSlicesSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase,
-    parameterized.TestCase):
+class FromSparseTensorSlicesCheckpointTest(
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
 
   def _build_sparse_tensor_slice_dataset(self, slices):
     indices = np.array(

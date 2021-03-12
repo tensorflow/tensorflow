@@ -79,20 +79,30 @@ xla::RngOutput BitGenerator(xla::RandomAlgorithm const& alg, xla::XlaOp key,
                         /*state=*/new_counter};
 }
 
-std::tuple<xla::XlaOp, xla::XlaOp, Algorithm> GetKeyCounterAlg(
+std::tuple<xla::XlaOp, xla::XlaOp> GetKeyCounter(
     absl::string_view device_type_string, xla::XlaOp key) {
   // The Philox algorithm may cause performance regression on other devices.
   // Turn on the Philox algorithm for the CPU and GPU backends only.
   if (device_type_string == DEVICE_GPU_XLA_JIT ||
       device_type_string == DEVICE_CPU_XLA_JIT) {
     auto counter_key = xla::ScramblePhiloxKey(key);
-    return std::make_tuple(counter_key.second, counter_key.first,
-                           RNG_ALG_PHILOX);
+    return std::make_tuple(counter_key.second, counter_key.first);
   } else {
     auto counter_shape =
         xla::ShapeUtil::MakeShape(xla::U64, {RNG_MAX_COUNTER_SIZE});
     auto counter = xla::Zeros(key.builder(), counter_shape);
-    return std::make_tuple(key, counter, RNG_ALG_XLA_DEFAULT);
+    return std::make_tuple(key, counter);
+  }
+}
+
+Algorithm GetAlg(absl::string_view device_type_string) {
+  // The Philox algorithm may cause performance regression on other devices.
+  // Turn on the Philox algorithm for the CPU and GPU backends only.
+  if (device_type_string == DEVICE_GPU_XLA_JIT ||
+      device_type_string == DEVICE_CPU_XLA_JIT) {
+    return RNG_ALG_PHILOX;
+  } else {
+    return RNG_ALG_XLA_DEFAULT;
   }
 }
 
@@ -468,13 +478,11 @@ class GetKeyCounterAlgOp : public XlaOpKernel {
     xla::XlaBuilder* builder = seed.builder();
     xla::XlaOp seed0 = xla::Reshape(xla::Slice(seed, {0}, {1}, {1}), {});
     xla::XlaOp seed1 = xla::Reshape(xla::Slice(seed, {1}, {2}, {1}), {});
-    xla::XlaOp key = ConvertElementType(seed0, xla::U64) |
-                     ShiftLeft(ConvertElementType(seed1, xla::U64),
-                               ConstantR0WithType(builder, xla::U64, 32));
-    auto key_counter_alg = GetKeyCounterAlg(device_type_string_, key);
-    key = std::get<0>(key_counter_alg);
-    auto counter = std::get<1>(key_counter_alg);
-    auto alg = std::get<2>(key_counter_alg);
+    xla::XlaOp key = GetU64FromS32Seeds(seed0, seed1);
+    auto key_counter = GetKeyCounter(device_type_string_, key);
+    key = std::get<0>(key_counter);
+    auto counter = std::get<1>(key_counter);
+    auto alg = GetAlg(device_type_string_);
     key = xla::Reshape(key, {RNG_KEY_SIZE});
     ctx->SetOutput(0, key);
     ctx->SetOutput(1, counter);
@@ -487,7 +495,61 @@ class GetKeyCounterAlgOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(GetKeyCounterAlgOp);
 };
 
+// TODO(hinsu): Dis-allow unsupported int64 seed types.
 REGISTER_XLA_OP(Name("StatelessRandomGetKeyCounterAlg"), GetKeyCounterAlgOp);
+
+class GetKeyCounterOp : public XlaOpKernel {
+ public:
+  explicit GetKeyCounterOp(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx),
+        device_type_string_(ctx->device_type().type_string()) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    TensorShape seed_shape = ctx->InputShape(0);
+    OP_REQUIRES(ctx, seed_shape == TensorShape({2}),
+                errors::InvalidArgument("seed must have shape [2], not ",
+                                        seed_shape.DebugString()));
+    xla::XlaOp seed = ctx->Input(0);
+
+    xla::XlaOp seed0 = xla::Reshape(xla::Slice(seed, {0}, {1}, {1}), {});
+    xla::XlaOp seed1 = xla::Reshape(xla::Slice(seed, {1}, {2}, {1}), {});
+    xla::XlaOp key = GetU64FromS32Seeds(seed0, seed1);
+    auto key_counter = GetKeyCounter(device_type_string_, key);
+    key = std::get<0>(key_counter);
+    auto counter = std::get<1>(key_counter);
+    key = xla::Reshape(key, {RNG_KEY_SIZE});
+    ctx->SetOutput(0, key);
+    ctx->SetOutput(1, counter);
+  }
+
+ private:
+  string device_type_string_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(GetKeyCounterOp);
+};
+
+// TODO(hinsu): Dis-allow unsupported int64 seed types.
+REGISTER_XLA_OP(Name("StatelessRandomGetKeyCounter"), GetKeyCounterOp);
+
+class GetAlgOp : public XlaOpKernel {
+ public:
+  explicit GetAlgOp(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx),
+        device_type_string_(ctx->device_type().type_string()) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    auto alg = GetAlg(device_type_string_);
+    auto builder = ctx->builder();
+    ctx->SetOutput(0, ConstantR0(builder, static_cast<int>(alg)));
+  }
+
+ private:
+  string device_type_string_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(GetAlgOp);
+};
+
+REGISTER_XLA_OP(Name("StatelessRandomGetAlg"), GetAlgOp);
 
 }  // namespace
 }  // namespace tensorflow

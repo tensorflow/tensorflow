@@ -365,10 +365,13 @@ bool ArCrsCombiner::InstructionsComputeSameValue(
   auto eq_computations = [](const HloComputation* a, const HloComputation* b) {
     return *a == *b;
   };
+  // Two MPMD AllReduces are identical if they have the same channel_id. Their
+  // operands don't have to be identical.
+  auto eq_operands = [](const HloInstruction*, const HloInstruction*) {
+    return true;
+  };
   if (i1->IsCrossModuleAllReduce()) {
-    return i1->Identical(*i2,
-                         /*eq_operands=*/std::equal_to<const HloInstruction*>(),
-                         eq_computations,
+    return i1->Identical(*i2, eq_operands, eq_computations,
                          /*layout_sensitive=*/false);
   }
   visited_pairs->emplace(min_uid, max_uid);

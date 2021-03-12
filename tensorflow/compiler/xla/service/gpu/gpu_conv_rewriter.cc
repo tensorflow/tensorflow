@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -209,7 +210,23 @@ MatchBackwardFilter(HloInstruction* conv) {
     }
     // Padding high will be checked in Step 3.
   }
-  if (input_batch_dim == output_batch_dim &&
+  // Mathematically, there is no difference between convolution forward vs
+  // backward filter. A backward filter:
+  //   [N, O, H+h-1, W+w-1] x [N, C, H, W] -> [O, C, h, w]
+  // Can be treated as a forward convolution with `N` treated as the new
+  // contracting (feature) dimension, `O` treated as the new batch dimension,
+  // and `C` treated as the new output feature dimension. The only difference is
+  // layouts and performance.
+  //
+  // Since there is no way to precisely tell whether we want a foward conv or
+  // backward filter conv, we have to rely on heuristics. Empirically forward
+  // convolutions have very small kernel dimensions, while in the backward pass
+  // "kernel dimensions" are large. If kernel dimensions are smaller than the
+  // output dimensions, return foward conv; otherwise proceed with backward
+  // filter conv.
+  if ((kernel_spatial_dims.empty() ||
+       conv->operand(1)->shape().dimensions(kernel_spatial_dims[0]) <=
+           conv->shape().dimensions(output_spatial_dims[0])) &&
       !window_util::HasWindowDilation(conv->window())) {
     VLOG(1) << conv->ToString()
             << " is a regular forward convolution. No need "

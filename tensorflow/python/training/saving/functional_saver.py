@@ -322,7 +322,7 @@ class MultiDeviceSaver(object):
 
       return restore_ops
 
-    # Since this will causes a function re-trace on each save, limit this to the
+    # Since this will causes a function re-trace on each restore, limit this to
     # cases where it is needed: eager and when there are multiple tasks/single
     # device savers. Note that the retrace is needed to ensure we pickup the
     # latest values of options like experimental_io_device.

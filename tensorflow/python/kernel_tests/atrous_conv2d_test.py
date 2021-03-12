@@ -61,7 +61,7 @@ class AtrousConv2DTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testAtrousConv2DForward(self):
-    with self.session(use_gpu=True):
+    with self.session():
       # Input: [batch, height, width, input_depth]
       height = 9
       for width in [9, 10]:  # Test both odd and even width.
@@ -108,7 +108,7 @@ class AtrousConv2DTest(test.TestCase):
     padding = "SAME"  # The padding needs to be "SAME"
     np.random.seed(1)  # Make it reproducible.
 
-    with self.session(use_gpu=True):
+    with self.session():
       # Input: [batch, height, width, input_depth]
       for height in range(15, 17):
         for width in range(15, 17):
@@ -138,7 +138,7 @@ class AtrousConv2DTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradient(self):
-    with self.session(use_gpu=True):
+    with self.session():
       # Input: [batch, height, width, input_depth]
       x_shape = [2, 5, 6, 2]
       # Filter: [kernel_height, kernel_width, input_depth, output_depth]
@@ -166,7 +166,7 @@ class AtrousConv2DTransposeTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testAtrousConv2DTransposeForward(self):
-    with self.session(use_gpu=True):
+    with self.session():
       # Input: [batch, height, width, input_depth]
       height = 9
       for width in [9, 10]:  # Test both odd and even width.
@@ -206,7 +206,7 @@ class AtrousDepthwiseConv2DTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testAtrousDepthwiseConv2DForward(self):
     strides = [1, 1, 1, 1]
-    with self.session(use_gpu=True):
+    with self.session():
       # Input: [batch, height, width, input_depth]
       height = 9
       for width in [9, 10]:  # Test both odd and even width.

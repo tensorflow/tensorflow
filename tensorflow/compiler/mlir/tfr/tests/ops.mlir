@@ -5,32 +5,32 @@
 // methods.
 
 // CHECK-LABEL: tensor_type_noconstraint
-func @tensor_type_noconstraint() -> !tfr.tensor
+func private @tensor_type_noconstraint() -> !tfr.tensor
 
 // -----
 
 // CHECK-LABEL: tensor_type
-func @tensor_type() -> !tfr.tensor<T>
+func private @tensor_type() -> !tfr.tensor<T>
 
 // -----
 
 // CHECK-LABEL: tensor_list_type_noconstraint
-func @tensor_list_type_noconstraint() -> !tfr.tensor_list
+func private @tensor_list_type_noconstraint() -> !tfr.tensor_list
 
 // -----
 
 // CHECK-LABEL: tensor_list_type_array_like
-func @tensor_list_type_array_like() -> !tfr.tensor_list<[N, T]>
+func private @tensor_list_type_array_like() -> !tfr.tensor_list<[N, T]>
 
 // -----
 
 // CHECK-LABEL: tensor_list_type_tuple_like
-func @tensor_list_type_tuple_like() -> !tfr.tensor_list<input_T>
+func private @tensor_list_type_tuple_like() -> !tfr.tensor_list<input_T>
 
 // -----
 
 // expected-error@+1 {{unbalanced '>' character in pretty dialect name}}
-func @tensor_invalid_1() -> !tfr.tensor<[N, T>
+func private @tensor_invalid_1() -> !tfr.tensor<[N, T>
 
 // -----
 
@@ -260,6 +260,35 @@ func @build_const_list() -> !tfr.attr {
 
 // -----
 
+// CHECK-LABEL: build_high_dim_const_list
+// CANON-LABEL: build_high_dim_const_list
+func @build_high_dim_const_list() -> !tfr.attr {
+  %0 = "std.constant"() {value = 42 : i32} : () -> i32
+  %1 = "std.constant"() {value = 41 : i32} : () -> i32
+  %2 = "tfr.build_list"(%0, %1) : (i32, i32) -> !tfr.attr
+  %3 = "tfr.build_list"(%0, %1) : (i32, i32) -> !tfr.attr
+  %4 = "tfr.build_list"(%2, %3) : (!tfr.attr, !tfr.attr) -> !tfr.attr
+  return %4 : !tfr.attr
+
+// CANON-NEXT: %[[c:.*]] = tfr.constant {{\[}}[42 : i32, 41 : i32], [42 : i32, 41 : i32]] -> !tfr.attr
+// CANON-NEXT: return %[[c]] : !tfr.attr
+}
+
+// -----
+
+// CHECK-LABEL: get_length
+// CANON-LABEL: get_length
+func @get_length(%arg0: !tfr.tensor<A>, %arg1: !tfr.tensor<B>) -> index {
+  %0 = "tfr.build_list"(%arg0, %arg1) : (!tfr.tensor<A>, !tfr.tensor<B>) -> !tfr.tensor_list
+  %1 = "tfr.get_length"(%0) : (!tfr.tensor_list) -> index
+  return %1 : index
+
+// CANON-NEXT: %[[c:.*]] = constant 2 : index
+// CANON-NEXT: return %[[c]] : index
+}
+
+// -----
+
 // CHECK-LABEL: tfr.func
 tfr.func @External(%arg0: !tfr.tensor<A>,
               %arg1: !tfr.tensor_list<C>,
@@ -315,7 +344,7 @@ tfr.func @Foo_unnamed_attr(%arg0: !tfr.tensor<A>,
 
 // -----
 
-// expected-error@+1 {{tfr.tensor_list argument should be before non tensor arguments}}
+// expected-error@+1 {{tfr.tensor/tfr.tensor_list argument should be before non tensor arguments}}
 tfr.func @Foo_invalid_arg_order(%arg0: !tfr.tensor<A>,
               %arg2: i32 {tfr.name = "A"},
               %arg1: !tfr.tensor_list<A>,
@@ -326,14 +355,25 @@ tfr.func @Foo_invalid_arg_order(%arg0: !tfr.tensor<A>,
 
 // -----
 
+tfr.func @Foo_valid_arg_order0(
+              %arg1: !tfr.tensor_list,
+              %arg0: !tfr.tensor<T>,
+              %arg2: i32 {tfr.name = "A"},
+              %arg3: vector<1xi32> {tfr.name = "C"}) ->
+    (!tfr.tensor, !tfr.tensor_list) attributes {T}{
+  tfr.return %arg0, %arg1 : !tfr.tensor<T>, !tfr.tensor_list
+}
+
+// -----
+
 // expected-error@+1 {{tfr.tensor argument should be before tfr.tensor_list argument.}}
 tfr.func @Foo_invalid_arg_order0(
               %arg1: !tfr.tensor_list,
-              %arg0: !tfr.tensor,
+              %arg0: !tfr.tensor<T>,
               %arg2: i32 {tfr.name = "A"},
               %arg3: vector<1xi32> {tfr.name = "C"}) ->
     (!tfr.tensor, !tfr.tensor_list) {
-  tfr.return %arg0, %arg1 : !tfr.tensor, !tfr.tensor_list
+  tfr.return %arg0, %arg1 : !tfr.tensor<T>, !tfr.tensor_list
 }
 
 // -----

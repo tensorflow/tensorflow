@@ -149,7 +149,7 @@ TEST(SqueezeOpTest, SqueezeNegativeAxisString) {
   EXPECT_THAT(m.GetStringOutput(), ElementsAreArray({"a", "b"}));
 }
 
-TYPED_TEST(SqueezeOpTest, SqueezeAllDimsString) {
+TEST(SqueezeOpTest, SqueezeAllDimsString) {
   std::initializer_list<std::string> data = {"a"};
   SqueezeOpModel<std::string> m(
       {GetTensorType<std::string>(), {1, 1, 1, 1, 1, 1, 1}},

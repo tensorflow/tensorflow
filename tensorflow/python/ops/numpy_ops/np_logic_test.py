@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tf numpy random number methods."""
+"""Tests for tf numpy logical methods."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -76,9 +76,6 @@ class LogicTest(test.TestCase):
       msg = 'Shape match failed for: {}. Expected: {} Actual: {}'.format(
           msg, expected.shape, actual.shape)
     self.assertEqual(actual.shape, expected.shape, msg=msg)
-    if msg:
-      msg = 'Shape: {} is not a tuple for {}'.format(actual.shape, msg)
-    self.assertIsInstance(actual.shape, tuple, msg=msg)
 
   def match_dtype(self, actual, expected, msg=None):
     if msg:
@@ -95,16 +92,17 @@ class LogicTest(test.TestCase):
     self.assertIsInstance(actual, np_arrays.ndarray)
     self.match_dtype(actual, expected, msg)
     self.match_shape(actual, expected, msg)
-    if not actual.shape:
+    if not actual.shape.rank:
       self.assertEqual(actual.tolist(), expected.tolist())
     else:
       self.assertSequenceEqual(actual.tolist(), expected.tolist())
 
 
 def make_numpy_compatible(s):
-  return s if not isinstance(s, np_arrays.ndarray) else s.data.numpy()
+  return s if not isinstance(s, np_arrays.ndarray) else s.numpy()
 
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
+  np_math_ops.enable_numpy_methods_on_tensor()
   test.main()

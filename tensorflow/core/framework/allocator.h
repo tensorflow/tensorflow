@@ -439,8 +439,16 @@ class SubAllocator {
                const std::vector<Visitor>& free_visitors);
 
   virtual ~SubAllocator() {}
-  virtual void* Alloc(size_t alignment, size_t num_bytes) = 0;
+  // Allocates at least num_bytes. Returns actual number of bytes allocated in
+  // bytes_received. The caller can safely use the full bytes_received sized
+  // buffer following the returend pointer.
+  virtual void* Alloc(size_t alignment, size_t num_bytes,
+                      size_t* bytes_received) = 0;
   virtual void Free(void* ptr, size_t num_bytes) = 0;
+
+  // Returns true if the BFC allocator can safely coalesce adjacent regions
+  // returned by this allocator.
+  virtual bool SupportsCoalescing() const = 0;
 
  protected:
   // Implementation of Alloc() method must call this on newly allocated

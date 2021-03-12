@@ -79,7 +79,7 @@ if [ ! -d /tensorflow_src ]; then
   done
 
   if [ -z ${BAZEL_CACHE_DIR} ]; then
-    mkdir "bazel-build-cache"
+    mkdir -p "bazel-build-cache"
     BAZEL_CACHE_DIR="$PWD/bazel-build-cache"
     ARGUMENTS="${ARGUMENTS} --cache_dir=${BAZEL_CACHE_DIR}"
   fi
@@ -113,6 +113,10 @@ else
   # Pull the latest code from tensorflow.
   git pull -a
   git checkout ${FLAG_CHECKPOINT}
+
+  # Configure Bazel.
+  source tensorflow/tools/ci_build/release/common.sh
+  install_bazelisk
 
   # Building with bazel.
   export BAZEL_CACHE_DIR=${BAZEL_CACHE_DIR}

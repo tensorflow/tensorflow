@@ -39,6 +39,7 @@ from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
+from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -107,6 +108,20 @@ class MirroredTwoDeviceDistributionTest(
       reduced = distribution.reduce(reduce_util.ReduceOp.SUM, result, axis=None)
       expected = sum(range(distribution.num_replicas_in_sync))
       self.assertEqual(expected, self.evaluate(reduced))
+
+  def testReduceToCpuNested(self, distribution):
+    with distribution.scope():
+      def replica_fn(input_tensor):
+        return input_tensor + constant_op.constant(
+            1.0), input_tensor - constant_op.constant(1.0)
+
+      input_tensor = constant_op.constant(3.0)
+      run_result = distribution.run(replica_fn, args=(input_tensor,))
+      reduced_result = distribution.reduce("SUM", run_result, axis=None)
+      expected_result = (4 * distribution.num_replicas_in_sync,
+                         2 * distribution.num_replicas_in_sync)
+
+      self.assertEqual(expected_result, self.evaluate(reduced_result))
 
   def reduce_axis_helper(self, distribution, replica_squared_fn):
     with distribution.scope():
@@ -235,7 +250,7 @@ class MirroredTwoDeviceDistributionTest(
 
   def test_prefetch_to_device_dataset(self, distribution):
     input_options = distribute_lib.InputOptions(
-        experimental_prefetch_to_device=True)
+        experimental_fetch_to_device=True)
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.batch(distribution.num_replicas_in_sync)
     dataset = distribution.experimental_distribute_dataset(
@@ -257,7 +272,7 @@ class MirroredTwoDeviceDistributionTest(
 
   def test_prefetch_to_host_dataset(self, distribution):
     input_options = distribute_lib.InputOptions(
-        experimental_prefetch_to_device=False)
+        experimental_fetch_to_device=False)
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.batch(distribution.num_replicas_in_sync)
     dataset = distribution.experimental_distribute_dataset(
@@ -1313,10 +1328,7 @@ class MultiWorkerMirroredStrategyTestWithChief(
       with test.mock.patch.dict("os.environ",
                                 {"TF_CONFIG": json.dumps(tf_config)}):
         strategy = mirrored_strategy.MirroredStrategy()
-        if context.num_gpus() > 0:
-          self.assertIsInstance(strategy.extended._inferred_cross_device_ops,
-                                cross_device_ops_lib.NcclAllReduce)
-        else:
+        if context.num_gpus() == 0:
           self.assertIsInstance(strategy.extended._inferred_cross_device_ops,
                                 cross_device_ops_lib.ReductionToOneDevice)
       self.skipTest("b/130551176, run the following once fixed.")
@@ -1437,4 +1449,5 @@ def _replica_id_as_int():
 
 
 if __name__ == "__main__":
-  test.main()
+  # TODO(b/172304955)
+  test_util.main(config_logical_devices=False)

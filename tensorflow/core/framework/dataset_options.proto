@@ -1,0 +1,179 @@
+syntax = "proto3";
+
+package tensorflow.data;
+
+// Represents the type of auto-sharding we enable.
+enum AutoShardPolicy {
+  // AUTO: Attempts FILE-based sharding, falling back to DATA-based sharding.
+  AUTO = 0;
+  // FILE: Shards by input files (i.e. each worker will get a set of files to
+  // process). When this option is selected, make sure that there is at least as
+  // many files as workers. If there are fewer input files than workers, a
+  // runtime error will be raised.
+  FILE = 1;
+  // DATA: Shards by elements produced by the dataset. Each worker will process
+  // the whole dataset and discard the portion that is not for itself. Note that
+  // for this mode to correctly partitions the dataset elements, the dataset
+  // needs to produce elements in a deterministic order.
+  DATA = 2;
+  // HINT: Looks for the presence of `shard(SHARD_HINT, ...)` which is treated
+  // as a placeholder to replace with `shard(num_workers, worker_index)`.
+  HINT = 3;
+  // OFF: No sharding will be performed.
+  OFF = -1;
+}
+
+message DistributeOptions {
+  AutoShardPolicy auto_shard_policy = 1;
+  // The number of devices attached to this input pipeline.
+  oneof optional_num_devices {
+    int32 num_devices = 2;
+  }
+}
+
+message MapVectorization {
+  // Whether to vectorize map transformations.
+  oneof optional_enabled {
+    bool enabled = 1;
+  }
+  // Whether to use ChooseFastestBranchDataset with this transformation. If
+  // True, the pipeline picks between the vectorized and original segment at
+  // runtime based on their iterations speed.
+  oneof optional_use_choose_fastest {
+    bool use_choose_fastest = 2;
+  }
+}
+
+message OptimizationOptions {
+  // Whether to apply default graph optimizations. If False, only graph
+  // optimizations that have been explicitly enabled will be applied.
+  oneof optional_apply_default_optimizations {
+    bool apply_default_optimizations = 1;
+  }
+  // Whether to automatically tune performance knobs.
+  oneof optional_autotune {
+    bool autotune = 2;
+  }
+  // When autotuning is enabled (through autotune), determines whether to also
+  // autotune buffer sizes for datasets with parallelism.
+  oneof optional_autotune_buffers {
+    bool autotune_buffers = 3;
+  }
+  // When autotuning is enabled (through autotune), determines the CPU budget to
+  // use. Values greater than the number of schedulable CPU cores are allowed
+  // but may result in CPU contention.
+  oneof optional_autotune_cpu_budget {
+    int32 autotune_cpu_budget = 4;
+  }
+  // When autotuning is enabled (through autotune), determines the RAM budget to
+  // use. Values greater than the available RAM in bytes may result in OOM. If
+  // 0, defaults to half of the available RAM in bytes.
+  oneof optional_autotune_ram_budget {
+    int32 autotune_ram_budget = 5;
+  }
+  // Whether to fuse filter transformations.
+  oneof optional_filter_fusion {
+    bool filter_fusion = 6;
+  }
+  // Whether to fuse filter dataset that predicts random_uniform < rate into a
+  // sampling dataset.
+  oneof optional_filter_with_random_uniform_fusion {
+    bool filter_with_random_uniform_fusion = 7;
+  }
+  // Whether to hoist tf.random_uniform() ops out of map transformations.
+  oneof optional_hoist_random_uniform {
+    bool hoist_random_uniform = 8;
+  }
+  // Whether to fuse map and batch transformations.
+  oneof optional_map_and_batch_fusion {
+    bool map_and_batch_fusion = 9;
+  }
+  // Whether to fuse map and filter transformations.
+  oneof optional_map_and_filter_fusion {
+    bool map_and_filter_fusion = 10;
+  }
+  // Whether to fuse map transformations.
+  oneof optional_map_fusion {
+    bool map_fusion = 11;
+  }
+  // Whether to parallelize stateless map transformations.
+  oneof optional_map_parallelization {
+    bool map_parallelization = 12;
+  }
+  // The map vectorization options associated with the dataset.
+  MapVectorization map_vectorization = 13;
+  // Whether to eliminate no-op transformations.
+  oneof optional_noop_elimination {
+    bool noop_elimination = 14;
+  }
+  // Whether to parallelize copying of batch elements. This optimization is
+  // highly experimental and can cause performance degradation (e.g. when the
+  // parallelization overhead exceeds the benefits of performing the data copies
+  // in parallel). You should only enable this optimization if a) your input
+  // pipeline is bottlenecked on batching and b) you have validated that this
+  // optimization improves performance.
+  oneof optional_parallel_batch {
+    bool parallel_batch = 15;
+  }
+  // Whether to reorder ops that will discard data to the front of unary
+  // cardinality preserving transformations, e.g. dataset.map(...).take(3) will
+  // be optimized to dataset.take(3).map(...). For now this optimization will
+  // move `skip`, `shard` and `take` to the front of `map` and `prefetch`. This
+  // optimization is only for performance; it will not affect the output of the
+  // dataset.
+  oneof optional_reorder_data_discarding_ops {
+    bool reorder_data_discarding_ops = 16;
+  }
+  // Whether to fuse shuffle and repeat transformations.
+  oneof optional_shuffle_and_repeat_fusion {
+    bool shuffle_and_repeat_fusion = 17;
+  }
+}
+
+message ThreadingOptions {
+  // If set, it overrides the maximum degree of intra-op parallelism.
+  oneof optional_max_intra_op_parallelism {
+    int32 max_intra_op_parallelism = 1;
+  }
+  // If set, the dataset will use a private threadpool of the given size.
+  oneof optional_private_threadpool_size {
+    int32 private_threadpool_size = 2;
+  }
+}
+
+// Represents how to handle external state during serialization.
+enum ExternalStatePolicy {
+  POLICY_WARN = 0;
+  POLICY_IGNORE = 1;
+  POLICY_FAIL = 2;
+}
+
+// Message stored with Dataset objects to control how datasets are processed and
+// optimized.
+message Options {
+  // Whether the outputs need to be produced in deterministic order.
+  oneof optional_deterministic {
+    bool deterministic = 1;
+  }
+  // The distribution strategy options associated with the dataset.
+  DistributeOptions distribute_options = 2;
+  // The optimization options associated with the dataset.
+  OptimizationOptions optimization_options = 3;
+  // Whether to introduce 'slack' in the last `prefetch` of the input pipeline,
+  // if it exists. This may reduce CPU contention with accelerator host-side
+  // activity at the start of a step. The slack frequency is determined by the
+  // number of devices attached to this input pipeline.
+  oneof optional_slack {
+    bool slack = 4;
+  }
+  // The threading options associated with the dataset.
+  ThreadingOptions threading_options = 5;
+  // This option can be used to override the default policy for how to handle
+  // external state when serializing a dataset or checkpointing its iterator.
+  // There are three settings available - IGNORE: External state is ignored
+  // without a warning; WARN: External state is ignored and a warning is logged;
+  // FAIL: External state results in an error.
+  oneof optional_external_state_policy {
+    ExternalStatePolicy external_state_policy = 6;
+  }
+}

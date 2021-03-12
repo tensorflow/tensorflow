@@ -18,8 +18,6 @@
 # TODO(amitpatankar): Remove this file once we upgrade to ubuntu:16.04
 # docker images for Python 3.6 builds.
 
-# LINT.IfChange
-
 # fkrull/deadsnakes is for Python3.6
 add-apt-repository -y ppa:fkrull/deadsnakes
 
@@ -101,12 +99,10 @@ pip3 install --upgrade astor
 pip3 install --upgrade gast
 pip3 install --upgrade termcolor
 
-pip3 install --upgrade h5py==2.8.0
+pip3 install --upgrade h5py==3.1.0
 
 # Keras
 pip3 install keras_preprocessing==1.0.5
 
 # Estimator
 pip3 install tf-estimator-nightly==1.12.0.dev20181203 --no-deps
-
-# LINT.ThenChange(//tensorflow/tools/ci_build/install/install_python3.5_pip_packages.sh)

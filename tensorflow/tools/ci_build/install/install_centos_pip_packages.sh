@@ -74,7 +74,7 @@ pip3 install py-cpuinfo
 
 # pylint tests require the following:
 pip2 install pylint==1.6.4
-pip3 install pylint==1.6.4
+pip3 install pylint==2.7.2
 
 # pycodestyle tests require the following:
 pip2 install pycodestyle
@@ -102,7 +102,7 @@ pip3 install --upgrade termcolor
 pip2 install keras_preprocessing==1.0.5 --no-deps
 pip3 install keras_preprocessing==1.0.5 --no-deps
 pip2 install --upgrade h5py==2.8.0
-pip3 install --upgrade h5py==2.8.0
+pip3 install --upgrade h5py==3.1.0
 
 # Estimator
 pip2 install tf-estimator-nightly --no-deps

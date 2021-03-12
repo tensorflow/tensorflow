@@ -24,7 +24,7 @@ py_library(
         "__init__.py",
         "base.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -42,6 +42,7 @@ py_library(
 py_library(
     name = "convolutional",
     srcs = ["convolutional.py"],
+    srcs_version = "PY3",
     deps = [
         ":layers_base",
         "//tensorflow/python:init_ops",
@@ -53,6 +54,7 @@ py_library(
 py_library(
     name = "core",
     srcs = ["core.py"],
+    srcs_version = "PY3",
     deps = [
         ":layers_base",
         "//tensorflow/python:init_ops",
@@ -64,6 +66,7 @@ py_library(
 py_library(
     name = "normalization",
     srcs = ["normalization.py"],
+    srcs_version = "PY3",
     deps = [
         ":layers_base",
         "//tensorflow/python:init_ops",
@@ -75,6 +78,7 @@ py_library(
 py_library(
     name = "pooling",
     srcs = ["pooling.py"],
+    srcs_version = "PY3",
     deps = [
         ":layers_base",
         "//tensorflow/python:util",

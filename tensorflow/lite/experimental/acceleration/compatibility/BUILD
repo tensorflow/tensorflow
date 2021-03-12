@@ -14,6 +14,7 @@
 # ==============================================================================
 
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library", "flatbuffer_java_library")
+load("//tensorflow/core/platform:build_config_root.bzl", "tf_gpu_tests_tags")
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps", "tflite_portable_test_suite")
 
 package(
@@ -79,7 +80,7 @@ py_binary(
     name = "convert_binary_to_cc_source",
     srcs = ["convert_binary_to_cc_source.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
 )
 
@@ -99,7 +100,7 @@ genrule(
         --output_source_file $(location :devicedb-sample.cc) \
         --array_variable_name g_tflite_acceleration_devicedb_sample_binary
     """,
-    exec_tools = [":convert_binary_to_cc_source"],
+    tools = [":convert_binary_to_cc_source"],
 )
 
 cc_library(
@@ -142,7 +143,7 @@ genrule(
         --output_source_file $(location :gpu_compatibility_binary.cc) \
         --array_variable_name g_tflite_acceleration_gpu_compatibility_binary
     """,
-    exec_tools = [":convert_binary_to_cc_source"],
+    tools = [":convert_binary_to_cc_source"],
 )
 
 cc_library(
@@ -179,7 +180,9 @@ cc_library(
 cc_test(
     name = "gpu_compatibility_test",
     srcs = ["gpu_compatibility_test.cc"],
-    tags = ["no_mac"],  # b/163222453
+    tags = tf_gpu_tests_tags() + [
+        "no_cuda_asan",  # TODO(b/181032551).
+    ],
     deps = [
         ":devicedb_sample",
         ":gpu_compatibility",

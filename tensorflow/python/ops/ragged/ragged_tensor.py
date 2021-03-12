@@ -91,9 +91,11 @@ class RaggedTensor(composite_tensor.CompositeTensor,
 
   ### Potentially Ragged Tensors
 
-  Many ops support both `Tensor`s and `RaggedTensor`s.  The term "potentially
-  ragged tensor" may be used to refer to a tensor that might be either a
-  `Tensor` or a `RaggedTensor`.  The ragged-rank of a `Tensor` is zero.
+  Many ops support both `Tensor`s and `RaggedTensor`s
+  (see [tf.ragged](https://www.tensorflow.org/api_docs/python/tf/ragged) for a
+  full listing). The term "potentially ragged tensor" may be used to refer to a
+  tensor that might be either a `Tensor` or a `RaggedTensor`.  The ragged-rank
+  of a `Tensor` is zero.
 
   ### Documenting RaggedTensor Shapes
 
@@ -1426,8 +1428,8 @@ class RaggedTensor(composite_tensor.CompositeTensor,
         self.shape.rank,
         axis_name="inner_axis",
         ndims_name="rank(self)")
-    if not outer_axis < inner_axis:
-      raise ValueError("Expected outer_axis (%d) to be less than "
+    if not outer_axis <= inner_axis:
+      raise ValueError("Expected outer_axis (%d) to be less than or equal to "
                        "inner_axis (%d)" % (outer_axis, inner_axis))
     return merge_dims(self, outer_axis, inner_axis)
 
@@ -2176,6 +2178,7 @@ def match_row_splits_dtypes(*tensors, **kwargs):
 # RaggedTensorSpec
 #===============================================================================
 @tf_export("RaggedTensorSpec")
+@type_spec.register("tf.RaggedTensorSpec")
 class RaggedTensorSpec(type_spec.BatchableTypeSpec):
   """Type specification for a `tf.RaggedTensor`."""
 
