@@ -64,8 +64,6 @@ tf_cuda_cc_test(
         "manual",
         "multi_gpu",
         "no_oss",
-        # TODO(b/147451637): Replace 'no_rocm' with 'rocm_multi_gpu'.
-        "no_rocm",
         "notap",
     ],
     deps = [
