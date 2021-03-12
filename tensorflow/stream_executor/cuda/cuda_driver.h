@@ -95,7 +95,7 @@ class CreatedContexts {
   }
 
   // Return the context associated to that ptr.
-  static CUcontext GetContext(void* ptr) {
+  static CUcontext GetAnyContext(void* ptr) {
     absl::ReaderMutexLock lock(&mu_);
     int device_ordinal;
     CUresult result =
@@ -106,8 +106,8 @@ class CreatedContexts {
       LOG(FATAL) << "Not able to get the device_ordinal for ptr: " << ptr;
     }
     CHECK(LiveOrdinal()->count(device_ordinal) == 1);
-    CHECK(LiveOrdinal()->at(device_ordinal).size() == 1)
-        << "Can't use cuda_malloc_async when there is multiple context per device" ;
+    CHECK(LiveOrdinal()->at(device_ordinal).size() >= 1)
+        << "Need at least one context.";
     return LiveOrdinal()->at(device_ordinal)[0];
   }
 

@@ -1176,8 +1176,11 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64 bytes) {
   if(!UseCudaMallocAsyncAllocator()){
     result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
   } else {
-    CUcontext dstContext = CreatedContexts::GetContext(absl::bit_cast<void*>(gpu_dst));
-    CUcontext srcContext = CreatedContexts::GetContext(absl::bit_cast<void*>(gpu_src));
+    // Any context work here.
+    CUcontext dstContext = CreatedContexts::GetAnyContext(
+        absl::bit_cast<void*>(gpu_dst));
+    CUcontext srcContext = CreatedContexts::GetAnyContext(
+        absl::bit_cast<void*>(gpu_src));
 
     if ((void*)dstContext == nullptr) {
       port::StatusOr<GpuContext*> context = GetPointerContext(gpu_dst);
