@@ -20,6 +20,7 @@ limitations under the License.
 #include <tuple>
 
 #include "absl/algorithm/container.h"
+#include "absl/types/optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -269,7 +270,7 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
     case HloOpcode::kAtan2:
       return CreateOpWithoutAttrs<lmhlo::Atan2Op>(instr);
     case HloOpcode::kBitcast:
-      return nullptr;
+      return EmitBitcast(instr);
     case HloOpcode::kBitcastConvert:
       return CreateOpWithoutAttrs<lmhlo::BitcastConvertOp>(instr);
     case HloOpcode::kBroadcast:
@@ -1385,6 +1386,23 @@ LhloDialectEmitter::EmitTriangularSolveOp(const xla::HloInstruction* instr) {
   triangular_solve.layout_outputAttr(
       GetLayoutAttribute(instr->shape().layout(), &builder_));
   return triangular_solve;
+}
+
+xla::StatusOr<Operation*> LhloDialectEmitter::EmitBitcast(
+    const xla::HloInstruction* instr) {
+  // XLA buffer assignment should assign the same slice to a bitcast input and
+  // output.
+  const xla::ShapeIndex top_index;
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
+                      assignment_.GetUniqueSlice(instr, top_index));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice input_slice,
+                      assignment_.GetUniqueSlice(instr->operand(0), top_index));
+
+  if (input_slice != result_slice) {
+    return xla::InvalidArgument(
+        "Bitcast input and result slice should be same");
+  }
+  return nullptr;
 }
 
 mlir::DenseIntElementsAttr LhloDialectEmitter::GetLayoutAttribute(
