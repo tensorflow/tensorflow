@@ -28,7 +28,6 @@ namespace tensorflow {
 namespace {
 
 using namespace ops;  // NOLINT(build/namespaces)
-using ops::internal::MirrorPadGrad;
 
 class ResourceVariableGradTest : public ::testing::Test {
  protected:
