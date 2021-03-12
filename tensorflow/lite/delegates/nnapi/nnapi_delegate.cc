@@ -3887,6 +3887,11 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
     if (total_input_byte_size > nn_input_memory_->get_byte_size()) {
       nn_input_memory_.reset(
           new NNMemory(nnapi_, "input_pool", total_input_byte_size));
+      if (nn_input_memory_->get_data_ptr() == MAP_FAILED) {
+        RETURN_TFLITE_ERROR_IF_NN_ERROR(context, ANEURALNETWORKS_UNMAPPABLE,
+                                        "allocating input memory pool",
+                                        nnapi_errno);
+      }
     }
 
     size_t total_output_byte_size = 0;
@@ -3900,6 +3905,11 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
     if (total_output_byte_size > nn_output_memory_->get_byte_size()) {
       nn_output_memory_.reset(
           new NNMemory(nnapi_, "output_pool", total_output_byte_size));
+      if (nn_output_memory_->get_data_ptr() == MAP_FAILED) {
+        RETURN_TFLITE_ERROR_IF_NN_ERROR(context, ANEURALNETWORKS_UNMAPPABLE,
+                                        "allocating output memory pool",
+                                        nnapi_errno);
+      }
     }
   }
 
@@ -4765,8 +4775,19 @@ TfLiteStatus NNAPIDelegateKernel::BuildGraph(
   // Create shared memory pool for inputs and outputs.
   nn_input_memory_.reset(
       new NNMemory(nnapi_, "input_pool", total_input_byte_size));
+  if (nn_input_memory_->get_data_ptr() == MAP_FAILED) {
+    RETURN_TFLITE_ERROR_IF_NN_ERROR(context, ANEURALNETWORKS_UNMAPPABLE,
+                                    "allocating input memory pool",
+                                    nnapi_errno);
+  }
+
   nn_output_memory_.reset(
       new NNMemory(nnapi_, "output_pool", total_output_byte_size));
+  if (nn_output_memory_->get_data_ptr() == MAP_FAILED) {
+    RETURN_TFLITE_ERROR_IF_NN_ERROR(context, ANEURALNETWORKS_UNMAPPABLE,
+                                    "allocating output memory pool",
+                                    nnapi_errno);
+  }
 
   return kTfLiteOk;
 }
