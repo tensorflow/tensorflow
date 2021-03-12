@@ -189,8 +189,7 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
   builder_.Finish(CreateModel(builder_, TFLITE_SCHEMA_VERSION, opcodes,
                               subgraphs_flatbuffer, description, buffers));
 
-  uint8_t* buffer_pointer = builder_.GetBufferPointer();
-  UpdateOpVersion(buffer_pointer);
+  UpdateOpVersion(builder_);
 
   if (!resolver_) {
     MutableOpResolver* resolver =
@@ -202,7 +201,7 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
     }
     resolver_ = std::unique_ptr<OpResolver>(resolver);
   }
-  CHECK(InterpreterBuilder(GetModel(buffer_pointer), *resolver_)(
+  CHECK(InterpreterBuilder(GetModel(builder_.GetBufferPointer()), *resolver_)(
             &interpreter_, num_threads) == kTfLiteOk);
 
   CHECK(interpreter_ != nullptr);

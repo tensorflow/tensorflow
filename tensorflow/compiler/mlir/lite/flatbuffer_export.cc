@@ -1837,7 +1837,7 @@ Optional<std::string> Translator::TranslateInternal() {
                                    description, builder_.CreateVector(buffers_),
                                    metadata_buffer, *metadata, *signature_defs);
   tflite::FinishModelBuffer(builder_, model);
-  tflite::UpdateOpVersion(builder_.GetBufferPointer());
+  tflite::UpdateOpVersion(builder_);
   tflite::UpdateMinimumRuntimeVersionForModel(builder_.GetBufferPointer());
 
   // Return serialized string for the built FlatBuffer.
