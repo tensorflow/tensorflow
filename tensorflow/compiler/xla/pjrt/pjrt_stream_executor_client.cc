@@ -1715,8 +1715,8 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
                            ->device_ordinal();
   LocalDeviceState* device_state = &(client_->device_state(device_ordinal));
   tensorflow::profiler::TraceMeConsumer activity(
-      "LocalExecutable::Execute", tensorflow::profiler::ContextType::kPjRt,
-      run_id.ToInt());
+      "PjRtStreamExecutorExecutable::EnqueueExecution",
+      tensorflow::profiler::ContextType::kPjRt, run_id.ToInt());
   VLOG(3) << "Replica " << replica << ", partition " << partition
           << " mapped to device ordinal for execution: " << device_ordinal;
 
@@ -1903,7 +1903,8 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
   int device_ordinal = tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
                            ->local_device_state()
                            ->device_ordinal();
-  tensorflow::profiler::TraceMe traceme("LocalExecutable::Execute");
+  tensorflow::profiler::TraceMe traceme(
+      "PjRtStreamExecutorExecutable::ExecuteHelper");
   VLOG(3) << "Replica " << replica << ", partition " << partition
           << " mapped to device ordinal for execution: " << device_ordinal;
 
