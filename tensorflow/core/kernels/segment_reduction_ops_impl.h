@@ -206,6 +206,7 @@ class SegmentReductionOp : public OpKernel {
 };
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 //  SegmentReductionGPUOp is a segment reduction operator implemented for GPU
 //  only.
 //  TODO: This implementation of SegmentReductionGPUOp is sometimes slower than
@@ -222,7 +223,8 @@ class SegmentReductionOp : public OpKernel {
 //     small. When to use the tiled version or the untiled version depends on
 //     many factors including data alignments, ratio of calculation to memory
 //     traffic and obviously, the problem sizes.
-template <class T, class Index, class SegmentReductionFunctor>
+template <class T, class Index, class SegmentReductionFunctor,
+          bool deterministic_for_float>
 class SegmentReductionGPUOp : public AsyncOpKernel {
  public:
   explicit SegmentReductionGPUOp(OpKernelConstruction* context)
@@ -231,6 +233,15 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
     const Tensor& input = context->input(0);
     const Tensor& segment_ids = context->input(1);
+
+    OP_REQUIRES_ASYNC(
+        context,
+        (deterministic_for_float || !RequireDeterminism() ||
+         DisableSegmentReductionOpDeterminismExceptions()),
+        errors::Unimplemented(
+            "Deterministic GPU implementation of sorted segment reduction op"
+            " not available."),
+        done);
 
     OP_REQUIRES_ASYNC(
         context, TensorShapeUtils::IsVector(segment_ids.shape()),

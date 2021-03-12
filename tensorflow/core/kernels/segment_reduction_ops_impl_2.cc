@@ -65,7 +65,7 @@ REGISTER_COMPLEX_CPU_KERNELS_ALL(complex128);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_GPU_KERNEL_SORTEDSEGMENT(                                   \
     name, type, index_type, initial_value_functor, reduction_kernel_functor, \
-    atomic_reduction_kernel_functor)                                         \
+    atomic_reduction_kernel_functor, deterministic_for_float)                \
   REGISTER_KERNEL_BUILDER(                                                   \
       Name(name)                                                             \
           .Device(DEVICE_GPU)                                                \
@@ -75,21 +75,26 @@ REGISTER_COMPLEX_CPU_KERNELS_ALL(complex128);
           type, index_type,                                                  \
           functor::SegmentReductionFunctor<                                  \
               type, index_type, initial_value_functor,                       \
-              reduction_kernel_functor, atomic_reduction_kernel_functor> >)
+              reduction_kernel_functor, atomic_reduction_kernel_functor>,    \
+          deterministic_for_float>)
 
 #define REGISTER_GPU_SORTED_KERNELS(type, index_type)                     \
   REGISTER_GPU_KERNEL_SORTEDSEGMENT(                                      \
       "SegmentSum", type, index_type, functor::Zero<type>,                \
-      functor::NonAtomicSumOpGpu<type>, functor::AtomicSumOpGpu<type>);   \
+      functor::NonAtomicSumOpGpu<type>, functor::AtomicSumOpGpu<type>,    \
+      /*deterministic_for_float=*/false);                                 \
   REGISTER_GPU_KERNEL_SORTEDSEGMENT(                                      \
       "SegmentProd", type, index_type, functor::One<type>,                \
-      functor::NonAtomicProdOpGpu<type>, functor::AtomicProdOpGpu<type>); \
+      functor::NonAtomicProdOpGpu<type>, functor::AtomicProdOpGpu<type>,  \
+      /*deterministic_for_float=*/false);                                 \
   REGISTER_GPU_KERNEL_SORTEDSEGMENT(                                      \
       "SegmentMin", type, index_type, functor::Highest<type>,             \
-      functor::NonAtomicMinOpGpu<type>, functor::AtomicMinOpGpu<type>);   \
+      functor::NonAtomicMinOpGpu<type>, functor::AtomicMinOpGpu<type>,    \
+      /*deterministic_for_float=*/true);                                  \
   REGISTER_GPU_KERNEL_SORTEDSEGMENT(                                      \
       "SegmentMax", type, index_type, functor::Lowest<type>,              \
-      functor::NonAtomicMaxOpGpu<type>, functor::AtomicMaxOpGpu<type>);
+      functor::NonAtomicMaxOpGpu<type>, functor::AtomicMaxOpGpu<type>,    \
+      /*deterministic_for_float=*/true);
 
 #define REGISTER_GPU_SORTED_KERNELS_ALL(type) \
   REGISTER_GPU_SORTED_KERNELS(type, int64);

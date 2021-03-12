@@ -32,6 +32,9 @@ namespace tensorflow {
 
 class OpKernelContext;
 
+bool RequireDeterminism();
+bool DisableSegmentReductionOpDeterminismExceptions();
+
 namespace functor {
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -76,6 +79,7 @@ struct AtomicSumOpGpu {
                                                         const T& value) {
     GpuAtomicAdd(dest, value);
   }
+  const bool deterministic_for_float = false;
 };
 
 template <typename T>
@@ -84,6 +88,7 @@ struct AtomicProdOpGpu {
                                                         const T& value) {
     GpuAtomicMul(dest, value);
   }
+  const bool deterministic_for_float = false;
 };
 
 template <typename T>
@@ -92,6 +97,7 @@ struct AtomicMaxOpGpu {
                                                         const T& value) {
     GpuAtomicMax(dest, value);
   }
+  const bool deterministic_for_float = true;
 };
 
 template <typename T>
@@ -100,6 +106,7 @@ struct AtomicMinOpGpu {
                                                         const T& value) {
     GpuAtomicMin(dest, value);
   }
+  const bool deterministic_for_float = true;
 };
 
 // Non-atomic reduction functors for the gpu.
