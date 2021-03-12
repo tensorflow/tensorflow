@@ -188,4 +188,4 @@ TEST_F(MklQuantizeV2OpTest, small_minfirst_int) {
 }
 
 }  // end namespace tensorflow
-#endif //  INTEL_MKL && ENABLE_MKL
+#endif  // INTEL_MKL && ENABLE_MKL

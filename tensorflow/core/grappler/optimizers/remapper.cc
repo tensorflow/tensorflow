@@ -235,8 +235,9 @@ bool IsCpuCompatibleDataType(const NodeDef* contraction,
   bool is_one_dnn_enabled = false;
 #endif
   if (is_one_dnn_enabled) {
-    return (IsConv2D(*contraction) || IsDepthwiseConv2dNative(*contraction) || IsMatMul(*contraction))
-    &&  (dtype == DT_FLOAT || dtype == DT_BFLOAT16);
+    return (IsConv2D(*contraction) || IsDepthwiseConv2dNative(*contraction) ||
+            IsMatMul(*contraction)) &&
+           (dtype == DT_FLOAT || dtype == DT_BFLOAT16);
   }
   if (IsConv2D(*contraction)) {
     return dtype == DT_FLOAT || dtype == DT_DOUBLE;
@@ -830,11 +831,12 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
     const auto* fused_batch_norm_node_def = fused_batch_norm.node();
     if (!IsFusedBatchNorm(*fused_batch_norm_node_def)) return false;
 
-    // We fuse FusedBatchNorm on GPU or oneDNN CPU.
 #ifndef INTEL_MKL
+    // We fuse FusedBatchNorm on GPU or oneDNN CPU.
     if (!NodeIsOnGpu(fused_batch_norm_node_def)) return false;
 #else
-    if (!NodeIsOnGpu(fused_batch_norm_node_def) && !IsMKLEnabled()) return false;
+    if (!NodeIsOnGpu(fused_batch_norm_node_def) && !IsMKLEnabled())
+      return false;
 #endif
 
     DataType t_dtype = GetDataTypeFromAttr(*fused_batch_norm_node_def, "T");
@@ -843,7 +845,8 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
 #ifndef INTEL_MKL
     if (t_dtype != DT_FLOAT && t_dtype != DT_HALF) return false;
 #else
-    if (t_dtype != DT_FLOAT && t_dtype != DT_HALF && (!IsMKLEnabled() || t_dtype != DT_BFLOAT16))
+    if (t_dtype != DT_FLOAT && t_dtype != DT_HALF &&
+        (!IsMKLEnabled() || t_dtype != DT_BFLOAT16))
       return false;
 #endif
 
@@ -1881,7 +1884,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
 #ifdef INTEL_MKL
     bool is_onednn_enabled = IsMKLEnabled();
 #else
-    bool is_onednn_enabled = false; 
+    bool is_onednn_enabled = false;
 #endif
     ContractionWithBatchNorm contract_with_batch_norm;
     if (!is_onednn_enabled && allow_non_differentiable_rewrites &&

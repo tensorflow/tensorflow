@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(INTEL_MKL) && defined(ENABLE_MKL)
+#if define(INTEL_MKL) && defined(ENABLE_MKL)
 
 #include "tensorflow/core/common_runtime/mkl_tfconversion_pass.h"
 
@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/util.h"
-
 
 namespace tensorflow {
 
