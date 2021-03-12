@@ -30,7 +30,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import saver as saver_lib
 
 
-class SerializationIntegrationTest(test.TestCase, parameterized.TestCase):
+class MakeSaveableFromIteratorTest(test.TestCase, parameterized.TestCase):
 
   def _build_input_pipeline(self, name, num_outputs):
     with ops.name_scope(name):
