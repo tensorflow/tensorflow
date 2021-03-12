@@ -2134,7 +2134,7 @@ class _UnreadVariable(BaseResourceVariable):
     """The op for this variable."""
     return self._parent_op
 
-  
+
 @ops.RegisterGradient("ReadVariableOp")
 def _ReadGrad(_, grad):
   """Gradient for read op."""	
