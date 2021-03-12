@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,18 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/kernels/internal/reference/cumsum.h"
 
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
-namespace ops {
-namespace builtin {
-namespace cumsum {
+namespace {
 
 static const int kInputTensor = 0;
 static const int kAxisTensor = 1;
@@ -48,8 +46,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  TfLiteIntArray* output_shape = TfLiteIntArrayCopy(input->dims);
-  return context->ResizeTensor(context, output, output_shape);
+  // TODO: ensure output shape matches input shape
+  return kTfLiteError;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
@@ -69,43 +67,24 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   switch (input->type) {
-    case kTfLiteInt32: {
-      optimized_ops::CumSum(GetTensorData<int>(input), GetTensorShape(input),
-                            axis, params->exclusive, params->reverse,
-                            GetTensorData<int>(output));
-      break;
-    }
-    case kTfLiteInt64: {
-      optimized_ops::CumSum(GetTensorData<int64_t>(input),
-                            GetTensorShape(input), axis, params->exclusive,
-                            params->reverse, GetTensorData<int64_t>(output));
-      break;
-    }
     case kTfLiteFloat32: {
       optimized_ops::CumSum(GetTensorData<float>(input), GetTensorShape(input),
                             axis, params->exclusive, params->reverse,
                             GetTensorData<float>(output));
-      break;
-    }
+      return kTfLiteOk;
+    } break;
     default: {
       TF_LITE_KERNEL_LOG(
-          context,
-          "Unsupported input type, cumsum only supports int32 & float32.");
+          context, "Unsupported input type, CUMSUM only supports FLOAT32.");
       return kTfLiteError;
     }
   }
 
-  return kTfLiteOk;
+  return kTfLiteError;
 }
 
-}  // namespace cumsum
+}  // namespace
 
-TfLiteRegistration* Register_CUMSUM() {
-  static TfLiteRegistration r = {nullptr, nullptr, cumsum::Prepare,
-                                 cumsum::Eval};
-  return &r;
-}
+TfLiteRegistration* Register_CUMSUM() { return nullptr; }
 
-}  // namespace builtin
-}  // namespace ops
 }  // namespace tflite

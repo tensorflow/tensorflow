@@ -17,7 +17,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 
 #include <cstdint>
-#include <cstdio>
 #include <initializer_list>
 #include <vector>
 
@@ -48,8 +47,6 @@ class CumsumOpModel {
   const RuntimeShape GetInputShape() {
     return RuntimeShape(input_shape_.size(), input_shape_.data());
   }
-
-  void ShowTensor(int index, char* name) {}
 
   template <typename Ttype>
   void PopulateTensor(std::vector<Ttype>* v,

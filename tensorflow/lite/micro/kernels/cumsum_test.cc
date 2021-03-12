@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,144 +13,100 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <vector>
+#include <type_traits>
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/testing/util.h"
+#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/test_helpers.h"
+#include "tensorflow/lite/micro/testing/micro_test.h"
 
 namespace tflite {
-namespace ops {
-namespace builtin {
-
+namespace testing {
 namespace {
 
-template <typename T>
-class CumsumOpModel : public SingleOpModel {
- public:
-  CumsumOpModel(const TensorData& input, const TensorData& output,
-                bool exclusive, bool reverse) {
-    input_ = AddInput(input);
-    axis_ = AddInput({TensorType_INT32, {1}});
+TF_LITE_MICRO_TESTS_BEGIN
 
-    output_ = AddOutput(output);
-
-    SetBuiltinOp(BuiltinOperator_CUMSUM, BuiltinOptions_CumsumOptions,
-                 CreateCumsumOptions(builder_, exclusive, reverse).Union());
-
-    BuildInterpreter({GetShape(input_), GetShape(axis_)});
-  }
-
-  int input() { return input_; }
-  int axis() { return axis_; }
-
-  std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
-
- private:
-  int input_;
-  int axis_;
-  int output_;
-};
-
-TEST(CumsumOpTest, SimpleIntTest) {
+TF_LITE_MICRO_TEST(CumsumOpTestSimpleIntTest) {
+#ifdef notdef
   CumsumOpModel<int32_t> m({TensorType_INT32, {2, 4}}, {TensorType_INT32, {}},
                            false, false);
 
   m.PopulateTensor<int>(m.input(), {1, 2, 3, 4, 5, 6, 7, 8});
   m.PopulateTensor<int>(m.axis(), {1});
 
-  m.Invoke();
-
   EXPECT_THAT(m.GetOutput(),
               testing::ElementsAreArray({1, 3, 6, 10, 5, 11, 18, 26}));
+#endif  // notdef
 }
 
-TEST(CumsumOpTest, SimpleInt64Test) {
-  CumsumOpModel<int64_t> m({TensorType_INT64, {2, 4}}, {TensorType_INT64, {}},
-                           false, false);
-
-  m.PopulateTensor<int64_t>(
-      m.input(), {100000000001l, 100000000002l, 100000000003l, 100000000004l,
-                  100000000005l, 100000000006l, 100000000007l, 100000000008l});
-  m.PopulateTensor<int>(m.axis(), {1});
-
-  m.Invoke();
-
-  EXPECT_THAT(m.GetOutput(), testing::ElementsAreArray(
-                                 {100000000001l, 200000000003l, 300000000006l,
-                                  400000000010l, 100000000005l, 200000000011l,
-                                  300000000018l, 400000000026l}));
-}
-
-TEST(CumsumOpTest, SimpleIntAxis0Test) {
+TF_LITE_MICRO_TEST(CumsumOpTestSimpleIntAxis0Test) {
+#ifdef notdef
   CumsumOpModel<int32_t> m({TensorType_INT32, {2, 4}}, {TensorType_INT32, {}},
                            false, false);
 
   m.PopulateTensor<int>(m.input(), {1, 2, 3, 4, 5, 6, 7, 8});
   m.PopulateTensor<int>(m.axis(), {0});
 
-  m.Invoke();
-
   EXPECT_THAT(m.GetOutput(),
               testing::ElementsAreArray({1, 2, 3, 4, 6, 8, 10, 12}));
+#endif  // notdef
 }
 
-TEST(CumsumOpTest, Simple1DIntTest) {
+TF_LITE_MICRO_TEST(CumsumOpTestSimple1DIntTest) {
+#ifdef notdef
   CumsumOpModel<int32_t> m({TensorType_INT32, {8}}, {TensorType_INT32, {}},
                            false, false);
 
   m.PopulateTensor<int>(m.input(), {1, 2, 3, 4, 5, 6, 7, 8});
   m.PopulateTensor<int>(m.axis(), {0});
 
-  m.Invoke();
-
   EXPECT_THAT(m.GetOutput(),
               testing::ElementsAreArray({1, 3, 6, 10, 15, 21, 28, 36}));
+#endif  // notdef
 }
 
-TEST(CumsumOpTest, SimpleIntReverseTest) {
+TF_LITE_MICRO_TEST(CumsumOpTestSimpleIntReverseTest) {
+#ifdef notdef
   CumsumOpModel<int32_t> m({TensorType_INT32, {2, 4}}, {TensorType_INT32, {}},
                            false, true);
 
   m.PopulateTensor<int>(m.input(), {1, 2, 3, 4, 5, 6, 7, 8});
   m.PopulateTensor<int>(m.axis(), {1});
 
-  m.Invoke();
-
   EXPECT_THAT(m.GetOutput(),
               testing::ElementsAreArray({10, 9, 7, 4, 26, 21, 15, 8}));
+#endif  // notdef
 }
 
-TEST(CumsumOpTest, SimpleIntExclusiveTest) {
+TF_LITE_MICRO_TEST(CumsumOpTestSimpleIntExclusiveTest) {
+#ifdef notdef
   CumsumOpModel<int32_t> m({TensorType_INT32, {2, 4}}, {TensorType_INT32, {}},
                            true, false);
 
   m.PopulateTensor<int>(m.input(), {1, 2, 3, 4, 5, 6, 7, 8});
   m.PopulateTensor<int>(m.axis(), {1});
 
-  m.Invoke();
-
   EXPECT_THAT(m.GetOutput(),
               testing::ElementsAreArray({0, 1, 3, 6, 0, 5, 11, 18}));
+#endif  // notdef
 }
 
-TEST(CumsumOpTest, SimpleFloatTest) {
+TF_LITE_MICRO_TEST(CumsumOpTestSimpleFloatTest) {
+#ifdef notdef
   CumsumOpModel<float> m({TensorType_FLOAT32, {2, 4}}, {TensorType_FLOAT32, {}},
                          false, false);
 
   m.PopulateTensor<float>(m.input(), {1, 2, 3, 4, 5, 6, 7, 8});
   m.PopulateTensor<int>(m.axis(), {1});
 
-  m.Invoke();
-
   EXPECT_THAT(m.GetOutput(), testing::ElementsAreArray(
                                  ArrayFloatNear({1, 3, 6, 10, 5, 11, 18, 26})));
+#endif  // notdef
 }
 
+TF_LITE_MICRO_TESTS_END
+
 }  // namespace
-}  // namespace builtin
-}  // namespace ops
+}  // namespace testing
 }  // namespace tflite
