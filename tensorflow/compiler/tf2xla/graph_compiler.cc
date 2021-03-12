@@ -324,8 +324,13 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
   }
 
   if (add_token_input_output) {
+    std::string node_name;
+    if (!GetNodeAttr(n->attrs(), kXlaOriginalOutsideCompilationNodeName,
+                     &node_name)
+             .ok())
+      node_name = n->name();
     TF_RETURN_IF_ERROR(compiler->SetNodeToken(
-        n->name(), xla::GetTupleElement(output_handle, computation_output)));
+        node_name, xla::GetTupleElement(output_handle, computation_output)));
   }
   return b->first_error();
 }

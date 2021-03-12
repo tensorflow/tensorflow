@@ -2142,6 +2142,8 @@ A pseudo-op to represent host-side computation in an XLA program.
     TF_ShapeAttrArray:$shapes,
     OptionalAttr<SymbolRefAttr>:$shape_inference_graph,
     StrAttr:$key,
+    DefaultValuedAttr<StrAttr, "">:$send_key,
+    DefaultValuedAttr<StrAttr, "">:$recv_key,
     DefaultValuedAttr<I64Attr, "1000000">:$cost_estimate_ns,
     DefaultValuedAttr<I64Attr, "0">:$tpu_core
   );
