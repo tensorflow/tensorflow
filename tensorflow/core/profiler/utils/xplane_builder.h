@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
@@ -313,6 +314,10 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
 
   // Returns event metadata with the given name. Returns nullptr if not found.
   XEventMetadata* GetEventMetadata(absl::string_view name);
+
+  // Returns event metadata ID with the give name. Returns absl::nullopt if not
+  // found.
+  absl::optional<int64> GetEventMetadataId(absl::string_view name);
 
   // Returns a new stat metadata with an automatically generated metadata_id.
   // WARNING: If calling this function, don't call GetOrCreateEventMetadata.
