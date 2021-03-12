@@ -29,6 +29,10 @@ class TFLiteMetrics(metrics_interface.TFLiteMetricsInterface):
       purposes.
   """
 
+  _counter_debugger_creation = monitoring.Counter(
+      '/tensorflow/lite/quantization_debugger/created',
+      'Counter for the number of debugger created.')
+
   _counter_interpreter_creation = monitoring.Counter(
       '/tensorflow/lite/interpreter/created',
       'Counter for number of interpreter created in Python.', 'language')
@@ -43,6 +47,9 @@ class TFLiteMetrics(metrics_interface.TFLiteMetricsInterface):
     if md5:
       # TODO(b/180400857): Create stub once the service is implemented.
       pass
+
+  def increase_counter_debugger_creation(self):
+    self._counter_debugger_creation.get_cell().increase_by(1)
 
   def increase_counter_interpreter_creation(self):
     self._counter_interpreter_creation.get_cell('python').increase_by(1)

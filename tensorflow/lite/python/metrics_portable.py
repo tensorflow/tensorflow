@@ -20,10 +20,14 @@ from tensorflow.lite.python import metrics_interface
 
 
 class TFLiteMetrics(metrics_interface.TFLiteMetricsInterface):
+  """TFLite metrics helper."""
 
   def __init__(self,
                md5: Optional[Text] = None,
                model_path: Optional[Text] = None) -> None:
+    pass
+
+  def increase_counter_debugger_creation(self):
     pass
 
   def increase_counter_interpreter_creation(self):

@@ -20,5 +20,9 @@ import abc
 class TFLiteMetricsInterface(metaclass=abc.ABCMeta):
 
   @abc.abstractmethod
+  def increase_counter_debugger_creation(self):
+    raise NotImplementedError
+
+  @abc.abstractmethod
   def increase_counter_interpreter_creation(self):
     raise NotImplementedError
