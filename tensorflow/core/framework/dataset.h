@@ -302,7 +302,6 @@ class GraphDefBuilderWrapper {
 };
 
 class StatsAggregator;
-class FunctionHandleCache;
 
 // A utility class for running a function and ensuring that there is always a
 // `tensorflow::data` symbol on the stack.
@@ -354,7 +353,6 @@ class IteratorContext {
           cancellation_manager(ctx->cancellation_manager()),
           env(ctx->env()),
           flr(ctx->flr()),
-          function_handle_cache(ctx->function_handle_cache()),
           resource_mgr(ctx->resource_mgr()),
           model(ctx->model()),
           runner(*(ctx->runner())),
@@ -411,9 +409,6 @@ class IteratorContext {
     // The FunctionLibraryRuntime object to be used to make function calls.
     FunctionLibraryRuntime* flr = nullptr;
 
-    // A FunctionHandleCache that owns all the function handles. Not owned.
-    FunctionHandleCache* function_handle_cache = nullptr;
-
     // A resource manager for storing dataset-related state, e.g. random
     // seeds or cached tensors. Not owned.
     ResourceMgr* resource_mgr = nullptr;
@@ -461,10 +456,6 @@ class IteratorContext {
   Env* env() const { return params_.env; }
 
   FunctionLibraryRuntime* flr() { return params_.flr; }
-
-  FunctionHandleCache* function_handle_cache() {
-    return params_.function_handle_cache;
-  }
 
   ResourceMgr* resource_mgr() { return params_.resource_mgr; }
 
