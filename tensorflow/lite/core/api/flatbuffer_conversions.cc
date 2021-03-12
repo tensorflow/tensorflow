@@ -1318,8 +1318,10 @@ TfLiteStatus ParseGather(const Operator* op, ErrorReporter* error_reporter,
   auto params = safe_allocator.Allocate<TfLiteGatherParams>();
   TF_LITE_ENSURE(error_reporter, params != nullptr);
   params->axis = 0;
+  params->batch_dims = 0;
   if (const auto* gather_params = op->builtin_options_as_GatherOptions()) {
     params->axis = gather_params->axis();
+    params->batch_dims = gather_params->batch_dims();
   }
 
   *builtin_data = params.release();
