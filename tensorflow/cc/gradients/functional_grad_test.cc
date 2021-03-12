@@ -74,6 +74,10 @@ TEST_F(FunctionGradTest, PartitionedCallGrad) {
   (*f.mutable_attr())["T"].set_type(DT_FLOAT);
   auto results = PartitionedCall(scope_, std::initializer_list<Input>{ x }, {DT_FLOAT}, f);
   RunTest(x, {}, results[0], {});
+
+
+  auto stateful_results = StatefulPartitionedCall(scope_, std::initializer_list<Input>{ x }, {DT_FLOAT}, f);
+  RunTest(x, {}, stateful_results[0], {});
 }
 
 }  // namespace
