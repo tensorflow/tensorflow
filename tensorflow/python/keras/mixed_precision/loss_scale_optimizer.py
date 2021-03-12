@@ -928,6 +928,27 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
     else:
       super(LossScaleOptimizer, self).__setattr__(name, value)
 
+  # Explicitly delegate learning_rate. Normally hyperparameters are delegated in
+  # __getattribute__, but if a hyperparameter is not in self._optimizer._hyper
+  # (e.g. because self._optimizer itself wraps another optimizer), then it won't
+  # be delegated. Since learning_rate is a very commonly accessed
+  # hyperparameter, we delegate it here.
+  @property
+  def learning_rate(self):
+    return self._optimizer.learning_rate
+
+  @learning_rate.setter
+  def learning_rate(self, value):
+    self._optimizer.learning_rate = value
+
+  @property
+  def lr(self):
+    return self._optimizer.learning_rate
+
+  @lr.setter
+  def lr(self, value):
+    self._optimizer.lr = value
+
   # We do not override some OptimizerV2 methods. For each, we describe why we do
   # not delegate them to self._optimizer:
   # * get_updates: get_updates() calls get_gradients(). Since we override
