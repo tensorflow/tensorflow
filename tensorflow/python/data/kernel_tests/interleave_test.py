@@ -23,7 +23,6 @@ import os
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
@@ -402,24 +401,6 @@ class InterleaveDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
           _interleave_fn, cycle_length=1)
 
     self.run_core_tests(_build_dataset, 20)
-
-class SampleFromDatasetsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                                       parameterized.TestCase):
-
-  def _build_dataset(self, probs, num_samples):
-    dataset = interleave_ops.sample_from_datasets(
-        [
-            dataset_ops.Dataset.from_tensors(i).repeat(None)
-            for i in range(len(probs))
-        ],
-        probs,
-        seed=1813)
-    return dataset.take(num_samples)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testCheckpointCore(self):
-    self.run_core_tests(lambda: self._build_dataset([0.5, 0.5], 100), 100)
-
 
 if __name__ == "__main__":
   test.main()
