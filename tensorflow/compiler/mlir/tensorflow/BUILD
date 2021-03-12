@@ -896,6 +896,7 @@ cc_library(
         "transforms/constant_op_device_assignment.cc",
         "transforms/cross_host_transfer.cc",
         "transforms/decompose_resource_ops_pass.cc",
+        "transforms/device_attribute_to_launch.cc",
         "transforms/device_index_selector.cc",
         "transforms/drop_while_shape_invariant.cc",
         "transforms/einsum.cc",
