@@ -6153,6 +6153,20 @@ Status ConvertSquaredDifference(OpConverterParams* params) {
 }
 
 #if IS_TRT_VERSION_GE(7, 1, 3, 0)
+
+bool AllowNmsTopkOverride() {
+  static bool result = [] {
+    bool value;
+    Status status = ReadBoolFromEnvVar("TF_TRT_ALLOW_NMS_TOPK_OVERRIDE",
+                                       /*default_value=*/false, &value);
+    if (!status.ok()) {
+      LOG(ERROR) << status;
+    }
+    return value;
+  }();
+  return result;
+}
+
 Status ConvertCombinedNMS(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(
       CheckInputsWeights(*params, {{"boxes", false},
@@ -6237,8 +6251,6 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
         node_def.name());
   }
 
-  if (params->validation_only) return Status::OK();
-
   // TRT op is_normalized=False treats input corrdinates as pixels and
   // calculates width/height as (max - min + 1).
   //
@@ -6258,10 +6270,30 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
   } else {
     keep_top_k = max_total_size;
   }
+
   // According to the batchedNMS plugin description we need to set top_k so that
   // keep_top_k <= top_k
   // https://github.com/NVIDIA/TensorRT/tree/master/plugin/batchedNMSPlugin
-  const int top_k = std::max(num_boxes, keep_top_k);
+  // Before the NMS step, TRT selects top_k candidate from each class and
+  // discards the rest. The NMS step is performed only among the top_k
+  // candidates. To be strictly compatible with the TF op, we need that top_k is
+  // greater equal to num_boxes.
+  int top_k = std::max(num_boxes, keep_top_k);
+  // TRT has a limitation: top_k <=4096.
+  if (top_k > 4096) {
+    if (AllowNmsTopkOverride()) {
+      top_k = 4096;
+      keep_top_k = std::min(top_k, keep_top_k);
+    } else {
+      return errors::InvalidArgument(
+          "TRT NMS plugin allow top_k<=4096, where top_k = max(num_boxes, "
+          "max_total_size). You can override this by setting "
+          "TF_TRT_ALLOW_NMS_TOPK_OVERRIDE=1 environment variable, but this can "
+          "result in a loss of accuracy.");
+    }
+  }
+
+  if (params->validation_only) return Status::OK();
   float score_thresh = *(static_cast<float*>(score_threshold.GetValues()));
   const int background_id = -1;
   nvinfer1::PluginField fields[9] = {
