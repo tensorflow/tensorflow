@@ -66,20 +66,20 @@ class MetaOptimizer : public GraphOptimizer {
 
   // Initialize active optimizers from RewriterConfig toggles.
   Status InitializeOptimizers(
-      std::vector<std::unique_ptr<GraphOptimizer>>* optimizers,
-      const std::set<string>& device_types) const;
+      const std::set<string>& device_types,
+      std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const;
   // Initialize active optimizers from RewriterConfig optimizer names.
   Status InitializeOptimizersByName(
-      std::vector<std::unique_ptr<GraphOptimizer>>* optimizers,
-      const std::set<string>& device_types) const;
+      const std::set<string>& device_types,
+      std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const;
   // Initialize active optimizers from RewriterConfig.custom_optimizers.
   Status InitializeCustomGraphOptimizers(
+      const std::set<string>& device_types,
       const std::set<string>& pre_initialized_optimizers,
-      std::vector<std::unique_ptr<GraphOptimizer>>* optimizers,
-      const std::set<string>& device_types) const;
+      std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const;
   Status InitializePluginGraphOptimizers(
-      std::vector<std::unique_ptr<GraphOptimizer>>* optimizers,
-      const std::set<string>& device_types) const;
+      const std::set<string>& device_types,
+      std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const;
   // Returns the config for a custom graph optimizer. Null if none was found.
   const RewriterConfig::CustomGraphOptimizer* GetCustomGraphOptimizerConfig(
       const string& name) const;
