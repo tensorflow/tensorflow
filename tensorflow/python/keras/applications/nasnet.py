@@ -173,7 +173,7 @@ def NASNet(input_shape=None,
       default_size=default_size,
       min_size=32,
       data_format=backend.image_data_format(),
-      require_flatten=include_top,
+      require_flatten=True,
       weights=weights)
 
   if backend.image_data_format() != 'channels_last':
