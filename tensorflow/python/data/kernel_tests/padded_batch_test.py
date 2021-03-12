@@ -21,6 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -321,6 +322,40 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
         expected_output=[([[1, -1], [2, 2]], [[1, -1], [2, 2]]),
                          ([[3, 3, 3, -1], [4, 4, 4, 4]], [[3, 3, 3, -1],
                                                           [4, 4, 4, 4]])])
+
+
+class PaddedBatchDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                       parameterized.TestCase):
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testPaddedBatch(self):
+
+    def build_dataset(seq_lens):
+      return dataset_ops.Dataset.from_tensor_slices(seq_lens).map(
+          lambda x: array_ops.fill([x], x)).padded_batch(
+              4, padded_shapes=[-1])
+
+    seq_lens = np.random.randint(1, 20, size=(32,)).astype(np.int32)
+    self.run_core_tests(lambda: build_dataset(seq_lens), 8)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testPaddedBatchNonDefaultPadding(self):
+
+    def build_dataset(seq_lens):
+
+      def fill_tuple(x):
+        filled = array_ops.fill([x], x)
+        return (filled, string_ops.as_string(filled))
+
+      padded_shape = [-1]
+      return dataset_ops.Dataset.from_tensor_slices(seq_lens).map(
+          fill_tuple).padded_batch(
+              4,
+              padded_shapes=(padded_shape, padded_shape),
+              padding_values=(-1, '<end>'))
+
+    seq_lens = np.random.randint(1, 20, size=(32,)).astype(np.int32)
+    self.run_core_tests(lambda: build_dataset(seq_lens), 8)
 
 
 if __name__ == '__main__':
