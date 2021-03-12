@@ -24,7 +24,7 @@ namespace tflite {
 namespace reference_ops {
 
 template <typename T>
-inline void Cumsum(const T* input_data, const RuntimeShape& shape, int32_t axis,
+inline void CumSum(const T* input_data, const RuntimeShape& shape, int32_t axis,
                    bool exclusive, bool reverse, T* output_data) {
   const int32_t rank = shape.DimensionsCount();
   TFLITE_DCHECK_GE(rank, 1);

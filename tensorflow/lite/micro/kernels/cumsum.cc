@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/cumsum.h"
 
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
@@ -28,16 +27,14 @@ static const int kInputTensor = 0;
 static const int kAxisTensor = 1;
 static const int kOutputTensor = 0;
 
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* axis = GetInput(context, node, kAxisTensor);
 
-  TF_LITE_ENSURE(context, input->type == kTfLiteInt32 ||
-                              input->type == kTfLiteFloat32 ||
-                              input->type == kTfLiteInt64);
+  TF_LITE_ENSURE(context, input->type == kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, axis->type, kTfLiteInt32);
 
   TF_LITE_ENSURE_EQ(context, NumElements(axis), 1);
@@ -46,31 +43,42 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  // TODO: ensure output shape matches input shape
-  return kTfLiteError;
+  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE(context, HaveSameShapes(input, output));
+
+  return kTfLiteOk;
+}
+
+TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  return CalculateOpData(context, node);
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  const TfLiteTensor* axis_tensor = GetInput(context, node, kAxisTensor);
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
+  const TfLiteEvalTensor* axis_tensor =
+      tflite::micro::GetEvalInput(context, node, kAxisTensor);
 
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
 
-  auto* params = reinterpret_cast<TfLiteCumsumParams*>(node->builtin_data);
+  auto* params = static_cast<TfLiteCumsumParams*>(node->builtin_data);
+  auto input_shape = tflite::micro::GetTensorShape(input);
 
-  int axis = *GetTensorData<int>(axis_tensor);
-  if (axis < 0) axis += NumDimensions(input);
+  int32_t axis = *tflite::micro::GetTensorData<int32_t>(axis_tensor);
+  if (axis < 0) axis += input_shape.DimensionsCount();
 
-  if (axis < 0 || axis >= NumDimensions(input)) {
-    TF_LITE_KERNEL_LOG(context, "Invalid axis: ", axis);
+  if (axis < 0 || axis >= input_shape.DimensionsCount()) {
+    TF_LITE_KERNEL_LOG(context, "CUMSUM Invalid axis: %d", axis);
     return kTfLiteError;
   }
 
   switch (input->type) {
     case kTfLiteFloat32: {
-      optimized_ops::CumSum(GetTensorData<float>(input), GetTensorShape(input),
-                            axis, params->exclusive, params->reverse,
-                            GetTensorData<float>(output));
+      reference_ops::CumSum(tflite::micro::GetTensorData<float>(input),
+                            input_shape, axis, params->exclusive,
+                            params->reverse,
+                            tflite::micro::GetTensorData<float>(output));
       return kTfLiteOk;
     } break;
     default: {
@@ -85,6 +93,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace
 
-TfLiteRegistration* Register_CUMSUM() { return nullptr; }
+TfLiteRegistration Register_CUMSUM() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/Prepare,
+          /*invoke=*/Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
+}
 
 }  // namespace tflite

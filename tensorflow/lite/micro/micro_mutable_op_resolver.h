@@ -177,6 +177,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParseCos);
   }
 
+  TfLiteStatus AddCumSum() {
+    return AddBuiltin(BuiltinOperator_CUMSUM, tflite::Register_CUMSUM(),
+                      ParseCumsum);
+  }
+
   TfLiteStatus AddDepthwiseConv2D() {
     return AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D,
                       Register_DEPTHWISE_CONV_2D(), ParseDepthwiseConv2D);
