@@ -26,6 +26,7 @@ def if_mkl(if_true, if_false = []):
     """
     return select({
         "@org_tensorflow//third_party/mkl:build_with_mkl": if_true,
+        "@org_tensorflow//third_party/mkl:build_with_mkl_aarch64": if_true,
         "//conditions:default": if_false,
     })
 
@@ -77,6 +78,7 @@ def if_enable_mkl(if_true, if_false = []):
     """
     return select({
         "@org_tensorflow//third_party/mkl:enable_mkl": if_true,
+        "@org_tensorflow//third_party/mkl:build_with_mkl_aarch64": if_true,
         "//conditions:default": if_false,
     })
 
@@ -91,7 +93,7 @@ def mkl_deps():
     """
     return select({
         "@org_tensorflow//third_party/mkl:build_with_mkl": ["@mkl_dnn_v1//:mkl_dnn"],
-        "@org_tensorflow//third_party/mkl:build_with_mkl_aarch64": ["@mkl_dnn_v1//:mkl_dnn_aarch64"],
+        "@org_tensorflow//third_party/mkl:build_with_mkl_aarch64": ["@mkl_dnn_acl_compatible//:mkl_dnn_acl"],
         "//conditions:default": [],
     })
 

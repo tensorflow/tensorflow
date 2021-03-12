@@ -1865,6 +1865,12 @@ class FactoryKeyCreator {
     Append(StringPiece(buffer, sizeof(T)));
   }
 
+  // generalisation to handle pointers
+  void AddAsKey(const void* data) {
+    auto buffer = reinterpret_cast<const char*>(&data);
+    Append(StringPiece(buffer, sizeof(data)));
+  }
+
   string GetKey() { return key_; }
 
  private:

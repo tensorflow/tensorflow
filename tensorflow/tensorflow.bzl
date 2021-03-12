@@ -39,6 +39,7 @@ load(
 load(
     "//third_party/mkl_dnn:build_defs.bzl",
     "if_mkldnn_openmp",
+    "if_mkldnn_aarch64_acl",
 )
 load("@bazel_skylib//lib:new_sets.bzl", "sets")
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
@@ -365,6 +366,7 @@ def tf_copts(
         if_mkl(["-DINTEL_MKL=1"]) +
         if_mkldnn_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         if_enable_mkl(["-DENABLE_MKL"]) +
+        if_mkldnn_aarch64_acl(["-DENABLE_MKL", "-DENABLE_ONEDNN_OPENMP"]) +
         if_android_arm(["-mfpu=neon"]) +
         if_linux_x86_64(["-msse3"]) +
         if_ios_x86_64(["-msse4.1"]) +
