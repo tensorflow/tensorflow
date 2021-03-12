@@ -157,8 +157,8 @@ class MklMatMulOp : public OpKernel {
     VLOG(2) << "MKL DNN SGEMM called";
 #ifndef ENABLE_ONEDNN_OPENMP
     MklDnnThreadPool eigen_tp(ctx);
-    dnnl_sgemm_tp(char_transa, char_transb, m, n, k, alpha, a, lda, b, ldb,
-                  beta, c, ldc, &eigen_tp);
+    dnnl::threadpool_interop::sgemm(char_transa, char_transb, m, n, k, alpha, a,
+                                    lda, b, ldb, beta, c, ldc, &eigen_tp);
 #else
     dnnl_sgemm(char_transa, char_transb, m, n, k, alpha, a, lda, b, ldb, beta,
                c, ldc);
@@ -188,11 +188,9 @@ class MklMatMulOp : public OpKernel {
           .Label(mkl_op_registry::kMklNameChangeOpLabel), \
       MklMatMulOp<CPUDevice, T, false /* cublas, ignored for CPU */>);
 
-#ifdef ENABLE_MKL
 // TODO(inteltf) Consider template specialization when adding/removing
 // additional types
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_bfloat16(REGISTER_CPU);
-#endif  // ENABLE_MKL
 }  // namespace tensorflow
 #endif  // INTEL_MKL

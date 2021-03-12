@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && defined(ENABLE_MKL)
 
 #include "tensorflow/core/common_runtime/mkl_tfconversion_pass.h"
 
@@ -426,8 +426,8 @@ Status MklToTfConversionPass::Run(const GraphOptimizationPassOptions& options) {
   if (options.graph == nullptr && options.partition_graphs == nullptr) {
     return Status::OK();
   }
-  if (DisableMKL()) {
-    VLOG(2) << "TF-MKL: Disabling MKL";
+  if (!IsMKLEnabled()) {
+    VLOG(2) << "TF-MKL: MKL is not enabled";
     return Status::OK();
   }
   if (NativeFormatEnabled()) {

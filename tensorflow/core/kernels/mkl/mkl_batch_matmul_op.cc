@@ -242,12 +242,12 @@ class BatchMatMulMkl : public OpKernel {
                               .TypeConstraint<TYPE>("T")                      \
                               .Label(mkl_op_registry::kMklNameChangeOpLabel), \
                           BatchMatMulMkl<CPUDevice, TYPE, true>)
-#ifdef ENABLE_MKL
+#ifdef INTEL_MKL
 TF_CALL_float(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_float(REGISTER_BATCH_MATMUL_MKL_V2);
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL_V2);
-#endif  // ENABLE_MKL
+#endif  // INTEL_MKL
 
 }  // end namespace tensorflow
 #endif
