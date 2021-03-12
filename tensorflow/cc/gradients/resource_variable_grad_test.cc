@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/cc/ops/resource_variable_ops.h"
+#include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/gradient_checker.h"
 #include "tensorflow/cc/framework/testutil.h"
@@ -54,7 +58,7 @@ class ResourceVariableGradTest : public ::testing::Test {
 TEST_F(ResourceVariableGradTest, ReadVariableOpGrad) {
   TensorShape shape({5, 2});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
-  auto var = VarHandleOp(scope_, DT_FLOAT, {});
+  auto var = VarHandleOp(scope_, DT_FLOAT, shape);
   auto init = AssignVariableOp(scope_, var, x);
 
   auto y = ReadVariableOp(scope_, var, DT_FLOAT);
