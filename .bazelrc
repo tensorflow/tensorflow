@@ -626,7 +626,7 @@ build:release_gpu_windows --config=release_windows_common
 
 build:release_gpu_linux_cuda_10_1 --config=release_gpu_linux
 build:release_gpu_linux_cuda_10_1 --action_env CUDA_TOOLKIT_PATH="/usr/local/cuda-10.1"
-build:release_gpu_linux_cuda_11 --crosstool_top=@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain
+build:release_gpu_linux_cuda_10_1 --crosstool_top=@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain
 build:release_gpu_linux_cuda_10_1 --action_env=TF_CUDA_VERSION="10"
 build:release_gpu_linux_cuda_10_1 --action_env=TF_CUDNN_VERSION="7"
 
