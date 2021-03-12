@@ -32,6 +32,7 @@ if(NOT flatbuffers_POPULATED)
   OverridableFetchContent_Populate(flatbuffers)
 endif()
 
+option(FLATBUFFERS_BUILD_TESTS OFF)
 # Required for Windows, since it has macros called min & max which
 # clashes with std::min
 add_definitions(-DNOMINMAX=1)
