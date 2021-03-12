@@ -947,8 +947,8 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
 class LossScaleOptimizerV1(LossScaleOptimizer):
   """An deprecated optimizer that applies loss scaling.
 
-  Warning: This class is deprecated and will be removed in TensorFlow 2.5.
-  Please use the non-experimental class
+  Warning: This class is deprecated and will be removed in a future version of
+  TensorFlow. Please use the non-experimental class
   `tf.keras.mixed_precision.LossScaleOptimizer` instead.
 
   This class is identical to the non-experimental
