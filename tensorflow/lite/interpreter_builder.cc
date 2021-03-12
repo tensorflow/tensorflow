@@ -564,11 +564,13 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
       // TODO(aselle): Check what happens if we have an unspecified size
       // constant.
       *buffer_data = nullptr;
-      if (tensor->buffer() == 0) return kTfLiteOk;
-      if (tensor->buffer() >= buffers->size()) {
+      if (tensor->buffer() == 0) {
+        return kTfLiteOk;
+      }
+      if (!buffers || tensor->buffer() >= buffers->size()) {
         error_reporter_->Report(
             "Tensor %d specifies out of range buffer %d (only %d buffers).\n",
-            i, tensor->buffer(), buffers->size());
+            i, tensor->buffer(), (buffers) ? buffers->size() : 0);
         return kTfLiteError;
       }
       if (auto* buffer = (*buffers)[tensor->buffer()]) {
@@ -710,15 +712,11 @@ TfLiteStatus InterpreterBuilder::operator()(
   auto* subgraphs = model_->subgraphs();
   auto* buffers = model_->buffers();
 
-  if (subgraphs->size() == 0) {
+  if (!subgraphs || subgraphs->size() == 0) {
     TF_LITE_REPORT_ERROR(error_reporter_, "No subgraph in the model.\n");
     return cleanup_and_error();
   }
 
-  if (!buffers) {
-    TF_LITE_REPORT_ERROR(error_reporter_, "No buffers in the model.\n");
-    return cleanup_and_error();
-  }
 
   interpreter->reset(new Interpreter(error_reporter_));
   (*interpreter)->SetNumThreads(num_threads);
