@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,27 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
-#include "tensorflow/lite/delegates/gpu/cl/kernels/cl_test.h"
-#include "tensorflow/lite/delegates/gpu/common/operations.h"
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_CONSTANTS_TEST_UTIL_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_CONSTANTS_TEST_UTIL_H_
+
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/tasks/conv_constants_test_util.h"
+#include "tensorflow/lite/delegates/gpu/common/task/testing_util.h"
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
-TEST_F(OpenCLOperationTest, ConvConstantsSimpleWeights) {
-  const auto status = ConvConstantsSimpleWeightsTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
+absl::Status ConvConstantsSimpleWeightsTest(TestExecutionEnvironment* env);
+absl::Status ConvConstantsTest(TestExecutionEnvironment* env);
 
-TEST_F(OpenCLOperationTest, ConvConstants) {
-  const auto status = ConvConstantsTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
-
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
+
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_CONSTANTS_TEST_UTIL_H_

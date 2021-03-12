@@ -112,6 +112,19 @@ cc_library(
 )
 
 cc_library(
+    name = "conv_constants_test_util",
+    testonly = 1,
+    srcs = ["conv_constants_test_util.cc"],
+    hdrs = ["conv_constants_test_util.h"],
+    deps = [
+        ":conv_constants",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "conv_metal",
     srcs = ["conv_metal.cc"],
     hdrs = ["conv_metal.h"],
