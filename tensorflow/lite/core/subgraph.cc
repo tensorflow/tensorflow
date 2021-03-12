@@ -1584,7 +1584,7 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
 }
 
 TfLiteStatus Subgraph::SetCustomAllocationForTensor(
-    int tensor_index, const TfLiteCustomAllocation& allocation) {
+    int tensor_index, const TfLiteCustomAllocation& allocation, int64_t flags) {
   TfLiteTensor* tensor = &context_.tensors[tensor_index];
   TF_LITE_ENSURE(context(),
                  (tensor->allocation_type == kTfLiteArenaRw ||
@@ -1593,8 +1593,10 @@ TfLiteStatus Subgraph::SetCustomAllocationForTensor(
   // Don't check allocation.bytes here, we do that after all ops are prepared
   // to allow tensor shape propagation.
   TF_LITE_ENSURE(context(), allocation.data != nullptr);
-  const intptr_t data_ptr_value = reinterpret_cast<intptr_t>(allocation.data);
-  TF_LITE_ENSURE(context(), data_ptr_value % kDefaultTensorAlignment == 0);
+  if (!(flags & kTfLiteCustomAllocationFlagsSkipAlignCheck)) {
+    const intptr_t data_ptr_value = reinterpret_cast<intptr_t>(allocation.data);
+    TF_LITE_ENSURE(context(), data_ptr_value % kDefaultTensorAlignment == 0);
+  }
 
   // If tensor already has a custom alloc, just reassign.
   const auto alloc_it = std::find_if(
