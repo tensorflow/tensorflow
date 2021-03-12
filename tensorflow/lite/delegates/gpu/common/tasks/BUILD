@@ -91,6 +91,19 @@ cc_library(
 )
 
 cc_library(
+    name = "conv_buffer_1x1_test_util",
+    testonly = 1,
+    srcs = ["conv_buffer_1x1_test_util.cc"],
+    hdrs = ["conv_buffer_1x1_test_util.h"],
+    deps = [
+        ":conv_buffer_1x1",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "conv_constants",
     srcs = ["conv_constants.cc"],
     hdrs = ["conv_constants.h"],

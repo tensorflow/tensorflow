@@ -68,6 +68,7 @@ objc_library(
     sdk_frameworks = ["XCTest"],
     deps = [
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_buffer_1x1_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_constants_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_powervr_test_util",
@@ -681,6 +682,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/tasks:add_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_buffer_1x1_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_constants_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_powervr_test_util",

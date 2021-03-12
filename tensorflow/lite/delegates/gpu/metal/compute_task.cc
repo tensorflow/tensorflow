@@ -118,6 +118,8 @@ absl::Status ComputeTask::CompileProgram(MetalDevice* device,
   NSDictionary<NSString*, NSString*>* macros = @{
     @"float16" : @"float4x4",
     @"half16" : @"half4x4",
+    @"float8" : @"float2x4",
+    @"half8" : @"half2x4",
     @"FLT16_0123(V)" : @"V[0]",
     @"FLT16_4567(V)" : @"V[1]",
     @"FLT16_89ab(V)" : @"V[2]",
