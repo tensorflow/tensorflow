@@ -600,6 +600,7 @@ tf_gen_op_wrappers_cc(
         "no_op",
         "parsing_ops",
         "random_ops",
+        "resource_variable_ops",
         "sparse_ops",
         "state_ops",
         "string_ops",
