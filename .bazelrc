@@ -611,7 +611,7 @@ build:release_gpu_common --action_env=GCC_HOST_COMPILER_PATH="/usr/bin/gcc-5"
 
 build:release_gpu_linux --config=release_gpu_common
 build:release_gpu_linux --config=avx_linux
-build:release_gpu_linux --crosstool_top=@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda11:toolchain
+build:release_gpu_linux --crosstool_top=@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda11.2:toolchain
 build:release_windows_common --config=release_common
 build:release_windows_common --define=no_tensorflow_py_deps=true
 build:release_windows_common --announce_rc
@@ -626,12 +626,18 @@ build:release_gpu_windows --config=release_windows_common
 
 build:release_gpu_linux_cuda_10_1 --config=release_gpu_linux
 build:release_gpu_linux_cuda_10_1 --action_env CUDA_TOOLKIT_PATH="/usr/local/cuda-10.1"
+build:release_gpu_linux_cuda_11 --crosstool_top=@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain
 build:release_gpu_linux_cuda_10_1 --action_env=TF_CUDA_VERSION="10"
 build:release_gpu_linux_cuda_10_1 --action_env=TF_CUDNN_VERSION="7"
 
+build:release_gpu_linux_cuda_11 --config=release_gpu_linux
+build:release_gpu_linux_cuda_11 --action_env CUDA_TOOLKIT_PATH="/usr/local/cuda-11.0"
+build:release_gpu_linux_cuda_11 --crosstool_top=@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda11:toolchain
+build:release_gpu_linux_cuda_11 --action_env=TF_CUDA_VERSION="11"
+build:release_gpu_linux_cuda_11 --action_env=TF_CUDNN_VERSION="8"
 
 build:release_gpu_linux_cuda_11_2 --config=release_gpu_linux
-build:release_gpu_linux_cuda_11_2 --action_env CUDA_TOOLKIT_PATH="/usr/local/cuda-11.2"
+build:release_gpu_linux_cuda_11_2 --action_env CUDA_TOOLKIT_PATH="/usr/local/cuda-11.0"
 build:release_gpu_linux_cuda_11_2 --crosstool_top=@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda11.2:toolchain
 build:release_gpu_linux_cuda_11_2 --action_env=TF_CUDA_VERSION="11.2"
 build:release_gpu_linux_cuda_11_2 --action_env=TF_CUDNN_VERSION="8.1"
