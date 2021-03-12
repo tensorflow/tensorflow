@@ -534,10 +534,8 @@ tf_py_test(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
-        "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/data/experimental/ops:batching",
