@@ -109,6 +109,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/loop_schedule_linearizer.h"
 #include "tensorflow/compiler/xla/service/operand_upcaster.h"
 #include "tensorflow/compiler/xla/service/qr_expander.h"
+#include "tensorflow/compiler/xla/service/real_imag_expander.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
@@ -178,6 +179,7 @@ Status GpuCompiler::OptimizeHloModule(
           return !NcclAllGatherThunk::CanImplement(&ag);
         });
     pipeline.AddPass<AllToAllDecomposer>();
+    pipeline.AddPass<RealImagExpander>();
 
     pipeline.AddPass<OperandUpcaster>();
 
