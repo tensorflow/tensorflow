@@ -64,8 +64,8 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
     TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
         context, params->activation, output, &data->output_activation_min,
         &data->output_activation_max));
-    const double real_multiplier =
-        input1->params.scale / (input2->params.scale * output->params.scale);
+    const double real_multiplier = static_cast<double>(
+        input1->params.scale / (input2->params.scale * output->params.scale));
     QuantizeMultiplier(real_multiplier, &data->output_multiplier,
                        &data->output_shift);
     data->input1_zero_point = input1->params.zero_point;
