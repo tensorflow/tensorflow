@@ -32,13 +32,13 @@ from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.saving import utils_v1 as model_utils
 from tensorflow.python.keras.utils import mode_keys
 from tensorflow.python.keras.utils.generic_utils import LazyLoader
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import save as save_lib
-from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training.tracking import graph_view
 from tensorflow.python.util import compat
@@ -150,7 +150,7 @@ def _export_model_json(model, saved_model_path):
   """Saves model configuration as a json string under assets folder."""
   model_json = model.to_json()
   model_json_filepath = os.path.join(
-      saved_model_utils.get_or_create_assets_dir(saved_model_path),
+      _get_or_create_assets_dir(saved_model_path),
       compat.as_text(constants.SAVED_MODEL_FILENAME_JSON))
   with gfile.Open(model_json_filepath, 'w') as f:
     f.write(model_json)
@@ -158,8 +158,8 @@ def _export_model_json(model, saved_model_path):
 
 def _export_model_variables(model, saved_model_path):
   """Saves model weights in checkpoint format under variables folder."""
-  saved_model_utils.get_or_create_variables_dir(saved_model_path)
-  checkpoint_prefix = saved_model_utils.get_variables_path(saved_model_path)
+  _get_or_create_variables_dir(saved_model_path)
+  checkpoint_prefix = _get_variables_path(saved_model_path)
   model.save_weights(checkpoint_prefix, save_format='tf', overwrite=True)
   return checkpoint_prefix
 
@@ -429,3 +429,46 @@ def load_from_saved_model(saved_model_path, custom_objects=None):
       compat.as_text(constants.VARIABLES_FILENAME))
   model.load_weights(checkpoint_prefix)
   return model
+
+
+#### Directory / path helpers
+
+
+def _get_or_create_variables_dir(export_dir):
+  """Return variables sub-directory, or create one if it doesn't exist."""
+  variables_dir = _get_variables_dir(export_dir)
+  if not file_io.file_exists(variables_dir):
+    file_io.recursive_create_dir(variables_dir)
+  return variables_dir
+
+
+def _get_variables_dir(export_dir):
+  """Return variables sub-directory in the SavedModel."""
+  return os.path.join(
+      compat.as_text(export_dir),
+      compat.as_text(constants.VARIABLES_DIRECTORY))
+
+
+def _get_variables_path(export_dir):
+  """Return the variables path, used as the prefix for checkpoint files."""
+  return os.path.join(
+      compat.as_text(_get_variables_dir(export_dir)),
+      compat.as_text(constants.VARIABLES_FILENAME))
+
+
+def _get_or_create_assets_dir(export_dir):
+  """Return assets sub-directory, or create one if it doesn't exist."""
+  assets_destination_dir = _get_assets_dir(export_dir)
+
+  if not file_io.file_exists(assets_destination_dir):
+    file_io.recursive_create_dir(assets_destination_dir)
+
+  return assets_destination_dir
+
+
+def _get_assets_dir(export_dir):
+  """Return path to asset directory in the SavedModel."""
+  return os.path.join(
+      compat.as_text(export_dir),
+      compat.as_text(constants.ASSETS_DIRECTORY))
+
