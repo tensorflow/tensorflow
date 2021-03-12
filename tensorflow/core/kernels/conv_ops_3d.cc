@@ -510,19 +510,17 @@ struct LaunchConvOp<GPUDevice, T> {
 		AlgorithmConfig algorithm_config;
 
     bool do_autotune;
-#if GOOGLE_CUDA
     if (CudnnUseFrontend()) {
       do_autotune = cudnn_use_autotune &&
           !AutoTuneConv3dExecutionPlan::GetInstance()->Find(
               conv_parameters, &algorithm_config);
     } else {
-#endif
       do_autotune = cudnn_use_autotune &&
            !AutoTuneConv3d::GetInstance()->Find(
                conv_parameters, &algorithm_config);
-#if GOOGLE_CUDA
     }
 
+#if GOOGLE_CUDA
     // The "cached_plans" is used to store the selected execution plans from
     // autotuning to make them live long enough to the end of this op.
     std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> cached_plans;
@@ -689,7 +687,6 @@ struct LaunchConvOp<GPUDevice, T> {
                              se::dnn::ToDataType<T>::value, input_ptr,
                              filter_ptr, output_ptr, input_desc, filter_desc,
                              output_desc, conv_desc, stream->parent(), results);
-#if GOOGLE_CUDA
       if (CudnnUseFrontend()) {
         int idx, idx_no_scratch;
         OP_REQUIRES_OK(ctx,
@@ -713,18 +710,14 @@ struct LaunchConvOp<GPUDevice, T> {
         AutoTuneConv3dExecutionPlan::GetInstance()->Insert(conv_parameters,
                                                            cached_plans);
       } else {
-#endif
         OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
         AutoTuneConv3d::GetInstance()->Insert(conv_parameters,
                                               algorithm_config);
-#if GOOGLE_CUDA
       }
-#endif
     }
 
     Status cudnn_launch_status;
 	  DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
-#if GOOGLE_CUDA
     if (CudnnUseFrontend()) {
       if (algorithm_config.algorithm().has_value()) {
         VLOG(4) << "Conv3D Execution Plan: "
@@ -737,14 +730,11 @@ struct LaunchConvOp<GPUDevice, T> {
           output_desc, &output_ptr, &scratch_allocator, algorithm_config,
           nullptr);
     } else {
-#endif
       cudnn_launch_status = stream->ConvolveWithAlgorithm(
           input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
           output_desc, &output_ptr, &scratch_allocator, algorithm_config,
           nullptr);
-#if GOOGLE_CUDA
     }
-#endif
 
     if (!cudnn_launch_status.ok()) {
       ctx->SetStatus(cudnn_launch_status);

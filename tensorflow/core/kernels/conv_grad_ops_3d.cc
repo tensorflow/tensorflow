@@ -1428,19 +1428,17 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
 #endif
     AlgorithmConfig algorithm_config;
     bool do_autotune;
-#if GOOGLE_CUDA
     if (CudnnUseFrontend()) {
       do_autotune = cudnn_use_autotune_ &&
           !AutoTuneConv3dBwdDataExecutionPlan::GetInstance()->Find(
               conv_parameters, &algorithm_config);
     } else {
-#endif
       do_autotune = cudnn_use_autotune_ &&
           !AutoTuneConv3dBwdData::GetInstance()->Find(
               conv_parameters, &algorithm_config);
-#if GOOGLE_CUDA
     }
 
+#if GOOGLE_CUDA
     // The "cached_plans" is used to store the selected execution plans from
     // autotuning to make them live long enough to the end of this op.
     std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> cached_plans;
@@ -1590,7 +1588,6 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
                              filter_ptr, out_backprop_ptr, input_desc,
                              filter_desc, output_desc, conv_desc,
                              stream->parent(), results);
-#if GOOGLE_CUDA
       if (CudnnUseFrontend()) {
         int idx, idx_no_scratch;
         OP_REQUIRES_OK(context,
@@ -1614,20 +1611,16 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         AutoTuneConv3dBwdDataExecutionPlan::GetInstance()->Insert(
             conv_parameters, cached_plans);
       } else {
-#endif
         OP_REQUIRES_OK(context,
                        BestCudnnConvAlgorithm(results, &algorithm_config));
         AutoTuneConv3dBwdData::GetInstance()->Insert(conv_parameters,
                                                      algorithm_config);
-#if GOOGLE_CUDA
       }
-#endif
     }
 
     Status cudnn_launch_status;
     DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
                                           context);
-#if GOOGLE_CUDA
     if (CudnnUseFrontend()) {
       if (algorithm_config.algorithm().has_value()) {
         VLOG(4) << "Conv3DBackpropInput Execution Plan: "
@@ -1640,14 +1633,11 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
           input_desc, &in_backprop_ptr, &scratch_allocator, algorithm_config,
           nullptr);
     } else {
-#endif
       cudnn_launch_status = stream->ConvolveBackwardDataWithAlgorithm(
           filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
           input_desc, &in_backprop_ptr, &scratch_allocator, algorithm_config,
           nullptr);
-#if GOOGLE_CUDA
     }
-#endif
 
     if (!cudnn_launch_status.ok()) {
       context->SetStatus(cudnn_launch_status);
@@ -2050,19 +2040,17 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
 
     bool do_autotune;
     AlgorithmConfig algorithm_config;
-#if GOOGLE_CUDA
     if (CudnnUseFrontend()) {
       do_autotune = cudnn_use_autotune_ &&
           !AutoTuneConv3dBwdFilterExecutionPlan::GetInstance()->Find(
               conv_parameters, &algorithm_config);
     } else {
-#endif
       do_autotune = cudnn_use_autotune_ &&
           !AutoTuneConv3dBwdFilter::GetInstance()->Find(
               conv_parameters, &algorithm_config);
-#if GOOGLE_CUDA
     }
 
+#if GOOGLE_CUDA
     // The "cached_plans" is used to store the selected execution plans from
     // autotuning to make them live long enough to the end of this op.
     std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> cached_plans;
@@ -2192,7 +2180,6 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
                              filter_backprop_ptr, out_backprop_ptr, input_desc,
                              filter_desc, output_desc, conv_desc,
                              stream->parent(), results);
-#if GOOGLE_CUDA
       if (CudnnUseFrontend()) {
         int idx, idx_no_scratch;
         OP_REQUIRES_OK(context,
@@ -2216,7 +2203,6 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         AutoTuneConv3dBwdFilterExecutionPlan::GetInstance()->Insert(
             conv_parameters, cached_plans);
       } else {
-#endif
         Status s = BestCudnnConvAlgorithm(results, &algorithm_config);
 #if GOOGLE_CUDA
         if (s.code() == error::NOT_FOUND) {
@@ -2237,15 +2223,12 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         OP_REQUIRES_OK(context, s);
         AutoTuneConv3dBwdFilter::GetInstance()->Insert(conv_parameters,
                                                        algorithm_config);
-#if GOOGLE_CUDA
       }
-#endif
     }
 
     Status cudnn_launch_status;
     DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                           context);
-#if GOOGLE_CUDA
     if (CudnnUseFrontend()) {
       if (algorithm_config.algorithm().has_value()) {
         VLOG(4) << "Conv3DBackpropFilter Execution Plan: "
@@ -2258,14 +2241,11 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
           filter_desc, &filter_backprop_ptr, &scratch_allocator,
           algorithm_config, nullptr);
     } else {
-#endif
       cudnn_launch_status = stream->ConvolveBackwardFilterWithAlgorithm(
           input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
           filter_desc, &filter_backprop_ptr, &scratch_allocator,
           algorithm_config, nullptr);
-#if GOOGLE_CUDA
     }
-#endif
 
     if (!cudnn_launch_status.ok()) {
       context->SetStatus(cudnn_launch_status);

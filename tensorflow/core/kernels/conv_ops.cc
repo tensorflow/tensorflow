@@ -996,18 +996,16 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
 #endif
 
   bool do_autotune;
-#if GOOGLE_CUDA
   if (CudnnUseFrontend()) {
     do_autotune = cudnn_use_autotune &&
         !AutoTuneConvExecutionPlan::GetInstance()->Find(conv_parameters,
                                                         &algorithm_config);
   } else {
-#endif
     do_autotune = cudnn_use_autotune &&
         !AutoTuneConv::GetInstance()->Find(conv_parameters, &algorithm_config);
-#if GOOGLE_CUDA
   }
 
+#if GOOGLE_CUDA
   // The "cached_plans" is used to store the selected execution plans from
   // autotuning to make them live long enough to the end of this op.
   std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> cached_plans;
@@ -1176,7 +1174,6 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                            output_tensor, input_desc, filter_desc, output_desc,
                            conv_desc, stream->parent(), results);
 
-#if GOOGLE_CUDA
     if (CudnnUseFrontend()) {
       int idx, idx_no_scratch;
       OP_REQUIRES_OK(ctx,
@@ -1200,17 +1197,13 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       AutoTuneConvExecutionPlan::GetInstance()->Insert(conv_parameters,
                                                        cached_plans);
     } else {
-#endif
       OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
       AutoTuneConv::GetInstance()->Insert(conv_parameters, algorithm_config);
-#if GOOGLE_CUDA
     }
-#endif
   }
 
   Status cudnn_launch_status;
   DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
-#if GOOGLE_CUDA
   if (CudnnUseFrontend()) {
     if (algorithm_config.algorithm().has_value()) {
       VLOG(4) << "Conv2D Execution Plan: "
@@ -1222,7 +1215,6 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         input_desc, input_ptr, filter_desc, filter_ptr, conv_desc, output_desc,
         &output_ptr, &scratch_allocator, algorithm_config, nullptr);
   } else {
-#endif
     VLOG(4) << "Convolution Algorithm: "
             << algorithm_config.algorithm()->algo_id();
     VLOG(4) << "tensor_ops_enabled: "
@@ -1231,9 +1223,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     cudnn_launch_status = stream->ConvolveWithAlgorithm(
         input_desc, input_ptr, filter_desc, filter_ptr, conv_desc, output_desc,
         &output_ptr, &scratch_allocator, algorithm_config, nullptr);
-#if GOOGLE_CUDA
   }
-#endif
 
   if (!cudnn_launch_status.ok()) {
     ctx->SetStatus(cudnn_launch_status);

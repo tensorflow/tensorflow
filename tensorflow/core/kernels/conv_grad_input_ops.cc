@@ -405,19 +405,17 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
 #endif
   AlgorithmConfig algorithm_config;
   bool do_autotune;
-#if GOOGLE_CUDA
   if (CudnnUseFrontend()) {
     do_autotune = cudnn_use_autotune &&
         !AutoTuneConvBwdDataExecutionPlan::GetInstance()->Find(
             conv_parameters, &algorithm_config);
   } else {
-#endif
     do_autotune = cudnn_use_autotune &&
         !AutoTuneConvBwdData::GetInstance()->Find(conv_parameters,
                                                   &algorithm_config);
-#if GOOGLE_CUDA
   }
 
+#if GOOGLE_CUDA
   // The "cached_plans" is used to store the selected execution plans from
   // autotuning to make them live long enough to the end of this op.
   std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>> cached_plans;
@@ -584,7 +582,6 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
         se::dnn::ConvolutionKind::BACKWARD_DATA, se::dnn::ToDataType<T>::value,
         in_backprop_ptr, filter_ptr, out_backprop_ptr, input_desc, filter_desc,
         output_desc, conv_desc, stream->parent(), results);
-#if GOOGLE_CUDA
     if (CudnnUseFrontend()) {
       int idx, idx_no_scratch;
       OP_REQUIRES_OK(ctx,
@@ -607,17 +604,13 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       AutoTuneConvBwdDataExecutionPlan::GetInstance()->Insert(conv_parameters,
                                                               cached_plans);
     } else {
-#endif
       OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
       AutoTuneConvBwdData::GetInstance()->Insert(conv_parameters,
                                                  algorithm_config);
-#if GOOGLE_CUDA
     }
-#endif
   }
 
   Status cudnn_launch_status;
-#if GOOGLE_CUDA
   if (CudnnUseFrontend()) {
     if (algorithm_config.algorithm().has_value()) {
       VLOG(4) << "Conv2DBackpropInput Execution Plan: "
@@ -630,14 +623,11 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
         input_desc, &in_backprop_ptr, &scratch_allocator, algorithm_config,
         nullptr);
   } else {
-#endif
     cudnn_launch_status = stream->ConvolveBackwardDataWithAlgorithm(
         filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
         input_desc, &in_backprop_ptr, &scratch_allocator, algorithm_config,
         nullptr);
-#if GOOGLE_CUDA
   }
-#endif
 
   if (!cudnn_launch_status.ok()) {
     ctx->SetStatus(cudnn_launch_status);
