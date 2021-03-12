@@ -16,10 +16,11 @@
 """Python TFLite metrics helper."""
 from typing import Optional, Text
 
+from tensorflow.lite.python import metrics_interface
 from tensorflow.python.eager import monitoring
 
 
-class TFLiteMetrics(object):
+class TFLiteMetrics(metrics_interface.TFLiteMetricsInterface):
   """TFLite metrics helper for prod (borg) environment.
 
   Attributes:

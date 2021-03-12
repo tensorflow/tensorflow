@@ -13,18 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Python TFLite metrics helper."""
-from typing import Optional, Text
-
-from tensorflow.lite.python import metrics_interface
+"""Python TFLite metrics helper interface."""
+import abc
 
 
-class TFLiteMetrics(metrics_interface.TFLiteMetricsInterface):
+class TFLiteMetricsInterface(metaclass=abc.ABCMeta):
 
-  def __init__(self,
-               md5: Optional[Text] = None,
-               model_path: Optional[Text] = None) -> None:
-    pass
-
+  @abc.abstractmethod
   def increase_counter_interpreter_creation(self):
-    pass
+    raise NotImplementedError
