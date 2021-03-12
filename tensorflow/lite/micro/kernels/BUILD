@@ -228,7 +228,7 @@ cc_library(
     ],
     hdrs = ["kernel_runner.h"],
     visibility = [
-        "//learning/brain/contrib/micro/tflite:__pkg__",
+        "//visibility:public",
     ],
     deps = [
         "//tensorflow/lite/c:common",
@@ -258,6 +258,7 @@ cc_library(
         "activations.cc",
         "hard_swish.cc",
         "add.cc",
+        "add_n.cc",
         "arg_min_max.cc",
         "batch_to_space_nd.cc",
         "cast.cc",
@@ -270,6 +271,7 @@ cc_library(
         "elementwise.cc",
         "elu.cc",
         "exp.cc",
+        "expand_dims.cc",
         "fill.cc",
         "floor.cc",
         "l2norm.cc",
@@ -387,6 +389,21 @@ cc_test(
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "add_n_test",
+    srcs = [
+        "add_n_test.cc",
+    ],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
@@ -593,6 +610,19 @@ cc_test(
 cc_test(
     name = "exp_test",
     srcs = ["exp_test.cc"],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:debug_log",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "expand_dims_test",
+    srcs = ["expand_dims_test.cc"],
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
@@ -928,7 +958,6 @@ cc_test(
         "space_to_batch_nd_test.cc",
     ],
     deps = [
-        ":conv_test_common",
         ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_utils",

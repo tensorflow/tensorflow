@@ -25,7 +25,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "dnnl_threadpool.hpp"
 #include "mkldnn.hpp"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/threadpool.h"
@@ -34,7 +33,8 @@ limitations under the License.
 namespace tensorflow {
 
 #ifndef ENABLE_ONEDNN_OPENMP
-using dnnl::threadpool_interop::threadpool_iface;
+using dnnl::stream_attr;
+using dnnl::threadpool_iface;
 
 // Divide 'n' units of work equally among 'teams' threads. If 'n' is not
 // divisible by 'teams' and has a remainder 'r', the first 'r' teams have one
@@ -60,7 +60,7 @@ inline void balance211(T n, U team, U tid, T* n_start, T* n_end) {
   *n_end = *n_start + min_per_team + (tid < remainder);
 }
 
-struct MklDnnThreadPool : public threadpool_iface {
+struct MklDnnThreadPool : public dnnl::threadpool_iface {
   MklDnnThreadPool() = default;
 
   MklDnnThreadPool(OpKernelContext* ctx)

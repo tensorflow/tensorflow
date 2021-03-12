@@ -527,6 +527,37 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_ThreeReplicaGroups) {
   EXPECT_TRUE(LiteralTestUtil::Equal(input_literal, results[3]));
 }
 
+XLA_TEST_F(CollectiveOpsTest, AllReduce_Degenerate) {
+  const char* const kModuleStr = R"(
+      HloModule test
+
+      apply_op {
+        x = u32[] parameter(0)
+        y = u32[] parameter(1)
+        ROOT apply_op = u32[] add(x, y)
+      }
+
+      ENTRY test_computation {
+        id = u32[] replica-id()
+        ROOT crs = u32[] all-reduce(id), replica_groups={{0},{1},{2},{3}}, to_apply=apply_op
+      }
+    )";
+  static constexpr int kNumReplicas = 4;
+  auto config = GetModuleConfigForTest();
+  config.set_replica_count(kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, /*num_replicas=*/kNumReplicas,
+                        /*use_threads=*/true));
+
+  ASSERT_EQ(results.size(), kNumReplicas);
+  for (int i = 0; i < kNumReplicas; ++i) {
+    LiteralTestUtil::ExpectR0Equal<uint32_t>(i, results[i]);
+  }
+}
+
 XLA_TEST_F(CollectiveOpsTest, ReplicaId) {
   const char* const kModuleStr = R"(
   HloModule test

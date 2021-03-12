@@ -109,6 +109,20 @@ class MirroredTwoDeviceDistributionTest(
       expected = sum(range(distribution.num_replicas_in_sync))
       self.assertEqual(expected, self.evaluate(reduced))
 
+  def testReduceToCpuNested(self, distribution):
+    with distribution.scope():
+      def replica_fn(input_tensor):
+        return input_tensor + constant_op.constant(
+            1.0), input_tensor - constant_op.constant(1.0)
+
+      input_tensor = constant_op.constant(3.0)
+      run_result = distribution.run(replica_fn, args=(input_tensor,))
+      reduced_result = distribution.reduce("SUM", run_result, axis=None)
+      expected_result = (4 * distribution.num_replicas_in_sync,
+                         2 * distribution.num_replicas_in_sync)
+
+      self.assertEqual(expected_result, self.evaluate(reduced_result))
+
   def reduce_axis_helper(self, distribution, replica_squared_fn):
     with distribution.scope():
       num_replicas = distribution.num_replicas_in_sync

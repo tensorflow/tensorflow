@@ -533,7 +533,7 @@ struct MhloFusionPass : public mlir::PassWrapper<MhloFusionPass, FunctionPass> {
         locations.push_back(op->getLoc());
       }
       Location fused_loc =
-          FusedLoc::get(locations, pattern.back()->getContext());
+          FusedLoc::get(pattern.back()->getContext(), locations);
 
       SmallVector<Value, 4> inputs = GetInputsOfFusionPattern(pattern);
       SmallVector<Value, 4> outputs = GetOutputsOfFusionPattern(pattern);

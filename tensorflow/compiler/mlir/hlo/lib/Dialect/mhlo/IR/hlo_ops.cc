@@ -36,6 +36,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"
 #include "mlir-hlo/utils/convert_op_folder.h"
 #include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
@@ -479,32 +480,8 @@ LogicalResult AbsOp::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(CollectivePermuteOp op) {
-  // Check that source target pair is Nx2 tensor.
-  auto type = op.source_target_pairs().getType().dyn_cast<RankedTensorType>();
-  if (type.getRank() != 2)
-    return op.emitError() << "expect source_target_pairs attribute to be of "
-                             "rank 2, but got rank "
-                          << type.getRank();
-  if (type.getShape()[1] != 2)
-    return op.emitError()
-           << "expect source_target_pairs attribute of shape (N, 2), but got ("
-           << type.getShape() << ")";
-  // Check source target pairs for duplicate sources or targets
-  llvm::DenseSet<int64_t> sources;
-  llvm::DenseSet<int64_t> targets;
-  for (auto i = op.source_target_pairs().begin(),
-            e = op.source_target_pairs().end();
-       i != e; ++i) {
-    auto val = (*i).getSExtValue();
-    if (i.getIndex() % 2 == 0) {
-      bool is_unique = sources.insert(val).second;
-      if (!is_unique) return op.emitError() << "duplicate sources not allowed.";
-    } else {
-      bool is_unique = targets.insert(val).second;
-      if (!is_unique) return op.emitError() << "duplicate targets not allowed.";
-    }
-  }
-  return success();
+  return mlir::hlo::VerifyCollectivePermuteSourceTargetPairs(
+      op, op.source_target_pairs());
 }
 
 //===----------------------------------------------------------------------===//
@@ -920,7 +897,8 @@ class DynamicBroadcastInDimOpNotActuallyDynamic
 void DynamicBroadcastInDimOp::getCanonicalizationPatterns(
     OwningRewritePatternList& results, MLIRContext* context) {
   results.insert<DynamicBroadcastInDimOpNotActuallyDynamic,
-                 DynamicBroadcastToOwnShape_1, DynamicBroadcastToOwnShape_2>(
+                 DynamicBroadcastToOwnShape_1, DynamicBroadcastToOwnShape_2,
+                 DynamicBroadcastToOwnShape_3, DynamicBroadcastToOwnShape_4>(
       context);
 }
 
@@ -3173,19 +3151,11 @@ LogicalResult deriveShapeFromFirstOperand(
     return failure();
   }
   auto loc = op->getLoc();
-  SmallVector<Value, 4> shape_values;
-  shape_values.reserve(operand_type.getRank());
-  for (auto element : llvm::enumerate(operand_type.getShape())) {
-    if (element.value() == ShapedType::kDynamicSize) {
-      shape_values.push_back(
-          builder->create<DimOp>(loc, operand, element.index()));
-    } else {
-      shape_values.push_back(
-          builder->create<ConstantIndexOp>(loc, element.value()));
-    }
-  }
-  *reifiedReturnShapes = SmallVector<Value, 1>{
-      builder->create<tensor::FromElementsOp>(loc, shape_values)};
+  // Some users rely on the result type being a static shape.
+  auto shape_type =
+      RankedTensorType::get(operand_type.getRank(), builder->getIndexType());
+  reifiedReturnShapes->assign(
+      {builder->create<shape::ShapeOfOp>(loc, shape_type, operand)});
   return success();
 }
 

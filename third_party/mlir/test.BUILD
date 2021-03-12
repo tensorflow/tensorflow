@@ -278,6 +278,7 @@ cc_library(
     includes = ["lib/Dialect/Test"],
     deps = [
         ":TestDialect",
+        "@llvm-project//llvm:NVPTXCodeGen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:AffineTransforms",

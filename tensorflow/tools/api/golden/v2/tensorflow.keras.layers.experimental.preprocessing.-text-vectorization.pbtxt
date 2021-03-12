@@ -139,7 +139,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'max_tokens\', \'standardize\', \'split\', \'ngrams\', \'output_mode\', \'output_sequence_length\', \'pad_to_max_tokens\', \'vocabulary\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'lower_and_strip_punctuation\', \'whitespace\', \'None\', \'int\', \'None\', \'True\', \'None\'], "
+    argspec: "args=[\'self\', \'max_tokens\', \'standardize\', \'split\', \'ngrams\', \'output_mode\', \'output_sequence_length\', \'pad_to_max_tokens\', \'vocabulary\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'lower_and_strip_punctuation\', \'whitespace\', \'None\', \'int\', \'None\', \'False\', \'None\'], "
   }
   member_method {
     name: "adapt"

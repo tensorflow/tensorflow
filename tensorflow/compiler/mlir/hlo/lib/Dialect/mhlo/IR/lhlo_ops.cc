@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h.inc"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
@@ -130,6 +131,15 @@ static LogicalResult Verify(AllReduceOp op) {
              << it.index() << " (type: " << resultType << ") to have same type";
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CollectivePermuteOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(CollectivePermuteOp op) {
+  return mlir::hlo::VerifyCollectivePermuteSourceTargetPairs(
+      op, op.source_target_pairs());
 }
 
 //===----------------------------------------------------------------------===//

@@ -565,6 +565,45 @@ bool PjRtStreamExecutorBuffer::IsOnCpu() const {
   return client()->platform_id() == kCpuId;
 }
 
+StatusOr<Shape> PjRtStreamExecutorBuffer::logical_on_device_shape() {
+  if (IsOnCpu() && on_device_shape().is_dynamic()) {
+    // TODO(b/182468546): TransferManager may return corrupted dynamic_shape on
+    // CPU non-deterministically.
+    return Unimplemented(
+        "Gathering DynamicShape is not implemented properly on CPU yet.");
+  }
+  if (on_device_shape_.is_static()) {
+    return on_device_shape_;
+  }
+  auto* local_device = device_->local_device_state();
+  auto* stream = local_device->GetDeviceToHostStream();
+  ScopedHold device_buffer(this, ScopedHold::kUsage);
+  {
+    absl::MutexLock lock(&mu_);
+    // We can't perform any other action while a donation hold is in progress.
+    WaitForOutstandingDonationHold();
+    if (device_buffer_ == nullptr) {
+      return InvalidArgument(
+          "logical_on_device_shape() called on deleted or donated buffer");
+    }
+    AcquireHoldLocked(&device_buffer);
+  }
+
+  WaitForBufferDefinitionEventsOnStream(*device_buffer, stream);
+  ShapedBuffer shaped_buffer = device_buffer->AsShapedBuffer(on_device_shape_);
+  StatusOr<EventPool::Handle> event_or =
+      local_device->event_pool().AllocateEvent(stream->parent());
+  if (!event_or.ok()) {
+    return event_or.status();
+  }
+  Shape ret_shape = on_device_shape_;
+  TransferManager* transfer_manager =
+      client_->client()->backend().transfer_manager();
+  TF_RETURN_IF_ERROR(
+      transfer_manager->ReadDynamicShapes(stream, &shaped_buffer, &ret_shape));
+  return ret_shape;
+}
+
 namespace {
 
 // Implements PjRtBuffer::ExternalReference as a wrapped

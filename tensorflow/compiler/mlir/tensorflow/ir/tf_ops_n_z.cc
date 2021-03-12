@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
@@ -771,11 +772,6 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 // SelectOp
 //===----------------------------------------------------------------------===//
-
-void SelectOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                           MLIRContext *context) {
-  results.insert<SelectToSelectV2>(context);
-}
 
 // Verifies a few extra requirements on SelectOp:
 // (1) `then` and `else` must have same shape
@@ -3028,7 +3024,7 @@ struct WhileRegionEliminatePassThrough
     auto &yield = *body_block.getTerminator();
 
     // Bit mask indicating which operands will be removed.
-    SmallVector<bool, 16> removed_operand(old_num_operands, false);
+    llvm::BitVector removed_operand(old_num_operands);
 
     for (int op_idx : llvm::seq<int>(0, old_num_operands)) {
       auto body_arg = body_block.getArgument(op_idx);
@@ -3056,7 +3052,7 @@ struct WhileRegionEliminatePassThrough
       if (body_block.getArgument(op_idx).use_empty() &&
           cond_block.getArgument(op_idx).use_empty() &&
           while_op.getResult(op_idx).use_empty()) {
-        removed_operand[op_idx] = true;
+        removed_operand.set(op_idx);
         new_num_operands--;
       }
     }
@@ -3070,12 +3066,10 @@ struct WhileRegionEliminatePassThrough
     new_result_types.reserve(new_num_operands);
 
     // Build new operands and result type.
-    int next_idx = 0;
     for (int op_idx : llvm::seq<int>(0, old_num_operands)) {
-      if (removed_operand[op_idx]) continue;
+      if (removed_operand.test(op_idx)) continue;
       new_while_operands.push_back(while_op.getOperand(op_idx));
       new_result_types.push_back(while_op.getResult(op_idx).getType());
-      next_idx++;
     }
 
     // Create the new while operation.
@@ -3093,20 +3087,18 @@ struct WhileRegionEliminatePassThrough
     auto &new_body_block = new_while_op.body().front();
     auto &new_yield = *new_body_block.getTerminator();
 
+    // Patch up the region bodies and yield.
+    new_cond_block.eraseArguments(removed_operand);
+    new_body_block.eraseArguments(removed_operand);
+    new_yield.eraseOperands(removed_operand);
+
     // Build a vector of new results. Also patch up the region bodies and
     // yield.
-    SmallVector<Value, 4> new_results;
-    next_idx = 0;
-    for (int op_idx : llvm::seq<int>(0, old_num_operands)) {
-      if (removed_operand[op_idx]) {
-        new_cond_block.eraseArgument(next_idx);
-        new_body_block.eraseArgument(next_idx);
-        new_yield.eraseOperand(next_idx);
-        new_results.push_back(nullptr);
-      } else {
-        new_results.push_back(new_while_op.getResult(next_idx++));
-      }
-    }
+    SmallVector<Value, 4> new_results(old_num_operands);
+    int next_idx = 0;
+    for (int op_idx : llvm::seq<int>(0, old_num_operands))
+      if (!removed_operand.test(op_idx))
+        new_results[op_idx] = new_while_op.getResult(next_idx++);
 
     rewriter.replaceOp(while_op, new_results);
     return success();

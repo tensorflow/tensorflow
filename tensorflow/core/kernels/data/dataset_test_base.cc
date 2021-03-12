@@ -61,6 +61,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/map_dataset_op.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
+#include "tensorflow/core/kernels/data/options_dataset_op.h"
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
 #include "tensorflow/core/kernels/data/split_utils.h"
 #include "tensorflow/core/kernels/data/take_dataset_op.h"
@@ -700,6 +701,13 @@ Status DatasetOpsTestBase::CheckDatasetCardinality(int expected_cardinality) {
   return Status::OK();
 }
 
+Status DatasetOpsTestBase::CheckDatasetOptions(
+    const Options& expected_options) {
+  EXPECT_EQ(dataset_->options().SerializeAsString(),
+            expected_options.SerializeAsString());
+  return Status::OK();
+}
+
 Status DatasetOpsTestBase::CheckIteratorOutputDtypes(
     const DataTypeVector& expected_output_dtypes) {
   TF_EXPECT_OK(
@@ -899,11 +907,25 @@ Status DatasetOpsTestBase::MakeDatasetOpKernel(
   TF_RETURN_IF_ERROR(dataset_params.GetInputNames(&input_names));
   AttributeVector attributes;
   TF_RETURN_IF_ERROR(dataset_params.GetAttributes(&attributes));
-  NodeDef node_def = test::function::NDef(
-      dataset_params.node_name(),
-      name_utils::OpName(dataset_params.dataset_type(), params), input_names,
-      attributes);
+  NodeDef node_def =
+      test::function::NDef(dataset_params.node_name(), dataset_params.op_name(),
+                           input_names, attributes);
   TF_RETURN_IF_ERROR(CreateOpKernel(node_def, dataset_kernel));
+  return Status::OK();
+}
+
+Status DatasetOpsTestBase::MakeGetOptionsOpKernel(
+    const DatasetParams& dataset_params, std::unique_ptr<OpKernel>* op_kernel) {
+  name_utils::OpNameParams params;
+  params.op_version = dataset_params.op_version();
+  std::vector<string> input_names;
+  TF_RETURN_IF_ERROR(dataset_params.GetInputNames(&input_names));
+  AttributeVector attributes;
+  TF_RETURN_IF_ERROR(dataset_params.GetAttributes(&attributes));
+  NodeDef node_def = test::function::NDef(dataset_params.node_name(),
+                                          dataset_params.dataset_type(),
+                                          input_names, attributes);
+  TF_RETURN_IF_ERROR(CreateOpKernel(node_def, op_kernel));
   return Status::OK();
 }
 
@@ -1157,6 +1179,25 @@ Status ConcatenateDatasetParams::GetAttributes(
 
 string ConcatenateDatasetParams::dataset_type() const {
   return ConcatenateDatasetOp::kDatasetType;
+}
+
+std::vector<Tensor> OptionsDatasetParams::GetInputTensors() const { return {}; }
+
+Status OptionsDatasetParams::GetInputNames(
+    std::vector<string>* input_names) const {
+  input_names->emplace_back(OptionsDatasetOp::kInputDataset);
+  return Status::OK();
+}
+
+Status OptionsDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
+  *attr_vector = {{OptionsDatasetOp::kSerializedOptions, serialized_options_},
+                  {OptionsDatasetOp::kOutputShapes, output_shapes_},
+                  {OptionsDatasetOp::kOutputTypes, output_dtypes_}};
+  return Status::OK();
+}
+
+string OptionsDatasetParams::dataset_type() const {
+  return OptionsDatasetOp::kDatasetType;
 }
 
 }  // namespace data

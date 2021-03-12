@@ -51,8 +51,11 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
+#include "tensorflow/core/tpu/kernels/tpu_fingerprint_lookup.h"
+#include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
 #include "tensorflow/core/tpu/kernels/tpu_op_util.h"
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
+#include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/dump_graph.h"
 
@@ -402,10 +405,10 @@ Status ConvertEdgeShapesToTensorShapes(
 }
 
 // Get the TF fingerprint with the information from the TPUCompileOp.
-Status MaybeGetFingerprint(
+Status MaybeRegisterFingerprint(
     Graph* graph,
     const std::map<std::string, std::vector<int>>& named_input_shapes,
-    uint64_t* fingerprint, bool& fingerprint_success) {
+    uint64 input_hash) {
   // Find the compiler metadata.
   tpu::TPUCompileMetadataProto metadata_proto;
   std::map<std::string, std::vector<int>> inputs_to_keep;
@@ -464,8 +467,14 @@ Status MaybeGetFingerprint(
   uint64 tf_fingerprint = tpu::CreateFingerprintWithNameAndShapes(
       metadata_proto.function_library_fingerprint(), arg_shapes);
   VLOG(2) << "TF fingerprint: " << tf_fingerprint;
-  *fingerprint = tf_fingerprint;
-  fingerprint_success = true;
+
+  ResourceMgr* rm = GetTPUConfigResourceMgr();
+  tpu::TpuFingerprintLookup* fingerprint_lookup;
+  TF_RETURN_IF_ERROR(rm->Lookup<tpu::TpuFingerprintLookup>(
+      rm->default_container(), tpu::kFingerprintLookupResourceName,
+      &fingerprint_lookup));
+  fingerprint_lookup->RegisterKeyAndIntermediatePair(input_hash,
+                                                     tf_fingerprint);
   return Status::OK();
 }
 }  // end namespace
@@ -991,8 +1000,6 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
   uint64 cache_hash = Hash64Combine(input_hash, device_ordinal);
 
   const std::vector<DeviceAndFHandle>* functions;
-  uint64 fingerprint_hash;
-  bool fingerprint_success = false;
 
   bool cache_miss = !partition_cache_.count(cache_hash);
   if (cache_miss) {
@@ -1069,8 +1076,7 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
     if (!enable_spmd_xla_partitioning || num_cores_per_replica == 1) {
       OP_REQUIRES_OK_ASYNC(
           ctx,
-          MaybeGetFingerprint(graph.get(), named_input_shapes,
-                              &fingerprint_hash, fingerprint_success),
+          MaybeRegisterFingerprint(graph.get(), named_input_shapes, input_hash),
           done);
     }
     // `subgraphs` maps from device names to functions.
@@ -1095,17 +1101,6 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
 
   ExecuteFunctions(*functions, ctx, device_ordinal, ordinal_selector_req_id,
                    std::move(done));
-
-  // Register fingerprint when the functions are successfully executed.
-  if (cache_miss) {
-    absl::ReleasableMutexLock lock(&mu_);
-    if (fingerprint_success) {
-      VLOG(2) << "(input_hash, TF Fingerprint): (" << input_hash << ", "
-              << fingerprint_hash << ")";
-      inputs_to_fingerprint_.try_emplace(input_hash, fingerprint_hash);
-    }
-    lock.Release();
-  }
 }
 
 Status TPUPartitionedCallOp::GetTpuCoreOrdinal(OpKernelContext* ctx,
@@ -1117,13 +1112,8 @@ Status TPUPartitionedCallOp::GetTpuCoreOrdinal(OpKernelContext* ctx,
   TF_RETURN_IF_ERROR(ctx->input(kDeviceOrdinalAttr, &device_ordinal_t));
   int device_ordinal = device_ordinal_t->scalar<int>()();
   if (device_ordinal == tpu::kDeferredCoreSelectionReserved) {
-    auto it = inputs_to_fingerprint_.find(input_hash);
-    absl::optional<uint64> key;
-    if (it != inputs_to_fingerprint_.end()) {
-      key = it->second;
-    }
     device_ordinal =
-        ordinal_selector_->GetOrdinal(key, ordinal_selector_req_id);
+        ordinal_selector_->GetOrdinal(input_hash, ordinal_selector_req_id);
   }
   *core_ordinal = device_ordinal;
   return Status::OK();

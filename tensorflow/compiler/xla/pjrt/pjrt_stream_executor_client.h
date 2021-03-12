@@ -474,6 +474,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
   PjRtStreamExecutorBuffer& operator=(PjRtStreamExecutorBuffer&&) = delete;
 
   const Shape& on_device_shape() const override { return on_device_shape_; }
+  StatusOr<Shape> logical_on_device_shape() override;
   PjRtStreamExecutorDevice* device() const override { return device_; }
   PjRtPlatformId platform_id() const { return client_->platform_id(); }
   absl::string_view platform_name() const { return client_->platform_name(); }

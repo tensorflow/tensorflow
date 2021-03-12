@@ -135,6 +135,11 @@ PLATFORM_FLAGS = \
 CXXFLAGS += $(PLATFORM_FLAGS)
 CCFLAGS += $(PLATFORM_FLAGS)
 
+# Needed for the project generation interface.
+MICROLITE_CC_HDRS := \
+  tensorflow/lite/micro/cortex_m_generic/debug_log_callback.h
+
 EXCLUDED_EXAMPLE_TESTS := \
   tensorflow/lite/micro/examples/micro_speech/Makefile.inc
 MICRO_LITE_EXAMPLE_TESTS := $(filter-out $(EXCLUDED_EXAMPLE_TESTS), $(MICRO_LITE_EXAMPLE_TESTS))
+

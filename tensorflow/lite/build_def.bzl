@@ -283,7 +283,7 @@ def json_to_tflite(name, src, out):
 
 # This is the master list of generated examples that will be made into tests. A
 # function called make_XXX_tests() must also appear in generate_examples.py.
-# Disable a test by adding it to the blacklists specified in
+# Disable a test by adding it to the denylists specified in
 # generated_test_models_failing().
 def generated_test_models():
     return [

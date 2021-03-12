@@ -103,6 +103,8 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
       return MlirOptimizationPassState::Enabled;
     case MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysis:
       return MlirOptimizationPassState::ShadowEnabled;
+    case MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysisSafeModeFallback:
+      return MlirOptimizationPassState::FallbackEnabled;
     case MlirBridgeRolloutPolicy::kDisabledByUser:
     case MlirBridgeRolloutPolicy::kDisabledAfterGraphAnalysis:
       return MlirOptimizationPassState::Disabled;
@@ -173,9 +175,16 @@ MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
   MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
       graph, /*function_library=*/&function_library, config_proto,
       /*uses_uninitialized_resource_args=*/false);
-  return (policy == MlirBridgeRolloutPolicy::kEnabledByUser)
-             ? MlirOptimizationPassState::Enabled
-             : MlirOptimizationPassState::Disabled;
+  switch (policy) {
+    case MlirBridgeRolloutPolicy::kEnabledByUser:
+      return MlirOptimizationPassState::Enabled;
+    case MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysisSafeModeFallback:
+      return MlirOptimizationPassState::FallbackEnabled;
+    case MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysis:
+    case MlirBridgeRolloutPolicy::kDisabledByUser:
+    case MlirBridgeRolloutPolicy::kDisabledAfterGraphAnalysis:
+      return MlirOptimizationPassState::Disabled;
+  }
 }
 
 Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,

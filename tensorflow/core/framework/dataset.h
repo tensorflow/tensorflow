@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/dataset_stateful_op_allowlist.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -56,6 +57,15 @@ class GraphDefBuilder;
 class Node;
 
 namespace data {
+
+namespace internal {
+// Merges Options from source to destination. If there is a conflict on a field,
+// the field value from the source takes precedence.
+void MergeOptions(const protobuf::Message& source,
+                  protobuf::Message* destination);
+void MergeOptions(const protobuf::MessageLite& source,
+                  protobuf::MessageLite* destination);
+}  // namespace internal
 
 using TraceMeMetadata = std::vector<std::pair<StringPiece, string>>;
 
@@ -821,6 +831,14 @@ class DatasetBase : public core::RefCounted {
   // the graph.
   const string& node_name() const { return node_name_; }
 
+  // Merges options from inputs to this dataset. If there is a conflict in a
+  // field value, the options set on this dataset takes precedence over those in
+  // the inputs. The order of precedence on the inputs is in the same order as
+  // how they appear for this dataset.
+  Status MergeOptionsFromInputs();
+
+  const Options& options() const { return options_; }
+
   // Returns a new iterator for iterating over the range of elements in
   // this dataset.
   //
@@ -941,9 +959,12 @@ class DatasetBase : public core::RefCounted {
   virtual std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const = 0;
 
- private:
+  void set_options(const Options& options) { options_ = options; }
+
+ public:
   const string type_string_;
   const string node_name_;
+  Options options_;
 };
 
 // Represents an iterator that is associated with a particular dataset.

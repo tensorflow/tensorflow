@@ -1450,9 +1450,43 @@ Status DynamicDimensionInferenceVisitor::HandleScatter(HloInstruction* hlo) {
         if (operand_index == 2 &&
             absl::c_linear_search(scatter_dims.update_window_dims(),
                                   dimension)) {
-          return Unimplemented(
-              "Dynamic dimension of update window dims is not supported: %s",
-              hlo->ToString());
+          // Dynamic update window dimension is only allowed if it is exactly
+          // the same as the corresponding operand dimension.
+          std::vector<int64> update_window_dims_in_operand;
+          for (int64 i = 0; i < hlo->operand(0)->shape().rank(); ++i) {
+            if (absl::c_linear_search(scatter_dims.inserted_window_dims(), i)) {
+              continue;
+            }
+            update_window_dims_in_operand.push_back(i);
+          }
+
+          for (int64 i = 0; i < scatter_dims.update_window_dims_size(); ++i) {
+            if (scatter_dims.update_window_dims(i) == dimension) {
+              const Shape& operand_shape = hlo->operand(0)->shape();
+              const Shape& update_shape = hlo->operand(2)->shape();
+              int64 dim_in_operand = update_window_dims_in_operand[i];
+              if (operand_shape.dimensions(dim_in_operand) !=
+                      update_shape.dimensions(dimension) ||
+                  !operand_shape.is_dynamic_dimension(dim_in_operand)) {
+                return Unimplemented(
+                    "Dynamic dimension of update window dims that are not the "
+                    "same as corresponding operand dim is not supported: "
+                    "%s",
+                    hlo->ToString());
+              }
+              HloInstruction* base_dynamic_size = parent_->GetDynamicSize(
+                  hlo->mutable_operand(0), {}, dim_in_operand);
+              if (base_dynamic_size != operand_dynamic_size) {
+                return Unimplemented(
+                    "Dynamic dimension size of update window dims that are not "
+                    "the same as corresponding operand dim is not supported: "
+                    "%s.\n Dynamic dim size of base: %s, dynamic dim size of "
+                    "update: %s",
+                    hlo->ToString(), base_dynamic_size->ToString(),
+                    operand_dynamic_size->ToString());
+              }
+            }
+          }
         }
         // The dynamic dimension is collapsed and won't show up in the output.
         // Do nothing here.
