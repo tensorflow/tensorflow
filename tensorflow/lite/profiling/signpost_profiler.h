@@ -12,34 +12,23 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/profiling/platform_profiler.h"
+#ifndef TENSORFLOW_LITE_PROFILING_SIGNPOST_PROFILER_H_
+#define TENSORFLOW_LITE_PROFILING_SIGNPOST_PROFILER_H_
 
 #include <memory>
 
 #include "tensorflow/lite/core/api/profiler.h"
 
-#if defined(__ANDROID__)
-#include "tensorflow/lite/profiling/atrace_profiler.h"
-#elif defined(__APPLE__)
-#include "TargetConditionals.h"
-#if TARGET_OS_IOS
-#define SIGNPOST_PLATFORM_PROFILER
-#include "tensorflow/lite/profiling/signpost_profiler.h"
-#endif
-#endif
-
 namespace tflite {
 namespace profiling {
 
-std::unique_ptr<tflite::Profiler> MaybeCreatePlatformProfiler() {
-#if defined(__ANDROID__)
-  return MaybeCreateATraceProfiler();
-#elif defined(SIGNPOST_PLATFORM_PROFILER)
-  return MaybeCreateSignpostProfiler();
-#else
-  return nullptr;
-#endif
-}
+// Creates a platform profiler for iOS, macOS, tvOS and watchOS.
+// This profiler uses Apple's signpost API for tracing events.
+// User needs to set an enrionment variable 'debug.tflite.trace' for profile
+// scheme at Xcode to enable this profiler.
+std::unique_ptr<tflite::Profiler> MaybeCreateSignpostProfiler();
 
 }  // namespace profiling
 }  // namespace tflite
+
+#endif  // TENSORFLOW_LITE_PROFILING_SIGNPOST_PROFILER_H_
