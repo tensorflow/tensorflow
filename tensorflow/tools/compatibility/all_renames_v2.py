@@ -392,8 +392,6 @@ manual_symbol_renames = {
         "tf.compat.v1.debugging.assert_greater",
     "tf.debugging.assert_greater_equal":
         "tf.compat.v1.debugging.assert_greater_equal",
-    "tf.debugging.assert_integer":
-        "tf.compat.v1.debugging.assert_integer",
     "tf.debugging.assert_less":
         "tf.compat.v1.debugging.assert_less",
     "tf.debugging.assert_less_equal":
@@ -408,8 +406,6 @@ manual_symbol_renames = {
         "tf.compat.v1.debugging.assert_non_positive",
     "tf.debugging.assert_none_equal":
         "tf.compat.v1.debugging.assert_none_equal",
-    "tf.debugging.assert_type":
-        "tf.compat.v1.debugging.assert_type",
     "tf.debugging.assert_positive":
         "tf.compat.v1.debugging.assert_positive",
     "tf.debugging.assert_equal":
@@ -552,7 +548,8 @@ manual_symbol_renames = {
         "tf.compat.v1.where",
     "tf.where_v2":
         "tf.compat.v2.where",
-    "tf.app.flags": "tf.compat.v1.app.flags",
+    "tf.app.flags":
+        "tf.compat.v1.app.flags",
 }
 # pylint: enable=line-too-long
 
