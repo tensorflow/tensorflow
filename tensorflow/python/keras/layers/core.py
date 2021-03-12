@@ -1101,6 +1101,9 @@ class Dense(Layer):
 
   Besides, layer attributes cannot be modified after the layer has been called
   once (except the `trainable` attribute).
+  When a popular kwarg `input_shape` is passed, then keras will create
+  an input layer to insert before the current layer. This can be treated
+  equivalent to explicitly defining an `InputLayer`.
 
   Example:
 
