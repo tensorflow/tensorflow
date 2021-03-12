@@ -129,6 +129,13 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   xla::StatusOr<lmhlo::TriangularSolveOp> EmitTriangularSolveOp(
       const xla::HloInstruction* instr);
 
+  xla::StatusOr<lmhlo::CaseOp> EmitCaseOp(const xla::HloInstruction* instr);
+
+  xla::StatusOr<lmhlo::WhileOp> EmitWhileOp(const xla::HloInstruction* instr);
+
+  xla::Status ImportAsLmhloRegion(xla::HloComputation* computation,
+                                  mlir::Region* region);
+
   // Since LMHLO dialect does not define token types, this enum controls how
   // token operand/results from XLA:HLO are lowered to MLIR.
   enum class TokenLoweringMode {
