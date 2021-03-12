@@ -117,6 +117,63 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
   return absl::OkStatus();
 }
 
+absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
+    const std::vector<Tensor5DFloat32>& src_cpu,
+    std::unique_ptr<GPUOperation>&& operation,
+    const std::vector<BHWDC>& dst_sizes,
+    const std::vector<Tensor5DFloat32*>& dst_cpu) {
+  const OperationDef op_def = operation->GetDefinition();
+  std::vector<MetalSpatialTensor> src(src_cpu.size());
+  for (int i = 0; i < src_cpu.size(); ++i) {
+    auto src_shape = src_cpu[i].shape;
+    if (src_shape.b != 1 && !op_def.IsBatchSupported()) {
+      return absl::InvalidArgumentError(
+          "Layout doesn't have Batch dimension, but shape.b != 1");
+    }
+    RETURN_IF_ERROR(CreateTensor(device_.device(), src_shape,
+                                 op_def.src_tensors[i], &src[i]));
+    RETURN_IF_ERROR(src[i].WriteData(device_.device(), src_cpu[i]));
+  }
+
+  std::vector<MetalSpatialTensor> dst(dst_cpu.size());
+  for (int i = 0; i < dst_cpu.size(); ++i) {
+    auto dst_shape = dst_sizes[i];
+    if (dst_shape.b != 1 && !op_def.IsBatchSupported()) {
+      return absl::InvalidArgumentError(
+          "Layout doesn't have Batch dimension, but shape.b != 1");
+    }
+    RETURN_IF_ERROR(CreateTensor(device_.device(), dst_shape,
+                                 op_def.dst_tensors[i], &dst[i]));
+  }
+
+  ComputeTask gpu_task;
+  gpu_task.Init(std::move(operation));
+  RETURN_IF_ERROR(gpu_task.Compile(&device_));
+  for (int i = 0; i < src_cpu.size(); ++i) {
+    gpu_task.SetSrcTensor(&src[i], i);
+  }
+  for (int i = 0; i < dst_cpu.size(); ++i) {
+    gpu_task.SetDstTensor(&dst[i], i);
+  }
+  RETURN_IF_ERROR(gpu_task.UpdateParams());
+
+  id<MTLCommandQueue> command_queue = [device_.device() newCommandQueue];
+  id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
+  id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+  gpu_task.Encode(encoder);
+  [encoder endEncoding];
+  [command_buffer commit];
+  [command_buffer waitUntilCompleted];
+
+  for (int i = 0; i < dst_cpu.size(); ++i) {
+    dst_cpu[i]->shape = dst_sizes[i];
+    dst_cpu[i]->data = std::vector<float>(dst_sizes[i].DimensionsProduct(), 0);
+    RETURN_IF_ERROR(dst[i].ReadData(device_.device(), dst_cpu[i]));
+  }
+
+  return absl::OkStatus();
+}
+
 }  // namespace metal
 }  // namespace gpu
 }  // namespace tflite
