@@ -216,7 +216,10 @@ def image_dataset_from_directory(directory,
     dataset = dataset.shuffle(buffer_size=batch_size * 8, seed=seed)
   dataset = dataset.batch(batch_size)
   # Users may need to reference `class_names`.
-  dataset.class_names = class_names
+  if labels != 'inferred':
+    dataset.class_names = None
+  else:
+    dataset.class_names = class_names
   # Include file paths for images as attribute.
   dataset.file_paths = image_paths
   return dataset
