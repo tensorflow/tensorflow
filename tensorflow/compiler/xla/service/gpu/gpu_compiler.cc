@@ -636,67 +636,30 @@ static Status CompileModuleToLlvmIrImpl(
   mlir_context.loadDialect<mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
                            mlir::StandardOpsDialect,
                            mlir::lmhlo_gpu::LmhloGpuDialect>();
+  mlir::OwningModuleRef mlir_module =
+      mlir::ModuleOp::create(mlir::Builder(&mlir_context).getUnknownLoc());
+  TF_RETURN_IF_ERROR(
+      HloToLhloModule(**buffer_assignment, *hlo_module, *mlir_module));
 
   IrEmitterContext ir_emitter_context(
       hlo_module, buffer_assignment->get(), platform_name, gpu_device_info,
       cuda_compute_capability, profile_index_map, &mlir_context,
       llvm_module->get());
 
-  HloComputation* entry_computation = hlo_module->entry_computation();
-
   TF_ASSIGN_OR_RETURN(
       auto ir_emitter,
-      IrEmitterUnnested::Create(hlo_module->config(), entry_computation,
-                                &ir_emitter_context));
+      IrEmitterUnnested::Create(hlo_module->config(), &ir_emitter_context));
 
   {
     XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - IR emission");
 
-    absl::flat_hash_map<const Thunk*, const HloInstruction*> thunk_to_hlo;
-    ThunkSequence thunk_sequence;
-    absl::Span<HloInstruction* const> order = hlo_schedule->ThunkLaunchOrder();
-    for (HloInstruction* instruction : order) {
-      TF_RETURN_IF_ERROR(instruction->Visit(ir_emitter.get()));
-      TF_RETURN_IF_ERROR(ir_emitter->Postprocess(instruction));
-      std::unique_ptr<ThunkSequence> thunks =
-          ir_emitter->ConsumeThunkSequence();
+    auto entry_function = mlir::cast<mlir::FuncOp>(
+        mlir_module->lookupSymbol(hlo_module->entry_computation()->name()));
 
-      // The invariants between each input HloInstruction* and output Thunk* are
-      // not all explicitly checked, but at least we can document them here:
-      // * The entry HloComputation shall not have dead code (all reachable from
-      // ROOT).
-      // * The visited instructions are all instructions in the entry
-      // computation.
-      // * For each visit of these HloInstructions, either none or one Thunk
-      // will be returned.
-      // * If there is a thunk returned, thunk->hlo_instruction_ equals the
-      // input HloInstruction*.
-      // * A returned thunk may contain other sub-thunks. A sub-thunk may or may
-      // not have an associated hlo_instruction_.
-      TF_RET_CHECK(thunks->size() <= 1) << instruction->ToString();
-      if (!thunks->empty()) {
-        auto thunk = std::move(thunks->front());
-        InsertOrDie(&thunk_to_hlo, thunk.get(), instruction);
-        thunk_sequence.push_back(std::move(thunk));
-      }
-    }
-    // TODO(timshen): ThunkSchedule taking thunk_to_hlo is a bit awkward. To fix
-    // that, we can turn it into a proper pass, from:
-    //   map<Thunk, HloInstruction> -> (ThunkSchedule, [Thunk...])
-    // to:
-    //   map<Thunk, HloInstruction> -> GenerateMultiStreamDepInfo() -> [(Thunk,
-    //   DepInfo)...]
-    //
-    //   where "DepInfo" is
-    //   struct {
-    //     int stream_number;
-    //     std::vector<Thunk*> dependencies;
-    //     std::vector<Thunk*> users;
-    //   };
-    // We might want to do this after MLIR migration.
-    *thunk_schedule = absl::make_unique<ThunkSchedule>(
-        std::make_unique<ThunkSequence>(std::move(thunk_sequence)),
-        std::move(stream_assignment), std::move(thunk_to_hlo));
+    TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.body()));
+
+    *thunk_schedule =
+        absl::make_unique<ThunkSchedule>(ir_emitter->ConsumeThunkSequence());
 
     if (constants) {
       *constants = std::move(ir_emitter_context.constants());
@@ -1169,10 +1132,8 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
 
   ir_emitter_context->set_allocations(allocations);
 
-  TF_ASSIGN_OR_RETURN(
-      auto ir_emitter,
-      IrEmitterUnnested::Create(module_config, /*hlo_computation=*/nullptr,
-                                ir_emitter_context));
+  TF_ASSIGN_OR_RETURN(auto ir_emitter, IrEmitterUnnested::Create(
+                                           module_config, ir_emitter_context));
   ThunkSequence thunk_sequence;
   for (mlir::Operation& op :
        entry_function.getBody().front().without_terminator()) {
